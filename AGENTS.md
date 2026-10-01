@@ -27,10 +27,9 @@ Proje: Knight Online v1453 sunucu emülatörü (C++17, MSVC v143, Win32) üzerin
 5. **Bota avantaj yok.** Bota oyuncuların sahip olmadığı yollar açma: doğrudan HP/MP/konum yazmak, teleport, cooldown/cast süresini atlamak, görmemesi gereken bilgiyi okumak. Bot tarafı sınırlar `docs/03` §13 (CLI-01..12) ve §16'dadır.
 6. **Thread kuralı.** Bot aksiyonları IOCP worker thread'inde çalışır (`docs/13` §3). Başka thread'den `CUser` durumunu değiştirme.
 7. **Veritabanı:**
-   - Plan izin vermedikçe veritabanına bağlanma.
-   - İzin varsa yalnızca `SELECT` çalıştır.
-   - Veri değişikliği yalnızca planın istediği SQL betik dosyası olarak yapılır.
-   - **Asla okunmayacak tablolar:** TB_USER, ACCOUNT_CHAR, USERDATA satırları, USER_*, WAREHOUSE*, MAIL_*, FRIEND_LIST, PUS_*, _SN_*, WEB_*, CURRENTUSER, KNIGHTS*, KING_*. Bu tablolar üçüncü kişilere ait kişisel veri içerir.
+   - Yerel `FDP_kn_online` veritabanına bağlanmak **serbesttir** (proje sahibi izin verdi, 2026-10-02): doğrulama, ölçüm ve plan betiklerini çalıştırma için. Windows kimlik doğrulaması kullanılır: `SQLCMD="/mnt/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/130/Tools/Binn/SQLCMD.EXE"`, `"$SQLCMD" -S '.\SQLEXPRESS' -E -d FDP_kn_online ...`. Parola dosyalarını (`/mnt/c/dev/fdp/.fdp_sql_password`) okuma veya kopyalama, gerekmez.
+   - Veri değişikliği yalnızca planın istediği SQL betik dosyası olarak yapılır (tekrarlanabilirlik için); elle tek seferlik `UPDATE`/`DELETE` yapma.
+   - **Kişisel veri:** TB_USER, ACCOUNT_CHAR, USERDATA, USER_*, WAREHOUSE*, MAIL_*, FRIEND_LIST, PUS_*, _SN_*, WEB_*, CURRENTUSER, KNIGHTS*, KING_* tablolarında üçüncü kişilere ait kişisel veri vardır: başka oyuncuların satırlarını gereksiz yere okuma, rapora veya commit'e kopyalama. Bot satırları (`Bot%` adlı hesap/karakterler) ve proje sahibinin test karakteri serbesttir; oyun verisi tabloları (MAGIC*, ITEM, LEVEL_UP, ...) serbesttir.
 8. **Git:**
    - Commit mesajı: `[<FAZ>-<NN>] <özet>`. Küçük, anlamlı commit'ler at.
    - **Yasak:** `git push`, merge, rebase, force, `git reset --hard`, `git clean`, başkasının commit'ini değiştirmek.
@@ -64,7 +63,7 @@ Proje: Knight Online v1453 sunucu emülatörü (C++17, MSVC v143, Win32) üzerin
 ```
 
 - Derleme WSL'den Windows MSBuild (VS 2022, v143) ile yapılır. Çıktı: `build/bin/x86-Release/Server/`.
-- Sunucuyu çalıştırmak, oyuna girmek ve DB'ye bağlanmak yalnızca plan isterse yapılır. Çalışma ortamı `/mnt/c/dev/fdp/` altındadır.
+- Sunucuyu çalıştırmak ve oyuna girmek yalnızca plan isterse yapılır. Veritabanına bağlanmak serbesttir (kural 2.7). Çalışma ortamı `/mnt/c/dev/fdp/` altındadır.
 - Derleme hatasız bitmeden `UYGULANDI` yazma.
 
 ## 5. Bitirirken
