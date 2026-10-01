@@ -46,6 +46,11 @@ T_DIZIN_YOK=$'sunucu \u00e7al\u0131\u015fma dizini yok'
 T_EKSIK_INI=$'eksik ini'
 T_CALISMA_DIZINI=$'\u00e7al\u0131\u015fma dizini'
 T_PS_YOK=$'powershell.exe bulunamad\u0131'
+T_BASLATILAMADI=$'ba\u015flat\u0131lamad\u0131'
+T_ZATEN_KAPALI=$'zaten kapal\u0131'
+T_NAZIK=$'nazik'
+T_ZORLA_PAUSE=$'zorla: pause'
+T_ZORLA_ZAMAN_ASIMI=$'zorla: zaman a\u015f\u0131m\u0131'
 
 usage() {
 	printf 'Usage: %s <start|stop|status> [options]\n' "$(basename "$0")"
@@ -249,29 +254,34 @@ proc_alive() {
 
 # Stops one process, gracefully unless it is stuck on system("pause").
 stop_one() {
-	local pid="$1" name="$2" elapsed alive
+	local pid="$1" name="$2" elapsed alive role t0
+	role="${name%.exe}"
 	parse_status_line "$(proc_status "$pid" 0 0)"
 	if [ "$S_ALIVE" -eq 0 ]; then
-		printf '[STOP] %s pid=%s (already down)\n' "$name" "$pid"
+		printf '[STOP] %s pid=%s (%s)\n' "$role" "$pid" "$T_ZATEN_KAPALI"
 		return 0
 	fi
 	if [ "$S_PAUSE" -ge 1 ]; then
 		taskkill.exe /F /T /PID "$pid" >/dev/null 2>&1 || true
-		printf '[STOP] %s pid=%s (force: pause)\n' "$name" "$pid"
+		printf '[STOP] %s pid=%s (%s)\n' "$role" "$pid" "$T_ZORLA_PAUSE"
 		return 0
 	fi
-	taskkill.exe /PID "$pid" >/dev/null 2>&1 || true
 	elapsed=0
-	while [ "$elapsed" -lt "$FDP_STOP_TIMEOUT" ]; do
+	t0=$SECONDS
+	taskkill.exe /PID "$pid" >/dev/null 2>&1 || true
+	while :; do
 		if ! proc_alive "$pid"; then
-			printf '[STOP] %s pid=%s (graceful, %s sn)\n' "$name" "$pid" "$elapsed"
+			printf '[STOP] %s pid=%s (%s, %s sn)\n' "$role" "$pid" "$T_NAZIK" "$elapsed"
 			return 0
 		fi
+		elapsed=$((SECONDS - t0))
+		if [ "$elapsed" -ge "$FDP_STOP_TIMEOUT" ]; then
+			break
+		fi
 		sleep 1
-		elapsed=$((elapsed + 1))
 	done
 	taskkill.exe /F /T /PID "$pid" >/dev/null 2>&1 || true
-	printf '[STOP] %s pid=%s (force: timeout)\n' "$name" "$pid"
+	printf '[STOP] %s pid=%s (%s)\n' "$role" "$pid" "$T_ZORLA_ZAMAN_ASIMI"
 	return 0
 }
 
@@ -280,7 +290,7 @@ do_status() {
 	make_allowed_dirs
 	read_ports
 	collect_our_processes
-	local role exe file i port aiport line state text ready=0 ai_up=0 game_up=0 login_up=0
+	local role exe file i port aiport line state text ready=0 ai_up=0 game_up=0 login_up=0 role_found=0
 	for role in AIServer GameServer LogInServer; do
 		exe="${role}.exe"
 		case "$role" in
@@ -288,8 +298,10 @@ do_status() {
 			GameServer) port="$GAME_PORT"; aiport="$GAME_AIPORT" ;;
 			LogInServer) port="$LOGIN_PORT"; aiport=0 ;;
 		esac
+		role_found=0
 		for i in "${!OUR_PIDS[@]}"; do
 			if [ "${OUR_NAMES[$i]}" = "$exe" ]; then
+				role_found=1
 				parse_status_line "$(proc_status "${OUR_PIDS[$i]}" "$port" "$aiport")"
 				state="$(classify_state "$exe" "$S_ALIVE" "$S_PAUSE" "$S_LISTEN" "$S_AI")"
 				text=''
@@ -318,6 +330,9 @@ do_status() {
 				esac
 			fi
 		done
+		if [ "$role_found" -eq 0 ]; then
+			printf '%-10s %-12s port=%s\n' '[DOWN]' "$role" "$port"
+		fi
 	done
 	for line in "${OTHER_LINES[@]:-}"; do
 		[ -n "$line" ] || continue
@@ -452,7 +467,7 @@ cmd_start() {
 	local aiports=(0 "$GAME_AIPORT" 0)
 	local STARTED_PIDS=()
 	local STARTED_NAMES=()
-	local failed=0 r role pid elapsed last state line wdir wexe
+	local failed=0 r role pid elapsed last last_state state line wdir wexe t0
 
 	wdir="$(winpath "$SERVER_DIR")"
 	for r in 0 1 2; do
@@ -462,25 +477,28 @@ cmd_start() {
 		pid="$(ps_run "(Start-Process -FilePath '$(psq "$wexe")' -WorkingDirectory '$(psq "$wdir")' -WindowStyle Minimized -PassThru).Id" | tr -d '[:space:]')"
 		case "$pid" in
 			''|*[!0-9]*)
-				printf '[FAIL] %s: %s\n' "$role" "$T_BASLATILIYOR"
+				printf '[FAIL] %s: %s\n' "$role" "$T_BASLATILAMADI"
 				failed=1
 				break
 				;;
 		esac
 		STARTED_PIDS+=("$pid")
 		STARTED_NAMES+=("${exes[$r]}")
-		elapsed=0
 		last=0
-		state=STARTING
+		last_state=STARTING
+		t0=$SECONDS
 		while :; do
 			line="$(proc_status "$pid" "${ports[$r]}" "${aiports[$r]}")"
+			elapsed=$((SECONDS - t0))
 			parse_status_line "$line"
 			state="$(classify_state "${exes[$r]}" "$S_ALIVE" "$S_PAUSE" "$S_LISTEN" "$S_AI")"
+			last_state="$state"
 			case "$state" in
 				UP|FAILED) break ;;
 			esac
 			if [ "$S_ALIVE" -eq 0 ]; then
 				state=DOWN
+				last_state=DOWN
 				break
 			fi
 			if [ "$elapsed" -ge "$FDP_START_TIMEOUT" ]; then
@@ -492,7 +510,6 @@ cmd_start() {
 				last="$elapsed"
 			fi
 			sleep 2
-			elapsed=$((elapsed + 2))
 		done
 		case "$state" in
 			UP)
@@ -507,7 +524,7 @@ cmd_start() {
 				failed=1
 				;;
 			TIMEOUT)
-				printf '[FAIL] %s: %s %s (%s sn, %s: %s)\n' "$role" "$FDP_START_TIMEOUT" "$T_HAZIR_OLMADI" "$elapsed" "$T_SON_DURUM" "$state"
+				printf '[FAIL] %s: %s sn %s (%s: %s)\n' "$role" "$FDP_START_TIMEOUT" "$T_HAZIR_OLMADI" "$T_SON_DURUM" "$last_state"
 				failed=1
 				;;
 		esac
