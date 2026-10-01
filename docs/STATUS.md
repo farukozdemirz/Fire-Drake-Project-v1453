@@ -74,8 +74,8 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Claude: F1-04 planı: level 80 bot karakter kurulum betiği taslağı (ADR-0002, `db/002_*`).
-2. Claude: F1-04 planı: level 80 bot karakter kurulum betiği taslağı (ADR-0002); sonra Q-05 (ekipman kısıtı) ve Q-21 (ağırlık) doğrulama planları.
+1. Claude: F1-04 planı: level 80 bot karakter kurulum betiği taslağı (ADR-0002, `db/002_*`); sonra Q-05 (ekipman kısıtı) ve Q-21 (ağırlık) doğrulama planları.
+2. Proje sahibi: GitHub'a push onayı (`main` `origin`'in önünde).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
 
