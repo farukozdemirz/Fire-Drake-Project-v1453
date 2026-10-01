@@ -44,6 +44,7 @@ Liste: `plans/README.md`.
 | F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | KAPANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
 | F1-02 Zamanlama oturumu araçları | KAPANDI | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 | F1-03 `MAGIC.Etc` SQL betiği | KAPANDI | `bot/F1-03` (taban: `main`); `plans/F1-03-magic-etc-sql-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
+| F1-04 Bot karakter kurulum betiği | HAZIR | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 
 ## Son doğrulamalar
 
@@ -74,7 +75,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Claude: F1-04 planı: level 80 bot karakter kurulum betiği taslağı (ADR-0002, `db/002_*`); sonra Q-05 (ekipman kısıtı) ve Q-21 (ağırlık) doğrulama planları.
+1. Proje sahibi: opencode'a `plans/F1-04-bot-karakter-kurulum-betigi.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`. (Sonra Claude: Q-05 ekipman kısıtı ve Q-21 ağırlık doğrulama planları.)
 2. Proje sahibi: GitHub'a push onayı (`main` `origin`'in önünde).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
