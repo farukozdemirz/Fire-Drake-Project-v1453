@@ -79,7 +79,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 ## Sıradaki adımlar
 
 1. Proje sahibi: opencode'a `plans/F1-05-bot-ekipman-agirlik-raporu.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula` (DOĞRULANDI ise Claude birleştirip push'lar).
-2. Proje sahibi: GitHub'a push onayı (`main` `origin`'in önünde).
+2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
 
