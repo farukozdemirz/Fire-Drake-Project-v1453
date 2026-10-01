@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-02` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-01 (KAPANDI, `main`'de) |
@@ -178,15 +178,469 @@ git status --short
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-02` (taban: `main` @ `763faf4`)
+  - `4fbe9e4` — `[F1-02] Paket ozeti --cli modu ve genisletilmis selftest` (`tools/packet-trace-summary.py`)
+  - `7552043` — `[F1-02] Zamanlama oturumu betigi eklendi` (`tools/trace-session.sh`, mod `100755`)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri:
+  - `tools/packet-trace-summary.py` (değişti): yeni `--cli` modu. Mevcut ayrıştırıcı (`parse_line`) ve `--sid`/`--name` filtreleri yeniden kullanıldı; `--cli` verilmezse çıktı **bire bir aynı** kaldı (K3). Eklenenler: `percentile` (nearest-rank), `format_stats_full/short`, `top5`, `load_rows`, `select_cli_target`, `parse_cli_records` (`docs/03` §14 düzenleri, little-endian `struct.unpack`), `write_cli_sections`, `write_cli_output`, `summarize_file_cli`; `--selftest` genişletildi (eski iddialar duruyor).
+  - `tools/trace-session.sh` (yeni): `prepare`, `collect <etiket>`, `status`, `finish [--force]`. Türkçe çıktı `$'\u..'` kaçışlarıyla, dosya ASCII.
+  - `plans/F1-02-zamanlama-oturumu-araclari.md`: yalnızca `Durum` satırı ve bu rapor.
+
+**§5.1 / K1 — `python3 tools/packet-trace-summary.py --selftest`**
+```
+$ python3 tools/packet-trace-summary.py --selftest
+selftest OK
+selftest_exit=0
+```
+
+**K2 — sentetik log ve `--cli` çıktısı, elle hesap karşılaştırması**
+
+`/tmp/opencode/f1-02-cli-sample.log` (20 satır; `struct.pack` ile üretildi, depoya eklenmedi):
+```
+0	12	TestChar	71	08	8	00010201f2033200
+1100	12	TestChar	71	08	8	00010201f2033200
+2300	12	TestChar	71	08	8	00010201f2033200
+5000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+5300	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+15000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+15250	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+25000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+25300	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+20000	12	TestChar	71	31	23	03117a0700010002000000000000000000000000000000
+22000	12	TestChar	71	31	23	03117a0700010002000000000000000000000000000000
+25000	12	TestChar	71	31	23	03117a0700010002000000000000000000000000000000
+30000	12	TestChar	71	06	9	000000000000960001
+32000	12	TestChar	71	06	9	640000000000960001
+34000	12	TestChar	71	06	9	c80000000000960001
+40000	12	TestChar	71	22	3	7b0001
+41500	12	TestChar	71	22	3	7b0001
+50000	12	TestChar	71	41	0	
+52000	12	TestChar	71	41	0	
+60000	12	TestChar	71	08	2	0001
+```
+(Kasıtlı yanlış uzunluklu son satır: `08` opcode, 2 bayt yük.)
+
+```
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-cli-sample.log --cli
+cli_target: sid=12 name=TestChar records=20
+skipped_lines: 0
+== CLI-01 normal saldiri (WIZ_ATTACK) ==
+ATTACK count=3
+ATTACK interval_ms p5=1100 p25=1100 p50=1100 p75=1200 p95=1200 min=1100 max=1200
+ATTACK delaytime top5: 1010:3
+ATTACK distance top5: 50:3
+ATTACK type top5: 0:3 result top5: 1:3
+== CLI-02 skill ile R arasi ==
+MAGIC->ATTACK gap_ms (skill sonrasi ilk R): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+ATTACK->MAGIC gap_ms (R sonrasi ilk skill): n=3 p5=3000 p50=4200 p95=5300 min=3000 max=5300
+== CLI-03 cast suresi (CASTING -> EFFECTING) ==
+CAST gap_ms per skill:
+  skill=101 n=3 p5=250 p50=300 p95=300 min=250 max=300
+MAGIC cancel (opcode 6) count=0
+== CLI-04 skill tekrar ==
+skill=101 count=3 interval_ms n=2 p5=9950 p50=9950 p95=10050 min=9950 max=10050
+skill=490001 count=3 interval_ms n=2 p5=2000 p50=2000 p95=3000 min=2000 max=3000
+MAGIC opcode counts: 1:3 2:0 3:6 4:0 5:0 6:0
+== CLI-06 pot (skill >= 490000, yalnizca EFFECTING) ==
+POT count=3 interval_ms n=2 p5=2000 p50=2000 p95=3000 min=2000 max=3000
+POT per skill: 490001:3
+== CLI-05 hareket (WIZ_MOVE) ==
+MOVE count=3
+MOVE interval_ms n=2 p5=2000 p50=2000 p95=2000 min=2000 max=2000
+MOVE speed top5: 150:3
+MOVE echo top5: 1:3
+MOVE packets_per_second min=1 avg=1.0 max=1
+MOVE run_speed_mps median=5.00 p95=5.00 n=2
+== CLI-11 aksiyon hizi ==
+ACTIONS (ATTACK+MAGIC opcode 1 ve 3) per_second max=3 p95=3
+== CLI-12 / Q-02 speedhack check ==
+SPEEDHACK count=2 interval_ms n=1 p5=2000 p50=2000 p95=2000 min=2000 max=2000
+== Q-18 hedef HP istegi ==
+TARGETHP count=2 interval_ms n=1 p5=1500 p50=1500 p95=1500 min=1500 max=1500
+bad_len: 1
+cli_exit=0
+```
+**Elle hesap (nearest-rank, `idx = max(ceil(p/100·n)−1, 0)`):**
+- ATTACK aralıkları `[1100, 1200]`; `p50`: `ceil(0.5·2)−1 = 0` → 1100 ✔; `p75`: `ceil(1.5)−1 = 1` → 1200 ✔; `p95`: `ceil(1.9)−1 = 1` → 1200 ✔.
+- CAST gap (skill 101) `[300, 250, 300]` → sıralı `[250, 300, 300]`; `p50`: `ceil(1.5)−1 = 1` → **300** ✔; `p5`: `ceil(0.15)−1 = 0` → 250 ✔.
+- POT (490001) aralıkları `[2000, 3000]`; `p50` → 2000 ✔, `p95`: `ceil(1.9)−1 = 1` → 3000 ✔.
+- MOVE hız: kareler `(0→10 m)/(2 s) = 5,00 m/s` ve `(10→20 m)/(2 s) = 5,00 m/s`; medyan **5,00** ✔, `n=2` ✔.
+- `bad_len=1` (60000'daki 2 baytlık WIZ_ATTACK) ✔. `records=20` (20 satırın tamamı `sid=12`) ✔.
+- CLI-11 `max=3`: 25000. ms'de üç aksiyon aynı saniyeye düşüyor (pot 25000 + CASTING 25000 + EFFECTING 25300) → kova değeri 3 ✔.
+
+**K3 — `--cli` olmadan çıktı değişmedi**
+```
+$ git show main:tools/packet-trace-summary.py > /tmp/opencode/pts-old.py
+$ python3 /tmp/opencode/pts-old.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-old.txt
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-new.txt
+$ diff /tmp/opencode/summary-old.txt /tmp/opencode/summary-new.txt
+(diff boş; çıkış kodu 0)
+```
+Eski çıktı:
+```
+parsed_lines: 8
+skipped_lines: 0
+filtered_out_records: 0
+total_records: 8
+opcode summary:
+  WIZ_MOVE (06): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+  WIZ_ATTACK (08): count=2 interval_ms avg=150.0 median=150.0 min=150 max=150
+  WIZ_TARGET_HP (22): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+  WIZ_MAGIC_PROCESS (31): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+WIZ_ATTACK (08) intervals_ms: [150]
+WIZ_TARGET_HP (22) intervals_ms: [100]
+WIZ_MAGIC_PROCESS (31) sub_opcode counts:
+  02: 1
+  03: 1
+WIZ_MOVE (06) packets_per_second: min=2 avg=2.0 max=2 seconds=1
+```
+Yeni çıktı: yukarıdakilerin **birebir aynısı** (diff boş).
+
+**K4 — bozuk girdi**
+```
+$ : > /tmp/opencode/f1-02-empty.log
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-empty.log --cli
+cli_target: none
+skipped_lines: 0
+bad_len: 0
+empty_exit=1
+
+$ printf 'bozuk satir\nbu da bozuk\n' > /tmp/opencode/f1-02-corrupt.log
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-corrupt.log --cli
+cli_target: none
+skipped_lines: 2
+bad_len: 0
+corrupt_exit=1
+
+$ printf '0\t1\tX\t71\t08\t04\t0001\n' > /tmp/opencode/f1-02-badlen.log
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-badlen.log --cli
+cli_target: sid=1 name=X records=1
+skipped_lines: 0
+== CLI-01 normal saldiri (WIZ_ATTACK) ==
+ATTACK count=0
+ATTACK interval_ms p5=n/a p25=n/a p50=n/a p75=n/a p95=n/a min=n/a max=n/a
+ATTACK delaytime top5: n/a
+ATTACK distance top5: n/a
+ATTACK type top5: n/a result top5: n/a
+== CLI-02 skill ile R arasi ==
+MAGIC->ATTACK gap_ms (skill sonrasi ilk R): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+ATTACK->MAGIC gap_ms (R sonrasi ilk skill): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== CLI-03 cast suresi (CASTING -> EFFECTING) ==
+CAST gap_ms per skill:
+  (none)
+MAGIC cancel (opcode 6) count=0
+== CLI-04 skill tekrar ==
+(none)
+MAGIC opcode counts: 1:0 2:0 3:0 4:0 5:0 6:0
+== CLI-06 pot (skill >= 490000, yalnizca EFFECTING) ==
+POT count=0 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+POT per skill: n/a
+== CLI-05 hareket (WIZ_MOVE) ==
+MOVE count=0
+MOVE interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+MOVE speed top5: n/a
+MOVE echo top5: n/a
+MOVE packets_per_second min=n/a avg=n/a max=n/a
+MOVE run_speed_mps median=n/a p95=n/a n=0
+== CLI-11 aksiyon hizi ==
+ACTIONS (ATTACK+MAGIC opcode 1 ve 3) per_second max=n/a p95=n/a
+== CLI-12 / Q-02 speedhack check ==
+SPEEDHACK count=0 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== Q-18 hedef HP istegi ==
+TARGETHP count=0 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+bad_len: 1
+badlen_exit=0
+```
+Çökme yok; bozuk satırlar `skipped_lines`, yanlış uzunluklu paket `bad_len` ile görünür.
+
+**K5 — statik kontroller**
+```
+$ bash -n tools/trace-session.sh
+bash_n_exit=0
+$ tools/trace-session.sh --help
+Usage: trace-session.sh <prepare|collect|status|finish> [options]
+...
+help_exit=0
+$ tools/trace-session.sh bilinmeyen
+Error: unknown command: bilinmeyen
+Usage: ...
+unknown_exit=2
+$ file tools/trace-session.sh tools/packet-trace-summary.py
+tools/trace-session.sh:        Bourne-Again shell script, ASCII text executable
+tools/packet-trace-summary.py: Python script, ASCII text executable
+$ grep -c $'\r' tools/trace-session.sh tools/packet-trace-summary.py
+tools/trace-session.sh:0
+tools/packet-trace-summary.py:0
+$ git ls-files -s tools/trace-session.sh
+100755 65dcc30339723ce6027a0f9c95beb1799bfbdc87 0	tools/trace-session.sh
+```
+**K6 — çevrimdışı `collect` testi** (`FDP_RUNTIME_DIR=/tmp/opencode/f1-02-rt`, `TRACE_OUT_DIR=/tmp/opencode/f1-02-out`, elle üretilmiş `server/Logs/PacketTrace_1_1_2026.log`; sunucu çalıştırılmadı):
+
+(a) `.session` yokken:
+```
+$ ./tools/trace-session.sh collect x
+önce prepare çalıştırın (.session yok)
+exit=1
+```
+(b) boş `.session` + `collect a1` (3 kayıtlı log; tamamı kopyalanır, özet basılır):
+```
+$ : > "$TRACE_OUT_DIR/.session"
+$ ./tools/trace-session.sh collect a1
+cli_target: sid=12 name=TestChar records=3
+skipped_lines: 0
+== CLI-01 normal saldiri (WIZ_ATTACK) ==
+ATTACK count=1
+ATTACK interval_ms p5=n/a p25=n/a p50=n/a p75=n/a p95=n/a min=n/a max=n/a
+ATTACK delaytime top5: 1010:1
+ATTACK distance top5: 50:1
+ATTACK type top5: 0:1 result top5: 1:1
+== CLI-02 skill ile R arasi ==
+MAGIC->ATTACK gap_ms (skill sonrasi ilk R): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+ATTACK->MAGIC gap_ms (R sonrasi ilk skill): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== CLI-03 cast suresi (CASTING -> EFFECTING) ==
+CAST gap_ms per skill:
+  (none)
+MAGIC cancel (opcode 6) count=0
+== CLI-04 skill tekrar ==
+(none)
+MAGIC opcode counts: 1:0 2:0 3:0 4:0 5:0 6:0
+== CLI-06 pot (skill >= 490000, yalnizca EFFECTING) ==
+POT count=0 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+POT per skill: n/a
+== CLI-05 hareket (WIZ_MOVE) ==
+MOVE count=1
+MOVE interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+MOVE speed top5: 150:1
+MOVE echo top5: 1:1
+MOVE packets_per_second min=1 avg=1.0 max=1
+MOVE run_speed_mps median=n/a p95=n/a n=0
+== CLI-11 aksiyon hizi ==
+ACTIONS (ATTACK+MAGIC opcode 1 ve 3) per_second max=1 p95=1
+== CLI-12 / Q-02 speedhack check ==
+SPEEDHACK count=0 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== Q-18 hedef HP istegi ==
+TARGETHP count=1 interval_ms n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+bad_len: 0
+exit=0
+$ ls -l "$TRACE_OUT_DIR"
+-rw-r--r-- 1 frkoz frkoz  115 Oct  2 00:48 a1.log
+-rw-r--r-- 1 frkoz frkoz 1361 Oct  2 00:48 a1.summary.txt
+```
+(c) log'a iki satır eklendikten sonra `collect a2` — yalnızca yeni satırlar:
+```
+$ ./tools/trace-session.sh collect a2   # (özet çıktısı: records=2; SPEEDHACK count=2 interval 200)
+...
+cli_target: sid=12 name=TestChar records=2
+...
+SPEEDHACK count=2 interval_ms n=1 p5=200 p50=200 p95=200 min=200 max=200
+bad_len: 0
+exit=0
+$ wc -l < "$TRACE_OUT_DIR/a2.log"
+2
+$ cat "$TRACE_OUT_DIR/a2.log"
+5000	12	TestChar	71	41	0	
+5200	12	TestChar	71	41	0	
+```
+(d) hemen tekrar `collect a3`:
+```
+$ ./tools/trace-session.sh collect a3
+yeni kayit yok
+exit=1
+$ [ -e "$TRACE_OUT_DIR/a3.log" ] && echo var || echo yok
+yok
+```
+(e) aynı etiket tekrar:
+```
+$ ./tools/trace-session.sh collect a1
+(yukarıdaki "bu etiket zaten var; üzerine yazılmaz" hatası)
+exit=1
+```
+(f) geçersiz etiket:
+```
+$ ./tools/trace-session.sh collect "kotu etiket!"
+Error: geçersiz etiket (1-40 karakter: A-Z a-z 0-9 _ -)
+exit=2
+```
+
+**K7 — `prepare`/`finish` kod incelemesi (çalıştırılmadı)**
+
+`tools/trace-session.sh` içinde çağrı sırası (satır numaraları bu commit'te):
+- `cmd_prepare` (`:78-95`): `run-servers.sh stop` (`:79`, `--force` **yok**) → `if !` ile başarısızlıkta mesaj + `exit 1` (`:80-82`); ancak ondan sonra `build.sh Release --packet-trace` (`:83`, hata → `exit 1` `:84-86`); sonra `run-servers.sh start --config Release` (`:87`, hata → `exit 1` `:88-90`); sonra `write_session` (`:92`) ve talimatlar (`:93-96`).
+- `cmd_finish` (`:169-190`): `run-servers.sh stop` / `stop --force` (`:172`/`:177`, hata → `exit 1`); sonra `build.sh Release` (`:182`, hata → `exit 1` `:183-185`); sonra `.session` silinir (`:186`), kayıt yolu + gizlilik uyarısı (`:187-188`) ve `run-servers.sh start` hatırlatması (`:189`).
+- `run-servers.sh stop` istemci nedeniyle reddederse `exit 1` döner; `cmd_prepare` bunu `if !` ile yakalar ve **derlemeye geçmeden** `exit 1` verir (satır `:79-82`). Aynı koruma `finish` için `:177-181`'de vardır. Bu iki alt komut planda olduğu gibi **çalıştırılmadı** (sunucu durdurma + derleme gerektirir).
+
+**K8 — kapsam**
+```
+$ git diff --stat main...bot/F1-02
+ tools/packet-trace-summary.py | 374 +++++++++++++++++++++++++++++++++++++++++-
+ tools/trace-session.sh        | 232 ++++++++++++++++++++++++++
+ 2 files changed, 605 insertions(+), 1 deletion(-)
+```
+(Rapor commit'inden sonra üçüncü dosya olarak `plans/F1-02-zamanlama-oturumu-araclari.md` eklenir; `GameServer/`, `docs/`, `shared/` yok.)
+```
+$ git status --short
+ M plans/F1-02-zamanlama-oturumu-araclari.md
+?? start.md
+```
+`start.md` depoda önceden beri izlenmeyen altyapı dosyasıdır (bu plan dokunmadı); geçici test dosyaları `/tmp/opencode` altındaydı ve silindi.
+
+**Kabul kriterleri öz-değerlendirmesi**
+- K1 ✔ `--selftest` → `selftest OK`, çıkış 0 (eski + yeni CLI iddiaları).
+- K2 ✔ Sentetik 20 satırlık log ile `--cli`; tüm bölüm başlıkları, `cli_target`, `bad_len` var; ATTACK p50, CAST gap p50=300, POT p50=2000, koşu hızı 5,00 elle doğrulandı.
+- K3 ✔ `main`'deki eski betikle `diff` boş; `--cli`sız çıktı bire bir aynı.
+- K4 ✔ Boş log → `cli_target: none` + çıkış 1; yalnızca bozuk satırlar → çökme yok, `skipped_lines: 2`; yanlış uzunluk → `bad_len: 1`.
+- K5 ✔ `bash -n` temiz, `--help` 0, bilinmeyen komut 2, `file` ASCII, CR yok, mod `100755`.
+- K6 ✔ (a)–(f) beklendiği gibi; `a1.summary.txt` oluştu; `a2.log` yalnızca yeni 2 satır; `a3.log` yok.
+- K7 ✔ Kod incelemesi yukarıda; `stop` reddinde derlemeye geçilmiyor.
+- K8 ✔ Diff yalnızca iki araç dosyası (+rapor); `GameServer/`, `docs/`, `shared/` yok. `git status`'ta yalnızca önceden var olan `?? start.md` kaldı.
+
+**Plandan sapmalar ve gerekçeleri**
+1. **`skipped_lines` satırı eklendi.** Planın örnek `--cli` çıktısında yok; K4'ün "yalnızca bozuk satırlarda atlanan satır sayısı görünür" şartını karşılamak için `cli_target`'tan sonra yazılıyor.
+2. **Boş pot listesinde `POT per skill: n/a`** yazılıyor (plan "boş bölümde satır yine yazılır, hata verme" diyor).
+3. **Uzunluk kuralları:** WIZ_ATTACK/WIZ_MOVE/WIZ_TARGET_HP için tam uzunluk (`8/9/3`), WIZ_MAGIC_PROCESS için `>=23` (plan adım 3). Uymayan kayıt analizden atılır, `bad_len` artar; `records` sayısı etkilenmez.
+4. **`packet-trace-summary.py` çalışma ağacı satır sonu:** Dosya checkout sonrası çalışma ağacında CRLF kalmıştı (blob ve `main` zaten LF); düzenlemelerden sonra LF'e normalize edildi, `file`/`grep -c $'\r'` temiz. İçerik değişmedi.
+5. **`prepare`/`finish` çalıştırılmadı** (K7 şartı); çalışma zamanı doğrulaması doğrulayıcıda.
+
+**Açık sorular / bulgular**
+1. **K8 notu:** `git status --short` tamamen boş değil; `?? start.md` (izlenmeyen altyapı dosyası, bu planda dokunulmadı) duruyor. Önceki planlarda da aynı durum raporlanmıştı.
+2. **`collect` çıkış kodları:** Toplanan parçada hiç geçerli kayıt yoksa `--cli` `cli_target: none` ile 1 döner ve `collect` bunu "özet betiği başarısız" sayıp 1 verir; ancak `<etiket>.log` ve `<etiket>.summary.txt` yazılmış olur. Plan "Python hatasında çıkış 1" dediği için bu davranış korundu; istenirse "kayıt yok" ayrı ele alınabilir.
+3. **`status` alt komutu** çalışma zamanında denenmedi (K6 kapsamı dışı; sunucu gerektirir). Kod incelemesi: `.session` yoksa "oturum yok" yazar, `run-servers.sh status` çıkış kodunu yok sayar (`|| true`), kendi çıkış kodu 0'dır.
+
+### Tur 2 — 2026-10-02
+
+**Durum:** UYGULANDI
+
+**Branch ve commit'ler**
+- Aynı branch `bot/F1-02` (Tur 1 sonu `937d55a`; Doğrulama Raporu Tur 1 `502e889`).
+- `1214621` — `[F1-02] Tur 2: cast iptal/fail olcumu ve CASTING eslestirme duzeltmesi` (`tools/packet-trace-summary.py`).
+- Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+
+**Düzeltme talimatı maddeleri ve yapılanlar**
+1. **CASTING/EFFECTING eşleştirmesi** (`write_cli_sections`, CLI-03 bloğu): tek bir `pending_skill`/`pending_time` çifti tutuluyor; yeni `opcode 1` (CASTING) bekleyeni koşulsuz eziyor (en yeni kazanır); `opcode 3` (EFFECTING) yalnızca bekleyenle aynı skill ise eşleşiyor, `0 <= gap <= 10000` ise o skill'in listesine ekliyor ve bekleyeni siliyor (bekleyen yoksa anlık skill olarak yok sayılıyor); `opcode 6` (CANCEL) ve `opcode 4` (FAIL) bekleyeni kapatıp süreyi ayrı listelere yazıyor. İptal/fail paketlerinin `skill` alanı kullanılmıyor.
+2. **Yeni satırlar:** `MAGIC cancel (opcode 6) count=N` satırından hemen sonra `CANCEL gap_ms (CASTING -> opcode 6): <format_stats_short>` ve `FAIL gap_ms (CASTING -> opcode 4): <format_stats_short>`. Liste boşken `n=0 ... n/a` yazılıyor; başka çıktı satırı değişmedi.
+3. **`--selftest`:** 7 satırlık iptal dizisi (CASTING 0, CANCEL 500, CASTING 3000, EFFECTING 3300, CASTING 6000, CASTING 6100, EFFECTING 6400) ayrı bir CLI vakası olarak eklendi; iki yeni `assert` (aşağıda). Eski selftest iddiaları **silinmedi** (mevcut dizi ve assertler aynen duruyor).
+
+**Adım 4 çıktıları (kırpılmadı)**
+
+(a) `python3 tools/packet-trace-summary.py --selftest`:
+```
+$ python3 tools/packet-trace-summary.py --selftest
+selftest OK
+selftest_exit=0
+```
+
+(b) 7 satırlık geçici dizi (`/tmp/opencode/f1-02-cancel.log`, depoya eklenmedi):
+```
+0	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+500	12	TestChar	71	31	23	0665000000010002000000000000000000000000000000
+3000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+3300	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+6000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+6100	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+6400	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+```
+`--cli` çıktısının CLI-03 bölümü:
+```
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-cancel.log --cli | sed -n '/== CLI-03/,/== CLI-04/p'
+== CLI-03 cast suresi (CASTING -> EFFECTING) ==
+CAST gap_ms per skill:
+  skill=101 n=2 p5=300 p50=300 p95=300 min=300 max=300
+MAGIC cancel (opcode 6) count=1
+CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500
+FAIL gap_ms (CASTING -> opcode 4): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== CLI-04 skill tekrar ==
+```
+Doğrulama bulgusundaki senaryo artık beklenen sonucu veriyor: ilk CASTING iptalde kapanıyor (500 ms), sonraki iki çift 300 ms; eski kodda bu dizi `p50=400 max=3300` üretiyordu.
+
+(c) K3 — `--cli`sız çıktı `main`'deki eski betikle birebir aynı:
+```
+$ git show main:tools/packet-trace-summary.py > /tmp/opencode/pts-old.py
+$ python3 /tmp/opencode/pts-old.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-old.txt
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-new.txt
+$ diff /tmp/opencode/summary-old.txt /tmp/opencode/summary-new.txt
+(diff boş)
+```
+
+(d) `git status --short` (rapor commit'i öncesi):
+```
+ M plans/F1-02-zamanlama-oturumu-araclari.md
+?? start.md
+```
+(`tools/packet-trace-summary.py` commit edildi; tek kalan yine önceden var olan `?? start.md`.)
+
+**Kriter güncellemesi**
+- **K2** (Tur 1'de ✘): kapanmıştır. CASTING→EFFECTING eşleştirmesi artık iptal/fail/yeni CASTING durumlarında bayat bekleyen bırakmıyor; iptal senaryosunda `skill=101 n=2 p50=300`, `CANCEL` 500 ms. Yeni satırlar `docs/15` §4.2.1'in istediği "iptal zamanlaması" ölçümünü de karşılıyor (Bulgu 2).
+- **K1** ✔ (genişletilmiş selftest, eski assertler dahil `selftest OK`).
+- **K3** ✔ (diff boş). **K4–K8** etkilenmedi; `trace-session.sh` bu turda değişmedi.
+
+**Plandan sapmalar (Tur 2 güncellemesi)**
+- Tur 1 sapma listesi geçerli; bu turda yeni bir sapma yok. İki uygulama notu:
+  1. EFFECTING eşleşmesinde "bekleyen skill == EFFECTING skill" koşulu aranıyor (tek cast kuralı); farklı skill'li EFFECTING bekleyeni tüketmeden yok sayılıyor. İptal/fail paketlerinde skill karşılaştırması hiç yapılmıyor (talimat gereği).
+  2. `opcode 3` bekleyenle eşleşip `gap > 10000` ise süre listeye eklenmiyor ama bekleyen yine de siliniyor (aynı cast'in çözüldüğü kabulü).
+- Bu turda `tools/trace-session.sh` ve diğer dosyalara dokunulmadı; yalnızca `tools/packet-trace-summary.py` değişti.
+
+**Açık sorular / bulgular**
+- Yukarıdaki iki uygulama notu dışında açık soru yok. `start.md` (izlenmeyen altyapı dosyası) yine rapor dışı bırakıldı.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ**
+- İncelenen: `main...bot/F1-02` @ `937d55a` (3 commit; yalnızca `tools/packet-trace-summary.py`, `tools/trace-session.sh`, plan dosyası)
+- Kriter sonuçları (hepsi bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 |
+| K2 `--cli` doğru ölçüm | ✘ | Bölüm başlıkları ve DeepSeek'in elle hesapları doğru; ama iptal içeren dizide **CAST gap yanlış** (Bulgu 1): CASTING 0, iptal 500, CASTING 3000, EFFECTING 3300 (ve CASTING 6000, CASTING 6100, EFFECTING 6400) → beklenen `n=2 min=300 max=300`, ölçülen `n=2 p50=400 max=3300` |
+| K3 `--cli`'sız çıktı aynı | ✔ | `main`'deki eski betikle farklı bir 3 satırlık logda `diff` boş |
+| K4 bozuk girdi | ✔ | Boş log (`/dev/null`) → `cli_target: none`, çıkış 1; DeepSeek'in bozuk/yanlış uzunluk çıktıları tutarlı |
+| K5 statik | ✔ | `bash -n`, `--help` 0, bilinmeyen komut 2, ASCII, CR yok, mod `100755` (`git ls-files -s`) |
+| K6 çevrimdışı `collect` | ✔ | (a)–(f) bağımsız tekrarlandı (çıkış 1/0/0/1/1/2); ek: ikinci gün dosyası ve kırpılmış dosya doğru işlendi, `status` çıkış 0 |
+| K7 `prepare`/`finish` kod incelemesi | ✔ | `tools/trace-session.sh:78-95` ve `:169-190` satır satır okundu: `stop` reddinde `exit 1`, derlemeye geçilmiyor; çalıştırılmadı (sunucular açık) |
+| K8 kapsam | ✔ | Diff yalnızca iki araç dosyası + plan; `GameServer/`, `docs/`, `shared/` yok |
+
+- Bulgular (önem sırasıyla):
+  1. **Orta — iptal sonrası CAST ölçümü bozuluyor** (`tools/packet-trace-summary.py`, `write_cli_sections`, CLI-03 bloğu: `if row["skill"] not in pending: pending[...] = t`). İlk CASTING hiç temizlenmiyor; iptal (opcode 6), başarısızlık (opcode 4) veya yeni CASTING araya girse bile sonraki EFFECTING ilk CASTING'e eşleşiyor, süre 10 sn'ye kadar şişiyor. `pri-cancel` / `mag-cancel` senaryolarında (docs/15 §4.2.1) ve normal oynayışta tek bir iptal tüm CLI-03 yüzdeliklerini bozar. Plan metni "CASTING'ten sonra gelen ilk EFFECTING" dediği için DeepSeek'in kodu planın lafzına uyuyor; asıl eksik **planın**: Claude'un hatası. Düzeltme kodda yapılır.
+  2. **Düşük — planda eksik ölçüm:** `docs/15` §4.2.1 iptal için "opcode 6 sayısı ve **zamanlama**" ölçeceğini söylüyor; plan yalnızca sayıyı istedi. CASTING→iptal süresi (istemcinin cast'i ne zaman kestiği) çıktıda yok. Düzeltme turunda eklenecek.
+  3. **Not:** `collect`, toplanan parçada geçerli kayıt yoksa `<etiket>.log` ve `.summary.txt`'yi yazıp 1 döndürüyor ve `.session` ilerletiliyor (Açık soru 2). Kabul edildi: veri kaybolmuyor, etiket dosyası duruyor.
+  4. **Not:** `status` sunucu açıkken denenmedi; kod okundu ve sunucusuz çalıştırıldı (çıkış 0). `[NOTE] yok sayıldı` satırları, `FDP_RUNTIME_DIR` geçici dizine çevrildiği için `run-servers.sh status`'un izinli klasörleri değişmesinden; hata değil.
+- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+
+```
+plans/F1-02-zamanlama-oturumu-araclari.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+
+1. tools/packet-trace-summary.py, write_cli_sections, "CLI-03 cast suresi" bloğundaki CASTING/EFFECTING eşleştirmesini değiştir. Bir oyuncu aynı anda tek bir cast yapar, bu yüzden: (a) opcode 1 (CASTING) paketi geldiğinde bekleyen tüm kayıtları sil ve yalnızca bu CASTING'i (skill, t) bekleyen olarak tut (en yeni CASTING kazanır; "if skill not in pending" koşulunu kaldır); (b) opcode 3 (EFFECTING) paketi, aynı skill için bekleyen CASTING varsa gap = t - cast_t hesapla, 0 <= gap <= 10000 ise o skill'in CAST listesine ekle ve bekleyeni sil; bekleyen yoksa yok say (anlık skill); (c) opcode 6 (CANCEL) veya opcode 4 (FAIL) geldiğinde bekleyen CASTING varsa gap = t - cast_t'yi iptal listesine (opcode 6 ayrı, opcode 4 ayrı liste) ekle ve bekleyeni sil. İptal/fail paketlerindeki skill alanına güvenme (istemci orada farklı değer gönderebilir); bekleyen tek olduğu için skill eşlemesi gerekmez.
+2. Aynı bloğa "MAGIC cancel (opcode 6) count=N" satırından hemen sonra iki yeni satır ekle: "CANCEL gap_ms (CASTING -> opcode 6): <format_stats_short>" ve "FAIL gap_ms (CASTING -> opcode 4): <format_stats_short>". Liste boşsa format_stats_short zaten n=0 ... n/a yazıyor; satırlar yine yazılsın. Başka çıktı satırını değiştirme.
+3. --selftest'e şu sentetik diziyi ekle ve assert et: CASTING(skill 101) t=0, CANCEL t=500, CASTING t=3000, EFFECTING t=3300, CASTING t=6000, CASTING t=6100, EFFECTING t=6400. Beklenen: "skill=101 n=2 p5=300 p50=300 p95=300 min=300 max=300" ve "CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500". Eski selftest iddialarını silme.
+4. Çalıştırıp rapora yapıştır: (a) python3 tools/packet-trace-summary.py --selftest -> selftest OK; (b) bu 7 satırlık diziyi printf/struct ile geçici dosyaya (/tmp/opencode altında, depoya ekleme) yazıp --cli çıktısının CLI-03 bölümünü olduğu gibi yapıştır; (c) planın K3'ü: git show main:tools/packet-trace-summary.py ile alınan eski betikle --cli'sız çıktının diff'i boş; (d) git status --short çıktısı.
+5. Başka dosyaya dokunma. Raporuna "Tur 2" ekle, "Plandan sapmalar" bölümünü güncelle, Durum satırını UYGULANDI yap.
+```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F1-02` @ `34ce674` (Tur 2 düzeltme commit'i `1214621`; yalnızca `tools/packet-trace-summary.py` değişti, `trace-session.sh` dokunulmadı)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0; yeni iptal vakası ve iki yeni assert dahil, eski assertler silinmemiş |
+| K2 `--cli` doğru ölçüm | ✔ (Tur 1'de ✘) | Tur 1'deki dizi: `skill=101 n=2 p5=300 … max=300`, `CANCEL gap_ms … n=1 … p50=500`; eski kodda `p50=400 max=3300` idi |
+| K3 `--cli`'sız çıktı aynı | ✔ | `main`'deki eski betikle `diff` boş |
+| K4 bozuk girdi | ✔ | `/dev/null` → `cli_target: none`, çıkış 1 |
+| K5 statik | ✔ | `trace-session.sh` Tur 2'de değişmedi; Tur 1 sonuçları geçerli (ASCII, 100755) |
+| K6 çevrimdışı `collect` | ✔ | Tur 1'de doğrulandı, dosya değişmedi |
+| K7 `prepare`/`finish` kod incelemesi | ✔ | Tur 1'de doğrulandı, dosya değişmedi |
+| K8 kapsam | ✔ | Düzeltme farkı yalnızca `tools/packet-trace-summary.py` (+51/−6) ve plan dosyası |
+
+- Ek bağımsız kenar vakaları (DeepSeek'in testlerinde yoktu), hepsi beklenen sonuç: FAIL (opcode 4) 200 ms sonra → `FAIL gap n=1 200`; iptal paketi `skill=0` ile gelse de bekleyeni kapatıyor (`CANCEL gap 600`); CASTING ile EFFECTING arasında **farklı skill'li** (202) EFFECTING bekleyeni tüketmiyor (`CAST skill=101 n=1 400`); bekleyen yokken gelen EFFECTING yok sayılıyor; 13 000 ms'lik eşleşme `0..10000` dışında olduğu için listeye girmiyor.
+- Bulgular: engelleyici yok.
+  1. **Not:** Planın "10 000 ms üstü eşleşme listeye girmez" kuralı korunuyor ama bekleyen yine siliniyor (Uygulama notu 2). Kabul: aynı cast'in çözüldüğü varsayımı makul.
+  2. **Not:** `status` sunucu açıkken çalışma zamanında denenmedi (Tur 1 Bulgu 4); `prepare`/`finish` çalışma zamanı doğrulaması, ilk gerçek oturumda (`docs/15` §4.2.1) yapılacak. Bu, F1-02'nin DOĞRULANDI kararını engellemez: planın K7'si bunları bilerek çalıştırmamayı şart koşuyordu.
+- Düzeltme talimatı: yok.
