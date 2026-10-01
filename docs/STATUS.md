@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F0-01 KAPANDI; F0-02 HAZIR: sunucu çalıştırma betiği. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
+F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F1-01 planı proje sahibinin kararıyla F0 kabulünden önce yazıldı) (F0-01 KAPANDI; F0-02 DOĞRULANDI (Tur 2), birleştirme bekliyor. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
 
 ## Faz tablosu
 
@@ -38,12 +38,15 @@ Liste: `plans/README.md`.
 | Plan | Durum | Not |
 |---|---|---|
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
-| F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | HAZIR | `bot/F0-02` (taban: `main`); `plans/.aktif-plan` bu plana işaret ediyor |
+| F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | DOĞRULANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
+| F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | HAZIR | `bot/F1-01` (taban: `bot/F0-02`); `plans/F1-01-paket-izleyici.md`; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
+| 2026-10-01 | F0-02 | DOĞRULANDI (Tur 2) | 14/14 kriter ✔; Tur 1'in 6 bulgusu kapandı (zaman aşımı yolu geçici kopyayla çalışma zamanında doğrulandı). Kalan: KI-008 (düşük, `stop` satırı hep `0 sn`) |
+| 2026-10-01 | F0-02 | DÜZELTME GEREKLİ (Tur 1) | 14/14 kriter ✔ (§5.4 Claude tarafından bağımsız yeniden çalıştırıldı, K11 sahte istemciyle çalışma zamanında doğrulandı). Engelleyen: süre/zaman aşımı duvar saati değil (300 sn ≈ 480 sn), zaman aşımı mesajı son durumu kaybediyor; ayrıca `[DOWN]` satırı yok, `stop` etiketleri plandan farklı. Yeni: KI-007 |
 | 2026-10-01 | F0-01 | DOĞRULANDI | 10/10 kriter; 2 düşük + 3 bilgi bulgusu (`plans/F0-01…` Doğrulama Raporu). Debug/Release tablosu → `docs/02` §2.1 |
 
 ## Verilen kararlar
@@ -63,11 +66,12 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 |---|---|---|---|
 | T-ENV-01 kalanı: insan istemcisiyle Ronark Land'e giriş | F0 çıkış koşulu; DeepSeek/Claude yapamaz (istemci GUI) | Proje sahibi | Sunucular `tools/run-servers.sh start` ile (F0-02 sonrası) veya elle açıkken `C:\dev\fdp\Client\KnightOnline.exe` ile giriş, Ronark'a geçiş; kanıt: ekran görüntüsü veya tarih/saat notu → `docs/15` T-ENV-01 |
 
-## Sıradaki 3 adım
+## Sıradaki adımlar
 
-1. DeepSeek: `plans/F0-02-sunucu-calistirma-betigi.md` uygular; Claude `/plan-dogrula` ile doğrular. Doğrulama sonrası Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler.
-2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
-3. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
+1. Proje sahibi: opencode'a `plans/F1-01-paket-izleyici.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`.
+2. Proje sahibi: `bot/F0-02`'yi `main`'e birleştirir (ve onayıyla push). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
+3. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
+4. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
 
 ## Otonom döngü
 
@@ -76,7 +80,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 ## Devralan için notlar
 
 - Araştırma sırasında sunucu çalıştırılmadı. Tüm mekanik iddialar kod/veri okumasına dayanır; çalışma zamanı doğrulaması F1'in işi.
-- 2026-10-01: üç sunucu proje sahibi tarafından 13:09–13:10'da `C:\dev\fdp\server`'dan elle başlatılmış ve çalışıyor. Claude ~19:00'da gözledi: portlar 10020/15001/15100 LISTEN, GameServer→AIServer bağlantısı kurulu, bağlı istemci yok `[V]`. Aynı makinede yolu okunamayan ilgisiz bir `GameServer.exe` süreci daha var; betikler süreçleri adla değil exe yoluyla tanımalı (F0-02 §5.2).
+- 2026-10-01: üç sunucu ilk olarak proje sahibi tarafından 13:09–13:10'da `C:\dev\fdp\server`'dan elle açılmıştı. F0-02 testlerinden beri `tools/run-servers.sh` ile açılıp kapatılıyorlar. Claude'un F0-02 Tur 1 doğrulaması sonunda yine `C:\dev\fdp\server` exe'leriyle 3/3 `UP` bırakıldılar (`FDP_SERVER_BIN_DIR=/mnt/c/dev/fdp/server tools/run-servers.sh start`); bağlı istemci yok `[V]`. Elle açılan sunucular `stop` ile nazikçe kapanmıyor (KI-007). Aynı makinede yolu okunamayan ilgisiz bir `GameServer.exe` (pid 4336) var; betik süreçleri exe yoluyla tanıyor ve ona dokunmuyor `[V]`.
 - `tools/build.sh` ve `tools/auto-loop.sh` git'te `100644` modunda (çalıştırılabilir değil). WSL/drvfs'te sorun çıkarmıyor; temiz bir klonda `bash tools/build.sh` gerekir. Küçük bir düzeltme planına veya proje sahibinin `git update-index --chmod=+x` commit'ine bırakıldı.
 - Depo dosyaları CRLF + tab. Bazı dosyalar ISO-8859 (Korece yorumlu) veya UTF-8 BOM'lu; kodlama korunmalı (`AGENTS.md` §3).
 - `.sh` dosyaları `.gitattributes` ile LF'e sabitlendi (`core.autocrlf=true` betikleri bozmasın diye).
