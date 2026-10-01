@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-06` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-04, F1-05 (KAPANDI) |
@@ -514,3 +514,28 @@ P MI max_mp calc=5286 doc=5286 diff=0
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `main...bot/F1-06` @ `5f04f40` (2 commit; `db/002_bot_characters.sql`, `db/README.md`, `tools/stat-model.py`, plan dosyası)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 (1947 / 1766 / 4458 / B=225 / 191–258 ve isabet eşikleri) |
+| K2 `db/002` Hp/Mp = 32000 | ✔ | Fark yalnızca 12 satırda `hp/mp` ve başlık yorumu; betiği branch'ten yeniden uyguladım (exit 0, 12 satır); DB'de 12 bot, hepsi `Hp=Mp=32000`; bot olmayan satırlar `USERDATA` 6 / `ACCOUNT_CHAR` 4 / `WAREHOUSE` 4; rollback betiği git'te değişmedi |
+| K3 çıktı eksiksiz | ✔ | Aracı çalıştırdım: çıkış 0, 252 satır (S 24, R 36, K 174, P 14); iki çalıştırma birebir aynı (deterministik) |
+| K4 formül → kod satırı | ✔ | Tablo raporda; `PRO_SKILL2 = 0x06` (`GameDefine.h:172`), item hitrate `m_sItemHitrate += m_sHitrate` (`User.cpp:1349-1350`) bağımsız doğrulandı |
+| K5 P farkları açıklı | ✔ | 14 satırın 13'ü fark 0; `MI max_hp 1581` vs doc `1582`: `0,001×6400×107 + 8×107 + 21 + 20 = 1581,8 → (short) 1581` (docs yuvarlaması) |
+| K6 yalnızca bot satırları | ✔ | Tek `USERDATA` sorgusu: `WHERE strUserID LIKE 'Bot%'` (`tools/stat-model.py:60`) |
+| K7 kapsam | ✔ | Diff: 3 dosya + plan; `GameServer/` yok; ASCII; çalışma ağacı temiz |
+
+- **Bağımsız model doğrulaması:** Ayrı bir Python uygulamasıyla iki R satırını yeniden hesapladım: `WP→WG base=225, avg 72.96, min 62, max 84` ve `WG→MF base=269, avg 120.80, min 103, max 139`; araç çıktısıyla aynı. Elle: WG `total_ac = (80+871) + %50 pasif + (162−100) = 1488`, WP `857`.
+- **Referans ekipmanda hasar etkisi:** elemental/drain/mirror sütunlarının hepsi 0 (DB sorgusu); ayrıca `ITEM_OP` (silah proc tablosu) referans silahlar ve kalkan için **boş**; `TriggerProcItem` (`Unit.cpp:421-470`) bu botlarda proc üretmez. Yani modelin `GetMagicDamage` ve proc adımlarını atlaması doğru.
+- Bulgular: engelleyici yok.
+  1. **Not:** Rapor `GetMagicDamage`'ı yalnızca sütunlara dayanarak "etkisiz" saymış, `ITEM_OP` proc tablosunu belirtmemişti; ben ikisini de doğruladım.
+  2. **Not:** Mage fiziksel R hasarı ~6 (asa); mage hasarı büyü ile gelir (F1-07).
+  3. **Not:** K bölümü çıktısı `BotWG_K` satırlarını `BotWP_K`'dan önce yazıyor (alfabetik); işlevsel sorun değil.
+  4. **Not:** `tools/stat-model.py` yalnızca deterministik ortalama/min/max verir; çalışma zamanı ölçümü (T-MECH-DMG-01, ± %15) hâlâ yapılmadı, bu yüzden etiketler `[V]`'ye yükseltilmedi.
+- Düzeltme talimatı: yok.
