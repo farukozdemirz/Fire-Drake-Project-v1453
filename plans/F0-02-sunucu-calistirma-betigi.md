@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F0 — Ortam ve temel doğrulama (`docs/17` §2) |
 | Branch | `bot/F0-02` (taban: `main` @ `43d3500`; F0-01 bu commit'te birleşti) |
 | Bağımlı olduğu planlar | F0-01 (KAPANDI) |
@@ -770,3 +770,51 @@ plans/F0-02-sunucu-calistirma-betigi.md — Doğrulama Turu 1 düzeltmeleri. Ayn
 8. Çalışma zamanı testini sırayla çalıştır, her komuttan sonra echo "exit=$?" (araç zaman aşımı en az 600 sn; (a)'da GameServer'da istemci>0 görürsen --force kullanma, Durum: UYGULANIYOR (BLOKE) yaz ve dur): (a) ./tools/run-servers.sh status; (b) ./tools/run-servers.sh stop; (c) ./tools/run-servers.sh status (üç [DOWN] satırı ve exit=1 beklenir); (d) plan §5.4 adım 4'teki başarısızlık testi, aynı FAILDIR ile ve time ile; (e) time ./tools/run-servers.sh start; (f) ./tools/run-servers.sh stop (üçü "nazik" olmalı); (g) başlangıç durumuna dön: (a)'da üçü C:\dev\fdp\server\ altından çalışıyorduysa FDP_SERVER_BIN_DIR=/mnt/c/dev/fdp/server ./tools/run-servers.sh start, kapalıydılarsa kapalı bırak.
 9. Raporuna "Tur 2" ekle: 7 ve 8'in çıktılarını kırpmadan yapıştır (yolları "..." ile kısaltma, adım atlama). (e)'deki her sunucunun "[UP] ... (<n> sn)" değerini ayrıca yaz. "Plandan sapmalar" bölümünü güncelle. Plan Durum satırını UYGULANDI yap. Başka dosyaya dokunma.
 ```
+
+### Tur 2 — 2026-10-01
+
+- **Karar: DOĞRULANDI**
+- İncelenen: `main...bot/F0-02` @ `9c16d5e` (Tur 2 düzeltme commit'i `9ae6a87`; DeepSeek'in 4 commit'i yalnızca `tools/run-servers.sh` ve bu plan dosyasına dokundu; `docs/` ve `plans/README.md` farkı benim Tur 1 doğrulama commit'inden `a28c846`).
+- Yöntem: Uygulayıcının çıktılarına güvenilmedi; testler bağımsız yeniden çalıştırıldı, **her çıktı satırının geliş zamanı dış bir süzgeçle ölçüldü**. Başlangıç durumu (3/3 `UP`, `C:\dev\fdp\server`, istemci yok) sonda geri getirildi (pid'ler 14540 / 40228 / 28644).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | exit 0, 0 uyarı/hata (kaynak değişmediği için yalnızca araç zinciri sağlığı) |
+| K2 biçim | ✔ | `bash -n` temiz; `ASCII text executable`; CR 0; ASCII dışı 0; mod `100755` |
+| K3 kullanım | ✔ | `2, 2, 2, 0`; ek: `stop --keep-on-fail` → 2 |
+| K4 status | ✔ | 3/3 `UP`, `Özet: 3/3 hazır`, exit 0; durmuşken üç `[DOWN]` satırı (sırayla), `0/3`, exit 1; yabancı pid 4336 her seferinde `[NOTE]`, hiç durdurulmadı |
+| K5 stop nazik | ✔ | Her çalışmada LogInServer → GameServer → AIServer, `taskkill` /F olmadan, üçü `nazik`; bağımsız port kontrolü boş; exit 0. **Bulgu 1** |
+| K6 start + `AI=bağlı` | ✔ | exit 0; GameServer yalnızca AIServer bağlantısı sonrası `UP` (`tools/run-servers.sh` kodu + çıktıda `AI=bağlı`); süreler **1–5 sn** (örn. LogInServer 5 sn, dış ölçüm 5,6 sn) |
+| K7 çift start | ✔ | `[REFUSE] zaten çalışıyor…`, exit 1; öncesi/sonrası pid listesi `4336 20704 33368 36588` aynı |
+| K8 başarısızlık | ✔ | `[FAIL] AIServer: açılış başarısız…`, `[STOP] … (zorla: pause)`, exit 1, `real` 5,36 s, GameServer/LogInServer başlatılmadı, sonra bizim süreç yok |
+| K9 `--keep-on-fail` | ✔ | exit 1 + "inceleme için açık bırakıldı"; `status` → `[FAILED] AIServer`; `stop` → `(zorla: pause)`, exit 0 |
+| K10 Debug | ✔ | `start --config Debug` 3/3 `UP`, yollar `build\bin\x86-Debug\Server\`; `stop` üçü nazik |
+| K11 istemci koruması | ✔ | **Çalışma zamanında:** 25 sn'lik sahte `TcpClient` bağlantısıyla `status` → `istemci=1`; `stop` → `[REFUSE] GameServer'a bağlı istemci var…`, exit 1, pid listesi değişmedi |
+| K12 başlangıç durumu | ✔ | `FDP_SERVER_BIN_DIR=/mnt/c/dev/fdp/server … start` → 3/3 `UP`, yollar `C:\dev\fdp\server\`, exit 0; sunucular çalışır bırakıldı |
+| K13 gizlilik | ✔ | `grep 'UID\|PWD\|DSN\|sqlcmd\|SQLCMD\|Logs/\|rm -rf'` boş; ini'ler yalnızca `PORT` için (`ini_port`, `tools/run-servers.sh:168-179`) |
+| K14 kapsam | ✔ | DeepSeek commit'leri (`3314544`, `4ce3fe6`, `9ae6a87`, `9c16d5e`) yalnızca iki izinli dosya; sunucu kaynak dizinlerinde değişiklik yok; `rm -rf` yok |
+
+**Tur 1 bulgularının kapanışı**
+
+| Tur 1 bulgusu | Durum |
+|---|---|
+| 1 Süreler duvar saati değil (`FDP_START/STOP_TIMEOUT`) | ✔ kapandı: `SECONDS` ile ölçülüyor (`tools/run-servers.sh:270,277` stop; `:489,492` start). Başka bir sorun çıktı: **Bulgu 1** |
+| 2 Zaman aşımı mesajı son durumu kaybediyor | ✔ kapandı, **çalışma zamanında doğrulandı** (aşağıda) |
+| 3 `status` kapalı sunucu için satır yazmıyor | ✔ kapandı (`[DOWN]`, sıra korunuyor) |
+| 4 `stop` etiketleri plandan farklı | ✔ kapandı (`[STOP] <ad> pid=… (nazik, <n> sn)`, `(zorla: pause)`, `(zaten kapalı)`; `.exe`'siz ad) |
+| 5 `başlatılıyor` yazım hatası | ✔ kapandı (`başlatılamadı`) |
+| 6 Rapor kırpılmış | ✔ kapandı (Tur 2 çıktıları tam, yollar kısaltılmamış) |
+
+**Zaman aşımı yolu — çalışma zamanı kanıtı.** Doğal olarak tetiklenmiyor (sunucular ilk yoklamadan önce hazır oluyor; `FDP_START_TIMEOUT=0` ve `=1` ile denendi, ikisinde de `UP`). Bu yüzden betiğin `UP` durumunu tanımayan **geçici bir kopyası** (tek satır: `UP|FAILED) break` → `FAILED) break`, commit'lenmedi, hemen silindi) `FDP_START_TIMEOUT=6` ile çalıştırıldı:
+`[FAIL] AIServer: 6 sn içinde hazır olmadı (son durum: UP)` — mesaj plandaki biçimde, `last_state` `TIMEOUT` ile ezilmiyor; süreç temizlendi (`pid` listesinde yalnızca yabancı 4336). Toplam `real` 12,8 s (başlatma + 6 sn eşik + yoklama gecikmesi + `stop`).
+
+**Bulgular (engelleyici değil):**
+
+1. *Düşük (hata) — `tools/run-servers.sh:274`*: `stop_one` "nazik" satırını, `elapsed`'i **yeniden hesaplamadan önce** yazıyor (hesap `:277`'de, `if` bloğundan sonra). Süreç ilk yoklamada kapalı görüldüğünden `elapsed` hâlâ `0`: çıktı her zaman `(nazik, 0 sn)`. Dış ölçüm: üç sunucu 4,3 → 6,4 → 8,4 sn'de basıldı; her sunucu ~2 sn sürüyor. Etkisi yalnızca ekrandaki sayı: eşik ve çıkış kodları doğru. Düzeltme tek satır (`elapsed=$((SECONDS - t0))`'ı `:273`'ün hemen altına, `if`'ten önce al). KI-008 olarak kaydedildi; F0 için ayrı bir tur gerektirmiyor.
+2. *Bilgi*: `start` satırlarındaki `(<n> sn)`, `SECONDS` tam sayı çözünürlüğü ve Start-Process süresi dışarıda kaldığı için gerçek süreden ≤ 1 sn küçük çıkabilir (örn. `1 sn` yazan AIServer için dış ölçüm 2,0 s). F3 `ScenarioRunner` alt-saniye zamanlamaya bu değerlere dayanmamalı.
+3. *Bilgi*: KI-007 bu turda tetiklenmedi; betikle açılan süreçlerin hepsi (Release, Debug, başlangıç durumu) nazikçe kapandı.
+4. *Bilgi, ortam*: Her `status/start/stop` çağrısı ~1–1,5 sn PowerShell gecikmesi içeriyor; toplam `start` ~13–17 s, `stop` ~9 s.
+
+**Uygulayıcının sapma notları:** Tur 2'deki iki not (`SECONDS` çözünürlüğü; `while :` + `break` yapısı) kabul. Rapor dürüst: `(nazik, 0 sn)` çıktıları olduğu gibi yazılmış, test sonuçları benimkilerle uyuşuyor (`real` 9,4 s'ye karşı 9,0 s).
+
+Birleştirme (kullanıcı onayıyla): `git switch main && git merge --no-ff bot/F0-02`.

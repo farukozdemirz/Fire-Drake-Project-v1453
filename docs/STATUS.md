@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F0-01 KAPANDI; F0-02 DÜZELTME GEREKLİ (Doğrulama Turu 1): sunucu çalıştırma betiği. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
+F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F0-01 KAPANDI; F0-02 DOĞRULANDI (Tur 2), birleştirme bekliyor. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
 
 ## Faz tablosu
 
@@ -38,13 +38,14 @@ Liste: `plans/README.md`.
 | Plan | Durum | Not |
 |---|---|---|
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
-| F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | DÜZELTME GEREKLİ | `bot/F0-02` @ `4ce3fe6` + doğrulama raporu commit'i; düzeltme talimatı plan dosyasının Doğrulama Raporu Tur 1 bölümünde; `plans/.aktif-plan` bu plana işaret ediyor |
+| F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | DOĞRULANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
-| 2026-10-01 | F0-02 | DÜZELTME GEREKLİ | 14/14 kriter ✔ (§5.4 Claude tarafından bağımsız yeniden çalıştırıldı, K11 sahte istemciyle çalışma zamanında doğrulandı). Engelleyen: süre/zaman aşımı duvar saati değil (300 sn ≈ 480 sn), zaman aşımı mesajı son durumu kaybediyor; ayrıca `[DOWN]` satırı yok, `stop` etiketleri plandan farklı. Yeni: KI-007 |
+| 2026-10-01 | F0-02 | DOĞRULANDI (Tur 2) | 14/14 kriter ✔; Tur 1'in 6 bulgusu kapandı (zaman aşımı yolu geçici kopyayla çalışma zamanında doğrulandı). Kalan: KI-008 (düşük, `stop` satırı hep `0 sn`) |
+| 2026-10-01 | F0-02 | DÜZELTME GEREKLİ (Tur 1) | 14/14 kriter ✔ (§5.4 Claude tarafından bağımsız yeniden çalıştırıldı, K11 sahte istemciyle çalışma zamanında doğrulandı). Engelleyen: süre/zaman aşımı duvar saati değil (300 sn ≈ 480 sn), zaman aşımı mesajı son durumu kaybediyor; ayrıca `[DOWN]` satırı yok, `stop` etiketleri plandan farklı. Yeni: KI-007 |
 | 2026-10-01 | F0-01 | DOĞRULANDI | 10/10 kriter; 2 düşük + 3 bilgi bulgusu (`plans/F0-01…` Doğrulama Raporu). Debug/Release tablosu → `docs/02` §2.1 |
 
 ## Verilen kararlar
@@ -66,7 +67,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki 3 adım
 
-1. DeepSeek: F0-02 Doğrulama Turu 1 düzeltmeleri (plan dosyasındaki talimat bloğu, 9 madde); Claude Tur 2'yi doğrular. DOĞRULANDI sonrası Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Tur 1 ölçümü: Release'te her sunucu ≤2,2 sn'de hazır, `start` toplam ~13 sn, `stop` ~12 sn).
+1. Proje sahibi: `bot/F0-02`'yi `main`'e birleştirir (ve onayıyla push). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
 2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
 3. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
 

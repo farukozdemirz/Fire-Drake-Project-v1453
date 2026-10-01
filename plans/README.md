@@ -50,7 +50,7 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
 | [F0-01](F0-01-ortam-dogrulama-araclari.md) | Ortam doğrulama araçları ve Debug/Release farkı raporu | F0 | KAPANDI (2026-10-01, `main` @ `43d3500`) | `bot/F0-01` |
-| [F0-02](F0-02-sunucu-calistirma-betigi.md) | Sunucu çalıştırma betiği (start / stop / status) | F0 | DÜZELTME GEREKLİ (2026-10-01, Doğrulama Turu 1) | `bot/F0-02` (taban: `main`) |
+| [F0-02](F0-02-sunucu-calistirma-betigi.md) | Sunucu çalıştırma betiği (start / stop / status) | F0 | DOĞRULANDI (2026-10-01, Doğrulama Turu 2) | `bot/F0-02` (taban: `main`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
