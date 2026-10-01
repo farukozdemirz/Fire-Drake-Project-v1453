@@ -129,7 +129,7 @@
 | REQ-PLN-03 | 21 §1, 17 §4 | Her faz | Faz kapısı | Bu pakette karşılandı |
 | REQ-PLN-04 | 17 §3, 01 §2 | — | — | Bu pakette karşılandı |
 | REQ-NEW-14 | — | — | — | KALDIRILDI (K-9) |
-| REQ-NEW-15 | 18 R-12 | F0 | Kontrol listesi | PLANLANDI |
+| REQ-NEW-15 | 18 R-12 | F0 | Kontrol listesi (`tools/check-env.sh`, 22/22) | TEST_EDILDI (F0-01); faz kabulü bekliyor |
 
 ## 6. Ters izlenebilirlik (faz → gereksinim özeti)
 
