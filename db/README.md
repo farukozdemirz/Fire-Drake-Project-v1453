@@ -27,6 +27,7 @@ yalnızca bot hesap/karakter satırlarına (`USERDATA`, `ACCOUNT_CHAR`,
 `WAREHOUSE`) dokunur, kişisel veri tablolarına dokunmaz. Betik tekrar
 çalıştırılabilir (önce kendi yazdığı satırları siler, sonra yeniden ekler);
 geri alma betiği sahiplik kontrolü yapar ve yalnızca bot satırlarını siler.
+`Hp`/`Mp` bilerek yüksek yazılır (32000); sunucu girişte gerçek maksimuma kırpar.
 
 Uygula (`Upgrade` zorunlu: 0, 7 veya 8 — zırh ve silah ID'lerinin son hanesi):
 

@@ -69,7 +69,8 @@ Betik: `db/002_bot_characters.sql` (+ `002_bot_characters_rollback.sql`, kullan�
 - **`strItem` (binary(584)):** 73 yuva × 8 bayt, `<int32 itemID, int16 dayanıklılık, int16 adet>` little-endian; yuvalar `shared/globals.h:193-206` (0 RIGHTEAR, 1 HEAD, 2 LEFTEAR, 3 NECK, 4 BREAST, 5 SHOULDER, 6 RIGHTHAND, 7 WAIST, 8 LEFTHAND, 9 RIGHTRING, 10 LEG, 11 LEFTRING, 12 GLOVE, 13 FOOT), çanta 14–41. Zırh parçası son 3 hane öncesi: `…001`=BREAST, `…002`=LEG, `…003`=HEAD, `…004`=GLOVE, `…005`=FOOT. `strSerial`/`strItemTime` sıfır bırakılır (sunucu seri üretir).
 - **Seviye 80 `Exp`** `LEVEL_UP`'tan okunur (1898706631). Girişte `LOAD_USER_DATA` başlangıç sınıfı kodlarını (105/107/109/111, 205/…) seviye > 59 ise master'a çevirir; betik zaten master kodu yazar.
 - **Kuşanılabilirlik ve ağırlık (F1-05, `tools/bot-gear-report.py`) `[V]`:** 12 botun 150 ekipman parçasının hepsi sunucu kuşanma koşulunu (`ItemEquipAvailable`, temel stat) karşılıyor (`fail_count=0`). Hiçbir ekipmanda `Race` kısıtı yok; sınıf kısıtlı 15 parça `Class` 6 (warrior), 10 (mage), 12 (priest). Ekipmandan gelen bonuslar (S1): warrior STR+29/STA+34/HP+260 (AC 715 WP, 871 WG), priest STR+5/STA+34/DEX+14/INT+20/HP+250/MP+180 (AC 796), mage STR+5/STA+34/INT+20/CHA+14/HP+150/MP+180 (AC 525). Ağırlık: çanta dahil toplam 10470 (mage), 10680 (priest), 10867–10877 (warrior); maks ağırlık tabanı (çarpansız) 6750 / 10250 / 18200; envanter şablonundaki `389015000 ×100` (1440 HP pot, ağırlık 100) tek başına 10000 ağırlık ekliyor. `m_bMaxWeightAmount` başlatılmadığı için gerçek maks ağırlık 0, tabanın 1 veya 2 katı olabilir (MB-12, çalışma zamanında ölçülecek).
-- **Hâlâ ölçülecek:** `Hp/Mp` girişte maks'a yükseliyor mu, ulus kısıtlı item'lar, istemcide kuşanılabilirlik (T-DATA-02, Q-05).
+- **Başlangıç HP/MP (F1-06) `[D]`:** Sunucu girişte (`SelectCharacter` → `SetUserAbility`) `SetMaxHp`/`SetMaxMp` ile geçerli değeri yalnızca **maksa indirir**, yükseltmez (`User.cpp:1073-1076`, `:1108-1111`). Bu yüzden betik `Hp`/`Mp` değerlerini bilerek `32000` yazar; giriş kırpması botları tam can/manayla başlatır. Çalışma zamanında doğrulanacak `[A]`.
+- **Hâlâ ölçülecek:** ulus kısıtlı item'ların istemci etkisi ve istemcide kuşanılabilirlik (T-DATA-02, Q-05).
 
 ## 4. Türetilmiş değerler (level 80, item ve buff hariç)
 
@@ -89,6 +90,18 @@ Katsayılar yerel COEFFICIENT tablosundan alınmıştır `[V]`: master warrior H
 | P-HD / P-HB | 120/147/70/190/50 | ~2636 | ~5696 | Priest Impact +7: (düşük, melee hedeflenmez) | +45 | +47 |
 | M-F | 50/60/60/160/247 | **~896** | ~5286 | – | +30 | 0 |
 | M-I | 50/107/60/160/200 | ~1582 | ~5286 | – | +30 | +7 |
+
+**Ekipmanlı değerler ve fiziksel hasar modeli (F1-06, `tools/stat-model.py`) `[D]`/`[I]`:** Sunucu formülleri bire bir uygulanır (tam sayı ve 32 bit float semantiği), yukarıdaki ekipmansız tablo 13/14 satırda **aynen** yeniden üretildi (tek fark M-I Maks HP 1581: `(short)` kırpması, tablo yuvarlanmış). Girişteki gerçek değerler (S1 ekipman, buff yok):
+
+| Profil | Maks HP | Maks MP | Toplam saldırı | Toplam AC |
+|---|---|---|---|---|
+| W-P | 5650 | 5370 | 1947 | 857 |
+| W-G | 5650 | 5370 | 1138 | 1488 |
+| P-HD / P-HB | 3491 | 6392 | 418 | 923 |
+| M-F | 1541 | 6021 | 57 | 605 |
+| M-I | 2228 | 6021 | 57 | 612 |
+
+R vuruşu, hedef profil başına isabette ortalama hasar (oyuncuya, `/2` ve silah direnci sonrası): W-P → W-G 73, → W-P 159, → P 108, → M-F 207; W-G → W-P 93, → W-G 42, → P 63, → M-F 121; priest → W-P 34, → M 44; mage (asa, fiziksel) ≈ 4–6. Warrior Type1 skill'leri R'ye göre ×1,0–2,0 (sHit %100–200; ör. W-P `Carving` → M-F 476). Tam tablolar: `python3 tools/stat-model.py`. Referans ekipmanda elemental/drain sütunları ve `ITEM_OP` proc kaydı yoktur; model bunları atlar. Çalışma zamanı ölçümü (T-MECH-DMG-01, ± %15) yapılmadan etiketler `[V]` olmaz.
 
 Yorum:
 
