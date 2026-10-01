@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F0 — Ortam ve temel doğrulama (`docs/17` §2) |
 | Branch | `bot/F0-02` (taban: `main` @ `43d3500`; F0-01 bu commit'te birleşti) |
 | Bağımlı olduğu planlar | F0-01 (KAPANDI) |
@@ -320,7 +320,222 @@ git diff --stat main...bot/F0-02
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-_(henüz yok)_
+### Tur 1 — 2026-10-01
+
+**Durum:** UYGULANDI
+
+**Branch ve commit'ler**
+- Branch: `bot/F0-02` (taban `main` @ `f3f520c`; plan commit'i `43d3500`'in bir üstünde).
+- `3314544` `[F0-02] Sunucu start/stop/status betigi eklendi` — `tools/run-servers.sh` (yeni, mod `100755`).
+- Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+
+**Değişen dosyalar ve nedenleri**
+- `tools/run-servers.sh` (yeni): §5.1–§5.3'teki betik. Başka dosyaya dokunulmadı; sunucu kodu değişmedi (K14).
+- `plans/F0-02-sunucu-calistirma-betigi.md`: yalnızca `Durum` satırı (HAZIR → UYGULANIYOR → UYGULANDI) ve bu rapor.
+
+**Derleme çıktısının son satırları** (`./tools/build.sh Release`, çıkış 0)
+```
+  Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+build_exit=0
+```
+
+**§5.4 test çıktıları (kırpılmadı)**
+
+Adım 1 — başlangıç durumu (proje sahibinin `C:\dev\fdp\server`'dan başlattığı üç sunucu; `./tools/build.sh Release` yapıldı):
+```
+[UP]       AIServer     pid=34044  port=10020 LISTEN                             C:\dev\fdp\server\AIServer.exe
+[UP]       GameServer   pid=34476  port=15001 LISTEN  AI=bağlı  istemci=0      C:\dev\fdp\server\GameServer.exe
+[UP]       LogInServer  pid=29804  port=15100 LISTEN                             C:\dev\fdp\server\LogInServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 3/3 hazır
+exit=0
+```
+→ Üçü de `UP`, yollar `C:\dev\fdp\server\` altında. Başlangıç durumu: **çalışıyorlardı**.
+
+Adım 2 — `stop` (proje sahibinin başlattığı süreçler):
+```
+[STOP] LogInServer.exe pid=29804 (force: timeout)
+[STOP] GameServer.exe pid=34476 (force: timeout)
+[STOP] AIServer.exe pid=34044 (force: timeout)
+exit=0
+```
+→ **Bulgu (aşağıda):** dışarıdan başlatılmış bu süreçler `taskkill /PID` (nazik) ile kapanmadı, `FDP_STOP_TIMEOUT=20` doldu ve `/F /T` ile kapatıldılar. Plan §5.4 adım 9'un istediği "nazik" davranışı, betiğin kendi başlattığı süreçlerde sağlandı (adım 9'a bakınız).
+
+Adım 3 — `status` + bağımsız port kontrolü (sunucular kapalı):
+```
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+
+LocalPort OwningProcess
+--------- -------------
+(boş)
+```
+
+Adım 4 — başarısızlık testi (`%TEMP%\fdp-f0-02-failtest`, DSN `KO_F0_02_YOK`):
+```
+FAILDIR=/mnt/c/Users/frkoz/AppData/Local/Temp/fdp-f0-02-failtest
+AIServer başlatılıyor: C:\...\build\bin\x86-Release\Server\AIServer.exe (çalışma dizini C:\Users\frkoz\AppData\Local\Temp\fdp-f0-02-failtest\server)
+[FAIL] AIServer: açılış başarısız (sunucu "pause" bekliyor; ayrıntı konsol penceresinde)
+[STOP] AIServer.exe pid=19048 (force: pause)
+
+real    0m5.792s
+exit=1
+=== status ===
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+```
+→ Beklendiği gibi: AIServer `FAILED` olarak `pause` alt sürecinden tanındı (~5,8 sn), GameServer/LogInServer başlatılmadı, çıkış `1`, sonrasında bizim süreç kalmadı. `FDP_START_TIMEOUT`'a (300 sn) hiç düşülmedi.
+
+Adım 5 — `--keep-on-fail`:
+```
+=== start --keep-on-fail ===
+AIServer başlatılıyor: C:\...\x86-Release\Server\AIServer.exe (çalışma dizini C:\Users\frkoz\AppData\Local\Temp\fdp-f0-02-failtest\server)
+[FAIL] AIServer: açılış başarısız (sunucu "pause" bekliyor; ayrıntı konsol penceresinde)
+inceleme için açık bırakıldı; kapatmak için: tools/run-servers.sh stop
+exit=1
+=== status ===
+[FAILED]   AIServer     pid=38320  port=10020 açılış başarısız (sunucu "pause" bekliyor; ayrıntı konsol penceresinde) C:\...\x86-Release\Server\AIServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+=== stop ===
+[STOP] AIServer.exe pid=38320 (force: pause)
+exit=0
+=== status ===
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+```
+
+Adım 6 — `time ./tools/run-servers.sh start` (varsayılan Release):
+```
+AIServer başlatılıyor: C:\...\build\bin\x86-Release\Server\AIServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] AIServer pid=17436 (0 sn)
+GameServer başlatılıyor: C:\...\build\bin\x86-Release\Server\GameServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] GameServer pid=29180 (0 sn)
+LogInServer başlatılıyor: C:\...\build\bin\x86-Release\Server\LogInServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] LogInServer pid=39140 (0 sn)
+[UP]       AIServer     pid=17436  port=10020 LISTEN                             C:\...\x86-Release\Server\AIServer.exe
+[UP]       GameServer   pid=29180  port=15001 LISTEN  AI=bağlı  istemci=0      C:\...\x86-Release\Server\GameServer.exe
+[UP]       LogInServer  pid=39140  port=15100 LISTEN                             C:\...\x86-Release\Server\LogInServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 3/3 hazır
+exit=0
+
+real    0m13.625s
+```
+→ 3/3 `UP`, yollar `x86-Release\Server` altında. İlk yoklama zaten `UP` gördüğü için sayaç `0 sn` yazdı (yoklama ~1,3 sn'lik PowerShell çağrısı sonrası yapılıyor); üç sunucunun tamamı toplam 13,6 sn'de ayaktaydı.
+
+Adım 7 — çift başlatma (pid'ler korunmalı):
+```
+=== before ===
+4336|GameServer.exe|
+17436|AIServer.exe|C:\...\x86-Release\Server\AIServer.exe
+29180|GameServer.exe|C:\...\x86-Release\Server\GameServer.exe
+39140|LogInServer.exe|C:\...\x86-Release\Server\LogInServer.exe
+=== start (expect 1) ===
+[REFUSE] zaten çalışıyor; önce durdurun: tools/run-servers.sh stop
+exit=1
+=== after ===
+4336|GameServer.exe|
+17436|AIServer.exe|C:\...\x86-Release\Server\AIServer.exe
+29180|GameServer.exe|C:\...\x86-Release\Server\GameServer.exe
+39140|LogInServer.exe|C:\...\x86-Release\Server\LogInServer.exe
+```
+→ Reddedildi, yeni süreç açılmadı, pid'ler aynı. `yol okunamayan` pid 4336 hiç dokunulmadı.
+
+Adım 8 — `status`: `exit=0` (`Özet: 3/3 hazır`).
+
+Adım 9 — `stop` (betiğin başlattığı süreçler):
+```
+=== stop (expect graceful) ===
+[STOP] LogInServer.exe pid=39140 (graceful, 0 sn)
+[STOP] GameServer.exe pid=29180 (graceful, 0 sn)
+[STOP] AIServer.exe pid=17436 (graceful, 0 sn)
+
+real    0m11.981s
+exit=0
+```
+→ Sıra LogInServer → GameServer → AIServer, `/F` olmadan düzgün kapanış. `(zorla: zaman aşımı)` yok.
+
+Adım 10 — `--config Debug`:
+```
+=== start --config Debug ===
+[UP] AIServer pid=40404 (0 sn)
+[UP] GameServer pid=26368 (0 sn)
+[UP] LogInServer pid=19956 (0 sn)
+[UP]       AIServer     ... C:\...\x86-Debug\Server\AIServer.exe
+[UP]       GameServer   ... C:\...\x86-Debug\Server\GameServer.exe
+[UP]       LogInServer  ... C:\...\x86-Debug\Server\LogInServer.exe
+Özet: 3/3 hazır
+exit=0
+=== stop ===
+[STOP] LogInServer.exe pid=19956 (graceful, 0 sn)
+[STOP] GameServer.exe pid=26368 (graceful, 0 sn)
+[STOP] AIServer.exe pid=40404 (graceful, 0 sn)
+exit=0
+```
+
+Adım 11 — başlangıç durumuna dön:
+```
+FDP_SERVER_BIN_DIR=/mnt/c/dev/fdp/server ./tools/run-servers.sh start
+[UP] AIServer pid=15112 (0 sn)
+[UP] GameServer pid=40808 (0 sn)
+[UP] LogInServer pid=38624 (0 sn)
+[UP] AIServer     ... C:\dev\fdp\server\AIServer.exe
+[UP] GameServer   ... C:\dev\fdp\server\GameServer.exe
+[UP] LogInServer  ... C:\dev\fdp\server\LogInServer.exe
+Özet: 3/3 hazır
+exit=0
+```
+→ Başta çalıştıkları hâle (`C:\dev\fdp\server` exe'leriyle 3/3 `UP`) geri getirildi; test sonunda sunucular çalışır durumda bırakıldı. Bağımsız `status` da 3/3 döndü.
+
+Adım 12 — kullanım hataları: `run-servers.sh` → `2`, `status --force` → `2`, `start --config Foo` → `2`, `-h` → `0` (dördü de beklendiği gibi).
+
+**Derleme/statik doğrulama (K2, K13)**
+```
+$ bash -n tools/run-servers.sh            # OK
+$ file tools/run-servers.sh
+tools/run-servers.sh: Bourne-Again shell script, ASCII text executable, with very long lines (680)
+$ grep -n 'UID\|PWD\|DSN\|sqlcmd\|SQLCMD\|Logs/\|rm -rf' tools/run-servers.sh   # boş (grep_exit=1)
+$ grep -c $'\r' tools/run-servers.sh      # 0
+$ git ls-files -s tools/run-servers.sh
+100755 <blob> 0	tools/run-servers.sh
+```
+
+**Kabul kriterleri öz-değerlendirmesi**
+- **K1** Geçti: `./tools/build.sh Release` çıkış 0.
+- **K2** Geçti: `bash -n` temiz, `file` → `ASCII text executable`, CR yok, git modu `100755`.
+- **K3** Geçti: adım 12 → `2, 2, 2, 0`.
+- **K4** Geçti: 3/3 `UP` + `Özet: 3/3 hazır`, çıkış 0; durdurulmuş hâlde çıkış 1; yol okunamayan pid 4336 `[NOTE]` ile gösterildi ve hiçbir komut ona dokunmadı (adım 7 öncesi/sonrası ve tüm `stop`'lardan sonra hâlâ yaşıyor).
+- **K5** Geçti (adım 9: üçü de `nazik`, sıra LogInServer→GameServer→AIServer, `/F` yok; sonrasında bağımsız port kontrolü boş, çıkış 0). Not: dışarıdan başlatılmış süreçlerde nazik kapanış çalışmadı (Bulgu 1).
+- **K6** Geçti: `start` üçünü sırayla açtı, GameServer yalnızca `ai≥1` koşuluyla `UP` sayıldı (`AI=bağlı`); ayrı bir kontrol `-OwningProcess` filtresinin doğru çalıştığını gösterdi (yanlış pid → `listen=0 ai=0`). Hazır olma: ilk yoklamada `UP` (toplam 13,6 sn).
+- **K7** Geçti: ikinci `start` çıkış 1, pid listesi değişmedi.
+- **K8** Geçti: adım 4 — `FAILED`, sonraki sunucular başlatılmadı, çıkış 1, süreç kalmadı, ~5,8 sn (zaman aşımı yok).
+- **K9** Geçti: adım 5 — süreç açık kaldı, `status` `FAILED` gösterdi, `stop` `(force: pause)` ile kapattı.
+- **K10** Geçti: adım 10 — `x86-Debug` exe'leri, 3/3 `UP`.
+- **K11** Kod incelemesiyle: `stop`, GameServer süreçlerinde `clients>0` ve `--force` yoksa `[REFUSE]` yazıp hiçbir süreci durdurmadan çıkış 1 döner. Bu ortamda istemci bağlanmadığı için çalışma zamanında test edilemedi.
+- **K12** Geçti: adım 11 — başlangıç durumu (çalışır, `C:\dev\fdp\server`) geri getirildi.
+- **K13** Geçti: betik ini'lerden yalnızca `PORT` okur, `Logs/` okumaz, `sqlcmd` çağırmaz; grep boş.
+- **K14** Geçti: `main...bot/F0-02` yalnızca `tools/run-servers.sh` + plan dosyasını gösterir; `GameServer/ AIServer/ LogInServer/ shared/ N3BASE/` altında değişiklik yok; `rm -rf` yok.
+
+**Plandan sapmalar**
+1. `proc_status`'taki `Get-NetTCPConnection` çağrılarına `-ErrorAction SilentlyContinue` eklendi (plan iskeleti yalnızca global `$ErrorActionPreference`'a dayanıyordu). Davranış aynı; yalnızca eşleşme yokken hata yazımını kesinleştirir.
+2. `ps_run` çıktısı sonda satır sonu ile yazılır (`printf '%s\n'`). Gerekliydi: `printf '%s'` ile son satır (ör. LogInServer) `while read` döngüsünde düşüyordu (bu, ilk denemede LogInServer'ın görünmemesine yol açtı ve düzeltildi). Tek satırlık çağrılarda değer `$(...)` içinde alındığından etkisizdir.
+3. `stop` sırasında `nazik` bekleme 1 sn aralıkla yoklanır (plan "1–2 sn" diyor); çıktıdaki `sn` değeri döngü sayacıdır, PowerShell çağrı süresini tam yansıtmaz.
+
+**Açık sorular / bulgular**
+1. **Bulgu (K5 dışı, ortam):** Proje sahibinin `C:\dev\fdp\server`'dan elle başlattığı üç süreçte `taskkill.exe /PID` (nazik) süreçleri kapatmadı; 20 sn doldu ve `/F /T` ile kapatıldılar. Betiğin `Start-Process -WindowStyle Minimized` ile açtığı süreçlerde nazik kapanış çalıştı. Muhtemel neden: dışarıdan başlatılan süreçlerin WM_CLOSE/CTRL_CLOSE_EVENT'e yanıt vermemesi (ör. yükseltilmiş yetki veya farklı oturum). Betiğe müdahale edilmedi; `FDP_STOP_TIMEOUT` büyütülmedi (plan §5.4 adım 9).
+2. **Bilgi (plan §8):** AIServer `UP` = yalnızca DB bağlı + port açık. NPC'lerin hazır olduğu (`Monster All Init Success`) dışarıdan görülemiyor; bu nedenle `start`, AIServer'ın tabloları/NPC'leri yüklemesini beklemez. GameServer `AI=bağlı` olsa da AIServer'ın NPC yüklemesi hâlâ sürebilir. F3/F1 için not.
+3. **Güvenlik duvarı penceresi:** Test sırasında görülmedi.
+4. **Geçici test klasörü:** `C:\Users\frkoz\AppData\Local\Temp\fdp-f0-02-failtest` silinmedi (plan gereği `%TEMP%`'te bırakıldı).
+5. **`start.md` çalışma ağacında izlenmeyen dosya:** Commit edilmedi, dokunulmadı. Plan onu bağlam olarak kullanıyor; depoda izlenmiyor.
 
 ---
 
