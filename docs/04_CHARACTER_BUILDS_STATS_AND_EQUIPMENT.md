@@ -101,7 +101,7 @@ Katsayılar yerel COEFFICIENT tablosundan alınmıştır `[V]`: master warrior H
 | M-F | 1541 | 6021 | 57 | 605 |
 | M-I | 2228 | 6021 | 57 | 612 |
 
-R vuruşu, hedef profil başına isabette ortalama hasar (oyuncuya, `/2` ve silah direnci sonrası): W-P → W-G 73, → W-P 159, → P 108, → M-F 207; W-G → W-P 93, → W-G 42, → P 63, → M-F 121; priest → W-P 34, → M 44; mage (asa, fiziksel) ≈ 4–6. Warrior Type1 skill'leri R'ye göre ×1,0–2,0 (sHit %100–200; ör. W-P `Carving` → M-F 476). Tam tablolar: `python3 tools/stat-model.py`. Referans ekipmanda elemental/drain sütunları ve `ITEM_OP` proc kaydı yoktur; model bunları atlar. Çalışma zamanı ölçümü (T-MECH-DMG-01, ± %15) yapılmadan etiketler `[V]` olmaz.
+R vuruşu, hedef profil başına isabette ortalama hasar (oyuncuya, `/2` ve silah direnci sonrası): W-P → W-G 73, → W-P 159, → P 108, → M-F 207; W-G → W-P 93, → W-G 42, → P 63, → M-F 121; priest → W-P 34, → M 44; mage (asa, fiziksel) ≈ 3–6. Warrior Type1 skill'leri R'ye göre ×1,0–2,0 (sHit %100–200; ör. W-P `Carving` → M-F 476). Tam tablolar: `python3 tools/stat-model.py`. Referans ekipmanda elemental/drain sütunları ve `ITEM_OP` proc kaydı yoktur; model bunları atlar. Çalışma zamanı ölçümü (T-MECH-DMG-01, ± %15) yapılmadan etiketler `[V]` olmaz.
 
 Yorum:
 
