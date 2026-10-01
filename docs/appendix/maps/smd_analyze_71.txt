@@ -1,0 +1,15 @@
+file freezone_a_20050718.smd n 513 unit 4.0
+event=0 collisionPolysInCell=False : 6302 tiles
+event=0 collisionPolysInCell=True : 23220 tiles
+event=1 collisionPolysInCell=False : 232622 tiles
+8-connected components of event==1: 447 largest: [(1, 115516), (5, 93070), (336, 2165), (259, 2161), (180, 2121), (54, 1983), (125, 1754), (258, 1656)]
+4-connected components of event==1: 643 largest: [(1, 115363), (7, 88508), (29, 4344), (475, 2162), (364, 2161)]
+SMD objevt idx=4019          world=(622.0,911.0) tile=(155,227) event=0 height=11.52 comp8=0 (size 0)
+SMD objevt idx=4020          world=(1375.0,1085.0) tile=(343,271) event=0 height=11.52 comp8=0 (size 0)
+warp 7111 dest(z1)           world=(441.0,1625.0) tile=(110,406) event=1 height=6.38 comp8=5 (size 93070)
+warp 7114 dest(z21)          world=(295.0,368.0) tile=(73,92) event=1 height=0.44 comp8=5 (size 93070)
+warp 7124 dest(z21)          world=(352.0,311.0) tile=(88,77) event=1 height=3.34 comp8=5 (size 93070)
+warp 7121 dest(z2)           world=(1595.0,412.0) tile=(398,103) event=0 height=-8.61 comp8=0 (size 0)
+ZONE_INFO Init (10,10)       world=(10.0,10.0) tile=(2,2) event=1 height=3.51 comp8=1 (size 115516)
+map centre                   world=(1024.0,1024.0) tile=(256,256) event=0 height=13.08 comp8=0 (size 0)
+event==1 tiles by number of event==0 neighbours (0..8): [(0, 188768), (1, 12928), (2, 11167), (3, 10593), (4, 4717), (5, 1329), (6, 662), (7, 482), (8, 196)]

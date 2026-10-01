@@ -1,0 +1,224 @@
+Num,iname,Kind,Class,ReqLevel,BuyPrice,Countable,Effect1,Type1,Type2,UseItem,CastTime,ReCastTime,Moral,Etc,bakEtc,type_details
+379090000,Transformation Totem (+0),93,0,1,20000,0,470001,0,1,379090000,0,0,1,0,1,T1:(no row)
+379093000,Transformation Totem (+0),93,0,1,20000,0,471001,0,1,379093000,0,0,1,0,1,T1:(no row)
+381001000,Transformation Scroll  (+0),97,0,1,400000,1,472001,0,1,381001000,0,0,1,0,1,T1:(no row)
+800022000,Duration Item (+0),255,0,1,2000,0,500039,0,0,800022000,0,0,240,0,1,
+800075000,Logos's Shout (+0),255,0,1,2000,0,504002,0,0,800075000,0,0,1,0,1,
+800101000,Imir's Prayer (+0),255,0,1,2000,0,500122,0,0,800101000,0,0,1,0,0,
+910143000,Logos's Shout (+0),255,0,1,2000,0,504007,0,0,910143000,0,0,1,0,1,
+379099000,Magic Hammer (+0),97,0,1,1000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+379101000,Abyss Holy Water(S) (+0),97,0,1,300,1,490204,3,0,379101000,5,25,1,0,1,T3 %HP first=120
+379102000,Abyss Holy Water(M) (+0),97,0,1,450,1,490205,3,0,379102000,5,25,1,0,1,T3 %HP first=135
+379103000,Abyss Holy Water(L) (+0),97,0,1,800,1,490206,3,0,379103000,5,25,1,0,1,T3 %HP first=150
+379105000,Abyss Fire (+0),97,0,1,1500,1,490214,3,0,379105000,18,50,5,0,0,T3 %HP first=10
+379115000,Practice Cannon Ball (+0),97,0,1,1000,1,490111,3,0,379115000,16,5,7,0,0,T3 %HP first=0 radius=5
+389021000,Spell of flame (+0),97,3,1,60,1,490021,3,0,389021000,5,55,7,0,0,T3 HP first=-500 attr=fire
+389022000,Spell of fire ball (+0),97,0,1,60,1,490022,3,0,389022000,20,55,7,0,0,T3 HP first=-300 attr=fire
+389024000,Explosive arrow (+0),97,2,1,60,1,490024,3,0,389024000,16,55,10,0,0,T3 HP first=-30000 end=-30000 attr=fire radius=25
+389028000,Prayer of hell fire (+0),97,4,1,3000,1,490028,3,0,389028000,20,55,7,0,1,T3 HP first=-900 attr=fire
+389032000,Prayer of anger (+0),97,4,1,5000,1,490032,3,0,389032000,20,55,13,0,1,T3 HP first=-800 end=-800 attr=fire radius=20
+389033000,Styx (+0),97,2,1,8000,1,490033,3,0,389033000,20,55,7,0,0,T3 MP first=-3000
+389043000,Rock (+0),97,0,1,100,1,490043,3,0,389043000,5,20,7,0,0,T3 HP first=-10
+389048000,Suicide Bbomb (+0),97,0,1,100,1,490044,3,0,389048000,10,150,27,0,0,T3 HP first=-5000 end=-1000 attr=fire radius=15
+389057000,Poison arrow of harpy (+0),97,2,1,3600,1,490057,3,0,389057000,20,150,7,0,1,T3 HP first=-250 overtime=-1800 dur=60s attr=poison
+389058000,Prayer of rage (+0),97,4,1,2400,1,490058,3,0,389058000,16,150,7,0,1,T3 HP first=-480
+389077000,Snow ball (+0),97,0,1,10,1,490077,3,0,389077000,5,20,7,0,0,T3 HP first=-10
+389083000,Acid potion (+0),95,0,1,120000,1,490083,3,0,389083000,5,20,7,0,1,T3 durability first=-2000
+389087000,durability Shell (+0),97,0,1,12500,1,490104,3,0,389087000,16,30,7,0,0,T3 durability first=-1000 radius=5
+389088000,Super durability Shell (+0),97,0,1,20000,1,490105,3,0,389088000,16,30,7,0,0,T3 durability first=-2000 radius=10
+389089000,Hyper durability Shell (+0),97,0,1,100000,1,490106,3,0,389089000,16,30,7,0,0,T3 durability first=-4000 radius=5
+389090000,HP Shell (+0),97,0,1,12500,1,490107,3,0,389090000,16,30,7,0,0,T3 %HP first=50 radius=5
+389091000,Super HP Shell (+0),97,0,1,20000,1,490108,3,0,389091000,16,30,7,0,0,T3 %HP first=20 radius=10
+389092000,Hyper HP Shell (+0),97,0,1,100000,1,490109,3,0,389092000,16,30,7,0,0,T3 %HP first=80 radius=5
+389105000,Nova Shell (+0),97,0,1,25000,1,490110,3,0,389105000,16,5,7,0,0,T3 HP first=-1800 end=-900 attr=fire radius=10
+389111000,Stage1 Guard Tower (+0),97,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389112000,Stage2 Guard Tower (+0),97,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389113000,Stage3 Guard Tower (+0),97,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389114000,Stage1 Sentry (+0),98,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389115000,Stage2 Sentry (+0),98,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389116000,Stage3 Sentry (+0),98,0,1,1000000,1,490202,3,0,379099000,5,25,1,0,1,T3 durability first=2000
+389185000,Durability Shell (+0),97,0,1,4000,1,490114,3,0,389185000,16,30,7,0,0,T3 durability first=-500 end=10 radius=10
+389186000,Super durability Shell (+0),97,0,1,6000,1,490115,3,0,389186000,16,30,7,0,0,T3 durability first=-1000 end=5 radius=10
+389187000,HP Shell [Lunar War] (+0),97,0,1,4000,1,490116,3,0,389187000,16,30,7,0,0,T3 %HP first=20 end=5 radius=10
+389188000,Super HP Shell [Lunar War] (+0),97,0,1,6000,1,490117,3,0,389188000,16,30,7,0,0,T3 %HP first=10 end=10 radius=10
+389189000,Nova Shell (+0),97,0,1,7000,1,490118,3,0,389189000,16,5,7,0,0,T3 HP first=-1200 end=10 attr=fire radius=10
+800063000,Stat Scroll (+0),255,0,1,2000,0,501011,3,0,800063000,0,0,7,0,1,T3 dt255 first=0
+800140000,Hammer of Recovery(S) (+0),255,0,1,2000,0,490215,3,0,800140000,5,25,1,0,0,T3 durability first=25000
+800150000,Hammer of Recovery(M) (+0),255,0,1,2000,0,490216,3,0,800150000,5,25,1,0,0,T3 durability first=25000
+800160000,Hammer of Recovery(L) (+0),255,0,1,2000,0,490217,3,0,800160000,5,25,1,0,0,T3 durability first=25000
+310310001,Fire Earring,91,0,1,640,0,460001,4,0,310310001,15,250,1,0,0,T4 RESISTANCES(8) dur=240s FireR=50
+310310002,Ice Earring,91,0,1,640,0,460002,4,0,310310002,15,250,1,0,0,T4 RESISTANCES(8) dur=240s ColdR=50
+310310003,Lighting Earring,91,0,1,640,0,460003,4,0,310310003,15,250,1,0,0,T4 RESISTANCES(8) dur=240s LightningR=50
+310310008,Magic Earring,91,0,1,640,0,460004,4,0,310310008,15,250,1,0,0,T4 RESISTANCES(8) dur=240s MagicR=50 DiseaseR=50 PoisonR=50
+310310009,Elemental Earring,91,0,1,640,0,460005,4,0,310310009,15,250,1,0,0,T4 AC(2) dur=240s AC=120
+379092000,Firecracker (+0),97,0,1,240,1,490085,4,0,379092000,0,0,2,0,1,T4 STATS(7) dur=1s
+379094000,Firecracker (+0),97,0,1,240,1,490086,4,0,379094000,0,0,2,0,1,T4 STATS(7) dur=1s
+379096000,Firecracker (+0),97,0,1,240,1,490087,4,0,379096000,0,0,2,0,1,T4 STATS(7) dur=1s
+379098000,Sweeping Potion (+0),97,0,1,2500,1,490201,4,0,379098000,10,250,1,0,1,T4 MAGIC_POWER(10) dur=30s MagicAttack=130
+379113000,Abyss Wing (+0),97,0,1,1500,1,490212,4,0,379113000,5,25,1,0,1,T4 ACCURACY(9) dur=50s AvoidRate=120
+379130000,Event Firecracker (+0),97,0,1,1000,1,490089,4,0,379130000,0,0,2,0,1,T4 STATS(7) dur=1s
+379137000,Flower Firecracker (+0),97,0,1,1000,1,490092,4,0,379137000,0,0,2,0,1,T4 STATS(7) dur=1s
+379200000,New Year's Fireworks (+0),97,0,1,500,1,490403,4,0,379200000,5,1,10,0,1,T4 NONE(0) dur=60s radius=10 ACPct=0
+389007000,White Rice Cake (Increase Running Speed) (+0),97,0,1,500,1,490007,4,0,389007000,0,0,1,0,1,T4 SPEED(6) dur=300s Speed=150
+389008000,White Rice Cake (Increase Defense) (+0),97,0,1,500,1,490008,4,0,389008000,0,0,1,0,1,T4 AC(2) dur=300s ACPct=200
+389009000,White Rice Cake (Increase HP) (+0),97,0,1,500,1,490009,4,0,389009000,0,0,1,0,1,T4 HP_MP(1) dur=300s MaxHP=240
+389023000,Spell of life (+0),97,3,1,3600,1,490023,4,0,389023000,5,55,1,0,1,T4 HP_MP(1) dur=300s MaxHP=480
+389025000,Net (+0),95,2,1,360,1,490025,4,0,389025000,15,55,7,0,0,T4 SPEED(6) dur=10s Speed=50
+389026000,Prayer of god`s power (+0),97,4,1,2400,1,490026,4,0,0,5,55,1,0,1,T4 DAMAGE(4) dur=100s Attack=150
+389027000,Prayer of wind (+0),97,4,1,2500,1,490027,4,0,389027000,15,55,1,0,1,T4 SPEED(6) dur=300s Speed=140
+389029000,Prayer of earth (+0),97,4,1,3500,1,490029,4,0,389029000,20,55,7,0,1,T4 SPEED(6) dur=10s Speed=1
+389031000,Prayer of holy Armor (+0),97,4,1,4500,1,490031,4,0,389031000,20,55,1,0,1,T4 AC(2) dur=30s ACPct=1000 Attack=1
+389034000,Bezoar  (+0),97,0,1,1000,1,490034,4,0,389034000,0,55,1,0,1,T4 SIZE(3) dur=60s
+389035000,glutinous Rice Cake (+0),97,0,1,1000,1,490035,4,0,389035000,0,55,1,0,1,T4 SIZE(3) dur=60s
+389036000,Wheat gluten (+0),97,0,1,200,1,490036,4,0,389036000,0,55,2,0,0,T4 STATS(7) dur=1s
+389037000,Talisman (+0),97,0,1,1000,1,490037,4,0,389037000,0,55,1,0,0,T4:(no row)
+389038000,Flame Resistance Potion (+0),97,1,1,2500,1,490038,4,0,389038000,5,55,1,0,1,T4 RESISTANCES(8) dur=60s FireR=80
+389039000,Glacier Resistance Potion (+0),97,1,1,2500,1,490039,4,0,389039000,5,55,1,0,1,T4 RESISTANCES(8) dur=60s ColdR=80
+389040000,Lightning Resistnace Potion (+0),97,1,1,2500,1,490040,4,0,389040000,5,55,1,0,1,T4 RESISTANCES(8) dur=60s LightningR=80
+389041000,Spell of Lion`s Strength (+0),97,0,1,2500,1,490041,4,0,389041000,5,55,1,0,1,T4 STATS(7) dur=300s Str=15 Sta=15 Dex=15 Intel=15 Cha=15 FireR=50 ColdR=50 LightningR=50 MagicR=50 DiseaseR=50 PoisonR=50
+389045000,Reserve Life (+0),97,0,1,5400,1,490045,4,0,389045000,16,150,7,0,0,T4 HP_MP(1) dur=1s MaxHPPct=99
+389047000,Shrinking Potion (+0),97,0,1,1000,1,490035,4,0,389035000,0,55,1,0,1,T4 SIZE(3) dur=60s
+389047500,Enlarging Potion (+0),97,0,1,100,1,490034,4,0,389034000,0,55,1,0,1,T4 SIZE(3) dur=60s
+389052000,Speed up liquid medicine (+0),97,0,1,3600,1,490052,4,0,389052000,20,150,1,0,1,T4 ATTACK_SPEED(5) dur=60s AttackSpeed=80
+389053000,Attack up liquid medicine (+0),97,0,1,3600,1,490053,4,0,389053000,20,150,1,0,1,T4 DAMAGE(4) dur=300s Attack=150
+389054000,Alacrity potion (+0),97,0,1,2400,1,490054,4,0,389054000,20,150,1,0,1,T4 ACCURACY(9) dur=300s HitRate=255 AvoidRate=255
+389055000,Scroll of shell (+0),97,3,1,4200,1,490055,4,0,389055000,20,150,1,0,0,T4 AC(2) dur=300s ACPct=600
+389056000,Potion of intelligence (+0),97,0,1,5400,1,490056,4,0,389056000,20,150,1,0,1,T4 STATS(7) dur=300s Intel=20
+389094000,Defense Scroll  (+0),97,0,1,20000,1,490133,4,0,389094000,16,16,31,0,1,T4 AC(2) dur=45s radius=30 AC=500
+389095000,Resistance Scroll  (+0),97,0,1,20000,1,490134,4,0,389095000,16,16,31,0,1,T4 RESISTANCES(8) dur=45s radius=30 FireR=250 ColdR=250 LightningR=250 MagicR=250 DiseaseR=250 PoisonR=250
+389096000,Attack Speed Scroll  (+0),97,0,1,20000,1,490135,4,0,389096000,16,16,31,0,1,T4 ATTACK_SPEED(5) dur=45s radius=30 AttackSpeed=130
+389098000,Magic Attack Scroll  (+0),97,0,1,20000,1,490136,4,0,389098000,16,16,31,0,1,T4 MAGIC_POWER(10) dur=45s radius=30 MagicAttack=130
+389099000,Physical Attack Scroll  (+0),97,0,1,20000,1,490137,4,0,389099000,16,16,31,0,1,T4 DAMAGE(4) dur=45s radius=30 Attack=130
+389100000,Defense Scroll for Ladder Truck (+0),97,0,1,20000,1,490121,4,0,389100000,16,16,31,0,1,T4:(no row)
+389110000,Teleport Item (+0),97,0,1,1000000,1,490201,4,0,379098000,10,250,1,0,1,T4 MAGIC_POWER(10) dur=30s MagicAttack=130
+389155000,Weapon Enchant Scroll (+0),97,0,1,700000,1,500049,4,0,0,0,0,1,0,1,T4 WEAPON_DAMAGE(13) dur=1800s Attack=5
+389156000,Armor Enchant Scroll (+0),97,0,1,300000,1,500050,4,0,0,0,0,1,0,1,T4 WEAPON_AC(14) dur=1800s AC=30
+800003000,STR+ Scroll(Stat)(L) (+0),255,0,1,2000,0,500023,4,0,800003000,0,0,1,0,1,T4 STATS(7) dur=1800s Str=15
+800004000,HP+ Scroll(Stat)(L) (+0),255,0,1,2000,0,500024,4,0,800004000,0,0,1,0,1,T4 STATS(7) dur=1800s Sta=15
+800005000,DEX+ Scroll(Stat)(L) (+0),255,0,1,2000,0,500025,4,0,800005000,0,0,1,0,1,T4 STATS(7) dur=1800s Dex=15
+800006000,INT+ Scroll(Stat)(L) (+0),255,0,1,2000,0,500026,4,0,800006000,0,0,1,0,1,T4 STATS(7) dur=1800s Intel=15
+800007000,MP+ Scroll(Stat)(L) (+0),255,0,1,2000,0,500027,4,0,800007000,0,0,1,0,1,T4 STATS(7) dur=1800s Cha=15
+800008000,Power of Lion Scroll(Stat)(L) (+0),255,0,1,2000,0,500028,4,0,800008000,0,0,1,0,1,T4 STATS(7) dur=1800s Str=10 Sta=10 Dex=10 Intel=10 Cha=10
+800009000,150 Defense+ Scroll(L) (+0),255,0,1,2000,0,500029,4,0,800009000,0,0,1,0,1,T4 AC(2) dur=1800s AC=150
+800010000,300 Defense+ Scroll(L) (+0),255,0,1,2000,0,500030,4,0,800010000,0,0,1,0,1,T4 AC(2) dur=1800s AC=300
+800011000,500 HP+ Scroll(L) (+0),255,0,1,2000,0,500031,4,0,800011000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=500
+800012000,1000 HP+ Scroll(L) (+0),255,0,1,2000,0,500032,4,0,800012000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=1000
+800013000,1500 HP+ Scroll(L) (+0),255,0,1,2000,0,500033,4,0,800013000,0,255,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=1500
+800014000,Attack+ Scroll (+0),255,0,1,2000,0,500034,4,0,800014000,0,255,1,0,1,T4 DAMAGE(4) dur=1800s Attack=120
+800015000,Speed+ Potion (+0),255,0,1,2000,0,500035,4,0,800015000,0,255,1,0,1,T4 SPEED(6) dur=1800s Speed=150
+800023000,STR+ Scroll(Stat)(S) (+0),255,0,1,2000,0,500040,4,0,800023000,0,0,1,0,1,T4 STATS(7) dur=1800s Str=15
+800024000,HP+ Scroll(Stat)(S) (+0),255,0,1,2000,0,500041,4,0,800024000,0,0,1,0,1,T4 STATS(7) dur=1800s Sta=15
+800025000,DEX+ Scroll(Stat)(S) (+0),255,0,1,2000,0,500042,4,0,800025000,0,0,1,0,1,T4 STATS(7) dur=1800s Dex=15
+800026000,INT+ Scroll(Stat)(S) (+0),255,0,1,2000,0,500043,4,0,800026000,0,0,1,0,1,T4 STATS(7) dur=1800s Intel=15
+800027000,MP+ Scroll(Stat)(S) (+0),255,0,1,2000,0,500044,4,0,800027000,0,0,1,0,1,T4 STATS(7) dur=1800s Cha=15
+800028000,Power of Lion Scroll(Stat)(S) (+0),255,0,1,2000,0,500045,4,0,800028000,0,0,1,0,1,T4 STATS(7) dur=1800s Str=10 Sta=10 Dex=10 Intel=10 Cha=10
+800029000,150 Defense+ Scroll(S) (+0),255,0,1,2000,0,500046,4,0,800029000,0,0,1,0,1,T4 AC(2) dur=1800s AC=150
+800030000,500 HP+ Scroll(S) (+0),255,0,1,2000,0,500047,4,0,800030000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=500
+800031000,1000 HP+ Scroll(S) (+0),255,0,1,2000,0,500048,4,0,800031000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=1000
+800033000,HP Rice Cake (+0),255,0,1,2000,0,501001,4,0,800033000,0,0,1,0,1,T4 HP_MP(1) dur=28800s MaxHP=1500
+800034000,MP Rice Cake (+0),255,0,1,2000,0,501002,4,0,800034000,0,0,1,0,1,T4 HP_MP(1) dur=28800s MaxMP=1500
+800035000,Speed Up Rice Cake (+0),255,0,1,2000,0,501003,4,0,800035000,0,0,1,0,1,T4 SPEED(6) dur=28800s Speed=150
+800040000,basic (+0),255,0,1,1500,0,501004,4,0,800040000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=150
+800050000,Mount Scroll (+0),255,0,1,1500,0,501005,4,0,800050000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=150
+800051000,Ascent Scroll (+0),255,0,1,1500,0,501006,4,0,800051000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=120
+800052000,Vegetable Dumplings (+0),255,0,1,50,0,501007,4,0,800052000,0,0,1,0,1,T4 SPEED(6) dur=3600s Speed=150
+800053000,Normal Dumplings (+0),255,0,1,50,0,501008,4,0,800053000,0,0,1,0,1,T4 HP_MP(1) dur=3600s MaxHP=1200
+800054000,Fish Dumplings (+0),255,0,1,50,0,501009,4,0,800054000,0,0,1,0,1,T4 HP_MP(1) dur=3600s MaxMP=1200
+800060000,Weight Scroll  (+0),255,0,1,2000,0,501010,4,0,800060000,0,0,1,0,1,T4 WEIGHT(12) dur=3600s ExpPct=120
+800061000,Weapon Enchant Scroll (+0),255,0,1,2000,0,500051,4,0,800061000,0,0,1,0,1,T4 WEAPON_DAMAGE(13) dur=1800s Attack=5
+800062000,Armor Enchant Scroll (+0),255,0,1,2000,0,500052,4,0,800062000,0,0,1,0,1,T4 WEAPON_AC(14) dur=1800s AC=30
+800074000,NP Increase Scroll(+0),255,0,1,2000,0,504001,4,0,800074000,0,0,1,0,1,T4 LOYALTY(15) dur=3600s ExpPct=150
+800076000,Scroll of Armor 350 (+0),255,0,1,2000,0,500055,4,0,800076000,0,0,1,0,1,T4 AC(2) dur=1800s AC=350
+800077000,Strengthen Defense Power 350 Scroll (+0),255,0,1,2000,0,500056,4,0,800077000,0,0,1,0,1,T4 AC(2) dur=1800s AC=400
+800078000,HP Scroll 2000 (+0),255,0,1,2000,0,500053,4,0,800078000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=2000
+800079000,Increase HP 60% Scroll  (+0),255,0,1,2000,0,500054,4,0,800079000,0,0,4,0,1,T4 HP_MP(1) dur=1800s MaxHPPct=160
+800087000,merchant`s Concentration (+0),255,0,1,2000,0,500108,4,0,800087000,0,0,1,0,1,T4 PREMIUM_MERCHANT(17) dur=28800s ExpPct=1
+800091000,Scroll of  Advanced Strength (+0),255,0,1,2000,0,500501,4,0,810008000,0,0,1,0,0,T4 STATS(7) dur=1800s Str=15 Sta=15 Dex=15 Intel=15 Cha=15
+800092000,Scroll of  Advanced Health (+0),255,0,1,2000,0,500502,4,0,800023000,0,0,1,0,0,T4 STATS(7) dur=1800s Str=25
+800093000,Scroll of  Advanced Dexterity (+0),255,0,1,2000,0,500503,4,0,800024000,0,0,1,0,0,T4 STATS(7) dur=1800s Sta=25
+800094000,Scroll of Advanced Lion Strength (+0),255,0,1,2000,0,500504,4,0,800025000,0,0,1,0,0,T4 STATS(7) dur=1800s Dex=25
+810050000,Super Noah (+0),255,0,1,2000,0,504003,4,0,810050000,0,0,1,0,1,T4 NOAH_BONUS(16) dur=3600s ExpPct=150
+810051000,Hyper Noah (+0),255,0,1,2500,0,504004,4,0,810051000,0,0,1,0,1,T4 NOAH_BONUS(16) dur=3600s ExpPct=200
+810055000,Spirit of Specialist (+0),255,0,1,2000,0,504005,4,0,810055000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=150
+810056000,Spirit of Grandmaster (+0),255,0,1,2500,0,504006,4,0,810056000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=200
+810060000,Symbol of Gladiator  (+0),255,0,1,2000,0,500111,4,0,810060000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=170
+810061000,Symbol of Warrior (+0),255,0,1,2500,0,500112,4,0,810061000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=140
+810073000,Symbol of Gladiator [5 ea] (+0),255,0,1,2000,0,500113,4,0,810073000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=170
+810074000,Symbol of Warrior[5 ea] (+0),255,0,1,2500,0,500114,4,0,810074000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=140
+810075000,Symbol of Gladiator[10 ea] (+0),255,0,1,2000,0,500115,4,0,810075000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=170
+810076000,Symbol of Warrior[10 ea] (+0),255,0,1,2500,0,500116,4,0,810076000,0,0,1,0,1,T4 EXPERIENCE(11) dur=3600s ExpPct=140
+810077000,Speed-Up Potion (+0),255,0,1,2000,0,500064,4,0,810077000,0,0,1,0,0,T4 SPEED(6) dur=1800s Speed=150
+810078000,Scroll of Armor 300 (+0),255,0,1,2000,0,500065,4,0,810078000,0,0,1,0,0,T4 AC(2) dur=1800s AC=300
+810079000,HP Scroll 1500 (+0),255,0,1,2000,0,500066,4,0,810079000,0,0,1,0,0,T4 HP_MP(1) dur=1800s MaxHP=1500
+810080000,Scroll of Armor 350 (+0),255,0,1,2000,0,500067,4,0,810080000,0,1,1,0,0,T4 AC(2) dur=1800s AC=350
+810081000,HP Scroll 2000 (+0),255,0,1,2000,0,500068,4,0,810081000,0,80,1,0,0,T4 HP_MP(1) dur=1800s MaxHP=2000
+910107000,Vegetable Dumpling (+0),255,0,1,50,0,503005,4,0,910107000,0,0,1,0,1,T4 SPEED(6) dur=3600s Speed=150
+910108000,Vegetable Dumpling (+0),255,0,1,50,0,503006,4,0,910108000,0,0,1,0,1,T4 HP_MP(1) dur=3600s MaxHP=1200
+910109000,Vegetable Dumpling (+0),255,0,1,50,0,503007,4,0,910109000,0,0,1,0,1,T4 HP_MP(1) dur=3600s MaxMP=1200
+910110000,New Year's Candy (+0),255,0,1,100000,0,503003,4,0,910110000,5,55,1,0,1,T4 STATS(7) dur=3600s Str=5 Sta=5 Dex=5 Intel=5 Cha=5
+910114000,Haste Potion (+0),255,0,1,2000,0,500057,4,0,910114000,0,0,1,0,1,T4 SPEED(6) dur=1800s Speed=150
+910115000,Maximum HP Increase Potion (for quests) (+0),255,0,1,2000,0,500058,4,0,910115000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxHP=100
+910116000,Maximum MP Increase Potion (for quests) (+0),255,0,1,2000,0,500059,4,0,910116000,0,0,1,0,1,T4 HP_MP(1) dur=1800s MaxMP=100
+910139000,Scroll of Armor 300 (+0),255,0,1,2000,0,500060,4,0,910139000,0,0,1,0,1,T4 AC(2) dur=10800s AC=300
+910140000,HP Scroll 1500 (+0),255,0,1,2000,0,500061,4,0,910140000,0,0,1,0,1,T4 HP_MP(1) dur=10800s MaxHP=1500
+910141000,Scroll of Attack (+0),255,0,1,2000,0,500062,4,0,910141000,0,0,1,0,1,T4 DAMAGE(4) dur=10800s Attack=120
+910142000,Haste Potion (+0),255,0,1,2000,0,500063,4,0,910142000,0,0,1,0,1,T4 SPEED(6) dur=10800s Speed=150
+800036000,60% re-spawn scroll (+0),255,0,1,2500,0,480003,5,0,800036000,2,2,1,0,1,T5 type=4 exprecover=60 needstone=0
+800041000,Resurrection Scroll(50) (+0),97,0,1,50,1,480005,5,0,800041000,2,2,1,0,1,T5 type=4 exprecover=50 needstone=0
+910022000,Resurrection Scroll(50) (+0),97,0,1,50,1,480002,5,0,910022000,2,2,1,0,1,T5 type=4 exprecover=50 needstone=0
+379134000,Snowman(El Morad) (+0),97,0,1,120000,1,478001,6,4,379134000,0,0,1,0,1,T6 transform=2701 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+379135000,Snowman(Karus) (+0),97,0,1,120000,1,478002,6,4,379135000,0,0,1,0,1,T6 transform=2702 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+379174000,El Morad groom (+0),255,0,1,10000,1,478003,6,4,379174000,0,0,1,0,1,T6 transform=14101 dur=7200 hp=0 mp=0 spd=0; T4 MANA_ABSORB(31) dur=1800s
+379175000,El Morad bride (+0),255,0,1,10000,1,478004,6,4,379175000,0,0,1,0,1,T6 transform=14102 dur=7200 hp=0 mp=0 spd=0; T4 MANA_ABSORB(31) dur=1800s
+379176000,Karus groom (+0),255,0,1,10000,1,478005,6,4,379176000,0,0,1,0,1,T6 transform=24101 dur=7200 hp=0 mp=0 spd=0; T4 MANA_ABSORB(31) dur=1800s
+379177000,Karus bride (+0),255,0,1,10000,1,478006,6,4,379177000,0,0,1,0,1,T6 transform=24102 dur=7200 hp=0 mp=0 spd=0; T4 MANA_ABSORB(31) dur=1800s
+379194000,Snowman Poroom~ (+0),97,0,1,2400,1,478007,6,4,379194000,0,0,1,0,1,T6 transform=2703 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+379195000,Snowman Teeti (+0),97,0,1,2400,1,478008,6,4,379195000,0,0,1,0,1,T6 transform=2704 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+379196000,Snowman Theo (+0),97,0,1,2400,1,478009,6,4,379196000,0,0,1,0,1,T6 transform=2705 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+379197000,Snowman Nunu (+0),97,0,1,2400,1,478010,6,4,379197000,0,0,1,0,1,T6 transform=2706 dur=1200 hp=0 mp=0 spd=0; T4:(no row)
+389101000,Catapult Key (+0),97,0,1,1250000,1,450001,6,0,389101000,0,0,1,0,1,T6 transform=30010 dur=9000 hp=15000 mp=5000 spd=1
+389102000,Ram Key (+0),97,0,1,1250000,1,450002,6,0,389102000,0,0,1,0,1,T6 transform=30040 dur=9000 hp=20000 mp=3000 spd=3
+389103000,Ladder Truck Key (+0),97,0,1,2500000,1,450003,6,0,389103000,0,0,1,0,1,T6 transform=30060 dur=9000 hp=30000 mp=2000 spd=3
+389104000,Leader Car Key (+0),97,0,1,1250000,1,450004,6,0,389104000,0,0,1,0,1,T6 transform=30050 dur=9000 hp=30000 mp=5000 spd=2
+389151000,Catapult Key (+0),97,0,1,0,1,450011,6,0,389151000,0,0,1,0,1,T6 transform=30010 dur=9000 hp=15000 mp=5000 spd=1
+389152000,Ram Key (+0),97,0,1,0,1,450012,6,0,389152000,0,0,1,0,1,T6 transform=30040 dur=9000 hp=20000 mp=3000 spd=3
+389153000,Ladder Truck Key (+0),97,0,1,0,1,450013,6,0,389153000,0,0,1,0,1,T6 transform=30060 dur=9000 hp=30000 mp=2000 spd=3
+389154000,Leader Car Key (+0),97,0,1,0,1,450014,6,0,389154000,0,0,1,0,1,T6 transform=30050 dur=9000 hp=30000 mp=5000 spd=2
+389182000,Catapult Key [Lunar War] (+0),97,0,1,500000,1,450005,6,0,389182000,0,0,1,0,0,T6 transform=30010 dur=9000 hp=15000 mp=5000 spd=0
+800100000,Patrick Transform Scroll(El Morad) (+0),255,0,1,2000,0,500505,6,4,800100000,0,0,1,0,0,T6 transform=26008 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800110000,Menissiah Transform Scroll(El Morad) (+0),255,0,1,2000,0,500506,6,4,800110000,0,0,1,0,0,T6 transform=26009 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800120000,Cougar Transform Scroll(El Morad) (+0),255,0,1,2000,0,500507,6,4,800120000,0,0,1,0,0,T6 transform=26010 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800130000,Hera Transform Scroll(El Morad) (+0),255,0,1,2000,0,500508,6,4,800130000,0,0,1,0,0,T6 transform=26011 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800190000,Patrick Transform Scroll(Karus) (+0),255,0,1,2000,0,500509,6,4,800190000,0,0,1,0,0,T6 transform=26012 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800200000,Menissiah Transform Scroll(Karus) (+0),255,0,1,2000,0,500510,6,4,800200000,0,0,1,0,0,T6 transform=26013 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800210000,Cougar Transform Scroll(Karus) (+0),255,0,1,2000,0,500511,6,4,800210000,0,0,1,0,0,T6 transform=26014 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+800220000,Hera Transform Scroll(Karus) (+0),255,0,1,2000,0,500512,6,4,800220000,0,0,1,0,0,T6 transform=26015 dur=3600 hp=0 mp=0 spd=0; T4:(no row)
+379114000,Abyss Lullaby (+0),97,0,1,1500,1,490213,7,0,379114000,18,90,7,0,0,T7 group=0 monster=0 target=2 state=0 radius=0 hitrate=100 dur=20 dmg=0
+389042000,Retrieving Clan Member (+0),97,0,1,120,1,490042,8,0,389042000,20,250,15,0,0,T8 target=1 radius=10000 warp=12(summon target (same zone)) exprecover=0 kick=0
+389050000,Calling Friend Scroll  (+0),97,3,1,12000,1,490050,8,0,389050000,20,250,6,0,0,T8 target=1 radius=10000 warp=12(summon target (same zone)) exprecover=0 kick=0
+389175000,Chamber of Arrogance Transport Scroll (+0),97,0,1,10000,1,490301,8,0,389175000,0,30,1,0,1,T8:(no row)
+389176000,Chamber of Gluttony Transport Scroll (+0),97,0,1,20000,1,490302,8,0,389176000,0,30,1,0,1,T8:(no row)
+389177000,Chamber of Rage Transport Scroll (+0),97,0,1,30000,1,490303,8,0,389177000,0,30,1,0,1,T8:(no row)
+389178000,Chamber of Sloth Transport Scroll (+0),97,0,1,40000,1,490304,8,0,389178000,0,30,1,0,1,T8:(no row)
+389179000,Chamber of Lechery Transport Scroll (+0),97,0,1,50000,1,490305,8,0,389179000,0,30,1,0,1,T8:(no row)
+389180000,Chamber of Jealousy Transport Scroll (+0),97,0,1,60000,1,490306,8,0,389180000,0,30,1,0,1,T8:(no row)
+389181000,Chamber of Avarice Transport Scroll (+0),97,0,1,70000,1,490307,8,0,389181000,0,30,1,0,1,T8:(no row)
+700003000,Monster Summon Staff (+0),255,0,1,2500,0,490088,8,0,700003000,5,250,1,0,1,T8 target=1 radius=10000 warp=21(summon monster) exprecover=0 kick=0
+700004000,Monster Summon Staff (+0),255,0,1,2500,0,490093,8,0,700004000,5,250,1,0,1,T8 target=1 radius=10000 warp=21(summon monster) exprecover=2 kick=0
+700005000,Monster Summon Staff (+0),255,0,1,2500,0,490096,8,0,700005000,5,250,1,0,1,T8 target=1 radius=10000 warp=21(summon monster) exprecover=1 kick=0
+700006000,Monster Summon Staff(Event) (+0),255,0,1,2500,0,490097,8,0,700006000,5,250,1,0,1,T8 target=1 radius=10000 warp=21(summon monster) exprecover=0 kick=0
+800002000,Re-Spawn Teleport Scroll (+0),255,0,1,2000,0,500022,8,0,800002000,0,0,1,0,1,T8 target=1 radius=10000 warp=1(to resurrection point (town)) exprecover=0 kick=0
+800021000,Scroll of teleport friend (+0),255,0,1,50,0,500038,8,0,800021000,0,15,3,0,1,T8 target=1 radius=10000 warp=25(teleport to target (Descent/Wild Advent)) exprecover=0 kick=0
+379112000,Abyss Eye (+0),97,0,1,2500,1,490211,9,0,379112000,18,50,1,0,0,T9 group=0 state=3 radius=25 hitrate=100 dur=30 dmg=0 vision=100 needitem=0
+800056000,Leader's Guardian [Karus] (+0),255,0,1,3000000,0,502001,9,0,800056000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800057000,Leader's Guardian [El Morad] (+0),255,0,1,3000000,0,502003,9,0,800057000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800058000,Co-Leader's Guardian [Karus] (+0),255,0,1,1200000,0,502002,9,0,800058000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800059000,Co-Leader's Guardian [El Morad] (+0),255,0,1,1200000,0,502004,9,0,800059000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800064000,Leader's Guardian [Karus 5] (+0),255,0,1,15000000,0,502005,9,0,800064000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800065000,Leader's Guardian [El Morad 5] (+0),255,0,1,15000000,0,502007,9,0,800065000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800066000,Co-Leader's Guardian [Karus 5] (+0),255,0,1,6000000,0,502006,9,0,800066000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800067000,Co-Leader's Guardian [El Morad 5] (+0),255,0,1,6000000,0,502008,9,0,800067000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800068000,Leader's Guardian [Karus 5] (+0),255,0,1,30000000,0,502009,9,0,800068000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800069000,Leader's Guardian [El Morad 5] (+0),255,0,1,30000000,0,502011,9,0,800069000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800070000,Co-Leader's Guardian [Karus 5] (+0),255,0,1,12000000,0,502010,9,0,800070000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0
+800071000,Co-Leader's Guardian [El Morad 5] (+0),255,0,1,12000000,0,502012,9,0,800071000,5,40,1,0,0,T9 group=0 state=7 radius=0 hitrate=100 dur=3600 dmg=0 vision=100 needitem=0

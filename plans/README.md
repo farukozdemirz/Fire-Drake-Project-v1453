@@ -1,0 +1,56 @@
+# plans/ — Uygulama Planları
+
+Bu klasör, **Claude**'un hazırladığı ve **opencode üzerinden DeepSeek**'in uyguladığı iş planlarını tutar. Her plan tek bir dosyadır ve küçük, doğrulanabilir bir iş birimini tarif eder.
+
+## Roller
+
+| Rol | Kim | Ne yapar |
+|---|---|---|
+| Karar verici | Proje sahibi | Planı onaylar, DeepSeek'e verir, doğrulama sonrası birleştirir |
+| Planlayıcı ve denetçi | Claude (Claude Code, `/plan-olustur` ve `/plan-dogrula` skill'leri) | Planı yazar, ayrıntıları belirler, uygulanan işi doğrular |
+| Uygulayıcı | DeepSeek (opencode, kurallar `AGENTS.md`'de) | Planı uygular, derler, raporunu plan dosyasına yazar |
+
+## Akış
+
+```
+1. Claude: /plan-olustur          → plans/<PLAN-ID>.md   (durum: HAZIR)
+2. Sen:    opencode'da DeepSeek'e  "plans/<PLAN-ID>.md planını uygula" de
+3. DeepSeek: bot/<PLAN-ID> branch'i, commit'ler, "Uygulayıcı Raporu" bölümü  (durum: UYGULANDI)
+4. Claude: /plan-dogrula plans/<PLAN-ID>.md  → "Doğrulama Raporu" bölümü
+           → DOĞRULANDI  veya  DÜZELTME GEREKLİ (+ DeepSeek'e verilecek düzeltme talimatı)
+5. DÜZELTME GEREKLİ ise: talimatı DeepSeek'e ver → 3'e dön (yeni tur)
+6. DOĞRULANDI ise: sen branch'i main'e birleştirirsin → durum: KAPANDI
+```
+
+## Plan kimliği ve dosya adı
+
+`<FAZ>-<NN>-<kisa-ad>.md`. Örnek: `F0-01-ortam-dogrulama.md`, `F2-03-bot-slot-havuzu.md`.
+
+- FAZ: `docs/17_IMPLEMENTATION_ROADMAP_AND_PHASE_GATES.md`'deki faz (F0–F10).
+- Branch: `bot/<FAZ>-<NN>` (ör. `bot/F2-03`).
+- Commit mesajı: `[<FAZ>-<NN>] <özet>`.
+
+## Plan durumları
+
+| Durum | Kim koyar | Anlamı |
+|---|---|---|
+| `TASLAK` | Claude | Yazılıyor, verilmeye hazır değil |
+| `HAZIR` | Claude | DeepSeek'e verilebilir |
+| `UYGULANIYOR` | DeepSeek | Çalışma başladı |
+| `UYGULANDI` | DeepSeek | Kod yazıldı, derlendi, rapor yazıldı. **İş bitti anlamına gelmez.** |
+| `DÜZELTME GEREKLİ` | Claude | Doğrulamada eksik/hata bulundu; düzeltme talimatı planın sonunda |
+| `DOĞRULANDI` | Claude | Planın kabul kriterleri kanıtla karşılandı |
+| `KAPANDI` | Proje sahibi / Claude | Branch birleştirildi |
+| `İPTAL` | Proje sahibi | Plan geçersiz |
+
+Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` olması için faz raporu gerekir. Tek tek planların `DOĞRULANDI` olması yetmez.
+
+## Plan listesi
+
+| Plan | Başlık | Faz | Durum | Branch |
+|---|---|---|---|---|
+| [F0-01](F0-01-ortam-dogrulama-araclari.md) | Ortam doğrulama araçları ve Debug/Release farkı raporu | F0 | DOĞRULANDI (2026-10-01) | `bot/F0-01` |
+
+Şablon: [`_SABLON.md`](_SABLON.md)
+
+Otonom döngü tasarımı (incelenmeyi bekliyor, henüz çalıştırılmadı): [`OTONOM_DONGU.md`](OTONOM_DONGU.md)

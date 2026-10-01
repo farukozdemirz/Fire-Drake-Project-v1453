@@ -1,0 +1,56 @@
+==============================================================================
+FILE freezone_a_20050718.smd  (4679624 bytes)  [zone71_freezone_a]
+m_nMapSize            = 513 vertices per side  -> GetMapSize() = 512 tiles
+m_fUnitDist           = 4.0 m per tile
+world extent          = (m_nMapSize-1)*unit = 2048.0 m  (x and z: 0..2048.0)
+collision width/length= 2048.0 / 2048.0  size check ok=True  width==length=True
+regions (VIEW_DISTANCE=48): m_nXRegion = m_nZRegion = 43  (GetXRegionMax = 42)
+height min/max/mean   = -30.633 / 82.122 / 2.826 m
+event grid            = 513 x 513 = 263169 cells (int16, index x*513+z)
+event histogram (value: count, pct):
+        0 :    29522  (11.22%)
+        1 :   233647  (88.78%)
+event histogram restricted to x,z in [0, 512) (tiles actually inside world extent):
+        0 :    29522  (11.26%)
+        1 :   232622  (88.74%)
+collision: faces=34871 (verts=104613), main 16m cells grid=(128, 128), cells present=4579, shape index refs=3353, unique shape ids=3353, CC poly refs in 4m sub-cells=121690, sub-cells with polys=23220, bytes=3099262
+collision vertex bbox: x 34.0..2004.0  y -5000.0..5000.0  z 180.4..1838.2
+object events in SMD   = 2 (server reads 24 B each and discards; layout below is INFERRED)
+   belong=2 index=4019 type=5 ctrlNpc=712 status=1 pos=(622.0, 11.6, 911.0)
+   belong=1 index=4020 type=5 ctrlNpc=711 status=1 pos=(1375.0, 11.8, 1085.0)
+regene events          = 0
+warp list              = 4 entries 
+   id=7111 group=711 name='Luferson Castle' zone=1 pos=(441.00, 0.00, 1625.00) r=5.00 nation=1 pay=0 stored=True announce="You will be transported to Luferson Castle. Home of Kooglin'"
+   id=7114 group=711 name='Moradon' zone=21 pos=(295.00, 0.00, 368.00) r=5.00 nation=1 pay=0 stored=True announce='You will be transported to Moradon. Moradon is a free-trade '
+   id=7124 group=712 name='Moradon' zone=21 pos=(352.00, 0.00, 311.00) r=5.00 nation=2 pay=0 stored=True announce='You will be transported to Moradon. Moradon is a free-trade '
+   id=7121 group=712 name='El Morad Castle' zone=2 pos=(1595.00, 0.00, 412.00) r=5.00 nation=2 pay=0 stored=True announce='You will be transported to El Morad Castle. Home of Piana Kn'
+trailing bytes after parse = 0
+PNGs: <çalışma-dizini>/research/map/zone71_freezone_a_eventgrid.png <çalışma-dizini>/research/map/zone71_freezone_a_height.png <çalışma-dizini>/research/map/zone71_freezone_a_collision.png
+==============================================================================
+FILE freezone_b_20050718.smd  (1522560 bytes)  [zone72_freezone_b]
+m_nMapSize            = 257 vertices per side  -> GetMapSize() = 256 tiles
+m_fUnitDist           = 4.0 m per tile
+world extent          = (m_nMapSize-1)*unit = 1024.0 m  (x and z: 0..1024.0)
+collision width/length= 1024.0 / 1024.0  size check ok=True  width==length=True
+regions (VIEW_DISTANCE=48): m_nXRegion = m_nZRegion = 22  (GetXRegionMax = 21)
+height min/max/mean   = 0.000 / 207.087 / 81.507 m
+event grid            = 257 x 257 = 66049 cells (int16, index x*257+z)
+event histogram (value: count, pct):
+        0 :    13443  (20.35%)
+        1 :    52606  (79.65%)
+event histogram restricted to x,z in [0, 256) (tiles actually inside world extent):
+        0 :    13443  (20.51%)
+        1 :    52093  (79.49%)
+collision: faces=12416 (verts=37248), main 16m cells grid=(64, 64), cells present=1661, shape index refs=783, unique shape ids=783, CC poly refs in 4m sub-cells=45586, sub-cells with polys=9023, bytes=1124918
+collision vertex bbox: x 25.4..1009.9  y -5000.0..5000.0  z 9.7..1015.9
+object events in SMD   = 2 (server reads 24 B each and discards; layout below is INFERRED)
+   belong=2 index=4019 type=5 ctrlNpc=722 status=1 pos=(203.8, 73.3, 907.5)
+   belong=1 index=4020 type=5 ctrlNpc=721 status=1 pos=(833.5, 75.4, 120.6)
+regene events          = 0
+warp list              = 4 entries 
+   id=7221 group=722 name='El Morad Castle' zone=2 pos=(1595.00, 0.00, 412.00) r=5.00 nation=2 pay=0 stored=True announce='You will be transported to El Morad Castle. Home of Piana Kn'
+   id=7211 group=721 name='Luferson Castle' zone=1 pos=(441.00, 0.00, 1625.00) r=5.00 nation=1 pay=0 stored=True announce="You will be transported to Luferson Castle. Home of Kooglin'"
+   id=7214 group=721 name='Moradon' zone=21 pos=(295.00, 0.00, 368.00) r=5.00 nation=1 pay=0 stored=True announce='You will be transported to Moradon. Moradon is a free-trade '
+   id=7224 group=722 name='Moradon' zone=21 pos=(352.00, 0.00, 311.00) r=5.00 nation=2 pay=0 stored=True announce='You will be transported to Moradon. Moradon is a free-trade '
+trailing bytes after parse = 0
+PNGs: <çalışma-dizini>/research/map/zone72_freezone_b_eventgrid.png <çalışma-dizini>/research/map/zone72_freezone_b_height.png <çalışma-dizini>/research/map/zone72_freezone_b_collision.png
