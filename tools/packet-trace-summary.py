@@ -339,22 +339,38 @@ def write_cli_sections(records, out):
     out.write("== CLI-03 cast suresi (CASTING -> EFFECTING) ==\n")
     out.write("CAST gap_ms per skill:\n")
     cast_gaps = {}
-    pending = {}
+    cancel_gaps = []
+    fail_gaps = []
+    pending_skill = None
+    pending_time = 0
     for row in magic:
         if row["magic_op"] == 1:
-            if row["skill"] not in pending:
-                pending[row["skill"]] = row["t"]
+            # A player casts one spell at a time: a new CASTING replaces any
+            # pending one (the client may have skipped a cancel message).
+            pending_skill = row["skill"]
+            pending_time = row["t"]
         elif row["magic_op"] == 3:
-            if row["skill"] in pending:
-                gap = row["t"] - pending.pop(row["skill"])
+            if pending_skill is not None and pending_skill == row["skill"]:
+                gap = row["t"] - pending_time
                 if 0 <= gap <= 10000:
                     cast_gaps.setdefault(row["skill"], []).append(gap)
+                pending_skill = None
+        elif row["magic_op"] == 6:
+            if pending_skill is not None:
+                cancel_gaps.append(row["t"] - pending_time)
+                pending_skill = None
+        elif row["magic_op"] == 4:
+            if pending_skill is not None:
+                fail_gaps.append(row["t"] - pending_time)
+                pending_skill = None
     if cast_gaps:
         for skill in sorted(cast_gaps):
             out.write("  skill=%d %s\n" % (skill, format_stats_short(cast_gaps[skill])))
     else:
         out.write("  (none)\n")
     out.write("MAGIC cancel (opcode 6) count=%d\n" % sum(1 for row in magic if row["magic_op"] == 6))
+    out.write("CANCEL gap_ms (CASTING -> opcode 6): %s\n" % format_stats_short(cancel_gaps))
+    out.write("FAIL gap_ms (CASTING -> opcode 4): %s\n" % format_stats_short(fail_gaps))
 
     out.write("== CLI-04 skill tekrar ==\n")
     per_skill = {}
@@ -551,6 +567,31 @@ def run_selftest():
     assert empty_exit == 1, empty_exit
     assert "cli_target: none" in empty_buffer.getvalue(), empty_buffer.getvalue()
     assert "skipped_lines: 3" in empty_buffer.getvalue(), empty_buffer.getvalue()
+
+    cancel_case_lines = [
+        cli_line(0, 0x31, cast_payload),
+        cli_line(500, 0x31, cancel_payload),
+        cli_line(3000, 0x31, cast_payload),
+        cli_line(3300, 0x31, effect_payload),
+        cli_line(6000, 0x31, cast_payload),
+        cli_line(6100, 0x31, cast_payload),
+        cli_line(6400, 0x31, effect_payload),
+    ]
+    cancel_rows = []
+    for line in cancel_case_lines:
+        row = parse_line(line)
+        assert row is not None, line
+        cancel_rows.append(row)
+
+    cancel_buffer = io.StringIO()
+    cancel_exit = write_cli_output(cancel_rows, 0, cancel_buffer)
+    cancel_text = cancel_buffer.getvalue()
+    assert cancel_exit == 0, cancel_exit
+    assert "skill=101 n=2 p5=300 p50=300 p95=300 min=300 max=300" in cancel_text, cancel_text
+    assert (
+        "CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500"
+        in cancel_text
+    ), cancel_text
 
     print("selftest OK")
     return 0
