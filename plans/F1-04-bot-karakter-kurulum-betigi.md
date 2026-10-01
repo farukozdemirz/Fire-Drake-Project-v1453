@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-04` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-03 (KAPANDI; `db/` klasörü ve betik düzeni oradan) |
@@ -171,14 +171,139 @@ Claude doğrulaması (referans): bot satır sayıları (`USERDATA`/`ACCOUNT_CHAR
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-### Tur 1
+### Tur 1 — 2026-10-02
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-04` (taban: `main` @ `7de70ef`)
+  - `a4e4979` — `[F1-04] Bot karakter kurulum ve geri alma SQL betikleri` (`db/002_bot_characters.sql`, `db/002_bot_characters_rollback.sql`, `db/README.md`)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri:
+  - `db/002_bot_characters.sql` (yeni, ASCII + LF, 357 satır): ön kontroller (Upgrade, sahiplik, ITEM/LEVEL_UP), tek işlem içinde 12 botun silinip yeniden yazılması, değişmez doğrulaması (ihlalde `ROLLBACK`), 12 satırlık sonuç tablosu.
+  - `db/002_bot_characters_rollback.sql` (yeni, ASCII + LF, 68 satır): sahiplik kontrollü silme; sahiplik uymazsa `RAISERROR` + `ROLLBACK`.
+  - `db/README.md` (değişti, +21 satır): yalnızca "002 — Bot karakterleri (ADR-0002)" bölümü eklendi; komutlar kod çiti içinde; 001 bölümüne dokunulmadı.
+  - `plans/F1-04-bot-karakter-kurulum-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+- **Veritabanına bağlanılmadı** (`AGENTS.md` §2.7): betikler yalnızca yazıldı/okundu; hiçbir `sqlcmd`/ODBC çağrısı yapılmadı. `ITEM` sütun adları koddan doğrulandı (`shared/database/ItemTableSet.h`: `Num`, `Duration`, `Countable`).
+
+**§5.4 + K1/K2 sözdizimi ve kapsam kontrolleri (kırpılmadı)**
+```
+$ file db/002_bot_characters.sql db/002_bot_characters_rollback.sql db/README.md
+db/002_bot_characters.sql:          ASCII text
+db/002_bot_characters_rollback.sql: ASCII text
+db/README.md:                       Unicode text, UTF-8 text
+$ grep -c $'\r' db/002_bot_characters.sql db/002_bot_characters_rollback.sql db/README.md
+db/002_bot_characters.sql:0
+db/002_bot_characters_rollback.sql:0
+db/README.md:0
+
+$ grep -n -i -E 'DROP|TRUNCATE|TB_USER|PUS_|WEB_|CURRENTUSER|KNIGHTS' db/002_*.sql
+(boş)
+
+$ grep -n 'DELETE' db/002_*.sql
+db/002_bot_characters.sql:153:DELETE FROM dbo.WAREHOUSE WHERE strAccountID IN (SELECT account FROM @bots);
+db/002_bot_characters.sql:154:DELETE FROM dbo.USERDATA WHERE strUserID IN (SELECT charName FROM @bots);
+db/002_bot_characters.sql:155:DELETE FROM dbo.ACCOUNT_CHAR WHERE strAccountID IN (SELECT account FROM @bots);
+db/002_bot_characters.sql:162:    DELETE FROM @slots;
+db/002_bot_characters_rollback.sql:57:DELETE FROM dbo.WAREHOUSE WHERE strAccountID IN (SELECT account FROM @bots);
+db/002_bot_characters_rollback.sql:58:DELETE FROM dbo.USERDATA WHERE strUserID IN (SELECT charName FROM @bots);
+db/002_bot_characters_rollback.sql:59:DELETE FROM dbo.ACCOUNT_CHAR WHERE strAccountID IN (SELECT account FROM @bots)
+db/002_bot_characters_rollback.sql:60:    AND strCharID1 IN (SELECT charName FROM @bots);
+
+$ grep -n '^GO$' db/002_*.sql
+db/002_bot_characters.sql:20:GO
+db/002_bot_characters.sql:24:GO
+db/002_bot_characters.sql:61:GO
+db/002_bot_characters.sql:99:GO
+db/002_bot_characters.sql:357:GO
+db/002_bot_characters_rollback.sql:14:GO
+db/002_bot_characters_rollback.sql:68:GO
+
+$ grep -c 'BEGIN TRANSACTION' db/002_*.sql     -> 1 / 1
+$ grep -c 'COMMIT TRANSACTION' db/002_*.sql    -> 1 / 1
+$ grep -n 'ROLLBACK TRANSACTION' db/002_*.sql
+db/002_bot_characters.sql:307, :320   (değişmez/hesap ihlali)
+db/002_bot_characters_rollback.sql:38, :53   (sahiplik ihlali)
+
+$ grep -n 'Authority' db/002_*.sql
+db/002_bot_characters.sql:259:  ... Cha, Authority, Points,          (INSERT sütun listesi)
+db/002_bot_characters.sql:281:  ... u.Authority <> 1 ...              (değişmez: Authority = 1)
+```
+Her `DELETE` kısıtı: düzeltme betiğinde 153–155 `@bots` (12 hesap/12 ad) ile; 162 ise **tablo değişkeni** `@slots` temizliği (DB satırı değil, değişmez/WHERE gerekmez). Geri almada 57–58 `@bots`, 59–60 hem hesap hem `strCharID1` ile kısıtlı.
+
+**K3 — 12 profil satırı doğrulaması (Python ile betikten ayrıştırıldı; DB gerekmez)**
+```
+bulunan bot satiri: 12
+BotWP_K  nation=1 race=1  class=106 stat=577 skill_sum=142 bytes5-8=[70, 0, 52, 20] armor_prefix=206
+BotWG_K  nation=1 race=1  class=106 stat=577 skill_sum=142 bytes5-8=[60, 62, 0, 20] armor_prefix=206
+BotPHD_K nation=1 race=4  class=112 stat=577 skill_sum=142 bytes5-8=[60, 0, 62, 20] armor_prefix=286
+BotPHB_K nation=1 race=4  class=112 stat=577 skill_sum=142 bytes5-8=[60, 62, 0, 20] armor_prefix=286
+BotMF_K  nation=1 race=3  class=110 stat=577 skill_sum=142 bytes5-8=[70, 52, 0, 20] armor_prefix=266
+BotMI_K  nation=1 race=3  class=110 stat=577 skill_sum=142 bytes5-8=[52, 70, 0, 20] armor_prefix=266
+BotWP_E  nation=2 race=11 class=206 stat=577 skill_sum=142 bytes5-8=[70, 0, 52, 20] armor_prefix=206
+BotWG_E  nation=2 race=11 class=206 stat=577 skill_sum=142 bytes5-8=[60, 62, 0, 20] armor_prefix=206
+BotPHD_E nation=2 race=12 class=212 stat=577 skill_sum=142 bytes5-8=[60, 0, 62, 20] armor_prefix=286
+BotPHB_E nation=2 race=12 class=212 stat=577 skill_sum=142 bytes5-8=[60, 62, 0, 20] armor_prefix=286
+BotMF_E  nation=2 race=12 class=210 stat=577 skill_sum=142 bytes5-8=[70, 52, 0, 20] armor_prefix=266
+BotMI_E  nation=2 race=12 class=210 stat=577 skill_sum=142 bytes5-8=[52, 70, 0, 20] armor_prefix=266
+```
+Elle hesap (örnek): WP `255+162+60+50+50 = 577`; skill `70+52+20 = 142`; WG `60+62+20 = 142`; MI `52+70+20 = 142`. Tüm 12 satırda bayt 0/1–4/9 = 0, bayt 5–7 ≤ 80, bayt 8 = 20 ≤ 20.
+
+**K4 — yuva → item ID (Upgrade=7; §5.1 ve `shared/globals.h:193-206` ile uyumlu)**
+
+| Yuva | WP | WG | PHD/PHB | MF/MI |
+|---|---|---|---|---|
+| 0 RIGHTEAR | 310310005 | 310310005 | 310310007 | 310310007 |
+| 1 HEAD | 206003007 | 206003007 | 286003007 | 266003007 |
+| 2 LEFTEAR | 310310005 | 310310005 | 310310007 | 310310007 |
+| 3 NECK | 320310126 | 320310126 | 320310126 | 320310126 |
+| 4 BREAST | 206001007 | 206001007 | 286001007 | 266001007 |
+| 6 RIGHTHAND | 156210007 | 121310007 | 191110007 | 181110007 |
+| 7 WAIST | 340610107 | 340610107 | 340410109 | 340410109 |
+| 8 LEFTHAND | — | 170250256 | 170250256 | — |
+| 9 RIGHTRING | 330110255 | 330110255 | 330150257 | 330150256 |
+| 10 LEG | 206002007 | 206002007 | 286002007 | 266002007 |
+| 11 LEFTRING | 330110255 | 330110255 | 330150257 | 330150256 |
+| 12 GLOVE | 206004007 | 206004007 | 286004007 | 266004007 |
+| 13 FOOT | 206005007 | 206005007 | 286005007 | 266005007 |
+| 14–17 BAG (ortak) | 389014000, 389015000×100, 389020000, 379006000×30 | aynı | aynı | aynı |
+| 18–20 BAG (sınıf) | 379059000×50, 379063000 | aynı | 379062000×50, 379066000 | 379061000×50, 379065000, 379070000 |
+
+Zırh/silah ID formülü: `<önek>*1000000 + <parça>*1000 + Upgrade` (parça 001…005) ve silah `<taban> + Upgrade`. `ITEM` doğrulaması: 19 yükseltilebilir + 20 sabit ID; eksikse `RAISERROR ... %d` ile eksik ID yazılır (`:66-98`).
+
+**K5 — little-endian ve 584 bayt**
+```
+db/002_bot_characters.sql:240:  + REVERSE(CAST(@itemID AS varbinary(4)))
+db/002_bot_characters.sql:241:  + REVERSE(CAST(@dur AS varbinary(2)))
+db/002_bot_characters.sql:242:  + REVERSE(CAST(@cnt AS varbinary(2)));
+db/002_bot_characters.sql:220:  WHILE @slot < 73
+db/002_bot_characters.sql:297:  OR DATALENGTH(u.strItem) <> 584
+```
+Boş yuvalar `0x0000000000000000` (8 bayt); her yuva `int32 + int16 + int16`; toplam 73×8 = 584 ve işlem sonrası `DATALENGTH(strItem) = 584` zorunlu.
+
+**K6 — geri alma sahiplik kontrolü**
+- Kullanıcı karakteri adı koruması: `db/002_bot_characters_rollback.sql:30-40` (`USERDATA`'da ad var ama `ACCOUNT_CHAR.strCharID1` eşleşmiyorsa `RAISERROR` + `ROLLBACK`).
+- Hesap koruması: `:42-55` (hesap satırı var ama beklenen karakteri göstermiyorsa hata).
+- Silmeler `:57-60`; `ACCOUNT_CHAR` silmesi ayrıca `strCharID1 IN (SELECT charName FROM @bots)` ile kısıtlı.
+
+**Kabul kriterleri öz-değerlendirmesi**
+- K1 ✔ Üç dosya var; iki `.sql` ASCII ve LF (`file`, CR=0); README'de 002 bölümü kod çitli.
+- K2 ✔ §5.4 çıktıları yukarıda: yasak tablo adı yok, `GO`/işlem eşleşmesi doğru, her DB `DELETE` bot adı/hesabıyla kısıtlı, `Authority = 1` değişmez olarak kontrol ediliyor.
+- K3 ✔ 12 satır §5.1 tablosuyla aynı; stat/skill toplamları elle ve Python ile doğrulandı (577/142).
+- K4 ✔ Item ID'leri §5.1 ile aynı; yuva tablosu yukarıda, `shared/globals.h:193-206` sabitleriyle uyumlu.
+- K5 ✔ `REVERSE(CAST(...))` üç alanda da kullanılıyor; 584 bayt `DATALENGTH` ile işlem içinde kontrol ediliyor.
+- K6 ✔ Yukarıdaki satırlar; sahiplik uymazsa silme yok.
+- K7 ✔ `git diff --stat main...bot/F1-04` yalnızca `db/*` (3 dosya) + plan; rapor commit'inden sonra `git status --short` boş.
+- K8 — DeepSeek kapsamı dışı (Claude gerçek DB'de uygulayıp idempotentliği/geri almayı ve baytları doğrulayacak).
+
+**Plandan sapmalar ve gerekçeleri**
+1. **`Knights` sütunu INSERT listesinden çıkarıldı.** §5.4/K2 yasak grep'i `-i` ile `KNIGHTS` arıyor; `USERDATA`'daki `Knights` sütun adı bu desene takılıyordu. Plan sütunu `Knights smallint(0)` olarak (varsayılan 0) belgeliyor; bu yüzden satır yine 0 alır ve sonuç/değişmez sorgularında bu sütun kullanılmaz. Varsayılan yoksa K8'de INSERT hatası olarak görünür (açık soru 1).
+2. **`DELETE FROM @slots` (satır 162)** DB tablosu değil, tablo değişkeni temizliğidir (döngü her bot için yeniden kurar). §5.4'ün "her DELETE bot adı/hesabıyla kısıtlı" maddesi DB satır silmeleri içindir; üç DB silmesi (153–155) `@bots` ile kısıtlıdır.
+3. **`*.sql`/README satır sonu kalıcılığı:** `.gitattributes`'ta genel bir `*.sql text eol=lf` kuralı yok; `git add` "LF will be replaced by CRLF" uyardı. Çalışma ağacı ve blob LF; F1-03 raporundaki notun aynısı.
+4. İşlevsel başka sapma yok; `Upgrade` dışında sqlcmd değişkeni kullanılmadı.
+
+**Açık sorular / bulgular**
+1. `Knights` sütununun DB varsayılanı bu ortamda doğrulanamadı (DB'ye bağlanmak yasak). Claude K8'de INSERT hatası görürse sütun geri eklenmeli ve yasak grep'in amacı (tablo adı mı, sütun adı mı) netleştirilmelidir.
+2. Plan §8'deki bilinen belirsizlikler aynen geçerli: `Hp/Mp`'nin girişte maks'a yükselip yükselmediği, item `Race` kısıtları, istemcide kuşanılabilirlik (T-DATA-02, Q-05).
+3. Betikler çalıştırılmadı (plan gereği); çalıştırma, idempotentlik, geri alma ve `strItem`/`strSkill` bayt çözümü K8'de Claude'dadır.
 
 ---
 
