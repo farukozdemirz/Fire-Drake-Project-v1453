@@ -60,6 +60,16 @@ Kaynak: [`GameServer/User.cpp:3908-4158`](https://github.com/ko4life-net/Fire-Dr
 
 Öneri (ADR-0002): Bot karakterleri **sunucu kapalıyken** bir kurulum betiğiyle USERDATA'ya yazılır. Betik `Level=80`, master `Class`, statlar, `Points=0`, `strSkill` (bayt 0 = serbest, 5–8 = ağaçlar), `strItem` (§6), `Zone=71`, `Loyalty>0` alanlarını doldurur ve WAREHOUSE satırını oluşturur. Betik, yazdığı her satır için CHR-03/CHR-04 değişmezlerini doğrular (T-DATA-01). Girişte sunucu bu alanları yeniden doğrulamaz (MEC-CHR-09); bu yüzden doğrulama betiğin sorumluluğundadır.
 
+### 3.4 Kurulum betiği ve veri biçimi (F1-04) `[V]`
+
+Betik: `db/002_bot_characters.sql` (+ `002_bot_characters_rollback.sql`, kullanım `db/README.md`); 12 karakter (6 profil × 2 ulus), `Upgrade` kademesi 0/7/8 (S0/S1/S2). Gerçek veritabanında doğrulandı: stat 577, skill 142, `strItem` ve `strSkill` baytları çözülüp planla karşılaştırıldı, `LOAD_USER_DATA` bot satırını döndürüyor, betik tekrar çalıştırılabilir.
+
+- **`ACCOUNT_CHAR` şart:** `LOAD_USER_DATA`, karakterin hesabın `strCharID1..3` alanında listelenmesini ister; bot başına bir `BotAcc_<PROFIL>_<K|E>` hesap satırı + `WAREHOUSE` satırı yazılır, `TB_USER` gerekmez.
+- **`strSkill` (varchar(10), ham bayt):** bayt 0 = serbest puan, 5–7 = ağaçlar, 8 = master. Ağaç anlamları (MAGIC verisi): warrior 106: 5 saldırı, 6 savunma, 7 berserk; priest 112: 5 heal, 6 buff/koruma, 7 debuff/lanet; mage 110: 5 ateş, 6 buz, 7 yıldırım. Profiller: WP [70,0,52,20], WG [60,62,0,20], PHD [60,0,62,20], PHB [60,62,0,20], MF [70,52,0,20], MI [52,70,0,20].
+- **`strItem` (binary(584)):** 73 yuva × 8 bayt, `<int32 itemID, int16 dayanıklılık, int16 adet>` little-endian; yuvalar `shared/globals.h:193-206` (0 RIGHTEAR, 1 HEAD, 2 LEFTEAR, 3 NECK, 4 BREAST, 5 SHOULDER, 6 RIGHTHAND, 7 WAIST, 8 LEFTHAND, 9 RIGHTRING, 10 LEG, 11 LEFTRING, 12 GLOVE, 13 FOOT), çanta 14–41. Zırh parçası son 3 hane öncesi: `…001`=BREAST, `…002`=LEG, `…003`=HEAD, `…004`=GLOVE, `…005`=FOOT. `strSerial`/`strItemTime` sıfır bırakılır (sunucu seri üretir).
+- **Seviye 80 `Exp`** `LEVEL_UP`'tan okunur (1898706631). Girişte `LOAD_USER_DATA` başlangıç sınıfı kodlarını (105/107/109/111, 205/…) seviye > 59 ise master'a çevirir; betik zaten master kodu yazar.
+- **Hâlâ ölçülecek:** `Hp/Mp` girişte maks'a yükseliyor mu, ulus kısıtlı item'lar, istemcide kuşanılabilirlik (T-DATA-02, Q-05).
+
 ## 4. Türetilmiş değerler (level 80, item ve buff hariç)
 
 Formüller `[D]`:

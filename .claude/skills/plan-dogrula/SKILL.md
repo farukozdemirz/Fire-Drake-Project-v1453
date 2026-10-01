@@ -92,8 +92,11 @@ Planın `Durum` satırını kararla güncelle. **Kodu kendin düzeltme.** Uygula
 Kararı, kriter sonuçlarını (kaç ✔ / ✘) ve en önemli 3 bulguyu yaz.
 
 - `DÜZELTME GEREKLİ` ise düzeltme talimatını kopyalanabilir blok olarak tekrar ver.
-- `DOĞRULANDI` ise birleştirme komutunu öner ama birleştirmeyi kullanıcı onaylamadan yapma:
+- `DOĞRULANDI` ise (kalıcı izin, 2026-10-02): **etkileşimli modda** (`AUTO_LOOP` 1 değilse) ayrıca sormadan plan branch'ini birleştir ve push'la, sonra planı `KAPANDI` yap ve kayıtları güncelle:
 
 ```bash
-git switch main && git merge --no-ff bot/<FAZ>-<NN>
+git switch main && git merge --no-ff bot/<FAZ>-<NN>   # çalışma ağacı temiz olmalı
+git push origin main                                   # --force yok; yalnızca main
 ```
+
+  `AUTO_LOOP=1` ise birleştirme/push **yapılmaz** (yalnızca komutu not et). Birleştirme çakışırsa dur ve kullanıcıya bildir. Faz `KABUL_EDILDI` yine yalnızca kullanıcı onayıyla yazılır. Kullanıcıya birleştirme commit'ini ve push sonucunu bildir.
