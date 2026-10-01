@@ -237,9 +237,9 @@ BEGIN
             FROM dbo.ITEM i WHERE i.Num = @itemID;
 
             SET @strItem = @strItem
-                + REVERSE(CAST(@itemID AS varbinary(4)))
-                + REVERSE(CAST(@dur AS varbinary(2)))
-                + REVERSE(CAST(@cnt AS varbinary(2)));
+                + CAST(REVERSE(CAST(@itemID AS varbinary(4))) AS varbinary(4))
+                + CAST(REVERSE(CAST(@dur AS varbinary(2))) AS varbinary(2))
+                + CAST(REVERSE(CAST(@cnt AS varbinary(2))) AS varbinary(2));
         END
 
         SET @slot = @slot + 1;
@@ -251,7 +251,9 @@ BEGIN
     VALUES (@account, @nation, 1, @charName, NULL, NULL);
 
     INSERT INTO dbo.WAREHOUSE (strAccountID, nMoney, dwTime, WarehouseData, strSerial)
-    VALUES (@account, 0, 0, REPLICATE(0x00, 1536), REPLICATE(0x00, 1536));
+    VALUES (@account, 0, 0,
+        CONVERT(varbinary(1536), REPLICATE(CAST(0x00 AS varchar(1)), 1536)),
+        CONVERT(varbinary(1536), REPLICATE(CAST(0x00 AS varchar(1)), 1536)));
 
     INSERT INTO dbo.USERDATA
     (
@@ -265,7 +267,9 @@ BEGIN
         (SELECT Exp FROM dbo.LEVEL_UP WHERE Level = 80),
         1000, 1, 0, 0, @hp, @mp, 100, @strong, @sta, @dex, @intel, @cha,
         1, 0, 200000, 71, -1, 127400, 89000, 0, 0, @skillText, @strItem,
-        REPLICATE(0x00, 584), 0, REPLICATE(0x00, 600), 0, 0, REPLICATE(0x00, 584);
+        CONVERT(varbinary(584), REPLICATE(CAST(0x00 AS varchar(1)), 584)), 0,
+        CONVERT(varbinary(600), REPLICATE(CAST(0x00 AS varchar(1)), 600)), 0, 0,
+        CONVERT(varbinary(584), REPLICATE(CAST(0x00 AS varchar(1)), 584));
 
     FETCH NEXT FROM bot_cursor INTO @profile, @charName, @account, @nation, @race, @class, @strong, @sta, @dex, @intel, @cha, @hp, @mp, @skillHex;
 END
@@ -282,7 +286,7 @@ IF EXISTS (
        OR u.[Class] NOT IN (106, 110, 112, 206, 210, 212)
        OR NOT ((u.Nation = 1 AND u.Race < 10      AND u.[Class] IN (106, 110, 112))
             OR (u.Nation = 2 AND u.Race > 10      AND u.[Class] IN (206, 210, 212)))
-       OR (u.Strong + u.Sta + u.Dex + u.Intel + u.Cha) <> 577
+       OR (CAST(u.Strong AS int) + u.Sta + u.Dex + u.Intel + u.Cha) <> 577
        OR u.Strong > 255 OR u.Sta > 255 OR u.Dex > 255 OR u.Intel > 255 OR u.Cha > 255
        OR DATALENGTH(u.strSkill) <> 10
        OR (ASCII(SUBSTRING(u.strSkill, 1, 1)) + ASCII(SUBSTRING(u.strSkill, 2, 1))
@@ -331,7 +335,7 @@ SELECT
     b.race AS race,
     b.class AS [class],
     u.Level AS [level],
-    (u.Strong + u.Sta + u.Dex + u.Intel + u.Cha) AS stat_sum,
+    (CAST(u.Strong AS int) + u.Sta + u.Dex + u.Intel + u.Cha) AS stat_sum,
     (ASCII(SUBSTRING(u.strSkill, 1, 1)) + ASCII(SUBSTRING(u.strSkill, 2, 1))
      + ASCII(SUBSTRING(u.strSkill, 3, 1)) + ASCII(SUBSTRING(u.strSkill, 4, 1))
      + ASCII(SUBSTRING(u.strSkill, 5, 1)) + ASCII(SUBSTRING(u.strSkill, 6, 1))
@@ -345,13 +349,16 @@ FROM dbo.USERDATA u
 JOIN @bots b ON b.charName = u.strUserID
 CROSS APPLY (
     SELECT
-        SUM(CASE WHEN n.slot < 14 AND CAST(SUBSTRING(u.strItem, n.slot * 8 + 1, 4) AS int) <> 0 THEN 1 ELSE 0 END) AS equipped_items,
-        SUM(CASE WHEN n.slot >= 14 AND CAST(SUBSTRING(u.strItem, n.slot * 8 + 1, 4) AS int) <> 0 THEN 1 ELSE 0 END) AS bag_items
-    FROM (VALUES
-        (0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(13),
-        (14),(15),(16),(17),(18),(19),(20),(21),(22),(23),(24),(25),(26),(27),
-        (28),(29),(30),(31),(32),(33),(34),(35),(36),(37),(38),(39),(40),(41)
-    ) AS n(slot)
+        SUM(CASE WHEN d.slot < 14 AND d.id <> 0 THEN 1 ELSE 0 END) AS equipped_items,
+        SUM(CASE WHEN d.slot >= 14 AND d.id <> 0 THEN 1 ELSE 0 END) AS bag_items
+    FROM (
+        SELECT n.slot, CAST(SUBSTRING(u.strItem, n.slot * 8 + 1, 4) AS int) AS id
+        FROM (VALUES
+            (0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(13),
+            (14),(15),(16),(17),(18),(19),(20),(21),(22),(23),(24),(25),(26),(27),
+            (28),(29),(30),(31),(32),(33),(34),(35),(36),(37),(38),(39),(40),(41)
+        ) AS n(slot)
+    ) AS d
 ) AS c
 ORDER BY b.charName;
 GO
