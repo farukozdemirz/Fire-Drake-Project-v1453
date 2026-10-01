@@ -13,15 +13,15 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR → çıkış koşulları karşılandı, faz kabulü (proje sahibi) bekliyor. F0-01 ve F0-02 KAPANDI; T-ENV-01 tamam (istemciyle Ronark Land'e giriş 2026-10-02'de proje sahibi tarafından yapıldı, sorun yok). F1-01 (paket izleyici) F0 kabulünden önce yapıldı ve KAPANDI.
+F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 2026-10-02; F1-01 ve F1-02 KAPANDI; `war-r`, `war-skill`, `pot` zamanlama ölçümleri `docs/03` §13.2'de)
 
 ## Faz tablosu
 
 | Faz | Durum | Son rapor | Kabul commit |
 |---|---|---|---|
 | 2026-10-02 | F1-02 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; Tur 1 bulgusu (iptal sonrası bayat CASTING) kapandı, ek kenar vakaları bağımsız doğrulandı. `prepare`/`finish` çalışma zamanı doğrulaması ilk gerçek oturumda |
-| F0 Ortam | GELIŞTIRILIYOR | — | — |
-| F1 Veri ve mekanik doğrulama | PLANLANDI | — | — |
+| F0 Ortam | KABUL_EDILDI | `docs/phase-reports/F0.md` (2026-10-02) | `22786e2` |
+| F1 Veri ve mekanik doğrulama | GELIŞTIRILIYOR | — | — |
 | F2 Bot oturumu | PLANLANDI | — | — |
 | F3 Telemetri ve test altyapısı | PLANLANDI | — | — |
 | F4 Aksiyon ve adalet | PLANLANDI | — | — |
@@ -72,10 +72,10 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
-2. Proje sahibi: `docs/phase-reports/F0-taslak.md`'yi okur ve F0'ı kabul eder (`KABUL_EDILDI`) veya düzeltme ister.
-3. Proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1; `tools/trace-session.sh prepare` … `finish`). F1-02 `main`'de (`017f88e`).
-4. Claude: oturum özetlerindeki (`plans/_logs/trace/<etiket>.summary.txt`) sayıları `docs/03` §13/§14 ve `docs/12` §6'ya işler (T-MECH-CLIENT-01..04, Q-01/02/18).
+1. Claude: F1-03 planı: `MAGIC.Etc` düzeltmesinin kalıcı, geri alınabilir SQL betiği (ADR-0003, KI-001, T-DATA-06). DeepSeek uygular.
+2. Claude: F1-04 planı: level 80 bot karakter kurulum betiği taslağı (ADR-0002); sonra Q-05 (ekipman kısıtı) ve Q-21 (ağırlık) doğrulama planları.
+3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
+4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
 
 ## Otonom döngü
 
