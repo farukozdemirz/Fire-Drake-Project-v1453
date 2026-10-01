@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-04` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-03 (KAPANDI; `db/` klasörü ve betik düzeni oradan) |
@@ -304,6 +304,155 @@ Boş yuvalar `0x0000000000000000` (8 bayt); her yuva `int32 + int16 + int16`; to
 1. `Knights` sütununun DB varsayılanı bu ortamda doğrulanamadı (DB'ye bağlanmak yasak). Claude K8'de INSERT hatası görürse sütun geri eklenmeli ve yasak grep'in amacı (tablo adı mı, sütun adı mı) netleştirilmelidir.
 2. Plan §8'deki bilinen belirsizlikler aynen geçerli: `Hp/Mp`'nin girişte maks'a yükselip yükselmediği, item `Race` kısıtları, istemcide kuşanılabilirlik (T-DATA-02, Q-05).
 3. Betikler çalıştırılmadı (plan gereği); çalıştırma, idempotentlik, geri alma ve `strItem`/`strSkill` bayt çözümü K8'de Claude'dadır.
+
+### Tur 2 — 2026-10-02
+
+**Durum:** UYGULANDI
+
+**Branch ve commit'ler**
+- Aynı branch `bot/F1-04` (Tur 1 sonu `6f0c98d`; Doğrulama Raporu Tur 1 `30d48c7`).
+- `3ad1e2e` — `[F1-04] Tur 2: SQL Server uyumluluk duzeltmeleri (varbinary/tinyint/CROSS APPLY)` (`db/002_bot_characters.sql`).
+- Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+
+**Düzeltme talimatı maddeleri ve yapılanlar**
+- **0 — DB izni:** Bu turda veritabanına bağlanıldı ve betikler çalıştırıldı (proje sahibi izni). Yalnızca 12 bot satırına yazıldı; başka tablo/satıra yazılmadı; `.fdp_sql_password` okunmadı. Kullanılan komut: `SQLCMD="/mnt/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/130/Tools/Binn/SQLCMD.EXE"`; `"$SQLCMD" -S '.\SQLEXPRESS' -E -d FDP_kn_online -b -W -s '|' ...`.
+1. `:240-242`: üç `REVERSE(...)` dıştan sarıldı: `+ CAST(REVERSE(CAST(@itemID AS varbinary(4))) AS varbinary(4))` vb. (REVERSE ikili girdide `varchar` döndürüyordu → Msg 402).
+2. `:255-256` (2 yer) ve `:270-272` (3 yer): `REPLICATE(0x00, N)` → `CONVERT(varbinary(N), REPLICATE(CAST(0x00 AS varchar(1)), N))` (Msg 257).
+3. `:289` ve `:338`: `(u.Strong + u.Sta + u.Dex + u.Intel + u.Cha)` → `(CAST(u.Strong AS int) + u.Sta + u.Dex + u.Intel + u.Cha)` (tinyint taşması → Msg 8115).
+4. Sonuç sorgusundaki `CROSS APPLY` yeniden yazıldı: `u.strItem` dış referansı iç derived tabloda (`SELECT n.slot, CAST(SUBSTRING(u.strItem, ...) AS int) AS id ...`), toplama dışta `d.slot`/`d.id` üzerinden (Msg 8124). Sütun adları (`equipped_items`, `bag_items`) ve `ORDER BY` aynı.
+
+**Adım 5 çıktıları (kırpılmadı)**
+
+(a) Uygulamadan önce bot olmayan satır sayıları:
+```
+$ "$SQLCMD" ... -h -1 -Q "SET NOCOUNT ON; SELECT (SELECT COUNT(*) FROM USERDATA WHERE strUserID NOT LIKE 'Bot%') AS ud_nonbot, (SELECT COUNT(*) FROM ACCOUNT_CHAR WHERE strAccountID NOT LIKE 'BotAcc%') AS ac_nonbot, (SELECT COUNT(*) FROM WAREHOUSE WHERE strAccountID NOT LIKE 'BotAcc%') AS wh_nonbot;"
+6 4 4
+exit=0
+```
+
+(b) `"$SQLCMD" ... -b -W -s '|' -v Upgrade=7 -i db/002_bot_characters.sql`:
+```
+char|account|nation|race|class|level|stat_sum|skill_sum|zone|loyalty|equipped_items|bag_items
+----|-------|------|----|-----|-----|--------|---------|----|-------|--------------|---------
+BotMF_E|BotAcc_MF_E|2|12|210|80|577|142|71|1000|12|7
+BotMF_K|BotAcc_MF_K|1|3|110|80|577|142|71|1000|12|7
+BotMI_E|BotAcc_MI_E|2|12|210|80|577|142|71|1000|12|7
+BotMI_K|BotAcc_MI_K|1|3|110|80|577|142|71|1000|12|7
+BotPHB_E|BotAcc_PHB_E|2|12|212|80|577|142|71|1000|13|6
+BotPHB_K|BotAcc_PHB_K|1|4|112|80|577|142|71|1000|13|6
+BotPHD_E|BotAcc_PHD_E|2|12|212|80|577|142|71|1000|13|6
+BotPHD_K|BotAcc_PHD_K|1|4|112|80|577|142|71|1000|13|6
+BotWG_E|BotAcc_WG_E|2|11|206|80|577|142|71|1000|13|6
+BotWG_K|BotAcc_WG_K|1|1|106|80|577|142|71|1000|13|6
+BotWP_E|BotAcc_WP_E|2|11|206|80|577|142|71|1000|12|6
+BotWP_K|BotAcc_WP_K|1|1|106|80|577|142|71|1000|12|6
+exit=0
+```
+Beklenen `equipped_items`/`bag_items`: MF/MI 12/7, WP 12/6, WG/PHD/PHB 13/6 — hepsi birebir.
+
+(c) Aynı komut ikinci kez (idempotent; çıktı birebir aynı, hata yok):
+```
+$ "$SQLCMD" ... -v Upgrade=7 -i db/002_bot_characters.sql   > /tmp/opencode/f1-04-run2.txt
+exit=0
+BotMF_E|BotAcc_MF_E|2|12|210|80|577|142|71|1000|12|7
+BotMF_K|BotAcc_MF_K|1|3|110|80|577|142|71|1000|12|7
+... (12 satır, (b) ile birebir aynı)
+BotWP_K|BotAcc_WP_K|1|1|106|80|577|142|71|1000|12|6
+```
+
+(d) `"$SQLCMD" ... -b -W -s '|' -i db/002_bot_characters_rollback.sql` ve bot olmayan sayılar:
+```
+remaining_bot_chars|remaining_bot_accounts|remaining_bot_warehouses
+-------------------|----------------------|------------------------
+0|0|0
+exit=0
+$ "$SQLCMD" ... (a) sorgusu
+6 4 4
+exit=0
+```
+
+(e) Rollback ikinci kez (hata yok):
+```
+remaining_bot_chars|remaining_bot_accounts|remaining_bot_warehouses
+-------------------|----------------------|------------------------
+0|0|0
+exit=0
+```
+
+(f) DB temizlik kontrolü:
+```
+$ "$SQLCMD" ... SELECT (bot USERDATA), (bot ACCOUNT_CHAR), (bot WAREHOUSE)
+0 0 0
+exit=0
+```
+
+**Adım 6 — bayt doğrulaması (BotWP_K)**
+Yeniden uygulandıktan sonra (`Upgrade=7`, çıkış 0) okundu:
+```
+$ "$SQLCMD" ... -y 0 -Q "SET NOCOUNT ON; SELECT CONVERT(varchar(1200), strItem, 2) AS item_hex, CONVERT(varchar(20), CAST(strSkill AS varbinary(10)), 2) AS skill_hex, DATALENGTH(strItem) AS item_len, DATALENGTH(strSkill) AS skill_len FROM USERDATA WHERE strUserID = 'BotWP_K';"
+75F47E12010001003F5B470C7954010075F47E12010001006E8B1713010001006F53470C79540100000000000000000057934F09B03601003B4C4D140100010000000000000000002F15AD13010001005757470C795401002F15AD1301000100275F470C795401000F63470C79540100F0E12F1701000100D8E52F170100640060F92F1701000100302C971601001E0038FB971601003200D80A98160100010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 00000000004600341400 584 10
+```
+`ITEM` tablosundan dayanıklılık/sayılabilirlik:
+```
+$ "$SQLCMD" ... SELECT Num, Duration, Countable FROM ITEM WHERE Num IN (...) ORDER BY Num;
+156210007|14000|0
+206001007|21625|0
+206002007|21625|0
+206003007|21625|0
+206004007|21625|0
+206005007|21625|0
+310310005|1|0
+320310126|1|0
+330110255|1|0
+340610107|1|0
+379006000|1|1
+379059000|1|1
+379063000|1|0
+389014000|1|1
+389015000|1|1
+389020000|1|1
+```
+Python (`struct.unpack('<IhH', ...)`) ile 73 yuva çözümü — **tüm dolu yuvalar doğru, boş yuvalar sıfır**:
+```
+slot | itemID    | dur   | cnt | ITEM.Duration | ITEM.Countable | expected ID/cnt | OK
+   0 | 310310005 |     1 |   1 |             1 |              0 | 310310005/1   | OK
+   1 | 206003007 | 21625 |   1 |         21625 |              0 | 206003007/1   | OK
+   2 | 310310005 |     1 |   1 |             1 |              0 | 310310005/1   | OK
+   3 | 320310126 |     1 |   1 |             1 |              0 | 320310126/1   | OK
+   4 | 206001007 | 21625 |   1 |         21625 |              0 | 206001007/1   | OK
+   6 | 156210007 | 14000 |   1 |         14000 |              0 | 156210007/1   | OK
+   7 | 340610107 |     1 |   1 |             1 |              0 | 340610107/1   | OK
+   9 | 330110255 |     1 |   1 |             1 |              0 | 330110255/1   | OK
+  10 | 206002007 | 21625 |   1 |         21625 |              0 | 206002007/1   | OK
+  11 | 330110255 |     1 |   1 |             1 |              0 | 330110255/1   | OK
+  12 | 206004007 | 21625 |   1 |         21625 |              0 | 206004007/1   | OK
+  13 | 206005007 | 21625 |   1 |         21625 |              0 | 206005007/1   | OK
+  14 | 389014000 |     1 |   1 |             1 |              1 | 389014000/1   | OK
+  15 | 389015000 |     1 | 100 |             1 |              1 | 389015000/100 | OK
+  16 | 389020000 |     1 |   1 |             1 |              1 | 389020000/1   | OK
+  17 | 379006000 |     1 |  30 |             1 |              1 | 379006000/30  | OK
+  18 | 379059000 |     1 |  50 |             1 |              1 | 379059000/50  | OK
+  19 | 379063000 |     1 |   1 |             1 |              0 | 379063000/1   | OK
+strSkill bytes: [0, 0, 0, 0, 0, 70, 0, 52, 20, 0] sum = 142
+BEKLENEN: [0, 0, 0, 0, 0, 70, 0, 52, 20, 0] sum=142
+SONUC: TUM YUVALAR VE SKILL DOGRU
+```
+Bayt doğrulamasından sonra rollback çalıştırıldı; DB temiz bırakıldı (`0 6 4 4`).
+
+**Kriter güncellemesi**
+- **K5** (Tur 1'de ✘): ✔ — `REVERSE` sonuçları `varbinary`'ye çevrildi; betik hatasız derlenip çalıştı.
+- **K8** (Tur 1'de ✘): ✔ — betik gerçek DB'de hatasız çalıştı: 12 karakter oluştu, ikinci çalıştırma idempotent, rollback sonrası bot satırı 0 ve diğer satır sayıları (6/4/4) değişmedi; `strItem`/`strSkill` baytları Python ile çözülüp plan §5.1 ile birebir karşılaştırıldı.
+- **K1–K4, K6, K7** değişmedi (Tur 1'de ✔); `Knights` sapması Tur 1 doğrulamasında kabul edildi.
+
+**Plandan sapmalar (Tur 2 güncellemesi)**
+- Tur 1 sapma listesi geçerli; bu turda yeni işlevsel sapma yok. İki uygulama notu:
+  1. Bayt okuma komutunda `-h -y 0` birlikte kullanılamıyor (sqlcmd: "mutually exclusive"); yalnızca `-y 0` kullanıldı. Sonuç tam okundu.
+  2. DB testleri sonunda bırakılan durum: bot satırı 0, bot olmayan sayılar 6/4/4 — doğrulama öncesi durumun aynısı.
+- `db/002_bot_characters_rollback.sql` ve `db/README.md` bu turda değişmedi.
+
+**Açık sorular / bulgular**
+- Düzeltmelerin bağımsız yeniden doğrulaması (K8 dahil) Claude'dadır; bu turda veritabanına yalnızca 12 bot satırı için yazıldı ve temiz bırakıldı.
+- Kalıcı `*.sql` satır sonu notu (F1-03'teki gibi): `.gitattributes`'ta `*.sql text eol=lf` yok; çalışma ağacı/blob LF.
 
 ---
 
