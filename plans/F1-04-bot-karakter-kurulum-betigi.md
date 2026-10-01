@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-04` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-03 (KAPANDI; `db/` klasörü ve betik düzeni oradan) |
@@ -310,3 +310,44 @@ Boş yuvalar `0x0000000000000000` (8 bayt); her yuva `int32 + int16 + int16`; to
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ**
+- İncelenen: `main...bot/F1-04` @ `6f0c98d` (2 commit; `db/002_bot_characters.sql`, `db/002_bot_characters_rollback.sql`, `db/README.md`, plan dosyası)
+- Özet: Plan, yapı ve kapsam doğru; ama düzeltme betiği (`002_bot_characters.sql`) gerçek veritabanında **çalışmıyor**: 4 ayrı SQL Server hatası veriyor. Geri alma betiği olduğu gibi çalışıyor. DeepSeek bu turda veritabanına bağlanamadı (o sırada `AGENTS.md` yasak koyuyordu), bu yüzden hatalar yakalanamadı.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 dosyalar, ASCII/LF | ✔ | `file`: iki `.sql` ASCII, README UTF-8; README'de komutlar kod çitli |
+| K2 yasak tablo, `DELETE` kısıtı, `GO`/işlem | ✔ | `grep` temiz; DB `DELETE`'lerinin hepsi `@bots` ile kısıtlı (`:153-155`, rollback `:57-60`); işlem eşleşmesi doğru |
+| K3 12 profil | ✔ | Betiğin içindeki satırlar plan tablosuyla aynı; çalışma zamanında çözüldü: stat 577, skill 142 |
+| K4 item ID/yuva | ✔ (düzeltmeyle) | Düzeltilmiş prototipte 12 botun `strItem` baytları Python ile çözüldü; yuva/ID/dayanıklılık/adet beklenenle birebir |
+| K5 little-endian, 584 bayt | ✘ | `:240-242` `REVERSE(...)` `varchar` döndürdüğü için derlenmiyor (Msg 402) |
+| K6 geri alma sahiplik | ✔ | `...rollback.sql` çalıştı: 12 bot silindi, sayılar öncekiyle aynı; bot adlı ama bot hesabına bağlı olmayan sahte satırda `refusing to delete` ve silmedi |
+| K7 kapsam | ✔ | Diff yalnızca `db/*` ve plan; çalışma ağacı temiz |
+| K8 çalışma zamanı | ✘ | Betik olduğu gibi çalıştırıldığında 4 hata (aşağıda). `Upgrade` değişkeni verilmezse (`'Upgrade' scripting variable not defined`) ve `Upgrade=5` (`Upgrade must be 0, 7 or 8`) ile doğru şekilde reddediyor |
+
+- **Bulgular (hepsi engelleyici, önem sırasıyla):**
+  1. `db/002_bot_characters.sql:240-242`: `@strItem + REVERSE(CAST(... AS varbinary(n)))` → `Msg 402: The data types varbinary and varchar are incompatible in the add operator`. `REVERSE()` ikili girdide `varchar` döndürür.
+  2. `:254, :268`: `REPLICATE(0x00, N)` de `varchar` döndürür → `Msg 257: Implicit conversion from data type varchar to binary is not allowed` (6 yerde: `WarehouseData`, `strSerial` (warehouse), `strSerial`, `strQuest`, `strItemTime`).
+  3. `:285, :334`: `u.Strong + u.Sta + ...` `tinyint` toplamı 255'i aşınca `Msg 8115: Arithmetic overflow converting expression to data type tinyint` (değişmez doğrulaması çalışırken).
+  4. `:346-`: `CROSS APPLY` içindeki `SUM(CASE WHEN ... u.strItem ...)` → `Msg 8124: Multiple columns are specified in an aggregated expression containing an outer reference`.
+  5. **Not (sapma 1):** `Knights` sütununun listeden çıkarılması kabul: sütunun varsayılanı 0 (`Knights smallint DEFAULT 0`), sonuç aynı. Gerekçe (yasak grep) zayıf ama zararsız.
+- **Doğrulama yöntemi (kanıt):** Bu dört düzeltme geçici bir prototip kopyasında (depoya girmedi) uygulandı ve gerçek `FDP_kn_online` üzerinde çalıştırıldı: 12 bot oluştu (stat 577, skill 142, `equipped/bag`: MF, MI 12/7; WP 12/6; WG, PHD, PHB 13/6); `strSkill` 10 bayt ve beklenen ağaç baytları; `strItem` 584 bayt, yuvalar planla birebir; `strSerial`/`strQuest`/`strItemTime` 584/600/584 bayt sıfır; `LOAD_USER_DATA` bir bot için sunucunun beklediği 38 sütunlu satırı döndürdü (sınıf 106, Level 80, Zone 71, `Exp 1898706631`); betik ikinci kez çalıştırıldığında aynı sonuç (idempotent); rollback sonrası bot ve diğer satır sayıları ilk durumla aynı (`USERDATA` 6, `ACCOUNT_CHAR` 4, `WAREHOUSE` 4). Ardından bot adlı sahte satırla sahiplik korumaları sınandı (uygulama ve rollback reddetti) ve veritabanı başlangıç durumuna döndürüldü (bot satırı 0).
+- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+
+```
+plans/F1-04-bot-karakter-kurulum-betigi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+
+0. BU TURDA VERITABANINA BAĞLANMAN SERBEST (proje sahibi izni, 2026-10-02; main'deki güncel AGENTS.md §2.7 de böyle der, bu dalda eski metin kalmıştır). Plan §3/§8'deki "DB'ye bağlanma" maddeleri bu tur için geçersizdir. Bağlantı: SQLCMD="/mnt/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/130/Tools/Binn/SQLCMD.EXE"; "$SQLCMD" -S '.\SQLEXPRESS' -E -d FDP_kn_online ... (betik yolu için wslpath -w). Yalnızca 12 bot satırına yaz; başka tablo/satıra yazma; .fdp_sql_password dosyasını okuma.
+
+1. db/002_bot_characters.sql satır 240-242: her REVERSE(...) ifadesini dıştan CAST ile sar (REVERSE varchar döndürür): "+ CAST(REVERSE(CAST(@itemID AS varbinary(4))) AS varbinary(4))", "+ CAST(REVERSE(CAST(@dur AS varbinary(2))) AS varbinary(2))", "+ CAST(REVERSE(CAST(@cnt AS varbinary(2))) AS varbinary(2));".
+2. Aynı dosya satır 254 ve 268: her REPLICATE(0x00, N) ifadesini CONVERT(varbinary(N), REPLICATE(CAST(0x00 AS varchar(1)), N)) ile değiştir (N = 1536, 1536, 584, 600, 584 — toplam 5 yer; satır 254'te iki, satır 268'de üç tane).
+3. Aynı dosya satır 285 ve 334: "(u.Strong + u.Sta + u.Dex + u.Intel + u.Cha)" ifadesini "(CAST(u.Strong AS int) + u.Sta + u.Dex + u.Intel + u.Cha)" yap (tinyint toplamı taşıyor).
+4. Aynı dosya satır 346 civarı: sonuç sorgusundaki CROSS APPLY bloğunu, toplamayı dış sorguya taşıyarak yeniden yaz: iç tabloda "SELECT n.slot, CAST(SUBSTRING(u.strItem, n.slot * 8 + 1, 4) AS int) AS id FROM (VALUES (0),...,(41)) AS n(slot)" (u dış referans yalnızca burada), dışında "SELECT SUM(CASE WHEN d.slot < 14 AND d.id <> 0 THEN 1 ELSE 0 END) AS equipped_items, SUM(CASE WHEN d.slot >= 14 AND d.id <> 0 THEN 1 ELSE 0 END) AS bag_items FROM (<iç tablo>) AS d". Sütun adları (equipped_items, bag_items) ve ORDER BY aynı kalsın.
+5. Çalıştır ve çıktıları rapora yapıştır (kırpma): (a) önce bot olmayan satır sayıları: SELECT (SELECT COUNT(*) FROM USERDATA WHERE strUserID NOT LIKE 'Bot%'), (SELECT COUNT(*) FROM ACCOUNT_CHAR WHERE strAccountID NOT LIKE 'BotAcc%'), (SELECT COUNT(*) FROM WAREHOUSE WHERE strAccountID NOT LIKE 'BotAcc%'); (b) sqlcmd -b -v Upgrade=7 -i db/002_bot_characters.sql — 12 satırlık sonuç, beklenen equipped_items/bag_items: BotMF_*/BotMI_* 12/7, BotWP_* 12/6, BotWG_*/BotPHD_*/BotPHB_* 13/6, stat_sum 577, skill_sum 142; (c) aynı komut ikinci kez (aynı sonuç, hata yok); (d) sqlcmd -b -i db/002_bot_characters_rollback.sql (remaining_* = 0) ve (a) sayılarının aynı çıkması; (e) rollback ikinci kez (hata yok); (f) sqlcmd -b -i db/002_bot_characters_rollback.sql sonrası DB temiz kalsın (bot satırı 0).
+6. Bayt doğrulaması: betiği tekrar uygulayıp (Upgrade=7) bir bot için strItem ve strSkill'i şu sorguyla oku: SELECT CONVERT(varchar(1200), strItem, 2), CONVERT(varchar(20), CAST(strSkill AS varbinary(10)), 2), DATALENGTH(strItem), DATALENGTH(strSkill) FROM USERDATA WHERE strUserID = 'BotWP_K' (sqlcmd'de -W kullan, -y ile birlikte kullanma: birbirini dışlar). Python ile 73 yuvayı struct.unpack('<IhH', ...) ile çöz; dolu yuvaları ve strSkill baytlarını (BotWP_K için 0,0,0,0,0,70,0,52,20,0) rapora yaz ve plan §5.1 ile karşılaştır. Sonra rollback çalıştırıp DB'yi temiz bırak.
+7. Raporuna "Tur 2" ekle; geçici dosyaları (/tmp/opencode altında) depoya ekleme; Durum satırını UYGULANDI yap. Başka dosyaya dokunma.
+```
