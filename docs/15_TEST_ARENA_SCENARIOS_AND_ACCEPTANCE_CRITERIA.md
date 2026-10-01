@@ -87,7 +87,7 @@ Her senaryo: kurulum, adımlar, ölçülen metrikler, tekrar sayısı ve ilgili 
 
 | Kimlik | Senaryo | Ölçüm / Geçer |
 |---|---|---|
-| T-ENV-01 | Temiz kurulum: derleme, DB geri yükleme, ini, sunucuların başlaması | Üç sunucu ayakta; bir insan istemcisi Ronark'a girebiliyor — *kısmen:* derleme/DB/ini/ODBC `tools/check-env.sh` ile 22/22 (F0-01); **sunucuların başlaması** `tools/run-servers.sh start` ile kanıtlandı (F0-02 Doğrulama Tur 2, 2026-10-01: üç sunucu ayakta, GameServer↔AIServer bağlı, her biri 1–5 sn'de hazır, `start` ~13–17 sn) `[V]`; **istemciyle Ronark'a giriş açık** (insan istemcisi gerekir) |
+| T-ENV-01 | Temiz kurulum: derleme, DB geri yükleme, ini, sunucuların başlaması | Üç sunucu ayakta; bir insan istemcisi Ronark'a girebiliyor — *kısmen:* derleme/DB/ini/ODBC `tools/check-env.sh` ile 22/22 (F0-01); **sunucuların başlaması** `tools/run-servers.sh start` ile kanıtlandı (F0-02 Doğrulama Tur 2, 2026-10-01: üç sunucu ayakta, GameServer↔AIServer bağlı, her biri 1–5 sn'de hazır, `start` ~13–17 sn) `[V]`; **istemciyle Ronark Land'e giriş yapıldı, sorun yok** (proje sahibi, 2026-10-02; ekran görüntüsü/saat notu yok, beyan) `[Ö]` → T-ENV-01 **tamam** |
 | T-ENV-02 | Release ve Debug derleme farkları (blink, quest kapısı, zaman aşımı) belgelenir | Fark tablosu — **TEST_EDILDI/GEÇTİ 2026-10-01**, kanıt: `plans/F0-01-…md`; tablo `docs/02` §2.1 |
 | T-ENV-ARENA-01 | Arena A'da (ve yedek B'de) 30 dk canavar/NPC gözlemi | Arena + 120 m içinde varlık 0 |
 | T-ENV-ARENA-02 | Arena koordinatlarının oyun içinde doğrulanması (GM ile yürüme, yükseklik, engeller) | Koordinat ve görüntü kaydı |

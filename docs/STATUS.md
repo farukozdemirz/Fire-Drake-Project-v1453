@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F1-01 planı proje sahibinin kararıyla F0 kabulünden önce yazıldı) (F0-01 KAPANDI; F0-02 DOĞRULANDI (Tur 2), `main`'e birleşti. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
+F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR → çıkış koşulları karşılandı, faz kabulü (proje sahibi) bekliyor. F0-01 ve F0-02 KAPANDI; T-ENV-01 tamam (istemciyle Ronark Land'e giriş 2026-10-02'de proje sahibi tarafından yapıldı, sorun yok). F1-01 (paket izleyici) F0 kabulünden önce yapıldı ve KAPANDI.
 
 ## Faz tablosu
 
@@ -65,13 +65,13 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 | Konu | Etki | Sahibi | Not |
 |---|---|---|---|
-| T-ENV-01 kalanı: insan istemcisiyle Ronark Land'e giriş | F0 çıkış koşulu; DeepSeek/Claude yapamaz (istemci GUI) | Proje sahibi | Sunucular `tools/run-servers.sh start` ile (F0-02 sonrası) veya elle açıkken `C:\dev\fdp\Client\KnightOnline.exe` ile giriş, Ronark'a geçiş; kanıt: ekran görüntüsü veya tarih/saat notu → `docs/15` T-ENV-01 |
+| (açık blokaj yok) | | | T-ENV-01 kalanı kapandı, 2026-10-02 |
 
 ## Sıradaki adımlar
 
-1. Tamamlandı: birleştirme (`main` @ `93d0dcf`, push yok) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi.
-2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
-3. F1-02 planı (Claude): insan istemcisiyle zamanlama kayıt oturumu (`--packet-trace` derlemesi; T-MECH-CLIENT-01..04). F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
+1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
+2. Claude: F0 faz sonuç raporu taslağı (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`); proje sahibi F0'ı kabul eder (`KABUL_EDILDI`).
+3. Claude: F1-02 planı (`/plan-olustur`): insan istemcisiyle zamanlama kayıt oturumu (`--packet-trace` derlemesi; T-MECH-CLIENT-01..04).
 
 ## Otonom döngü
 
