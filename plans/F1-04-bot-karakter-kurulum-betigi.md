@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-04` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-03 (KAPANDI; `db/` klasörü ve betik düzeni oradan) |
@@ -500,3 +500,30 @@ plans/F1-04-bot-karakter-kurulum-betigi.md — Doğrulama Turu 1 düzeltmeleri. 
 6. Bayt doğrulaması: betiği tekrar uygulayıp (Upgrade=7) bir bot için strItem ve strSkill'i şu sorguyla oku: SELECT CONVERT(varchar(1200), strItem, 2), CONVERT(varchar(20), CAST(strSkill AS varbinary(10)), 2), DATALENGTH(strItem), DATALENGTH(strSkill) FROM USERDATA WHERE strUserID = 'BotWP_K' (sqlcmd'de -W kullan, -y ile birlikte kullanma: birbirini dışlar). Python ile 73 yuvayı struct.unpack('<IhH', ...) ile çöz; dolu yuvaları ve strSkill baytlarını (BotWP_K için 0,0,0,0,0,70,0,52,20,0) rapora yaz ve plan §5.1 ile karşılaştır. Sonra rollback çalıştırıp DB'yi temiz bırak.
 7. Raporuna "Tur 2" ekle; geçici dosyaları (/tmp/opencode altında) depoya ekleme; Durum satırını UYGULANDI yap. Başka dosyaya dokunma.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F1-04` @ `90a291a` (Tur 2 düzeltme commit'i `3ad1e2e`; yalnızca `db/002_bot_characters.sql` değişti, +20/−15 satır)
+- Kriter sonuçları (gerçek `FDP_kn_online` üzerinde bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1–K4, K6, K7 | ✔ | Tur 1'de doğrulanmıştı; rollback ve README değişmedi, kapsam: Tur 2 farkı yalnızca betik ve plan dosyası; çalışma ağacı temiz |
+| K5 little-endian, 584 bayt | ✔ (Tur 1'de ✘) | `:240-242` üç `CAST(REVERSE(CAST(...)))`; betik derlendi ve çalıştı |
+| K8 çalışma zamanı | ✔ (Tur 1'de ✘) | Aşağıda |
+
+- **K8 bağımsız doğrulama (depodaki betikle):**
+  - `Upgrade=7` uygula → 12 satır, exit 0; `stat_sum` 577, `skill_sum` 142, `equipped/bag`: MF/MI 12/7, WP 12/6, WG/PHD/PHB 13/6.
+  - 12 botun `strItem` (584 bayt, 73 yuva × `<IhH`), `strSkill` (10 bayt), `strSerial`/`strQuest`/`strItemTime` (584/600/584 sıfır) Python ile çözüldü; yuva, ID, `ITEM.Duration`, adet ve profil skill baytları planla birebir (`ALL OK`, 12 satır).
+  - İkinci uygulama aynı sonuç (idempotent); bot satırı 12/12/12, bot olmayan satırlar 6/4/4 değişmedi.
+  - `LOAD_USER_DATA('BotAcc_MF_E','BotMF_E')` sunucunun beklediği satırı döndürdü (Nation 2, Race 12, Class 210, Level 80, Exp 1898706631, Zone 71, PX 127400, PZ 89000).
+  - `Upgrade=0` ve `Upgrade=8` de hatasız uygulanıyor, `Upgrade=7`'den farklı ID üretiyor; `Upgrade` verilmezse ve `Upgrade=5` ile betik reddediyor (Tur 1'de görüldü).
+  - Rollback: bot satırı 0, bot olmayan satırlar 6/4/4; ikinci rollback hatasız. Bot adlı sahte satırla sahiplik korumaları Tur 1'de sınandı (uygulama ve rollback reddetti).
+  - Depodaki betik, Tur 1'de benim hazırladığım prototiple yalnızca satır bölünmesinde farklı; içerik aynı.
+  - Bırakılan durum: bot satırı 0 (DB başlangıç durumunda).
+- Bulgular: engelleyici yok.
+  1. **Not:** `.gitattributes`'ta `*.sql text eol=lf` kuralı yok (F1-03'teki 001 dosyaları da çalışma ağacında CRLF'e dönebiliyor). Betik CRLF'te de çalışır; yine de ekleyeceğim (main'de, plan kapsamı dışı).
+  2. **Not:** `Hp/Mp` başlangıç değerinin girişte maks'a yükselip yükselmediği, `ITEM.Race` ulus kısıtları ve istemcide kuşanılabilirlik (T-DATA-02, Q-05) hâlâ ölçülmedi; planın §8'inde zaten bilinen belirsizlik olarak yazılı.
+  3. **Not (dürüstlük):** DeepSeek'in Tur 2 raporundaki sayılar ve çıktılar benim çalıştırmamla örtüşüyor.
+- Düzeltme talimatı: yok.
