@@ -202,50 +202,109 @@ GetZoneID()      -> uint8              GameServer/Unit.h:55
 ```
 Kanca, `User.cpp` içinde `return true;` ile biten üç giriş öncesi dalın (crypto/hesap/karakter seçimi) **altında**, `// Otherwise, assume we're authed & in-game.` yorumunun hemen üstündedir; login/karakter paketleri izleyiciye ulaşmaz (K5, fark aşağıda).
 
-**Adım 2/6 — vcxproj + filters farkı**
+**Adım 2/6 — vcxproj + filters farkı (tam)**
 ```
 $ git diff main...bot/F1-01 -- GameServer/proj-GameServer.vcxproj
+diff --git a/GameServer/proj-GameServer.vcxproj b/GameServer/proj-GameServer.vcxproj
+index a7cdd7a..cd2d7a5 100644
+--- a/GameServer/proj-GameServer.vcxproj
++++ b/GameServer/proj-GameServer.vcxproj
 @@ -41,6 +41,7 @@
    <PropertyGroup Label="UserMacros" />
    <PropertyGroup>
      <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
 +    <FdpTraceDefs Condition="'$(FdpPacketTrace)'=='1'">FDP_PACKET_TRACE;</FdpTraceDefs>
-...
--      <PreprocessorDefinitions>WIN32;GAMESERVER;..._DEBUG;...%(PreprocessorDefinitions)</PreprocessorDefinitions>
-+      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;..._DEBUG;...%(PreprocessorDefinitions)</PreprocessorDefinitions>
-...
--      <PreprocessorDefinitions>WIN32;GAMESERVER;...NDEBUG;...%(PreprocessorDefinitions)</PreprocessorDefinitions>
-+      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;...NDEBUG;...%(PreprocessorDefinitions)</PreprocessorDefinitions>
-...
+     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\bin\$(PlatformTarget)-$(Configuration)\Server\</OutDir>
+     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\obj\$(PlatformTarget)-$(Configuration)\Server\$(ProjectName)\</IntDir>
+@@ -59,7 +60,7 @@
+     </Midl>
+     <ClCompile>
+       <Optimization>Disabled</Optimization>
+-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+       <WarningLevel>Level3</WarningLevel>
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+@@ -97,7 +98,7 @@
+     <ClCompile>
+       <Optimization>MaxSpeed</Optimization>
+       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+@@ -186,6 +187,7 @@
+     <ClCompile Include="NPCHandler.cpp" />
+     <ClCompile Include="CharacterHandler.cpp" />
      <ClCompile Include="PartyHandler.cpp" />
 +    <ClCompile Include="PacketTrace.cpp" />
-...
+     <ClCompile Include="QuestHandler.cpp" />
+     <ClCompile Include="Region.cpp" />
+     <ClCompile Include="RentalHandler.cpp" />
+@@ -274,6 +276,7 @@
+     <ClInclude Include="MagicProcess.h" />
+     <ClInclude Include="Map.h" />
      <ClInclude Include="Npc.h" />
 +    <ClInclude Include="PacketTrace.h" />
-```
-(Tam fark `git diff main...bot/F1-01 -- GameServer/proj-GameServer.vcxproj` ile görülebilir; yalnızca `ClCompile` ana blokları değişti, Midl/ResourceCompile satırlarına dokunulmadı.)
-```
+     <ClInclude Include="Region.h" />
+     <ClInclude Include="StdAfx.h" />
+     <ClInclude Include="Unit.h" />
+
 $ git diff main...bot/F1-01 -- GameServer/proj-GameServer.vcxproj.filters
+diff --git a/GameServer/proj-GameServer.vcxproj.filters b/GameServer/proj-GameServer.vcxproj.filters
+index facc210..f32585f 100644
+--- a/GameServer/proj-GameServer.vcxproj.filters
++++ b/GameServer/proj-GameServer.vcxproj.filters
+@@ -75,6 +75,9 @@
+     <ClCompile Include="PartyHandler.cpp">
+       <Filter>Source Files\Handlers</Filter>
+     </ClCompile>
 +    <ClCompile Include="PacketTrace.cpp">
 +      <Filter>Source Files</Filter>
 +    </ClCompile>
-...
+     <ClCompile Include="FriendHandler.cpp">
+       <Filter>Source Files\Handlers</Filter>
+     </ClCompile>
+@@ -182,6 +185,9 @@
+     <ClInclude Include="Npc.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
 +    <ClInclude Include="PacketTrace.h">
 +      <Filter>Header Files</Filter>
 +    </ClInclude>
+     <ClInclude Include="Region.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
 ```
 
 **Adım 7 — `tools/build.sh` farkı ve boş-dizi testi (K11)**
 ```
 $ git diff main...bot/F1-01 -- tools/build.sh
+diff --git a/tools/build.sh b/tools/build.sh
+index afe4299..af3809a 100755
+--- a/tools/build.sh
++++ b/tools/build.sh
+@@ -1,9 +1,13 @@
+ #!/usr/bin/env bash
+ # Builds KnightOnlineServer.sln (Win32, MSVC v143) from WSL.
 -# Usage: tools/build.sh [Release|Debug]
 +# Usage: tools/build.sh [Release|Debug] [--packet-trace]
+ set -euo pipefail
+ 
  CONFIG="${1:-Release}"
 +EXTRA=()
 +if [ "${2:-}" = "--packet-trace" ]; then
 +	EXTRA+=("/p:FdpPacketTrace=1")
 +fi
-...
+ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ MSBUILD="${MSBUILD:-/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe}"
+ 
+@@ -13,4 +17,4 @@ if [ ! -f "$MSBUILD" ]; then
+ fi
+ 
+ SLN="$(wslpath -w "$ROOT/KnightOnlineServer.sln")"
 -"$MSBUILD" "$SLN" /p:Configuration="$CONFIG" /p:Platform=Win32 /p:PlatformToolset=v143 /m /nologo /v:minimal
 +"$MSBUILD" "$SLN" /p:Configuration="$CONFIG" /p:Platform=Win32 /p:PlatformToolset=v143 /m /nologo /v:minimal "${EXTRA[@]+"${EXTRA[@]}"}"
 
@@ -286,14 +345,14 @@ Geçici log depoya eklenmedi.
 
 K1 — `./tools/build.sh Release` (bayraksız), çıkış kodu `0`, son 10 satır:
 ```
-C:\...\GameServer\User.cpp(2734,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [...]
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2734,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
   ('/User.cpp' kaynak dosyası derleniyor)
   Kod üretiliyor
   1 of 13016 functions (<0.1%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
     61 functions had inline decision re-evaluated but remain unchanged
   Kodun üretilmesi tamamlandı
-  proj-GameServer.vcxproj -> C:\...\build\bin\x86-Release\Server\GameServer.exe
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
 ```
 → Buradaki `C4834` uyarıları **önceden vardı**; kanıt için değişiklikler geçici olarak `git stash` ile geri alınıp aynı derleme yapıldı:
 ```
@@ -301,26 +360,26 @@ $ git stash push -- GameServer/User.cpp GameServer/proj-GameServer.vcxproj GameS
 $ ./tools/build.sh Release
 baseline_exit=0
       2 warning C4834
-GameServer\User.cpp(2714,35): warning C4834: ...
-GameServer\User.cpp(2729,34): warning C4834: ...
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2714,35): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2729,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
 $ git stash pop
 ```
 → Taban sürümde de aynı iki uyarı (benim eklediğim satırlar yüzünden 2719/2734'e kaydı). `PacketTrace.cpp` sıfır uyarı. **Yeni uyarı yok.**
 
 K2 — `./tools/build.sh Release --packet-trace`, çıkış kodu `0`, son 10 satır:
 ```
-C:\...\GameServer\User.cpp(2734,34): warning C4834: ...
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2734,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
   ('/User.cpp' kaynak dosyası derleniyor)
   Kod üretiliyor
   25 of 13035 functions ( 0.2%) were compiled, the rest were copied from previous compilation.
     9 functions were new in current compilation
     116 functions had inline decision re-evaluated but remain unchanged
   Kodun üretilmesi tamamlandı
-  proj-GameServer.vcxproj -> C:\...\build\bin\x86-Release\Server\GameServer.exe
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
 ```
 Bayrak değişince GameServer projesi tümüyle yeniden derlendiği için dosyalardaki **mevcut** uyarılar görünür; dosya bazında dağılım:
 ```
-$ grep "warning C" ...f1-release-ptrace.log | sed -E 's/.*[\\/]([A-Za-z0-9_]+\.(cpp|c|h))\(.*warning (C[0-9]+).*/\1 \3/' | sort | uniq -c
+$ grep "warning C" /tmp/opencode/f1-release-ptrace.log | sed -E 's/.*[\\/]([A-Za-z0-9_]+\.(cpp|c|h))\(.*warning (C[0-9]+).*/\1 \3/' | sort | uniq -c
       3 AISocket.cpp C4834
       2 User.cpp C4834
       2 GameServerDlg.cpp C4267
@@ -336,7 +395,7 @@ $ grep "warning C" ...f1-release-ptrace.log | sed -E 's/.*[\\/]([A-Za-z0-9_]+\.(
 ```
 → Hiçbiri `PacketTrace.cpp`'de değil; tümü değiştirmediğim dosyalarda. Bayrağın gerçekten devrede olduğunun kanıtı — `cl` komut satırı (`/v:detailed` ile bir kez derlendi):
 ```
-CL.exe /c ... /D FDP_PACKET_TRACE /D WIN32 /D GAMESERVER /D _WINSOCK_DEPRECATED_NO_WARNINGS /D NDEBUG ... /TP /errorReport:queue PacketTrace.cpp User.cpp
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x86\CL.exe /c /I"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\../src/scripting/Lua/src" /Zi /nologo /W3 /WX- /diagnostics:column /O2 /Ob2 /Ot /Oy- /GL /D FDP_PACKET_TRACE /D WIN32 /D GAMESERVER /D _WINSOCK_DEPRECATED_NO_WARNINGS /D NDEBUG /D _WINDOWS /D _3DSERVER /D _CRT_SECURE_NO_WARNINGS /D _VC80_UPGRADE=0x0600 /D _MBCS /GF /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Yu"stdafx.h" /Fp"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\GameServer.pch" /Fo"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\\" /Fd"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\vc143.pdb" /external:W3 /Gd /TP /analyze- /FC /errorReport:queue PacketTrace.cpp User.cpp
 ```
 ve bayraklı `GameServer.exe` içinde log biçim dizgesi; bayraksız exe'de yok:
 ```
@@ -349,14 +408,14 @@ $ grep -a -o "./Logs/PacketTrace_[^\"]*" build/bin/x86-Release/Server/GameServer
 
 K3 — `./tools/build.sh Debug` (bayraksız), çıkış kodu `0`, uyarı yok, son 10 satır:
 ```
-  Lua.vcxproj -> C:\...\build\bin\x86-Debug\libs\Lua.lib
-  shared.vcxproj -> C:\...\build\bin\x86-Debug\libs\shared.lib
-  proj-LogInServer.vcxproj -> C:\...\build\bin\x86-Debug\Server\LogInServer.exe
+  Lua.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\libs\Lua.lib
+  shared.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\libs\shared.lib
+  proj-LogInServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\LogInServer.exe
   PacketTrace.cpp
   User.cpp
-  proj-AIServer.vcxproj -> C:\...\build\bin\x86-Debug\Server\AIServer.exe
+  proj-AIServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\AIServer.exe
   Kod Üretiliyor...
-  proj-GameServer.vcxproj -> C:\...\build\bin\x86-Debug\Server\GameServer.exe
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\GameServer.exe
 ```
 
 **K4 / K5 — `GameServer/` farkı**
