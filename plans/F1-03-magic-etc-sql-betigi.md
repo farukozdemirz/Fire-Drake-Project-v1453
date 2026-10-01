@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-03` (taban: `main`) |
 | Bağımlı olduğu planlar | — (F0 KABUL_EDILDI) |
@@ -236,3 +236,38 @@ $ grep -n 'Target)' db/*.sql | grep -v '\$(Target)'
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `main...bot/F1-03` @ `5c17002` (2 commit; `db/001_magic_etc_fix.sql`, `db/001_magic_etc_fix_rollback.sql`, `db/README.md`, plan dosyası)
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 dosyalar, ASCII/LF | ✔ | `file`: iki `.sql` "ASCII text", README UTF-8 |
+| K2 `UPDATE` yalnızca `WHERE Etc = 1` | ✔ | `db/001_magic_etc_fix.sql:43` tek `UPDATE ... WHERE Etc = 1`; `DROP/TRUNCATE/DELETE` yok; rollback'te tek `DELETE` yedek tablo üzerinde (`..._rollback.sql:31`) |
+| K3 hedef tablo yalnızca `$(Target)` | ✔ | `grep -n MAGIC db/*.sql` içinde `Target` içermeyen satır yok; `GO` satırları tek başına; her `BEGIN TRANSACTION` bir `COMMIT TRANSACTION` ile eşleşiyor |
+| K4 rollback yalnızca yedek satırları, `Etc=0` olanları | ✔ | `..._rollback.sql:23-28` (`WHERE m.Etc = 0` + yedek `JOIN`); yedek tablo yokken `RAISERROR` (`:15`), çalışma zamanında doğrulandı |
+| K5 kapsam | ✔ | Diff yalnızca `db/*` (3) ve plan dosyası; `git status --short` boş |
+| K6 çalışma zamanı (Claude) | ✔ | Aşağıda |
+
+- **K6 — geçici kopya tabloda çalışma zamanı doğrulaması** (`SELECT * INTO dbo.MAGIC_F103TEST FROM dbo.MAGIC_BAK_etc`; gerçek `MAGIC` ve `MAGIC_BAK_etc`'e dokunulmadı):
+
+| Adım | Beklenen | Ölçülen |
+|---|---|---|
+| Kopya | `Etc=1`: 1306, 510–523: 72, toplam 1839 | 1306 / 72 / 1839 |
+| Uygula | `etc1_remaining=0`, `etc_510_523=72`, `backup_rows=1306`, `total_rows=1839` | tam eşleşti, exit 0 |
+| Tekrar uygula (idempotent) | aynı sayılar | aynı, exit 0 |
+| Değişen satırlar | yalnızca 1306 `Etc=1` satırı, başka sütun değişmedi | 1306 değişti; `Etc≠1` iken değişen 0; `MagicNum, EnName, Type1, CastTime, ReCastTime, Range, UseItem` farkı 0 |
+| Geri al | `Etc=1` tekrar 1306, `MAGIC_BAK_etc` ile satır satır aynı, yedek 0 | 1306; `EXCEPT` iki yönde 0 satır; `backup_rows=0` |
+| Yedek tablo yokken geri al | hata | `Msg 50000 ... backup table ... not found`, exit 1 |
+| `Target` değişkeni verilmeden | hata | `'Target' scripting variable not defined`, exit 1 |
+| Uygulandıktan sonra bir satır elle `Etc=7` yapılıp geri al | o satıra dokunulmaz | `etc1_after=1305`, `backup_rows=1`, `Etc=7` hâlâ 1 satır |
+| Temizlik | test tabloları silinir; gerçek `MAGIC` aynı | `F103`/`ETC_FIX` tablosu kalmadı; `MAGIC`: `Etc=1`=0, 510–523=72, toplam 1839; `MAGIC_BAK_etc` 1839 |
+
+- Bulgular: engelleyici yok.
+  1. **Not (düşük):** `db/README.md`'de komut satırları kod çiti yerine 4 boşluk girintili ve öncesinde boş satır yok; bazı Markdown görüntüleyicilerde komutlar paragrafa karışır (içerik doğru). Sonraki `db/` değişikliğinde çitle yazılabilir.
+  2. **Not:** `001_magic_etc_fix.sql` gerçek `MAGIC` üzerinde çalıştırıldığında (şu an `Etc=1` satırı yok) yalnızca boş bir `MAGIC_ETC_FIX_BACKUP` tablosu oluşturur ve hiçbir veriyi değiştirmez. Yerelde elle yapılmış düzeltme ile betik arasındaki fark yalnızca bu yedek tablo.
+  3. **Not (dürüstlük):** DeepSeek veritabanına bağlanmadığını bildirmişti; doğrulamam rapordaki iddialarla çelişen bir şey bulmadı.
+- Düzeltme talimatı: yok.
