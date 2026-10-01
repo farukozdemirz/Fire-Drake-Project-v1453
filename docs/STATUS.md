@@ -49,6 +49,7 @@ Liste: `plans/README.md`.
 | F1-03 `MAGIC.Etc` SQL betiği | KAPANDI | `bot/F1-03` (taban: `main`); `plans/F1-03-magic-etc-sql-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 | F1-04 Bot karakter kurulum betiği | KAPANDI | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 | F1-05 Bot ekipman/ağırlık raporu | KAPANDI | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
+| F1-06 Hasar modeli ve başlangıç HP | HAZIR | `bot/F1-06` (taban: `main`); `plans/F1-06-hasar-modeli-ve-baslangic-hp.md`; DeepSeek `tools/stat-model.py` yazar, `db/002` Hp/Mp = 32000 yeniden uygular |
 
 ## Son doğrulamalar
 
@@ -79,7 +80,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Claude: F1-06 planı: kalan F1 işleri — T-MECH-DMG (hasar modeli, veri tarafı), arena A veri doğrulaması (T-ENV-ARENA-01..04 için SMD/AIServer spawn analizi) ve Hp/Mp başlangıç sorusu; ikinci insan zamanlama oturumu (`pri-cast`, `mag-cast`, `war-combo`, `war-move`) proje sahibiyle.
+1. Proje sahibi: opencode'a `plans/F1-06-hasar-modeli-ve-baslangic-hp.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula` (DOĞRULANDI ise Claude birleştirip push'lar). Sonra Claude: F1-07 büyü/heal hasarı modeli (mage/priest), arena A doğrulama protokolü ve ikinci insan zamanlama oturumu planı.
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
