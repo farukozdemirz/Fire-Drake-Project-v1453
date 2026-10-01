@@ -51,6 +51,7 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 |---|---|---|---|---|
 | [F0-01](F0-01-ortam-dogrulama-araclari.md) | Ortam doğrulama araçları ve Debug/Release farkı raporu | F0 | KAPANDI (2026-10-01, `main` @ `43d3500`) | `bot/F0-01` |
 | [F0-02](F0-02-sunucu-calistirma-betigi.md) | Sunucu çalıştırma betiği (start / stop / status) | F0 | DOĞRULANDI (2026-10-01, Doğrulama Turu 2) | `bot/F0-02` (taban: `main`) |
+| [F1-01](F1-01-paket-izleyici.md) | Paket izleyici (`FDP_PACKET_TRACE`, derleme bayrağıyla kapalı) ve özet betiği | F1 | HAZIR (2026-10-01) | `bot/F1-01` (taban: `bot/F0-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 

@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F0-01 KAPANDI; F0-02 DOĞRULANDI (Tur 2), birleştirme bekliyor. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
+F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR (F1-01 planı proje sahibinin kararıyla F0 kabulünden önce yazıldı) (F0-01 KAPANDI; F0-02 DOĞRULANDI (Tur 2), birleştirme bekliyor. F0 çıkışı için ayrıca T-ENV-01'in istemciyle Ronark'a giriş kısmı elle yapılmalı)
 
 ## Faz tablosu
 
@@ -39,6 +39,7 @@ Liste: `plans/README.md`.
 |---|---|---|
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
 | F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | DOĞRULANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
+| F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | HAZIR | `bot/F1-01` (taban: `bot/F0-02`); `plans/F1-01-paket-izleyici.md`; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
 
 ## Son doğrulamalar
 
@@ -65,11 +66,12 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 |---|---|---|---|
 | T-ENV-01 kalanı: insan istemcisiyle Ronark Land'e giriş | F0 çıkış koşulu; DeepSeek/Claude yapamaz (istemci GUI) | Proje sahibi | Sunucular `tools/run-servers.sh start` ile (F0-02 sonrası) veya elle açıkken `C:\dev\fdp\Client\KnightOnline.exe` ile giriş, Ronark'a geçiş; kanıt: ekran görüntüsü veya tarih/saat notu → `docs/15` T-ENV-01 |
 
-## Sıradaki 3 adım
+## Sıradaki adımlar
 
-1. Proje sahibi: `bot/F0-02`'yi `main`'e birleştirir (ve onayıyla push). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
-2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
-3. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
+1. Proje sahibi: opencode'a `plans/F1-01-paket-izleyici.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`.
+2. Proje sahibi: `bot/F0-02`'yi `main`'e birleştirir (ve onayıyla push). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
+3. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
+4. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
 
 ## Otonom döngü
 
