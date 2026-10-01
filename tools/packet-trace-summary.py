@@ -267,11 +267,15 @@ def parse_cli_records(rows):
                 "tid": tid, "delaytime": delaytime, "distance": distance,
             })
         elif opcode == 0x31:
-            if len(payload) < 23:
+            # The real client sends 21 bytes (6 data values); the server reads
+            # the missing 7th value as 0. Accept 21..23+ bytes.
+            if len(payload) < 21:
                 bad_len += 1
                 continue
             magic_op, skill, caster, target = struct.unpack("<BIhh", payload[:9])
-            data = struct.unpack("<7h", payload[9:23])
+            data_count = min((len(payload) - 9) // 2, 7)
+            data = struct.unpack("<%dh" % data_count, payload[9:9 + 2 * data_count])
+            data = data + (0,) * (7 - data_count)
             records.append({
                 "t": row["t"], "op": opcode, "magic_op": magic_op, "skill": skill,
                 "caster": caster, "target": target, "data": data,
