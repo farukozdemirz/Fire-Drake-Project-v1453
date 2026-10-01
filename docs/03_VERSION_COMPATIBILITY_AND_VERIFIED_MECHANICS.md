@@ -384,6 +384,23 @@ Dönem kaynakları kombonun özünü şöyle tarif ediyor: normal saldırı ile 
 
 **İstemci animasyonu ile sunucu kabulü arasındaki fark:** İstemcide görülen vuruş animasyonu sunucunun kabul ettiği saldırıyı göstermez. Örneğin aynı saniyedeki ikinci R, istemcide animasyon oynatsa da sunucuda `CanCastRHit` nedeniyle sessizce düşer. Telemetri, gönderilen ile kabul edilen aksiyonu ayrı sayar ([16](16_TELEMETRY_DEBUGGING_AND_PERFORMANCE.md) MET-ACT-02).
 
+### 13.2 Ölçülen istemci değerleri (F1-02 oturumu, 2026-10-02) `[V]` (tek karakter, tek oturum)
+
+Kaynak: `tools/trace-session.sh collect war-r` kaydı (sunucuya varış zamanı, yerel ağ; 153 paket, tek warrior, silah gecikmesi 164 olan bir ağır silah, çoğunlukla R). Tek oturum olduğu için değerler **ön bulgudur**; diğer silahlar ve sınıflarla tekrarlanana kadar CLI tablosundaki `[A]` etiketi tamamen kalkmaz.
+
+| Kimlik | Ölçüm | Sonuç | Yorum |
+|---|---|---|---|
+| CLI-01 | R aralığı | 27 vuruşta aralık **1640–1644 ms** (p50 1642) | Silah `Delay=164` ile **birebir**: aralık = `Delay × 10 ms` (+0–4 ms gecikme). Sunucunun 1 sn tavanının (MEC-R-07) çok üstünde, istemci kendi sınırını uyguluyor |
+| CLI-01 | `delaytime` alanı | 174 (27/27) | `Delay + 10` formülü **doğrulandı** (`164 + 10`) |
+| T-MECH-CLIENT-02 | `distance` alanı | 19 (27/27); silah `Range = 20` | Mesafe değeri sabit çıktı; ölçeği (hedefe gerçek mesafe mi, silah menzili mi) henüz belirsiz `[A]`: farklı mesafelerden vurularak ayrıca ölçülecek |
+| T-MECH-CLIENT-02 | `type` / `result` | 1 / 1 (27/27) | Normal saldırı |
+| CLI-12 | `WIZ_SPEEDHACK_CHECK` sıklığı | **10,0 sn** (p50 10002 ms, yük 5 bayt: `u8 bayrak, f32` istemci saniyesi, her pakette +10,0) | Bot aynı sıklıkta ve aynı yük düzeniyle gönderebilir |
+| Q-18 | `WIZ_TARGET_HP` isteği | Hedef seçiliyken **2,0 sn**'de bir (p50 2001 ms, `echo=0`); hedef seçildiği anda 1 ms arayla iki paket (`echo=1` ve `echo=0`) | Saldırıdan bağımsız, hedef seçiliyken sürekli |
+| CLI-05 / Q-02 | `WIZ_MOVE` | Hareket sırasında ~1,5 sn'de bir paket; `speed` alanı koşuda **67** (yerinde 0); hesaplanan koşu hızı medyan **6,75 m/s** (≈ alan/10) | Hız alanı 0,1 m/s birimi. `p95=88,9 m/s` sıçramalar (ışınlanma/zone) kaynaklı; temiz koşu ölçümü `war-move` etiketiyle yapılacak |
+| CLI-06 | Pot (HP 720, skill 490014) aralığı | En kısa 2675 ms (8 aralık) | Veri `ReCastTime = 20` (2,0 sn) ile uyumlu, ama oyuncu en hızlı basmadı; `pot` etiketiyle yeniden ölçülecek |
+
+**Paket düzeni düzeltmesi (§14):** Gerçek istemci `WIZ_MAGIC_PROCESS` paketini **21 bayt** gönderiyor (`u8 opcode, u32 skill, i16 caster, i16 target, i16 data[6]`); sunucu 7. alanı okuyamadığı için 0 sayıyor (`shared/ByteBuffer.h:110-116`, taşan okuma `0` döner). Pot ve skill paketlerinde bu oturumda yalnızca `opcode 3` (EFFECTING) görüldü, `CASTING` (opcode 1) yok; `caster` ve `target` 0 idi. Cast süreli skill'lerin `CASTING → EFFECTING` zamanlaması (CLI-03) hâlâ ölçülmedi.
+
 ## 14. Bot aksiyonları için paketler `[D]`
 
 | Aksiyon | Opcode | Payload | Kaynak |
@@ -481,3 +498,4 @@ Tam liste: `appendix/research/B_combat.md` Tablo A.
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | §13.2 ölçülen istemci değerleri (F1-02 `war-r` oturumu); MAGIC paketi 21 bayt notu |
