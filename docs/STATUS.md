@@ -19,6 +19,7 @@ F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 20
 
 | Faz | Durum | Son rapor | Kabul commit |
 |---|---|---|---|
+| 2026-10-02 | F1-05 | DOĞRULANDI (Tur 1) | 7/7 kriter ✔; araç bağımsız çalıştırıldı (fail_count=0, 269 satır), ağırlık elle yeniden hesaplandı. Bulgu: envanter şablonundaki 100 × 1440 HP pot (ağırlık 100) 8/12 botu ağırlık sınırının üstüne çıkarıyor; MB-12 kod düzeyinde doğrulandı |
 | 2026-10-02 | F1-04 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; gerçek DB'de bağımsız doğrulandı: 12 bot, bayt çözümü planla birebir, `LOAD_USER_DATA` satırı dönüyor, idempotent, `Upgrade` 0/7/8, rollback temiz (bot olmayan satırlar 6/4/4 değişmedi) |
 | 2026-10-02 | F1-04 | DÜZELTME GEREKLİ (Tur 1) | 6/8 kriter ✔. Betik gerçek DB'de 4 SQL hatasıyla çalışmıyor (`REVERSE`/`REPLICATE` `varchar` döndürür, `tinyint` toplamı taşar, `CROSS APPLY` toplama hatası). Düzeltilmiş prototip DB'de doğrulandı: 12 bot, bayt çözümü planla birebir, `LOAD_USER_DATA` satırı döndürüyor, idempotent, rollback temiz. Düzeltme talimatı plan dosyasının sonunda |
 | 2026-10-02 | F1-03 | DOĞRULANDI (Tur 1) | 6/6 kriter ✔; betikler geçici kopya tabloda çalıştırıldı: uygula → tekrar uygula (idempotent) → geri al, `MAGIC_BAK_etc` ile satır satır aynı; elle değiştirilmiş satıra dokunulmuyor. Gerçek `MAGIC` değişmedi |
@@ -47,7 +48,7 @@ Liste: `plans/README.md`.
 | F1-02 Zamanlama oturumu araçları | KAPANDI | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 | F1-03 `MAGIC.Etc` SQL betiği | KAPANDI | `bot/F1-03` (taban: `main`); `plans/F1-03-magic-etc-sql-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 | F1-04 Bot karakter kurulum betiği | KAPANDI | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
-| F1-05 Bot ekipman/ağırlık raporu | HAZIR | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
+| F1-05 Bot ekipman/ağırlık raporu | DOĞRULANDI | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
 
 ## Son doğrulamalar
 

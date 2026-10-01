@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-05` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-04 (KAPANDI, `db/002_bot_characters.sql`) |
@@ -115,17 +115,430 @@ Claude doğrulaması: betik yeniden çalıştırılır, çıktı elle üç bot i
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-### Tur 1
+### Tur 1 — 2026-10-02
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-05` (taban: `main` @ `3f53a9f`)
+  - `afa8550` — `[F1-05] Bot ekipman ve agirlik raporu araci` (`tools/bot-gear-report.py`, 342 satır)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri:
+  - `tools/bot-gear-report.py` (yeni, ASCII + LF): botları ve `ITEM` verisini okuyup A/B/C/D bölümlerini basar; `--selftest` DB'siz çalışır.
+  - `plans/F1-05-bot-ekipman-agirlik-raporu.md`: yalnızca `Durum` satırı ve bu rapor.
+  - `GameServer/`, `shared/`, `db/*.sql`, `docs/**` değişmedi.
+- Veritabanına yalnızca `db/002_bot_characters.sql` ile 12 bot satırı yazıldı; başka tablo/satıra yazılmadı, `.fdp_sql_password` okunmadı.
+
+**Adım 1 — kod satırı doğrulaması (plan §2 ile uyumlu, kayma yok)**
+```
+ItemEquipAvailable          GameServer/ItemHandler.cpp:527
+  Level >= ReqLevel         :529      Level <= ReqLevelMax   :530
+  Rank >= ReqRank           :531      Title >= ReqTitle      :532
+  STR/STA/DEX/INT/CHA       :533-537
+GetStat (temel)             GameServer/User.h:470
+GetStatWithItemBonus        GameServer/User.h:498
+SetSlotItemValue            GameServer/User.cpp:1279
+  cospre çanta bonusu       :1317     item ağırlığı          :1323
+  yalnızca ekipman bonusu   :1327-1334
+m_sMaxWeight formülü        GameServer/User.cpp:2184
+CheckWeight                 GameServer/ItemHandler.cpp:245
+m_bMaxWeightAmount          GameServer/User.h:234 (uint8)
+BUFF_TYPE_WEIGHT atamaları  GameServer/MagicProcess.cpp:373,:729
+```
+
+**Adım 2 — botları uygula (K2)**
+```
+$ (once) SELECT ud_nonbot, ac_nonbot, wh_nonbot
+6 4 4                       exit=0
+
+$ "$SQLCMD" ... -b -W -s '|' -v Upgrade=7 -i db/002_bot_characters.sql
+char|account|nation|race|class|level|stat_sum|skill_sum|zone|loyalty|equipped_items|bag_items
+----|-------|------|----|-----|-----|--------|---------|----|-------|--------------|---------
+BotMF_E|BotAcc_MF_E|2|12|210|80|577|142|71|1000|12|7
+BotMF_K|BotAcc_MF_K|1|3|110|80|577|142|71|1000|12|7
+BotMI_E|BotAcc_MI_E|2|12|210|80|577|142|71|1000|12|7
+BotMI_K|BotAcc_MI_K|1|3|110|80|577|142|71|1000|12|7
+BotPHB_E|BotAcc_PHB_E|2|12|212|80|577|142|71|1000|13|6
+BotPHB_K|BotAcc_PHB_K|1|4|112|80|577|142|71|1000|13|6
+BotPHD_E|BotAcc_PHD_E|2|12|212|80|577|142|71|1000|13|6
+BotPHD_K|BotAcc_PHD_K|1|4|112|80|577|142|71|1000|13|6
+BotWG_E|BotAcc_WG_E|2|11|206|80|577|142|71|1000|13|6
+BotWG_K|BotAcc_WG_K|1|1|106|80|577|142|71|1000|13|6
+BotWP_E|BotAcc_WP_E|2|11|206|80|577|142|71|1000|12|6
+BotWP_K|BotAcc_WP_K|1|1|106|80|577|142|71|1000|12|6
+exit=0
+
+$ (sonra) SELECT ud_nonbot, ac_nonbot, wh_nonbot
+6 4 4                       exit=0
+$ SELECT COUNT(*) FROM USERDATA WHERE strUserID LIKE 'Bot%'
+12                          exit=0
+```
+→ Bot olmayan satır sayıları değişmedi; botlar **uygulanmış bırakıldı** (F2 için gerekli).
+
+**Adım 3/4 — `tools/bot-gear-report.py`**
+
+`--selftest` (K1):
+```
+$ python3 tools/bot-gear-report.py --selftest
+selftest OK
+selftest_exit=0
+```
+K4 sorgu kontrolü:
+```
+$ grep -n "USERDATA" tools/bot-gear-report.py
+28:BOT_QUERY = "SELECT RTRIM(strUserID), Nation, Race, [Class], Level, [Rank], Title, Strong, Sta, Dex, Intel, Cha, CONVERT(varchar(1200), strItem, 2) FROM USERDATA WHERE strUserID LIKE 'Bot%' ORDER BY strUserID"
+```
+Betikte tek `USERDATA` sorgusu var ve yalnızca `LIKE 'Bot%'` seçiyor. Çıktıdaki tüm bot alanı (`A`/`C`/`D` satırlarının ikinci sütunu) `Bot` ile başlıyor (`grep -vc '^Bot'` = 0); gerçek oyuncu adı yok.
+
+Rapor çıktısı (tam, kırpılmadı; `python3 tools/bot-gear-report.py`, çıkış 0; 269 satır — A 150, B 29, C 72, D 12 satır + başlık/özet):
+```
+== A ==
+A BotMF_E slot=0 item=310310007 Cleric Earring OK
+A BotMF_E slot=1 item=266003007 Complete Helmet (+7) OK
+A BotMF_E slot=2 item=310310007 Cleric Earring OK
+A BotMF_E slot=3 item=320310126 Iron Necklace OK
+A BotMF_E slot=4 item=266001007 Complete Robe (+7) OK
+A BotMF_E slot=6 item=181110007 Elixir Staff (+7) OK
+A BotMF_E slot=7 item=340410109 Glass Belt OK
+A BotMF_E slot=9 item=330150256 Ring of Magic OK
+A BotMF_E slot=10 item=266002007 Complete Pants (+7) OK
+A BotMF_E slot=11 item=330150256 Ring of Magic OK
+A BotMF_E slot=12 item=266004007 Complete Glove (+7) OK
+A BotMF_E slot=13 item=266005007 Complete Boots (+7) OK
+A BotMF_K slot=0 item=310310007 Cleric Earring OK
+A BotMF_K slot=1 item=266003007 Complete Helmet (+7) OK
+A BotMF_K slot=2 item=310310007 Cleric Earring OK
+A BotMF_K slot=3 item=320310126 Iron Necklace OK
+A BotMF_K slot=4 item=266001007 Complete Robe (+7) OK
+A BotMF_K slot=6 item=181110007 Elixir Staff (+7) OK
+A BotMF_K slot=7 item=340410109 Glass Belt OK
+A BotMF_K slot=9 item=330150256 Ring of Magic OK
+A BotMF_K slot=10 item=266002007 Complete Pants (+7) OK
+A BotMF_K slot=11 item=330150256 Ring of Magic OK
+A BotMF_K slot=12 item=266004007 Complete Glove (+7) OK
+A BotMF_K slot=13 item=266005007 Complete Boots (+7) OK
+A BotMI_E slot=0 item=310310007 Cleric Earring OK
+A BotMI_E slot=1 item=266003007 Complete Helmet (+7) OK
+A BotMI_E slot=2 item=310310007 Cleric Earring OK
+A BotMI_E slot=3 item=320310126 Iron Necklace OK
+A BotMI_E slot=4 item=266001007 Complete Robe (+7) OK
+A BotMI_E slot=6 item=181110007 Elixir Staff (+7) OK
+A BotMI_E slot=7 item=340410109 Glass Belt OK
+A BotMI_E slot=9 item=330150256 Ring of Magic OK
+A BotMI_E slot=10 item=266002007 Complete Pants (+7) OK
+A BotMI_E slot=11 item=330150256 Ring of Magic OK
+A BotMI_E slot=12 item=266004007 Complete Glove (+7) OK
+A BotMI_E slot=13 item=266005007 Complete Boots (+7) OK
+A BotMI_K slot=0 item=310310007 Cleric Earring OK
+A BotMI_K slot=1 item=266003007 Complete Helmet (+7) OK
+A BotMI_K slot=2 item=310310007 Cleric Earring OK
+A BotMI_K slot=3 item=320310126 Iron Necklace OK
+A BotMI_K slot=4 item=266001007 Complete Robe (+7) OK
+A BotMI_K slot=6 item=181110007 Elixir Staff (+7) OK
+A BotMI_K slot=7 item=340410109 Glass Belt OK
+A BotMI_K slot=9 item=330150256 Ring of Magic OK
+A BotMI_K slot=10 item=266002007 Complete Pants (+7) OK
+A BotMI_K slot=11 item=330150256 Ring of Magic OK
+A BotMI_K slot=12 item=266004007 Complete Glove (+7) OK
+A BotMI_K slot=13 item=266005007 Complete Boots (+7) OK
+A BotPHB_E slot=0 item=310310007 Cleric Earring OK
+A BotPHB_E slot=1 item=286003007 Priest Chitin Shell Helmet (+7) OK
+A BotPHB_E slot=2 item=310310007 Cleric Earring OK
+A BotPHB_E slot=3 item=320310126 Iron Necklace OK
+A BotPHB_E slot=4 item=286001007 Priest Chitin Shell Pauldron (+7) OK
+A BotPHB_E slot=6 item=191110007 Priest Impact  (+7) OK
+A BotPHB_E slot=7 item=340410109 Glass Belt OK
+A BotPHB_E slot=8 item=170250256 Chitin Shield OK
+A BotPHB_E slot=9 item=330150257 Ring of Life OK
+A BotPHB_E slot=10 item=286002007 Priest Chitin Shell Pads (+7) OK
+A BotPHB_E slot=11 item=330150257 Ring of Life OK
+A BotPHB_E slot=12 item=286004007 Priest Chitin Shell Gauntlet (+7) OK
+A BotPHB_E slot=13 item=286005007 Priest Chitin Shell Boots (+7) OK
+A BotPHB_K slot=0 item=310310007 Cleric Earring OK
+A BotPHB_K slot=1 item=286003007 Priest Chitin Shell Helmet (+7) OK
+A BotPHB_K slot=2 item=310310007 Cleric Earring OK
+A BotPHB_K slot=3 item=320310126 Iron Necklace OK
+A BotPHB_K slot=4 item=286001007 Priest Chitin Shell Pauldron (+7) OK
+A BotPHB_K slot=6 item=191110007 Priest Impact  (+7) OK
+A BotPHB_K slot=7 item=340410109 Glass Belt OK
+A BotPHB_K slot=8 item=170250256 Chitin Shield OK
+A BotPHB_K slot=9 item=330150257 Ring of Life OK
+A BotPHB_K slot=10 item=286002007 Priest Chitin Shell Pads (+7) OK
+A BotPHB_K slot=11 item=330150257 Ring of Life OK
+A BotPHB_K slot=12 item=286004007 Priest Chitin Shell Gauntlet (+7) OK
+A BotPHB_K slot=13 item=286005007 Priest Chitin Shell Boots (+7) OK
+A BotPHD_E slot=0 item=310310007 Cleric Earring OK
+A BotPHD_E slot=1 item=286003007 Priest Chitin Shell Helmet (+7) OK
+A BotPHD_E slot=2 item=310310007 Cleric Earring OK
+A BotPHD_E slot=3 item=320310126 Iron Necklace OK
+A BotPHD_E slot=4 item=286001007 Priest Chitin Shell Pauldron (+7) OK
+A BotPHD_E slot=6 item=191110007 Priest Impact  (+7) OK
+A BotPHD_E slot=7 item=340410109 Glass Belt OK
+A BotPHD_E slot=8 item=170250256 Chitin Shield OK
+A BotPHD_E slot=9 item=330150257 Ring of Life OK
+A BotPHD_E slot=10 item=286002007 Priest Chitin Shell Pads (+7) OK
+A BotPHD_E slot=11 item=330150257 Ring of Life OK
+A BotPHD_E slot=12 item=286004007 Priest Chitin Shell Gauntlet (+7) OK
+A BotPHD_E slot=13 item=286005007 Priest Chitin Shell Boots (+7) OK
+A BotPHD_K slot=0 item=310310007 Cleric Earring OK
+A BotPHD_K slot=1 item=286003007 Priest Chitin Shell Helmet (+7) OK
+A BotPHD_K slot=2 item=310310007 Cleric Earring OK
+A BotPHD_K slot=3 item=320310126 Iron Necklace OK
+A BotPHD_K slot=4 item=286001007 Priest Chitin Shell Pauldron (+7) OK
+A BotPHD_K slot=6 item=191110007 Priest Impact  (+7) OK
+A BotPHD_K slot=7 item=340410109 Glass Belt OK
+A BotPHD_K slot=8 item=170250256 Chitin Shield OK
+A BotPHD_K slot=9 item=330150257 Ring of Life OK
+A BotPHD_K slot=10 item=286002007 Priest Chitin Shell Pads (+7) OK
+A BotPHD_K slot=11 item=330150257 Ring of Life OK
+A BotPHD_K slot=12 item=286004007 Priest Chitin Shell Gauntlet (+7) OK
+A BotPHD_K slot=13 item=286005007 Priest Chitin Shell Boots (+7) OK
+A BotWG_E slot=0 item=310310005 Warrior Earring OK
+A BotWG_E slot=1 item=206003007 Chitin Shell Helmet (+7) OK
+A BotWG_E slot=2 item=310310005 Warrior Earring OK
+A BotWG_E slot=3 item=320310126 Iron Necklace OK
+A BotWG_E slot=4 item=206001007 Chitin Shell Pauldron (+7) OK
+A BotWG_E slot=6 item=121310007 Graham (+7) OK
+A BotWG_E slot=7 item=340610107 Iron Belt OK
+A BotWG_E slot=8 item=170250256 Chitin Shield OK
+A BotWG_E slot=9 item=330110255 Ring of Courage OK
+A BotWG_E slot=10 item=206002007 Chitin Shell Pads (+7) OK
+A BotWG_E slot=11 item=330110255 Ring of Courage OK
+A BotWG_E slot=12 item=206004007 Chitin Shell Gauntlet (+7) OK
+A BotWG_E slot=13 item=206005007 Chitin Shell Boots (+7) OK
+A BotWG_K slot=0 item=310310005 Warrior Earring OK
+A BotWG_K slot=1 item=206003007 Chitin Shell Helmet (+7) OK
+A BotWG_K slot=2 item=310310005 Warrior Earring OK
+A BotWG_K slot=3 item=320310126 Iron Necklace OK
+A BotWG_K slot=4 item=206001007 Chitin Shell Pauldron (+7) OK
+A BotWG_K slot=6 item=121310007 Graham (+7) OK
+A BotWG_K slot=7 item=340610107 Iron Belt OK
+A BotWG_K slot=8 item=170250256 Chitin Shield OK
+A BotWG_K slot=9 item=330110255 Ring of Courage OK
+A BotWG_K slot=10 item=206002007 Chitin Shell Pads (+7) OK
+A BotWG_K slot=11 item=330110255 Ring of Courage OK
+A BotWG_K slot=12 item=206004007 Chitin Shell Gauntlet (+7) OK
+A BotWG_K slot=13 item=206005007 Chitin Shell Boots (+7) OK
+A BotWP_E slot=0 item=310310005 Warrior Earring OK
+A BotWP_E slot=1 item=206003007 Chitin Shell Helmet (+7) OK
+A BotWP_E slot=2 item=310310005 Warrior Earring OK
+A BotWP_E slot=3 item=320310126 Iron Necklace OK
+A BotWP_E slot=4 item=206001007 Chitin Shell Pauldron (+7) OK
+A BotWP_E slot=6 item=156210007 Raptor (+7) OK
+A BotWP_E slot=7 item=340610107 Iron Belt OK
+A BotWP_E slot=9 item=330110255 Ring of Courage OK
+A BotWP_E slot=10 item=206002007 Chitin Shell Pads (+7) OK
+A BotWP_E slot=11 item=330110255 Ring of Courage OK
+A BotWP_E slot=12 item=206004007 Chitin Shell Gauntlet (+7) OK
+A BotWP_E slot=13 item=206005007 Chitin Shell Boots (+7) OK
+A BotWP_K slot=0 item=310310005 Warrior Earring OK
+A BotWP_K slot=1 item=206003007 Chitin Shell Helmet (+7) OK
+A BotWP_K slot=2 item=310310005 Warrior Earring OK
+A BotWP_K slot=3 item=320310126 Iron Necklace OK
+A BotWP_K slot=4 item=206001007 Chitin Shell Pauldron (+7) OK
+A BotWP_K slot=6 item=156210007 Raptor (+7) OK
+A BotWP_K slot=7 item=340610107 Iron Belt OK
+A BotWP_K slot=9 item=330110255 Ring of Courage OK
+A BotWP_K slot=10 item=206002007 Chitin Shell Pads (+7) OK
+A BotWP_K slot=11 item=330110255 Ring of Courage OK
+A BotWP_K slot=12 item=206004007 Chitin Shell Gauntlet (+7) OK
+A BotWP_K slot=13 item=206005007 Chitin Shell Boots (+7) OK
+A_SUMMARY fail_count=0 bots_with_fail=0
+== B ==
+B item=121310007 Graham (+7) Race=0 Class=0 Kind=21 Slot=0
+B item=156210007 Raptor (+7) Race=0 Class=0 Kind=52 Slot=3
+B item=170250256 Chitin Shield Race=0 Class=0 Kind=60 Slot=2
+B item=181110007 Elixir Staff (+7) Race=0 Class=0 Kind=110 Slot=3
+B item=191110007 Priest Impact  (+7) Race=0 Class=0 Kind=41 Slot=0
+B item=206001007 Chitin Shell Pauldron (+7) Race=0 Class=6 Kind=210 Slot=5
+B item=206002007 Chitin Shell Pads (+7) Race=0 Class=6 Kind=210 Slot=6
+B item=206003007 Chitin Shell Helmet (+7) Race=0 Class=6 Kind=210 Slot=7
+B item=206004007 Chitin Shell Gauntlet (+7) Race=0 Class=6 Kind=210 Slot=8
+B item=206005007 Chitin Shell Boots (+7) Race=0 Class=6 Kind=210 Slot=9
+B item=266001007 Complete Robe (+7) Race=0 Class=10 Kind=230 Slot=5
+B item=266002007 Complete Pants (+7) Race=0 Class=10 Kind=230 Slot=6
+B item=266003007 Complete Helmet (+7) Race=0 Class=10 Kind=230 Slot=7
+B item=266004007 Complete Glove (+7) Race=0 Class=10 Kind=230 Slot=8
+B item=266005007 Complete Boots (+7) Race=0 Class=10 Kind=230 Slot=9
+B item=286001007 Priest Chitin Shell Pauldron (+7) Race=0 Class=12 Kind=240 Slot=5
+B item=286002007 Priest Chitin Shell Pads (+7) Race=0 Class=12 Kind=240 Slot=6
+B item=286003007 Priest Chitin Shell Helmet (+7) Race=0 Class=12 Kind=240 Slot=7
+B item=286004007 Priest Chitin Shell Gauntlet (+7) Race=0 Class=12 Kind=240 Slot=8
+B item=286005007 Priest Chitin Shell Boots (+7) Race=0 Class=12 Kind=240 Slot=9
+B item=310310005 Warrior Earring Race=0 Class=0 Kind=91 Slot=10
+B item=310310007 Cleric Earring Race=0 Class=0 Kind=91 Slot=10
+B item=320310126 Iron Necklace Race=0 Class=0 Kind=92 Slot=11
+B item=330110255 Ring of Courage Race=0 Class=0 Kind=93 Slot=12
+B item=330150256 Ring of Magic Race=0 Class=0 Kind=93 Slot=12
+B item=330150257 Ring of Life Race=0 Class=0 Kind=93 Slot=12
+B item=340410109 Glass Belt Race=0 Class=0 Kind=94 Slot=14
+B item=340610107 Iron Belt Race=0 Class=0 Kind=94 Slot=14
+B_SUMMARY nonzero_race=0 nonzero_class=15
+== C ==
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=0 max_weight=6750 fits=no
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=50 max_weight=0 fits=no
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=100 max_weight=6750 fits=no
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=150 max_weight=6750 fits=no
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=200 max_weight=13500 fits=yes
+C BotMF_E item_weight=10470 max_weight_base=6750 amount=255 max_weight=13500 fits=yes
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=0 max_weight=6750 fits=no
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=50 max_weight=0 fits=no
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=100 max_weight=6750 fits=no
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=150 max_weight=6750 fits=no
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=200 max_weight=13500 fits=yes
+C BotMF_K item_weight=10470 max_weight_base=6750 amount=255 max_weight=13500 fits=yes
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=0 max_weight=6750 fits=no
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=50 max_weight=0 fits=no
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=100 max_weight=6750 fits=no
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=150 max_weight=6750 fits=no
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=200 max_weight=13500 fits=yes
+C BotMI_E item_weight=10470 max_weight_base=6750 amount=255 max_weight=13500 fits=yes
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=0 max_weight=6750 fits=no
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=50 max_weight=0 fits=no
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=100 max_weight=6750 fits=no
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=150 max_weight=6750 fits=no
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=200 max_weight=13500 fits=yes
+C BotMI_K item_weight=10470 max_weight_base=6750 amount=255 max_weight=13500 fits=yes
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=0 max_weight=10250 fits=no
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=50 max_weight=0 fits=no
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=100 max_weight=10250 fits=no
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=150 max_weight=10250 fits=no
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=200 max_weight=20500 fits=yes
+C BotPHB_E item_weight=10680 max_weight_base=10250 amount=255 max_weight=20500 fits=yes
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=0 max_weight=10250 fits=no
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=50 max_weight=0 fits=no
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=100 max_weight=10250 fits=no
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=150 max_weight=10250 fits=no
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=200 max_weight=20500 fits=yes
+C BotPHB_K item_weight=10680 max_weight_base=10250 amount=255 max_weight=20500 fits=yes
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=0 max_weight=10250 fits=no
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=50 max_weight=0 fits=no
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=100 max_weight=10250 fits=no
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=150 max_weight=10250 fits=no
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=200 max_weight=20500 fits=yes
+C BotPHD_E item_weight=10680 max_weight_base=10250 amount=255 max_weight=20500 fits=yes
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=0 max_weight=10250 fits=no
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=50 max_weight=0 fits=no
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=100 max_weight=10250 fits=no
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=150 max_weight=10250 fits=no
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=200 max_weight=20500 fits=yes
+C BotPHD_K item_weight=10680 max_weight_base=10250 amount=255 max_weight=20500 fits=yes
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=0 max_weight=18200 fits=yes
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=50 max_weight=0 fits=no
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=100 max_weight=18200 fits=yes
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=150 max_weight=18200 fits=yes
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=200 max_weight=36400 fits=yes
+C BotWG_E item_weight=10867 max_weight_base=18200 amount=255 max_weight=36400 fits=yes
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=0 max_weight=18200 fits=yes
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=50 max_weight=0 fits=no
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=100 max_weight=18200 fits=yes
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=150 max_weight=18200 fits=yes
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=200 max_weight=36400 fits=yes
+C BotWG_K item_weight=10867 max_weight_base=18200 amount=255 max_weight=36400 fits=yes
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=0 max_weight=18200 fits=yes
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=50 max_weight=0 fits=no
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=100 max_weight=18200 fits=yes
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=150 max_weight=18200 fits=yes
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=200 max_weight=36400 fits=yes
+C BotWP_E item_weight=10877 max_weight_base=18200 amount=255 max_weight=36400 fits=yes
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=0 max_weight=18200 fits=yes
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=50 max_weight=0 fits=no
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=100 max_weight=18200 fits=yes
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=150 max_weight=18200 fits=yes
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=200 max_weight=36400 fits=yes
+C BotWP_K item_weight=10877 max_weight_base=18200 amount=255 max_weight=36400 fits=yes
+C_SUMMARY amount=0 fits_yes=4 amount=100 fits_yes=4 amount=50 fits_no=12
+== D ==
+D BotMF_E strB=5 staB=34 dexB=0 intelB=20 chaB=14 maxHpB=150 maxMpB=180 ac=525
+D BotMF_K strB=5 staB=34 dexB=0 intelB=20 chaB=14 maxHpB=150 maxMpB=180 ac=525
+D BotMI_E strB=5 staB=34 dexB=0 intelB=20 chaB=14 maxHpB=150 maxMpB=180 ac=525
+D BotMI_K strB=5 staB=34 dexB=0 intelB=20 chaB=14 maxHpB=150 maxMpB=180 ac=525
+D BotPHB_E strB=5 staB=34 dexB=14 intelB=20 chaB=0 maxHpB=250 maxMpB=180 ac=796
+D BotPHB_K strB=5 staB=34 dexB=14 intelB=20 chaB=0 maxHpB=250 maxMpB=180 ac=796
+D BotPHD_E strB=5 staB=34 dexB=14 intelB=20 chaB=0 maxHpB=250 maxMpB=180 ac=796
+D BotPHD_K strB=5 staB=34 dexB=14 intelB=20 chaB=0 maxHpB=250 maxMpB=180 ac=796
+D BotWG_E strB=29 staB=34 dexB=0 intelB=0 chaB=0 maxHpB=260 maxMpB=0 ac=871
+D BotWG_K strB=29 staB=34 dexB=0 intelB=0 chaB=0 maxHpB=260 maxMpB=0 ac=871
+D BotWP_E strB=29 staB=34 dexB=0 intelB=0 chaB=0 maxHpB=260 maxMpB=0 ac=715
+D BotWP_K strB=29 staB=34 dexB=0 intelB=0 chaB=0 maxHpB=260 maxMpB=0 ac=715
+```
+
+**Adım 5 — kod okuması (K6)**
+
+(a) `m_bMaxWeightAmount` kullanımlarının **tamamı**:
+```
+$ grep -n -a "m_bMaxWeightAmount" GameServer/*.cpp GameServer/*.h
+GameServer/MagicProcess.cpp:373:  TO_USER(pTarget)->m_bMaxWeightAmount = (uint8) pType->sExpPct;   (BUFF_TYPE_WEIGHT)
+GameServer/MagicProcess.cpp:729:  TO_USER(pTarget)->m_bMaxWeightAmount = 100;                      (BUFF bitişi)
+GameServer/User.cpp:2184:         ... * (m_bMaxWeightAmount <= 0 ? 1 : m_bMaxWeightAmount / 100);  (okuma)
+GameServer/User.h:234:  uint8 m_bMaxWeightAmount;                                               (bildirim)
+```
+(b) `CUser` oluşturma: `shared/KOSocketMgr.h:79` → `m_idleSessions.insert(std::make_pair(i, new T(i, this)));` (T = `CUser`, `GameServer/GameServerDlg.h:535` `KOSocketMgr<CUser> m_socketMgr;`). `new T(i, this)` değer başlatma (`new T(...)` değil) yapar; kurucu `GameServer/User.cpp:13`'te başlar ve `m_bMaxWeightAmount`'a **dokunmaz** (grep: kurucu aralığında 0 eşleşme). Kurucu yalnızca `m_sMaxWeight = 0` (`:97`) ve `m_sMaxWeightBonus = 0` (`:98`) atar; `m_bMaxWeightAmount` yalnızca savaş sırasında bir ağırlık buff'ı ile (`:373`/`:729`) atanır.
+(c) **MB-12'nin kod düzeyinde sonucu (doğrulanmış, tahmin değil):** `m_bMaxWeightAmount` başlatılmadığı için oturum açıldığında değeri **belirsizdir** (`uint8`, 0–255). `:2184`'teki tamsayı bölmesiyle etkisi: `0` → çarpan 1 (tam `base`), **`1–99` → çarpan 0 (`m_sMaxWeight = 0`; `CheckWeight` her alım/taşımada reddeder)**, `100–199` → 1, `200–255` → 2. Yani doğru davranış (×1) yalnızca bellek 0 geldiğinde tesadüfen oluşur; kesin değer çalışma zamanında ölçülmelidir (T-DATA-05/Q-21). Bu plan bunu **ölçtü, düzeltmedi**.
+
+**Kabul kriterleri öz-değerlendirmesi**
+- K1 ✔ `--selftest` → `selftest OK`, çıkış 0.
+- K2 ✔ 12 satırlık `db/002` sonuç tablosu yapıştırıldı; bot olmayan sayılar önce/sonra `6/4/4`; bot sayısı `12` (uygulanmış bırakıldı).
+- K3 ✔ A/B/C/D bölümleri ve `A_SUMMARY`/`B_SUMMARY`/`C_SUMMARY` tam yapıştırıldı: A 150 satır (6 bot ×12 + 6 bot ×13), B 28 benzersiz item satırı, C 72 satır (12×6), D 12 satır.
+- K4 ✔ Tek `USERDATA` sorgusu (`LIKE 'Bot%'`); çıktıdaki tüm bot alanları `Bot...` (0 istisna); gerçek oyuncu adı yok.
+- K5 ✔ Koşul → kod satırı eşlemesi aşağıda; `FAIL` yok (`A_SUMMARY fail_count=0 bots_with_fail=0`), dolayısıyla raporlanacak başarısız bot/parça yok.
+- K6 ✔ Üç kod okuması dosya:satır ile yukarıda; "doğrulanmış" (grep/atama listesi) ve "çalışma zamanında ölçülecek" (gerçek `m_bMaxWeightAmount` değeri) ayrı etiketlendi.
+- K7 ✔ `git diff --stat main...bot/F1-05` yalnızca `tools/bot-gear-report.py` + plan dosyası; `git status --short` boş (rapor commit'inden sonra); `file` = ASCII, CR yok.
+
+**K5 — koşul → kod satırı eşlemesi**
+
+| Bölüm A koşulu | `ItemEquipAvailable` satırı |
+|---|---|
+| `GetLevel() >= ReqLevel` | `GameServer/ItemHandler.cpp:529` |
+| `GetLevel() <= ReqLevelMax` | `:530` |
+| `m_bRank >= ReqRank` | `:531` |
+| `m_bTitle >= ReqTitle` | `:532` |
+| `GetStat(STR) >= ReqStr` | `:533` |
+| `GetStat(STA) >= ReqSta` | `:534` |
+| `GetStat(DEX) >= ReqDex` | `:535` |
+| `GetStat(INT) >= ReqIntel` | `:536` |
+| `GetStat(CHA) >= ReqCha` | `:537` |
+| (temel stat: item bonusu yok) | `GameServer/User.h:470` (`GetStat`), `:498` (`GetStatWithItemBonus`) |
+| Bölüm C: `m_sItemWeight += Weight × adet` | `GameServer/User.cpp:1323` |
+| Bölüm C: cospre çanta `m_sMaxWeightBonus += Duration` | `:1317` |
+| Bölüm C: bonuslar yalnızca ekipman (0–13) | `:1327-1334` |
+| Bölüm C: `m_sMaxWeight` (tamsayı bölme) | `:2184` |
+| `CheckWeight` (yalnızca alım/taşıma) | `ItemHandler.cpp:245` |
+
+**Plandan sapmalar ve gerekçeleri**
+1. İşlevsel sapma yok; betik plan §5.3'teki komut satırı, sorgular ve bölüm biçimlerini birebir uygular. Ek olarak çıktıda A/B/C satır sayıları ve özetler plan biçiminde.
+2. `-W` ile uzun `strItem` hex sütunu **kırpılmadı** (planın `-W -s "|" -h -1 -b` düzeniyle 1168 karakter tam okundu; yalnızca CR temizlendi). `-y 0` gerekmedi.
+3. Botlar plandaki gibi **uygulanmış bırakıldı** (F2 ön koşulu); rollback çalıştırılmadı.
+
+**Açık sorular / bulgular**
+1. **Ağırlık (MB-12/Q-21):** `amount=0` ve `amount=100` (yani bellek 0/100–199 geldiğinde) bile 8 botun çantası `base` ağırlığı aşıyor (MF/MI 10470 > 6750; PHD/PHB 10680 > 10250); yalnızca WP/WG (10877/10867 ≤ 18200) sığıyor. `amount=50` durumunda 12/12 bot sığmıyor. Yani başlatılmamış değer 1–99 geldiğinde hiçbir bot yerden eşya alamaz; bu, MB-12'nin pratik etkisidir. Çözüm bu planın dışında (mekanik/kod kararı).
+2. Q-05 (istemcide kuşanılabilirlik) ve T-DATA-02'nin kuşanma testi bu planda yok; B bölümü yalnızca `Race`/`Class` verisini raporladı (`nonzero_race=0`, `nonzero_class=15` — sınıf kısıtlı parçalar).
+3. `Hp/Mp`'nin girişte maks'a yükselmesi ve item `Race` kısıtı etkisi çalışma zamanında ölçülecek (plan §8'deki belirsizlikler).
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `main...bot/F1-05` @ `3323299` (2 commit; yalnızca `tools/bot-gear-report.py` ve plan dosyası)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 |
+| K2 botlar uygulandı, bot olmayan satırlar aynı | ✔ | DB'de bot satırı 12, bot olmayan `USERDATA` 6 / `ACCOUNT_CHAR` 4 / `WAREHOUSE` 4 |
+| K3 rapor eksiksiz | ✔ | Aracı kendim çalıştırdım: çıkış 0, 269 satır; A 150 satır (OK 150), B 28 item, C 72 satır, D 12 satır; `A_SUMMARY fail_count=0`, `B_SUMMARY nonzero_race=0 nonzero_class=15`, `C_SUMMARY amount=0 fits_yes=4 amount=100 fits_yes=4 amount=50 fits_no=12` (DeepSeek'in yapıştırdığıyla birebir) |
+| K4 yalnızca bot satırları | ✔ | Betikte tek `USERDATA` sorgusu (`:28`, `WHERE strUserID LIKE 'Bot%'`); çıktıdaki tüm adlar `Bot...` |
+| K5 mantık → kod satırları | ✔ | `ItemHandler.cpp:527-541` (`ItemEquipAvailable`) koşulları `equip_failures` ile satır satır aynı; `GetStat` temel stat (`User.h:470`) |
+| K6 kod okumaları | ✔ | Bağımsız doğrulandı (aşağıda) |
+| K7 kapsam | ✔ | Diff: yalnızca `tools/bot-gear-report.py` (ASCII) + plan; çalışma ağacı temiz |
+
+- **Bağımsız kontroller:** `BotMF_K` için ağırlığı ayrı bir sorguyla yeniden hesapladım: `item_weight = 10470`, `base = (50 + 5 + 80) × 50 = 6750` (araç çıktısıyla aynı). Ağırlığın büyük kısmı tek kalemden: `389015000` (1440 HP pot, ağırlık 100) × 100 adet = 10000. `m_sMaxWeight`/`m_sItemWeight` `uint16` (`GameServer/User.h:206,218`); en büyük hesaplanan maks ağırlık 36400, taşma yok.
+- **MB-12 kod doğrulaması:** `grep -rn MaxWeightAmount` tüm depoda: GameServer'da yalnızca `MagicProcess.cpp:373,:729` (buff) ve okuma `User.cpp:2184`; kurucu `CUser::CUser` (`User.cpp:12-14`) boş, `Initialize()` (`:28`~) bu alana dokunmuyor. AIServer'da `AIUser.cpp:37` `= 100` atıyor; GameServer'da böyle bir atama **yok**. Yani başlatılmamış `uint8`: 1–99 → maks ağırlık 0.
+- Bulgular: engelleyici yok.
+  1. **Bulgu (veri, DeepSeek'in kapsamında değil):** Referans envanterdeki `389015000 × 100` (1440 HP pot, ağırlık 100) yüzünden 8/12 bot (mage ve priest) `amount=100` iken bile **ağırlık sınırını aşıyor** (10470 > 6750; 10680 > 10250). Bu yalnızca yerden eşya alma/takasta etkili (`CheckWeight`); kuşanma ve savaşta ağırlık kontrolü yok (`docs/11` STK-05). Pot stoğu senaryoya göre belirlenecek (STK-01); varsayılan 100 adet büyük.
+  2. **Not (rapor metni):** Uygulayıcının "değer başlatma (`new T(...)` değil)" cümlesi karışık yazılmış; `new T(i, this)` kurucusu kullanıcı tanımlı olduğundan üyeleri sıfırlamaz ve sonuç (belirsiz değer) doğru.
+  3. **Not:** Q-05'in istemci tarafı ve T-DATA-02'nin kuşanma testi bu planın kapsamında değildi; B bölümü yalnızca veri: hiçbir ekipmanda `Race` kısıtı yok (`nonzero_race=0`), sınıf kısıtlı 15 parça `Class` 6 (warrior), 10 (mage), 12 (priest).
+- Düzeltme talimatı: yok.

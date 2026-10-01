@@ -65,7 +65,7 @@ Henüz açık olan teknik kararlar faz içinde verilecektir: ADR-0005 (thread mo
 | Q-18 | Gerçek istemcinin hedef HP isteği sıklığı (`WIZ_TARGET_HP`) | Gözlem sözleşmesi `P-OBS-TARGETHP-RATE` | Paket izleyici | F1 |
 | Q-19 | Respawn'dan arenaya yürüme süresi ve summon'un değeri | Summon kararları | T-NAV-05 | F6 |
 | Q-20 | İstemcinin Ronark arazisinin sunucu SMD'siyle aynı olup olmadığı (KI-003 adlandırma tersliği) | Botların görsel/hareket tutarlılığı | İstemcide bot yolu izleme | F5 |
-| Q-21 | `m_bMaxWeightAmount` başlatma sorunu (MB-12) gerçekte maks ağırlığı etkiliyor mu | Stok politikası | T-DATA-05 | F1 |
+| Q-21 | `m_bMaxWeightAmount` başlatma sorunu (MB-12) gerçekte maks ağırlığı etkiliyor mu | Stok politikası | T-DATA-05 | F1 — kod düzeyinde cevaplandı (başlatılmıyor, `docs/03` MB-12); çalışma zamanı değeri ölçülecek; 12 botun ağırlık tablosu F1-05'te |
 | Q-22 | Binding/provoke (Type7) sunucu etkisi (MB-10) | W-G kullanımı | T-MECH-SKILL-W | F6 |
 | Q-23 | Mage armor yansıma hatası (MB-03) düzeltilsin mi (K-8) | Dengelenme | Karar | F6 |
 | Q-24 | Değerlendirme için gerekli maç sayısına ulaşmak üzere paralel sunucu örnekleri çalıştırılabilir mi (ayrı DB/port) | R-10 | Deneme | F8 |
