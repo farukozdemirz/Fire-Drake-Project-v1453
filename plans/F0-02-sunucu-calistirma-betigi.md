@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F0 — Ortam ve temel doğrulama (`docs/17` §2) |
 | Branch | `bot/F0-02` (taban: `main` @ `43d3500`; F0-01 bu commit'te birleşti) |
 | Bağımlı olduğu planlar | F0-01 (KAPANDI) |
@@ -536,6 +536,169 @@ $ git ls-files -s tools/run-servers.sh
 3. **Güvenlik duvarı penceresi:** Test sırasında görülmedi.
 4. **Geçici test klasörü:** `C:\Users\frkoz\AppData\Local\Temp\fdp-f0-02-failtest` silinmedi (plan gereği `%TEMP%`'te bırakıldı).
 5. **`start.md` çalışma ağacında izlenmeyen dosya:** Commit edilmedi, dokunulmadı. Plan onu bağlam olarak kullanıyor; depoda izlenmiyor.
+
+### Tur 2 — 2026-10-01
+
+**Durum:** UYGULANDI
+
+**Branch ve commit'ler**
+- Aynı branch `bot/F0-02` (Tur 1 sonu `a28c846`, Doğrulama Raporu Tur 1).
+- `9ae6a87` `[F0-02] Duzeltme Turu 2: duvar saati olcumu ve cikti bicimleri` — `tools/run-servers.sh`.
+- Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+
+**Düzeltme talimatı maddeleri ve yapılanlar**
+1. `cmd_start` bekleme döngüsü: döngüden önce `t0=$SECONDS`; `proc_status` yoklamasından hemen sonra `elapsed=$((SECONDS - t0))`; `elapsed=$((elapsed + 2))` silindi (`sleep 2` kaldı). Zaman aşımı karşılaştırması, ~10 sn'de bir yazılan ilerleme satırı ve `[UP] <ad> pid=<pid> (<n> sn)` bu değeri kullanıyor.
+2. `stop_one` bekleme döngüsü: `t0=$SECONDS` nazik `taskkill`'den hemen önce; her `proc_alive` yoklamasından sonra `elapsed=$((SECONDS - t0))`; `elapsed=$((elapsed + 1))` silindi (`sleep 1` kaldı); `FDP_STOP_TIMEOUT` karşılaştırması ve nazik kapanış satırı bu değeri kullanıyor.
+3. `cmd_start`: son gözlenen durum ayrı `last_state` değişkeninde; zaman aşımı mesajı tam olarak `[FAIL] <ad>: <FDP_START_TIMEOUT> sn içinde hazır olmadı (son durum: <last_state>)`.
+4. Start-Process sayı döndürmediğinde yazılan mesaj `[FAIL] <ad>: başlatılamadı`; yeni sabit `T_BASLATILAMADI=$'ba\u015flat\u0131lamad\u0131'`.
+5. `do_status`: bir rol için bizim sunucumuz sayılan süreç yoksa, sıra korunarak `printf '%-10s %-12s port=%s\n' '[DOWN]' "$role" "$port"`. Özet satırı ve çıkış kodu değişmedi.
+6. `stop_one` çıktıları plan §5.3 biçiminde: `[STOP] AIServer pid=… (nazik, <n> sn)`, `(zorla: pause)`, `(zorla: zaman aşımı)`, `(zaten kapalı)`; `<ad>` = `${name%.exe}`. Türkçe parçalar beş yeni `T_` sabitiyle ve `$'\u..'` kaçışlarıyla yazıldı (dosya ASCII kaldı).
+
+**§7 statik kontroller (kırpılmadı)**
+```
+$ bash -n tools/run-servers.sh
+bash_n_exit=0
+$ file tools/run-servers.sh
+tools/run-servers.sh: Bourne-Again shell script, ASCII text executable, with very long lines (680)
+$ git ls-files -s tools/run-servers.sh
+100755 1e88cec0196d1797ac4d8c43675def7b03f7bc1b 0	tools/run-servers.sh
+$ grep -n 'UID\|PWD\|DSN\|sqlcmd\|SQLCMD\|Logs/\|rm -rf' tools/run-servers.sh
+grep_exit=1
+$ grep -c $'\r' tools/run-servers.sh
+0
+$ LC_ALL=C grep -nP '[^\x00-\x7F]' tools/run-servers.sh
+nonascii_exit=1
+```
+
+**§8 çalışma zamanı testleri (kırpılmadı)**
+
+(a) `./tools/run-servers.sh status; echo "exit=$?"`:
+```
+[UP]       AIServer     pid=32924  port=10020 LISTEN                             C:\dev\fdp\server\AIServer.exe
+[UP]       GameServer   pid=31420  port=15001 LISTEN  AI=bağlı  istemci=0      C:\dev\fdp\server\GameServer.exe
+[UP]       LogInServer  pid=39028  port=15100 LISTEN                             C:\dev\fdp\server\LogInServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 3/3 hazır
+exit=0
+```
+→ Başlangıç durumu: üçü `C:\dev\fdp\server\` altından çalışıyordu, GameServer'da istemci yok (`istemci=0`); `--force` gerekmedi.
+
+(b) `time ./tools/run-servers.sh stop; echo "exit=$?"`:
+```
+[STOP] LogInServer pid=39028 (nazik, 0 sn)
+[STOP] GameServer pid=31420 (nazik, 0 sn)
+[STOP] AIServer pid=32924 (nazik, 0 sn)
+
+real	0m9.412s
+user	0m0.056s
+sys	0m0.051s
+exit=0
+```
+
+(c) `./tools/run-servers.sh status; echo "exit=$?"`:
+```
+[DOWN]     AIServer     port=10020
+[DOWN]     GameServer   port=15001
+[DOWN]     LogInServer  port=15100
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+```
+→ Üç `[DOWN]` satırı sırayla, özet ve çıkış kodu beklendiği gibi.
+
+(d) Başarısızlık testi (plan §5.4 adım 4, aynı `FAILDIR`, `time` ile):
+```
+$ FAILDIR="$(wslpath "$(cmd.exe /c echo %TEMP% 2>/dev/null | tr -d '\r')")/fdp-f0-02-failtest"
+$ mkdir -p "$FAILDIR/server"
+$ printf '[ODBC]\r\nGAME_DSN=KO_F0_02_YOK\r\n[SETTINGS]\r\nPORT=10020\r\n' > "$FAILDIR/server/AIServer.ini"
+$ : > "$FAILDIR/server/GameServer.ini"; : > "$FAILDIR/server/LogInServer.ini"
+$ echo "FAILDIR=$FAILDIR"
+FAILDIR=/mnt/c/Users/frkoz/AppData/Local/Temp/fdp-f0-02-failtest
+$ time FDP_RUNTIME_DIR="$FAILDIR" ./tools/run-servers.sh start; echo "exit=$?"
+AIServer başlatılıyor: C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe (çalışma dizini C:\Users\frkoz\AppData\Local\Temp\fdp-f0-02-failtest\server)
+[FAIL] AIServer: açılış başarısız (sunucu "pause" bekliyor; ayrıntı konsol penceresinde)
+[STOP] AIServer pid=34044 (zorla: pause)
+
+real	0m5.390s
+user	0m0.050s
+sys	0m0.024s
+exit=1
+$ ./tools/run-servers.sh status; echo "exit=$?"
+[DOWN]     AIServer     port=10020
+[DOWN]     GameServer   port=15001
+[DOWN]     LogInServer  port=15100
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 0/3 hazır
+exit=1
+```
+→ AIServer `pause` alt sürecinden ~5,4 sn'de `FAILED` tanındı; GameServer/LogInServer başlatılmadı; çıkış `1`; sonrasında bizim süreç yok. `FDP_START_TIMEOUT`'a düşülmedi.
+
+(e) `time ./tools/run-servers.sh start; echo "exit=$?"`:
+```
+AIServer başlatılıyor: C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] AIServer pid=36428 (2 sn)
+GameServer başlatılıyor: C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] GameServer pid=35984 (2 sn)
+LogInServer başlatılıyor: C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\LogInServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] LogInServer pid=39096 (1 sn)
+[UP]       AIServer     pid=36428  port=10020 LISTEN                             C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe
+[UP]       GameServer   pid=35984  port=15001 LISTEN  AI=bağlı  istemci=0      C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+[UP]       LogInServer  pid=39096  port=15100 LISTEN                             C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\LogInServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 3/3 hazır
+exit=0
+
+real	0m13.032s
+user	0m0.102s
+sys	0m0.055s
+```
+→ **`[UP] … (<n> sn)` değerleri:** AIServer `2 sn`, GameServer `2 sn`, LogInServer `1 sn` (duvar saati; toplam `real` 13,0 sn). Yollar `x86-Release\Server` altında.
+
+(f) `time ./tools/run-servers.sh stop; echo "exit=$?"` (betiğin kendi başlattığı süreçler):
+```
+[STOP] LogInServer pid=39096 (nazik, 0 sn)
+[STOP] GameServer pid=35984 (nazik, 0 sn)
+[STOP] AIServer pid=36428 (nazik, 0 sn)
+
+real	0m9.269s
+user	0m0.068s
+sys	0m0.034s
+exit=0
+```
+→ Üçü de `nazik`; `(zorla: zaman aşımı)` yok.
+
+(g) Başlangıç durumuna dönüş — (a)'da üçü `C:\dev\fdp\server\` altından çalıştığı için:
+```
+$ time FDP_SERVER_BIN_DIR=/mnt/c/dev/fdp/server ./tools/run-servers.sh start; echo "exit=$?"
+AIServer başlatılıyor: C:\dev\fdp\server\AIServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] AIServer pid=3116 (2 sn)
+GameServer başlatılıyor: C:\dev\fdp\server\GameServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] GameServer pid=30260 (2 sn)
+LogInServer başlatılıyor: C:\dev\fdp\server\LogInServer.exe (çalışma dizini C:\dev\fdp\server)
+[UP] LogInServer pid=13680 (2 sn)
+[UP]       AIServer     pid=3116   port=10020 LISTEN                             C:\dev\fdp\server\AIServer.exe
+[UP]       GameServer   pid=30260  port=15001 LISTEN  AI=bağlı  istemci=0      C:\dev\fdp\server\GameServer.exe
+[UP]       LogInServer  pid=13680  port=15100 LISTEN                             C:\dev\fdp\server\LogInServer.exe
+[NOTE]     yok sayıldı: GameServer.exe pid=4336 (yol okunamadı)
+Özet: 3/3 hazır
+exit=0
+
+real	0m13.031s
+user	0m0.099s
+sys	0m0.057s
+```
+→ Başlangıç durumu (3/3 `UP`, `C:\dev\fdp\server`, istemci yok) geri getirildi; sunucular çalışır bırakıldı.
+
+**Plandan sapmalar (Tur 2 güncellemesi)**
+- Tur 1 sapma 3 (sayaçların yalnızca `sleep` sürelerini toplaması) kapandı; Tur 1 sapmaları 1–2 geçerliliğini koruyor.
+- Tur 2'de işlevsel sapma yok. İki uygulama notu:
+  1. `SECONDS` 1 sn çözünürlüklü olduğundan çok hızlı hazır olan bir sunucu `0 sn` yazabilir; bu turda değerler 1–2 sn çıktı.
+  2. `stop_one` döngüsü, "her yoklamadan sonra hesapla + eşikte kır" davranışını birebir vermek için `while :` + açık `break` yapısına çevrildi; `sleep 1` ve `FDP_STOP_TIMEOUT` eşiği aynı kaldı.
+- (b) adımındaki başlangıç süreçleri bu kez betikle (Start-Process) açılmış olduğundan üçü de nazik kapandı; Tur 1 Bulgu 1 (elle açılan süreçlerde nazik kapanmama, KI-007) bu turda tetiklenmedi.
+
+**Açık sorular / bulgular**
+1. Zaman aşımı (`TIMEOUT`) yolu bu turda doğal olarak tetiklenmedi: başarısızlık testinde AIServer ~5,4 sn'de `pause` alt sürecinden tanınıyor. Bu yolu ayrıca zorlamak için test çalıştırılmadı (talimat dışı); kod incelemesiyle `last_state`'in zaman aşımı dalında `TIMEOUT` ile ezilmediği doğrulandı (`last_state` yalnızca `classify_state`/`DOWN` sonucuyla güncelleniyor).
+2. Tur 1'deki diğer bulgular (KI-007, AIServer NPC hazırlığının dışarıdan görülememesi) değişmedi; bu düzeltme turu onlara dokunmadı.
 
 ---
 
