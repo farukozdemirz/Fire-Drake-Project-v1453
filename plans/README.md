@@ -49,8 +49,9 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
-| [F0-01](F0-01-ortam-dogrulama-araclari.md) | Ortam doğrulama araçları ve Debug/Release farkı raporu | F0 | DOĞRULANDI (2026-10-01) | `bot/F0-01` |
+| [F0-01](F0-01-ortam-dogrulama-araclari.md) | Ortam doğrulama araçları ve Debug/Release farkı raporu | F0 | KAPANDI (2026-10-01, `main` @ `43d3500`) | `bot/F0-01` |
+| [F0-02](F0-02-sunucu-calistirma-betigi.md) | Sunucu çalıştırma betiği (start / stop / status) | F0 | HAZIR (2026-10-01) | `bot/F0-02` (taban: `main`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
-Otonom döngü tasarımı (incelenmeyi bekliyor, henüz çalıştırılmadı): [`OTONOM_DONGU.md`](OTONOM_DONGU.md)
+Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTONOM_DONGU.md)
