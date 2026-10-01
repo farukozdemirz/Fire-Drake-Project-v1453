@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-01` (taban: `bot/F0-02`) |
 | Bağımlı olduğu planlar | F0-02 (DOĞRULANDI; `main`'e henüz birleşmedi, bu yüzden dal zincirli) |
@@ -513,4 +513,29 @@ $ git status --short
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F0-02..bot/F1-01` @ `9197379` (5 commit; taban `dc7cac3`). Not: `main...bot/F1-01` farkı zincirli F0-02 işini de içerir; plan kapsamı için `bot/F0-02..bot/F1-01` esas alındı.
+- Kriter sonuçları (hepsi Claude tarafından bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme, yeni uyarı yok | ✔ | `./tools/build.sh Release` exit=0. 18 uyarı satırı (AISocket, DBAgent, EventHandler, GameServerDlg, LoginHandler, MagicInstance, MagicProcess, Map, UpgradeHandler C4789, User C4834); `PacketTrace.cpp` sıfır. `User.cpp` C4834 satırları (2719/2734) `GetSocketID(), GetName().c_str(), bType…` ifadeleri, taban sürümde 2714/2729'da aynı (yalnızca kaydı) |
+| K2 `--packet-trace` derleme + bayrak devrede | ✔ | exit=0, `PacketTrace.cpp` uyarısı 0; bayraklı exe'de `grep -a -c PacketTrace_` = 1; bayraksız Release'e dönünce 0. Raporun `/D FDP_PACKET_TRACE` cl satırı kanıtı kabul edildi (exe dizgesi bağımsız doğrulandı) |
+| K3 Debug derleme | ✔ | `./tools/build.sh Debug` exit=0, uyarı 0 |
+| K4 Bayraksız davranış aynı, fark kapsamı | ✔ | `GameServer/` farkı yalnızca izinli 5 dosya; `User.cpp` +5/−0 (`#include` + `#ifdef` bloğu); vcxproj +5/−2 (yalnızca `FdpTraceDefs`, iki `PreprocessorDefinitions` satırı, 2 yeni girdi) |
+| K5 Kanca yalnızca oyundaki oyuncular | ✔ | `User.cpp` farkı: kanca `// Otherwise, assume we're authed & in-game.` yorumunun hemen üstünde, giriş öncesi `return true;` dallarının altında |
+| K6 İzin listesi | ✔ | `PacketTrace.cpp:26-32` tek `IsTracedOpcode`; 7 opcode; `WIZ_CHAT/LOGIN/EXCHANGE/ITEM_MOVE/PARTY` yok |
+| K7 `--selftest` | ✔ | `selftest OK`, exit=0 |
+| K8 Sentetik log özeti | ✔ | Rapordaki çıktı + bozuk satırlı ek deneme: `skipped_lines: 1`, çökme yok |
+| K9 Kodlama | ✔ | 4 GameServer dosyası + vcxproj/filters: UTF-8 BOM + CRLF (`grep -vc $'\r$'` = 0); `.sh`/`.py` ASCII, CR yok |
+| K10 Çalışma ağacı | ✔ | `git status --short` yalnızca `?? start.md` (önceden var) |
+| K11 `build.sh` | ✔ | Fark yalnızca `EXTRA`; boş dizi `set -u` altında hatasız; argümansız Release derlemesi çalıştı |
+
+- Bulgular (önem sırasıyla; hiçbiri engelleyici değil):
+  1. **Plan sapması 1 (WIZ_PARTY listeden çıkarıldı) doğru ve gerekçeli.** `GameServer/PartyHandler.cpp:14-16` `PARTY_CREATE/INSERT` içinde `pkt >> strUserID` okuyor; plan adım 4 bu durumda çıkarmayı şart koşmuştu. Sonuç: parti zamanlaması izleyiciyle ölçülemez, F1-02 planında gerekirse ismi olmayan ayrı güvenli yol düşünülmeli.
+  2. **`tools/packet-trace-summary.py` satır sonu kalıcılığı (düşük, KI-009).** `.gitattributes` yalnızca `*.sh` için `eol=lf` sabitliyor; `core.autocrlf=true` ile `.py` CRLF'e dönüşebilir (betik shebang'li değil, `python3 dosya` ile çalışır, CRLF'te de çalışır; etki kozmetik). Çözüm `.gitattributes`'a `*.py text eol=lf` eklemek (opencode izin listesi dışı, proje sahibi/Claude).
+  3. **Not (kod kalitesi, engel değil):** `PacketTrace.cpp` her çağrıda mutex alıyor; izin listesi dışı opcode'lar mutex'ten önce döndüğü için yük yalnızca izlenen paketlerde. `localtime` thread-safe değil ama kilit altında çağrılıyor. Dosya tarihi yalnızca ilk açılışta belirleniyor (gece yarısı geçince yeni dosyaya geçmez); ölçüm oturumları için yeterli.
+  4. **Not:** `FDP_PACKET_TRACE`'li exe çalışma zamanında hiç çalıştırılmadı (planda da yok); log biçimi ve gerçek oyuncuyla ölçüm F1-02'de doğrulanacak. Bu yüzden `docs/03` etiketleri **yükseltilmedi**.
+- Düzeltme talimatı: yok.
