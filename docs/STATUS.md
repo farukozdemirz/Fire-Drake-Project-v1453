@@ -40,6 +40,7 @@ Liste: `plans/README.md`.
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
 | F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | KAPANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
 | F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | KAPANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
+| F1-02 Zamanlama oturumu araçları | HAZIR | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 
 ## Son doğrulamalar
 
@@ -70,8 +71,9 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 ## Sıradaki adımlar
 
 1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
-2. Claude: F0 faz sonuç raporu taslağı (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`); proje sahibi F0'ı kabul eder (`KABUL_EDILDI`).
-3. Claude: F1-02 planı (`/plan-olustur`): insan istemcisiyle zamanlama kayıt oturumu (`--packet-trace` derlemesi; T-MECH-CLIENT-01..04).
+2. Proje sahibi: `docs/phase-reports/F0-taslak.md`'yi okur ve F0'ı kabul eder (`KABUL_EDILDI`) veya düzeltme ister.
+3. Proje sahibi: opencode'a `plans/F1-02-zamanlama-oturumu-araclari.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`.
+4. Sonra proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1, T-MECH-CLIENT-01..04); Claude sayıları `docs/03` §13/§14'e işler.
 
 ## Otonom döngü
 

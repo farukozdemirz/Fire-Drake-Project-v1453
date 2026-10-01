@@ -111,6 +111,45 @@ Her senaryo: kurulum, adımlar, ölçülen metrikler, tekrar sayısı ve ilgili 
 | T-MECH-12 | Direnilen yavaşlatmanın hız buff'ını engellemesi (MB-09) | Sonuç kaydı |
 | T-POT-01..03, T-MECH-POT-03/04/05 | [11](11_RESOURCE_POTION_AND_SURVIVAL_MANAGEMENT.md) §8 | |
 
+### 4.2.1 İnsan zamanlama oturumu protokolü (T-MECH-CLIENT-01..04)
+
+Amaç: gerçek 1453 istemcisinin zamanlamasını sunucu tarafında kaydetmek ([03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §13'teki CLI-01..06, CLI-11, CLI-12 ve Q-01, Q-02, Q-18 için). Kaydı **insan oyuncu** yapar (proje sahibi); araçlar F1-01 (paket izleyici) ve F1-02 (`tools/trace-session.sh`, `tools/packet-trace-summary.py --cli`). Ölçüm yerel ağda sunucuya **varış** zamanıdır (istemcinin gönderme zamanına çok yakın, yerel bağlantıda gecikme ihmal edilebilir `[Ö]`).
+
+Ön koşullar: F1-02 `DOĞRULANDI` ve `main`'de; bir hedef canavar (çok dayanıklı veya sürekli yeniden doğan; arena A'da veya yakınında); level 80'e yakın warrior, priest ve mage karakterleri (karakter kurulum betiği ADR-0002 taslağı henüz yoksa mevcut karakterler yeterli; ayrıntı notu rapora yazılır).
+
+Komutlar (WSL'de, depo kökünde):
+
+```
+tools/trace-session.sh prepare          # sunucuyu izleyicili derler ve açar (oyunda kimse yokken)
+# ... istemciyle girin, bir senaryoyu oynayın ...
+tools/trace-session.sh collect <etiket> # o senaryonun kaydını ayırır ve özet basar
+tools/trace-session.sh finish           # (oyundan çıktıktan sonra) sunucuyu kapatır, normal derlemeye döner
+```
+
+Her senaryo arasında `collect` çalıştırın: etiketler sınıf-senaryo biçiminde (ör. `war-r`). Her senaryo **tek bir hedefe**, kesintisiz oynanır; senaryo başlamadan önce 3 sn bekleyin, bitince 3 sn bekleyip `collect` yapın.
+
+| Etiket | Ne yapılır | Ölçülen |
+|---|---|---|
+| `war-r` | Warrior: hedefe yalnızca normal saldırı (R), 30 sn, sürekli | CLI-01 (R aralığı, `delaytime`/`distance` alanları, T-MECH-CLIENT-02) |
+| `war-skill` | Warrior: tek bir Type1 skill'i bekleme süresi dolar dolmaz arka arda, 30 sn | CLI-04 (skill tekrar aralığı) |
+| `war-combo` | Warrior: skill + R'yi her zamanki oynayış gibi, 60 sn | CLI-02 (skill-R boşlukları), CLI-11 (aksiyon hızı) |
+| `war-move` | Warrior: düz koşu 30 sn, sonra 5 kez dur-kalk | CLI-05, Q-02 (hareket sıklığı, hız alanı, koşu hızı) |
+| `idle` | Herhangi bir sınıf: hiçbir şey yapmadan 5 dk bekleyin (hedef seçmeyin) | CLI-12 (`WIZ_SPEEDHACK_CHECK` sıklığı) |
+| `target` | Hedef seçip bırakın (20 kez), sonra bir hedefe 20 sn saldırın | Q-18 (hedef HP isteği sıklığı) |
+| `pri-cast` | Priest: bir cast süreli skill'i (ör. heal) her seferinde tamamlanmasını bekleyerek 20 kez | CLI-03 (CASTING → EFFECTING süresi) |
+| `pri-cancel` | Priest: aynı skill'i başlatıp cast sırasında 10 kez yürüyerek iptal edin | CLI-03 (iptal: `opcode 6` sayısı ve zamanlama) |
+| `mag-cast` | Mage: bir cast süreli saldırı skill'i, her seferinde tamamlanmasını bekleyerek 20 kez | CLI-03 |
+| `mag-cancel` | Mage: aynı skill'i cast sırasında 10 kez yürüyerek iptal edin | CLI-03 |
+| `pot` | Herhangi bir sınıf: HP potunu 20 sn en hızlı basışla, sonra MP potunu 20 sn | CLI-06 (pot aralığı) |
+
+Kurallar:
+- Oynayış **normal insan hızında** olmalı; amaç sınırı değil, insanın gerçek tempolarını ölçmek (CLI-01'de R'yi "en hızlı basabildiğiniz" tempoda ayrıca bir `war-r-fast` kaydı da alabilirsiniz).
+- Her senaryoda oyuncu adı log'a yazılır. `plans/_logs/trace/` içindeki dosyaları **paylaşmayın ve git'e eklemeyin**; yalnızca `<etiket>.summary.txt` özetleri (adsız sayılar) rapora girer.
+- `collect` "yeni kayit yok" derse senaryoda izlenen opcode'lar oynanmamış demektir; senaryoyu tekrarlayın.
+- Oturum bitince oyundan çıkın, sonra `finish` çalıştırın (istemci bağlıyken `stop` reddeder).
+
+Çıktı: Claude, `<etiket>.summary.txt` sayılarını `docs/03` §13 (CLI-01..06, CLI-11, CLI-12 ölçülmüş değerleri), §14 (paket alanı doğrulamaları) ve [12](12_NAVIGATION_AND_POSITIONING.md) §6'ya işler; etiketler `[A]` → `[V]` yükseltilir ([21](21_PROJECT_TRACKING_TEMPLATES_AND_DOC_RULES.md) §5).
+
 ### 4.3 Navigasyon
 
 T-NAV-01..08, T-NAV-LOS-01: [12](12_NAVIGATION_AND_POSITIONING.md) §11.
