@@ -55,7 +55,7 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F1-02](F1-02-zamanlama-oturumu-araclari.md) | Zamanlama oturumu araçları (`tools/trace-session.sh`, `packet-trace-summary.py --cli`) | F1 | KAPANDI (2026-10-02, `main` @ `017f88e`) | `bot/F1-02` (taban: `main`) |
 | [F1-03](F1-03-magic-etc-sql-betigi.md) | `MAGIC.Etc = 1` düzeltmesi için kalıcı, geri alınabilir SQL betiği (ADR-0003, KI-001) | F1 | KAPANDI (2026-10-02, `main` @ `f4e4298`) | `bot/F1-03` (taban: `main`) |
 | [F1-04](F1-04-bot-karakter-kurulum-betigi.md) | Level 80 bot karakter kurulum betiği: 12 karakter (6 profil × 2 ulus) + geri alma (ADR-0002, T-DATA-01) | F1 | KAPANDI (2026-10-02, `main` @ `0061930`) | `bot/F1-04` (taban: `main`) |
-| [F1-05](F1-05-bot-ekipman-agirlik-raporu.md) | Bot ekipman uygunluğu ve ağırlık raporu (`tools/bot-gear-report.py`, MB-12/Q-21, Q-05 veri tarafı) | F1 | HAZIR (2026-10-02) | `bot/F1-05` (taban: `main`) |
+| [F1-05](F1-05-bot-ekipman-agirlik-raporu.md) | Bot ekipman uygunluğu ve ağırlık raporu (`tools/bot-gear-report.py`, MB-12/Q-21, Q-05 veri tarafı) | F1 | DOĞRULANDI (2026-10-02, Doğrulama Turu 1) | `bot/F1-05` (taban: `main`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 

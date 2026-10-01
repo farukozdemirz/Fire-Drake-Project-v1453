@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-05` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-04 (KAPANDI, `db/002_bot_characters.sql`) |
@@ -518,3 +518,27 @@ GameServer/User.h:234:  uint8 m_bMaxWeightAmount;                               
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `main...bot/F1-05` @ `3323299` (2 commit; yalnızca `tools/bot-gear-report.py` ve plan dosyası)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 |
+| K2 botlar uygulandı, bot olmayan satırlar aynı | ✔ | DB'de bot satırı 12, bot olmayan `USERDATA` 6 / `ACCOUNT_CHAR` 4 / `WAREHOUSE` 4 |
+| K3 rapor eksiksiz | ✔ | Aracı kendim çalıştırdım: çıkış 0, 269 satır; A 150 satır (OK 150), B 28 item, C 72 satır, D 12 satır; `A_SUMMARY fail_count=0`, `B_SUMMARY nonzero_race=0 nonzero_class=15`, `C_SUMMARY amount=0 fits_yes=4 amount=100 fits_yes=4 amount=50 fits_no=12` (DeepSeek'in yapıştırdığıyla birebir) |
+| K4 yalnızca bot satırları | ✔ | Betikte tek `USERDATA` sorgusu (`:28`, `WHERE strUserID LIKE 'Bot%'`); çıktıdaki tüm adlar `Bot...` |
+| K5 mantık → kod satırları | ✔ | `ItemHandler.cpp:527-541` (`ItemEquipAvailable`) koşulları `equip_failures` ile satır satır aynı; `GetStat` temel stat (`User.h:470`) |
+| K6 kod okumaları | ✔ | Bağımsız doğrulandı (aşağıda) |
+| K7 kapsam | ✔ | Diff: yalnızca `tools/bot-gear-report.py` (ASCII) + plan; çalışma ağacı temiz |
+
+- **Bağımsız kontroller:** `BotMF_K` için ağırlığı ayrı bir sorguyla yeniden hesapladım: `item_weight = 10470`, `base = (50 + 5 + 80) × 50 = 6750` (araç çıktısıyla aynı). Ağırlığın büyük kısmı tek kalemden: `389015000` (1440 HP pot, ağırlık 100) × 100 adet = 10000. `m_sMaxWeight`/`m_sItemWeight` `uint16` (`GameServer/User.h:206,218`); en büyük hesaplanan maks ağırlık 36400, taşma yok.
+- **MB-12 kod doğrulaması:** `grep -rn MaxWeightAmount` tüm depoda: GameServer'da yalnızca `MagicProcess.cpp:373,:729` (buff) ve okuma `User.cpp:2184`; kurucu `CUser::CUser` (`User.cpp:12-14`) boş, `Initialize()` (`:28`~) bu alana dokunmuyor. AIServer'da `AIUser.cpp:37` `= 100` atıyor; GameServer'da böyle bir atama **yok**. Yani başlatılmamış `uint8`: 1–99 → maks ağırlık 0.
+- Bulgular: engelleyici yok.
+  1. **Bulgu (veri, DeepSeek'in kapsamında değil):** Referans envanterdeki `389015000 × 100` (1440 HP pot, ağırlık 100) yüzünden 8/12 bot (mage ve priest) `amount=100` iken bile **ağırlık sınırını aşıyor** (10470 > 6750; 10680 > 10250). Bu yalnızca yerden eşya alma/takasta etkili (`CheckWeight`); kuşanma ve savaşta ağırlık kontrolü yok (`docs/11` STK-05). Pot stoğu senaryoya göre belirlenecek (STK-01); varsayılan 100 adet büyük.
+  2. **Not (rapor metni):** Uygulayıcının "değer başlatma (`new T(...)` değil)" cümlesi karışık yazılmış; `new T(i, this)` kurucusu kullanıcı tanımlı olduğundan üyeleri sıfırlamaz ve sonuç (belirsiz değer) doğru.
+  3. **Not:** Q-05'in istemci tarafı ve T-DATA-02'nin kuşanma testi bu planın kapsamında değildi; B bölümü yalnızca veri: hiçbir ekipmanda `Race` kısıtı yok (`nonzero_race=0`), sınıf kısıtlı 15 parça `Class` 6 (warrior), 10 (mage), 12 (priest).
+- Düzeltme talimatı: yok.
