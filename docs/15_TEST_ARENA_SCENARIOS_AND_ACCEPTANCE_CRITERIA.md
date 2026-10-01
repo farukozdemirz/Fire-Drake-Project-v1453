@@ -94,7 +94,7 @@ Her senaryo: kurulum, adımlar, ölçülen metrikler, tekrar sayısı ve ilgili 
 | T-ENV-ARENA-03 | Karus kapısı önünde El Morad karakterine tower saldırısı | Saldırı mesafesi ölçümü |
 | T-ENV-ARENA-04 | Respawn noktaları ve arena arası yürüme süresi (iki ulus) | Süre kaydı (T-NAV-05 ile) |
 | T-DATA-01..05 | [04](04_CHARACTER_BUILDS_STATS_AND_EQUIPMENT.md) §7 | |
-| T-DATA-06 | MAGIC.Etc düzeltmesinin kalıcı kaydı (KI-001, ADR-0003) | Script + doğrulama sorgusu |
+| T-DATA-06 | MAGIC.Etc düzeltmesinin kalıcı kaydı (KI-001, ADR-0003) | Script + doğrulama sorgusu — **TEST_EDILDI/GEÇTİ 2026-10-02**, kanıt: `plans/F1-03-magic-etc-sql-betigi.md` Doğrulama Tur 1 (geçici kopyada: 1306 satır düzeltildi, 510–523 korundu, tekrar uygulama ve geri alma doğru) |
 
 ### 4.2 Mekanik (L-M)
 

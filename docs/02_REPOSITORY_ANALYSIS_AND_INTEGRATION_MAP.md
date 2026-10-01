@@ -30,6 +30,7 @@
 | `shared/` | Soket altyapısı, paket tanımları, kripto, SMD harita yükleyici, DB set sınıfları, global sabitler | Harita verisi (`SMDFile`), paket sabitleri, oturum yöneticisi |
 | `N3BASE/` | Harita çarpışma verisinin (shape/collision) yükleyicisi | Görüş hattı için potansiyel veri kaynağı ([12](12_NAVIGATION_AND_POSITIONING.md)) |
 | `scripting/Lua/` | Lua 5.2.3 | Quest betikleri; bot döngüsü için uygun değil (§12) |
+| `db/` | Elle yapılan veri düzeltmelerinin tekrar çalıştırılabilir, geri alınabilir SQL betikleri (`001_magic_etc_fix.sql`: `MAGIC.Etc = 1 → 0`, ADR-0003); kullanım `db/README.md` | Her temiz kurulumda uygulanır; testlerin ön koşulu (KI-001) |
 
 Derleme `[D]`: `KnightOnlineServer.sln`, projeler `v142` toolset, `stdcpp17`, yalnızca Win32 (`GameServer/proj-GameServer.vcxproj:22,28,69,110`). `start.md`'ye göre `v143` ile de derleniyor `[V]`. `build/` klasörü `.gitignore` kapsamındadır; yereldeki ikililer depoya ait değildir. **Depoda test projesi veya test çatısı yoktur** `[D]`.
 

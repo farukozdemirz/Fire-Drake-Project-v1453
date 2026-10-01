@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-03` (taban: `main`) |
 | Bağımlı olduğu planlar | — (F0 KABUL_EDILDI) |

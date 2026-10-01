@@ -5,7 +5,7 @@
 
 | Kimlik | Başlık | Önem (K/Y/O/D) | Bileşen | İlk görüldüğü commit | Tekrar üretme | Geçici çözüm | Durum | İlgili test / commit |
 |---|---|---|---|---|---|---|---|---|
-| KI-001 | MAGIC.Etc=1 satırları quest 1 istiyor; yeni karakterde skill/pot çalışmıyor | Y | Veri | 0f52027 | start.md §4 | Etc=0 güncellemesi (yerelde uygulanmış) | AÇIK — kalıcı SQL betiği F1'de (ADR-0003) | T-DATA-06 |
+| KI-001 | MAGIC.Etc=1 satırları quest 1 istiyor; yeni karakterde skill/pot çalışmıyor | Y | Veri | 0f52027 | start.md §4 | `db/001_magic_etc_fix.sql` (geri alma: `db/001_magic_etc_fix_rollback.sql`) | KAPANDI 2026-10-02: betik `main`'de (`f4e4298`), geçici kopyada uygula/idempotent/geri al doğrulandı; her temiz kurulumda uygulanmalı | T-DATA-06, F1-03 |
 | KI-002 | WIZ_WARP yalnızca harita sınırı kontrolüyle ışınlıyor (yalnızca GM) | D | Hareket | 0f52027 | GM warp | — | AÇIK | MEC-MOV-06 |
 | KI-003 | Zones.tbl ve sunucu SMD adları zone 71/72 için ters | D | Veri | 0f52027 | start.md §9 | Sunucu SMD'si esas | AÇIK | Q-20 |
 | KI-004 | Konsol çıktısı dosyaya yönlendirilince boş | D | Loglama | 0f52027 | start.md §9 | Bot telemetrisi ayrı yazıcı | AÇIK | — |
