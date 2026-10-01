@@ -75,7 +75,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
 2. Proje sahibi: `docs/phase-reports/F0-taslak.md`'yi okur ve F0'ı kabul eder (`KABUL_EDILDI`) veya düzeltme ister.
 3. Proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1; `tools/trace-session.sh prepare` … `finish`). F1-02 `main`'de (`017f88e`).
-4. Sonra proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1, T-MECH-CLIENT-01..04); Claude sayıları `docs/03` §13/§14'e işler.
+4. Claude: oturum özetlerindeki (`plans/_logs/trace/<etiket>.summary.txt`) sayıları `docs/03` §13/§14 ve `docs/12` §6'ya işler (T-MECH-CLIENT-01..04, Q-01/02/18).
 
 ## Otonom döngü
 
