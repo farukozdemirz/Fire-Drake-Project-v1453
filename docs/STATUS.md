@@ -19,6 +19,8 @@ F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 20
 
 | Faz | Durum | Son rapor | Kabul commit |
 |---|---|---|---|
+| 2026-10-02 | F1-04 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; gerçek DB'de bağımsız doğrulandı: 12 bot, bayt çözümü planla birebir, `LOAD_USER_DATA` satırı dönüyor, idempotent, `Upgrade` 0/7/8, rollback temiz (bot olmayan satırlar 6/4/4 değişmedi) |
+| 2026-10-02 | F1-04 | DÜZELTME GEREKLİ (Tur 1) | 6/8 kriter ✔. Betik gerçek DB'de 4 SQL hatasıyla çalışmıyor (`REVERSE`/`REPLICATE` `varchar` döndürür, `tinyint` toplamı taşar, `CROSS APPLY` toplama hatası). Düzeltilmiş prototip DB'de doğrulandı: 12 bot, bayt çözümü planla birebir, `LOAD_USER_DATA` satırı döndürüyor, idempotent, rollback temiz. Düzeltme talimatı plan dosyasının sonunda |
 | 2026-10-02 | F1-03 | DOĞRULANDI (Tur 1) | 6/6 kriter ✔; betikler geçici kopya tabloda çalıştırıldı: uygula → tekrar uygula (idempotent) → geri al, `MAGIC_BAK_etc` ile satır satır aynı; elle değiştirilmiş satıra dokunulmuyor. Gerçek `MAGIC` değişmedi |
 | 2026-10-02 | F1-02 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; Tur 1 bulgusu (iptal sonrası bayat CASTING) kapandı, ek kenar vakaları bağımsız doğrulandı. `prepare`/`finish` çalışma zamanı doğrulaması ilk gerçek oturumda |
 | F0 Ortam | KABUL_EDILDI | `docs/phase-reports/F0.md` (2026-10-02) | `22786e2` |
@@ -44,7 +46,7 @@ Liste: `plans/README.md`.
 | F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | KAPANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
 | F1-02 Zamanlama oturumu araçları | KAPANDI | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 | F1-03 `MAGIC.Etc` SQL betiği | KAPANDI | `bot/F1-03` (taban: `main`); `plans/F1-03-magic-etc-sql-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
-| F1-04 Bot karakter kurulum betiği | HAZIR | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
+| F1-04 Bot karakter kurulum betiği | DOĞRULANDI | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 
 ## Son doğrulamalar
 
@@ -75,7 +77,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Proje sahibi: opencode'a `plans/F1-04-bot-karakter-kurulum-betigi.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`. (Sonra Claude: Q-05 ekipman kısıtı ve Q-21 ağırlık doğrulama planları.)
+1. Proje sahibi: `bot/F1-04`'ü `main`'e birleştirir (`git merge --no-ff bot/F1-04`). Sonra Claude: bot karakterleri DB'ye uygulanır mı kararı, `docs/04` §3.3/§5 (skill baytı eşlemesi), T-DATA-01 kaydı ve sıradaki F1 planları (Q-05, Q-21). (Sonra Claude: Q-05 ekipman kısıtı ve Q-21 ağırlık doğrulama planları.)
 2. Proje sahibi: GitHub'a push onayı (`main` `origin`'in önünde).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
