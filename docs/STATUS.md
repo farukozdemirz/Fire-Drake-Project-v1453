@@ -40,12 +40,13 @@ Liste: `plans/README.md`.
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
 | F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | KAPANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
 | F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | KAPANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
-| F1-02 Zamanlama oturumu araçları | HAZIR | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
+| F1-02 Zamanlama oturumu araçları | DÜZELTME GEREKLİ | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
+| 2026-10-02 | F1-02 | DÜZELTME GEREKLİ (Tur 1) | 7/8 kriter ✔. Engelleyen: CAST süresi eşleştirmesi iptal sonrası bayat CASTING kullanıyor (3300 ms ölçülür, doğrusu 300); ayrıca planda eksik olan CASTING→iptal süresi eklenecek. Kod Claude'un planındaki lafızdan kaynaklı; düzeltme talimatı plan dosyasında |
 | 2026-10-02 | F1-01 | DOĞRULANDI (Tur 1) | 11/11 kriter ✔ (Release, Release `--packet-trace`, Debug bağımsız derlendi; bayraklı exe'de log dizgesi var, bayraksızda yok). Sapma: `WIZ_PARTY` kişisel ad okuduğu için izleme dışı (doğru). Yeni: KI-009 (düşük) |
 | 2026-10-01 | F0-02 | DOĞRULANDI (Tur 2) | 14/14 kriter ✔; Tur 1'in 6 bulgusu kapandı (zaman aşımı yolu geçici kopyayla çalışma zamanında doğrulandı). Kalan: KI-008 (düşük, `stop` satırı hep `0 sn`) |
 | 2026-10-01 | F0-02 | DÜZELTME GEREKLİ (Tur 1) | 14/14 kriter ✔ (§5.4 Claude tarafından bağımsız yeniden çalıştırıldı, K11 sahte istemciyle çalışma zamanında doğrulandı). Engelleyen: süre/zaman aşımı duvar saati değil (300 sn ≈ 480 sn), zaman aşımı mesajı son durumu kaybediyor; ayrıca `[DOWN]` satırı yok, `stop` etiketleri plandan farklı. Yeni: KI-007 |
@@ -72,7 +73,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
 2. Proje sahibi: `docs/phase-reports/F0-taslak.md`'yi okur ve F0'ı kabul eder (`KABUL_EDILDI`) veya düzeltme ister.
-3. Proje sahibi: opencode'a `plans/F1-02-zamanlama-oturumu-araclari.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`.
+3. Proje sahibi: F1-02 Doğrulama Turu 1 düzeltme talimatını (plan dosyasının sonu) opencode'a verir; sonra `/plan-dogrula`.
 4. Sonra proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1, T-MECH-CLIENT-01..04); Claude sayıları `docs/03` §13/§14'e işler.
 
 ## Otonom döngü

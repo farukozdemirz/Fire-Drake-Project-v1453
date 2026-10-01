@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-02` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-01 (KAPANDI, `main`'de) |
@@ -512,4 +512,36 @@ $ git status --short
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ**
+- İncelenen: `main...bot/F1-02` @ `937d55a` (3 commit; yalnızca `tools/packet-trace-summary.py`, `tools/trace-session.sh`, plan dosyası)
+- Kriter sonuçları (hepsi bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 |
+| K2 `--cli` doğru ölçüm | ✘ | Bölüm başlıkları ve DeepSeek'in elle hesapları doğru; ama iptal içeren dizide **CAST gap yanlış** (Bulgu 1): CASTING 0, iptal 500, CASTING 3000, EFFECTING 3300 (ve CASTING 6000, CASTING 6100, EFFECTING 6400) → beklenen `n=2 min=300 max=300`, ölçülen `n=2 p50=400 max=3300` |
+| K3 `--cli`'sız çıktı aynı | ✔ | `main`'deki eski betikle farklı bir 3 satırlık logda `diff` boş |
+| K4 bozuk girdi | ✔ | Boş log (`/dev/null`) → `cli_target: none`, çıkış 1; DeepSeek'in bozuk/yanlış uzunluk çıktıları tutarlı |
+| K5 statik | ✔ | `bash -n`, `--help` 0, bilinmeyen komut 2, ASCII, CR yok, mod `100755` (`git ls-files -s`) |
+| K6 çevrimdışı `collect` | ✔ | (a)–(f) bağımsız tekrarlandı (çıkış 1/0/0/1/1/2); ek: ikinci gün dosyası ve kırpılmış dosya doğru işlendi, `status` çıkış 0 |
+| K7 `prepare`/`finish` kod incelemesi | ✔ | `tools/trace-session.sh:78-95` ve `:169-190` satır satır okundu: `stop` reddinde `exit 1`, derlemeye geçilmiyor; çalıştırılmadı (sunucular açık) |
+| K8 kapsam | ✔ | Diff yalnızca iki araç dosyası + plan; `GameServer/`, `docs/`, `shared/` yok |
+
+- Bulgular (önem sırasıyla):
+  1. **Orta — iptal sonrası CAST ölçümü bozuluyor** (`tools/packet-trace-summary.py`, `write_cli_sections`, CLI-03 bloğu: `if row["skill"] not in pending: pending[...] = t`). İlk CASTING hiç temizlenmiyor; iptal (opcode 6), başarısızlık (opcode 4) veya yeni CASTING araya girse bile sonraki EFFECTING ilk CASTING'e eşleşiyor, süre 10 sn'ye kadar şişiyor. `pri-cancel` / `mag-cancel` senaryolarında (docs/15 §4.2.1) ve normal oynayışta tek bir iptal tüm CLI-03 yüzdeliklerini bozar. Plan metni "CASTING'ten sonra gelen ilk EFFECTING" dediği için DeepSeek'in kodu planın lafzına uyuyor; asıl eksik **planın**: Claude'un hatası. Düzeltme kodda yapılır.
+  2. **Düşük — planda eksik ölçüm:** `docs/15` §4.2.1 iptal için "opcode 6 sayısı ve **zamanlama**" ölçeceğini söylüyor; plan yalnızca sayıyı istedi. CASTING→iptal süresi (istemcinin cast'i ne zaman kestiği) çıktıda yok. Düzeltme turunda eklenecek.
+  3. **Not:** `collect`, toplanan parçada geçerli kayıt yoksa `<etiket>.log` ve `.summary.txt`'yi yazıp 1 döndürüyor ve `.session` ilerletiliyor (Açık soru 2). Kabul edildi: veri kaybolmuyor, etiket dosyası duruyor.
+  4. **Not:** `status` sunucu açıkken denenmedi; kod okundu ve sunucusuz çalıştırıldı (çıkış 0). `[NOTE] yok sayıldı` satırları, `FDP_RUNTIME_DIR` geçici dizine çevrildiği için `run-servers.sh status`'un izinli klasörleri değişmesinden; hata değil.
+- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+
+```
+plans/F1-02-zamanlama-oturumu-araclari.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+
+1. tools/packet-trace-summary.py, write_cli_sections, "CLI-03 cast suresi" bloğundaki CASTING/EFFECTING eşleştirmesini değiştir. Bir oyuncu aynı anda tek bir cast yapar, bu yüzden: (a) opcode 1 (CASTING) paketi geldiğinde bekleyen tüm kayıtları sil ve yalnızca bu CASTING'i (skill, t) bekleyen olarak tut (en yeni CASTING kazanır; "if skill not in pending" koşulunu kaldır); (b) opcode 3 (EFFECTING) paketi, aynı skill için bekleyen CASTING varsa gap = t - cast_t hesapla, 0 <= gap <= 10000 ise o skill'in CAST listesine ekle ve bekleyeni sil; bekleyen yoksa yok say (anlık skill); (c) opcode 6 (CANCEL) veya opcode 4 (FAIL) geldiğinde bekleyen CASTING varsa gap = t - cast_t'yi iptal listesine (opcode 6 ayrı, opcode 4 ayrı liste) ekle ve bekleyeni sil. İptal/fail paketlerindeki skill alanına güvenme (istemci orada farklı değer gönderebilir); bekleyen tek olduğu için skill eşlemesi gerekmez.
+2. Aynı bloğa "MAGIC cancel (opcode 6) count=N" satırından hemen sonra iki yeni satır ekle: "CANCEL gap_ms (CASTING -> opcode 6): <format_stats_short>" ve "FAIL gap_ms (CASTING -> opcode 4): <format_stats_short>". Liste boşsa format_stats_short zaten n=0 ... n/a yazıyor; satırlar yine yazılsın. Başka çıktı satırını değiştirme.
+3. --selftest'e şu sentetik diziyi ekle ve assert et: CASTING(skill 101) t=0, CANCEL t=500, CASTING t=3000, EFFECTING t=3300, CASTING t=6000, CASTING t=6100, EFFECTING t=6400. Beklenen: "skill=101 n=2 p5=300 p50=300 p95=300 min=300 max=300" ve "CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500". Eski selftest iddialarını silme.
+4. Çalıştırıp rapora yapıştır: (a) python3 tools/packet-trace-summary.py --selftest -> selftest OK; (b) bu 7 satırlık diziyi printf/struct ile geçici dosyaya (/tmp/opencode altında, depoya ekleme) yazıp --cli çıktısının CLI-03 bölümünü olduğu gibi yapıştır; (c) planın K3'ü: git show main:tools/packet-trace-summary.py ile alınan eski betikle --cli'sız çıktının diff'i boş; (d) git status --short çıktısı.
+5. Başka dosyaya dokunma. Raporuna "Tur 2" ekle, "Plandan sapmalar" bölümünü güncelle, Durum satırını UYGULANDI yap.
+```
