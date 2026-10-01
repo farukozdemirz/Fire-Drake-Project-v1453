@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-03` (taban: `main`) |
 | Bağımlı olduğu planlar | — (F0 KABUL_EDILDI) |
@@ -132,14 +132,104 @@ Claude doğrulaması (referans, DeepSeek çalıştırmaz): `MAGIC_BAK_etc`'den b
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-### Tur 1
+### Tur 1 — 2026-10-02
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-03` (taban: `main` @ `1123ca4`)
+  - `e46f450` — `[F1-03] MAGIC.Etc duzeltmesi ve geri alma SQL betikleri` (`db/001_magic_etc_fix.sql`, `db/001_magic_etc_fix_rollback.sql`, `db/README.md`)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri:
+  - `db/001_magic_etc_fix.sql` (yeni, ASCII + LF): `Etc = 1` satırlarını `0` yapar; eski değerleri `dbo.$(Target)_ETC_FIX_BACKUP` tablosuna kaydeder; idempotent; `Etc` 510–523'e dokunmaz.
+  - `db/001_magic_etc_fix_rollback.sql` (yeni, ASCII + LF): yalnızca bu betiğin kaydettiği ve hâlâ `0` olan satırları geri yazar; yedek tablo yoksa `RAISERROR` ile hata verir.
+  - `db/README.md` (yeni, UTF-8 BOM'suz, LF, 20 satır): iki betiğin amacı, kullanım satırları, `Target` zorunluluğu, gizlilik notu.
+  - `plans/F1-03-magic-etc-sql-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+- **Veritabanına bağlanılmadı** (`AGENTS.md` §2.7): betikler yalnızca yazıldı, hiçbir `sqlcmd`/ODBC çağrısı yapılmadı; `MAGIC_BAK_etc` dosya düzeyinde bile okunmadı.
+
+**§5.5 sözdizimi kontrolü (kırpılmadı)**
+
+`file` ve satır sonu:
+```
+$ file db/001_magic_etc_fix.sql db/001_magic_etc_fix_rollback.sql db/README.md
+db/001_magic_etc_fix.sql:          ASCII text
+db/001_magic_etc_fix_rollback.sql: ASCII text
+db/README.md:                      Unicode text, UTF-8 text
+$ grep -c $'\r' db/001_magic_etc_fix.sql db/001_magic_etc_fix_rollback.sql db/README.md
+db/001_magic_etc_fix.sql:0
+db/001_magic_etc_fix_rollback.sql:0
+db/README.md:0
+$ LC_ALL=C grep -nP '[^\x00-\x7F]' db/001_magic_etc_fix.sql db/001_magic_etc_fix_rollback.sql
+(nonascii_exit=1; iki SQL dosyası da saf ASCII)
+```
+`GO` satırları (hepsi satır başında tek başına, yorum/noktalı virgül yok):
+```
+$ grep -n 'GO$' db/*.sql
+db/001_magic_etc_fix.sql:17:GO
+db/001_magic_etc_fix.sql:26:GO
+db/001_magic_etc_fix.sql:48:GO
+db/001_magic_etc_fix.sql:56:GO
+db/001_magic_etc_fix_rollback.sql:14:GO
+db/001_magic_etc_fix_rollback.sql:18:GO
+db/001_magic_etc_fix_rollback.sql:38:GO
+db/001_magic_etc_fix_rollback.sql:44:GO
+$ grep -n 'GO' db/*.sql | grep -v 'GO$'
+(boş)
+```
+İşlem eşleşmesi (her dosyada 1 `BEGIN TRANSACTION` ↔ 1 `COMMIT TRANSACTION`):
+```
+$ grep -c 'BEGIN TRANSACTION' db/001_magic_etc_fix.sql db/001_magic_etc_fix_rollback.sql
+db/001_magic_etc_fix.sql:1
+db/001_magic_etc_fix_rollback.sql:1
+$ grep -c 'COMMIT TRANSACTION' db/001_magic_etc_fix.sql db/001_magic_etc_fix_rollback.sql
+db/001_magic_etc_fix.sql:1
+db/001_magic_etc_fix_rollback.sql:1
+```
+Yasak ifadeler:
+```
+$ grep -n -i -E 'DROP|TRUNCATE|DELETE' db/001_magic_etc_fix.sql
+(boş; grep_exit=1)
+$ grep -n -i -E 'DROP|TRUNCATE|DELETE' db/001_magic_etc_fix_rollback.sql
+31:DELETE b        <- tek DELETE, yedek tablodan (satır 31)
+```
+`UPDATE` kullanımları:
+```
+$ grep -n -i -E 'UPDATE' db/*.sql
+db/001_magic_etc_fix.sql:5:-- only Etc = 1 rows are updated.      (yorum)
+db/001_magic_etc_fix.sql:43:UPDATE dbo.$(Target)
+db/001_magic_etc_fix_rollback.sql:23:UPDATE m
+```
+Düzeltmede tek `UPDATE` (satır 43), `WHERE Etc = 1` (satır 45). Geri almada tek `UPDATE` (satır 23), `WHERE m.Etc = 0` (satır 28); `RAISERROR` satır 17'de.
+`Etc` 510–523'ten söz eden tek yerler:
+```
+$ grep -n '510' db/001_magic_etc_fix.sql
+4:-- Rows with Etc in 510..523 (level 70+ master skills) are never touched;   (yorum)
+53:    (SELECT COUNT(*) FROM dbo.$(Target) WHERE Etc BETWEEN 510 AND 523) AS etc_510_523,   (doğrulama)
+```
+Hedef tablo adı:
+```
+$ grep -n 'MAGIC' db/*.sql
+db/001_magic_etc_fix.sql:8:--   sqlcmd ... -v Target=MAGIC -i db/001_magic_etc_fix.sql
+db/001_magic_etc_fix_rollback.sql:7:--   sqlcmd ... -v Target=MAGIC -i db/001_magic_etc_fix_rollback.sql
+$ grep -n 'Target)' db/*.sql | grep -v '\$(Target)'
+(boş; tüm tablo adları $(Target) ile)
+```
+`$(Target)` kullanım sayıları: düzeltmede 10, geri almada 8; sabit `dbo.MAGIC` yok.
+
+**Kabul kriterleri öz-değerlendirmesi**
+- K1 ✔ Üç dosya var; iki `.sql` ASCII ve LF (`file` + `grep -c $'\r'` = 0; README UTF-8).
+- K2 ✔ Düzeltmede `UPDATE` tek yerde (satır 43) ve koşulu yalnızca `WHERE Etc = 1` (satır 45); `DROP/TRUNCATE/DELETE` yok; `Etc` 510–523 yalnızca yorum (4) ve doğrulama sorgusunda (53).
+- K3 ✔ Tablo adı her yerde `$(Target)`; sabit `dbo.MAGIC` yok; `MAGIC` yalnızca kullanım yorumlarında (`Target=MAGIC`). `GO` satırları tek başına; iki dosyada da işlem 1:1.
+- K4 ✔ Geri alma yalnızca yedekteki satırları ve yalnızca `m.Etc = 0` olanları geri yazıyor (satır 23-28); yedek tablo yoksa `RAISERROR` (satır 17); yedek **tablo** silinmiyor, yalnızca geri alınan satırların yedek kayıtları (`DELETE b`, satır 31).
+- K5 ✔ `git diff --stat main...bot/F1-03` yalnızca `db/*` + plan dosyası; rapor commit'inden sonra `git status --short` boş.
+- K6 — DeepSeek kapsamı dışı (Claude geçici kopya tabloda uygulayıp geri alacak).
+
+**Plandan sapmalar ve gerekçeleri**
+1. **İşlevsel sapma yok.** Betikler plandaki yapıya, ifadelere ve yasaklara uygun; `db/` klasörü ilk kez bu planla oluşturuldu.
+2. **Not (`*.sql` satır sonu kalıcılığı):** `.gitattributes` şu an yalnızca `*.sh` ve `*.py` için `eol=lf` içeriyor. `git add` sırasında git "LF will be replaced by CRLF" uyarısı verdi; çalışma ağacı ve blob LF (uyarı checkout dönüşümüyle ilgili). Kalıcı LF için `.gitattributes`'a `*.sql text eol=lf` eklenmesi gerekir; bu dosya izin listesinde olmadığı için dokunulmadı (KI-009'daki `*.py` durumunun benzeri).
+
+**Açık sorular / bulgular**
+1. Yukarıdaki `*.sql` LF kalıcılığı notu dışında açık soru yok.
+2. Betikler plan gereği **çalıştırılmadı**; sözdizimi ve kapsam kontrolleri dosya üzerinde yapıldı. Çalıştırma, idempotentlik ve geri alma doğrulaması (K6) Claude'dadır.
+3. `db/README.md` 20 satır (plan: 10–20).
 
 ---
 
