@@ -69,7 +69,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Birleştirme yapıldı (`main` @ `93d0dcf`, push yok). Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
+1. Tamamlandı: birleştirme (`main` @ `93d0dcf`, push yok) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi.
 2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
 3. F1-02 planı (Claude): insan istemcisiyle zamanlama kayıt oturumu (`--packet-trace` derlemesi; T-MECH-CLIENT-01..04). F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
 

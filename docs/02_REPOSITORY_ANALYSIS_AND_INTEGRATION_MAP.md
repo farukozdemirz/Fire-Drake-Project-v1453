@@ -66,6 +66,8 @@ flowchart LR
 ```
 
 - Başlatma sırası: AIServer → GameServer → LogInServer (`start.md` §7) `[V]`.
+- **Çalıştırma komutu** (F0-02, `main`'de) `[V]`: `tools/run-servers.sh start [--config Release|Debug]`, `stop [--force]`, `status`. Betik sırayı kendisi uygular (AIServer → GameServer → LogInServer), her sunucuyu yalnızca izinli klasörden çalışan süreç olarak tanır (`C:\dev\fdp\server` veya `build\bin\x86-<Config>\Server`), ve GameServer'ın AIServer'a bağlandığını (`ai≥1`) doğrulamadan `UP` saymaz. Çıkış kodu: 0 başarı, 1 başarısız/reddedildi, 2 kullanım/yapılandırma hatası. Açık istemci varken `stop` reddeder (`--force` gerekir). Ayrıntı: `plans/F0-02-sunucu-calistirma-betigi.md`.
+- Ölçülen süreler (Release, 2026-10-01, Doğrulama Tur 2) `[V]`: her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn (her çağrı ~1–1,5 sn PowerShell gecikmesi içerir), `stop` ~9 sn. Betiğin kendi yazdığı `(<n> sn)` değeri `SECONDS` çözünürlüğündedir. Bilinen: KI-007 (betik dışında elle açılmış sunucular nazikçe kapanmaz, `stop` zorla kapatır), KI-008 (`stop` satırı hep `0 sn` yazar).
 - GameServer, AIServer'a istemci olarak bağlanır. NPC'lerin sahibi ve beyni AIServer'dır, **hasar hesabı ise GameServer'dadır** (§9).
 
 ## 4. GameServer çalışma modeli
@@ -287,3 +289,4 @@ Mekanik düzeydeki hatalar (ör. mage armor yansıması, AC debuff'ının iki ke
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | §3'e `tools/run-servers.sh` çalıştırma komutu ve ölçülen açılış/kapanış süreleri eklendi (F0-02) |
