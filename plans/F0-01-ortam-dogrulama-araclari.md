@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F0 — Ortam ve temel doğrulama (`docs/17` §2) |
 | Branch | `bot/F0-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — (ilk plan) |
@@ -470,4 +470,36 @@ Kaynak okunarak dolduruldu; her satır için ilgili kod bloğu bu commit'te `mai
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-<!-- Boş bırak. -->
+### Tur 1 — 2026-10-01
+
+- **Karar: DOĞRULANDI**
+- İncelenen: `main...bot/F0-01` @ `c710379` (5 commit; kaynak ağaçta değişiklik yok)
+- Yöntem: Uygulayıcının çıktılarına güvenilmedi; derlemeler, betiklerin tüm modları ve Debug/Release tablosu **bağımsız** yeniden çalıştırıldı/kontrol edildi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `./tools/build.sh Release` exit 0, 0 uyarı/hata satırı. *Kaynak değişmediği için bu kriter yalnızca araç zincirinin sağlığını gösterir.* |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` exit 0, 0 uyarı/hata satırı (aynı not) |
+| K3 22 kontrol + özet | ✔ | T-01..03, R-01..04, W-01..08, D-01..05, O-01..02 hepsi çıktıda; `Özet: 21 PASS, 0 FAIL, 0 SKIP, 1 WARN` |
+| K4 çıkış kodları | ✔ | Sağlam ortam exit 0; `FDP_RUNTIME_DIR=/tmp/yok-boyle-bir-yer` → 8 FAIL, exit 1; bilinmeyen argüman → exit 2 (ek) |
+| K5 gizli bilgi yok | ✔ | Çıktı ve betiklerde parola/UID/token taraması boş (`pwd` yalnızca kabuk komutu). `.ini`'den yalnızca bölüm adları okunuyor (`tools/check-env.sh` W-04) |
+| K6 7 konum, grep ile | ✔ | 7'si de bulundu (+6 ek). **Bağımsız Python regex ile 13/13 konum birebir aynı.** Betikte gömülü `dosya:satır` yok |
+| K7 vcxproj tanımları | ✔ | 24 satırlık tablo, dört proje; `shared.vcxproj` için `RuntimeLibrary` (`shared/shared.vcxproj:58,73`) üzerinden örtük, açıkça belirtilmiş |
+| K8 biçim | ✔ | `file`: ASCII text executable; CR yok; git modu `100755`; `bash -n` temiz |
+| K9 yalnızca 3 dosya | ✔ | `git diff --name-status main...bot/F0-01`: `A plans/F0-01…`, `A tools/check-env.sh`, `A tools/debug-release-diff.sh` |
+| K10 kaynak kodu değişmedi | ✔ | Fark listesinde `GameServer/ AIServer/ LogInServer/ shared/ N3BASE/` yok |
+
+**Ek kontroller:** DB sorguları yalnızca `SELECT` (sys.tables, ZONE_INFO, MAGIC, VERSION); yasak tablo adı geçmiyor. Uygulayıcının elle doldurduğu Debug/Release tablosunun 13 satırı tek tek kaynaktan okunarak doğrulandı (`GameServer/LuaEngine.h:9`, `shared/KOSocket.cpp:93`, `shared/Thread.cpp:21,41`, `shared/database/OdbcCommand.cpp:68-76,98-106`, `GameServer/MagicInstance.cpp:267`, `shared/stdafx.h:19-45`); tek yanlış, aşağıdaki Bulgu 2.
+
+**Bulgular (hiçbiri engelleyici değil):**
+
+1. *Düşük* — `tools/debug-release-diff.sh:141`: Bölüm 3 tablosunda koşul metni olduğu gibi yazılıyor; `shared/stdafx.h:19` satırındaki `||` Markdown tablosunu bozuyor (rapora yapıştırırken uygulayıcı elle `\|` yapmış). Betikte `|` karakteri kaçışlanmalı.
+2. *Düşük* — Uygulayıcı notu "`GameServer/LuaEngine.h` … `_DEBUG` yerine `DEBUG` kullanır" diyor; `GameServer/LuaEngine.h:9` aslında `#ifdef _DEBUG`. Tablonun kendisi doğru, yalnızca not yanlış.
+3. *Bilgi* — Rapor 3 commit sayıyor; `b5ae18d` (K9 kanıtı düzeltmesi) ve `c710379` (yalnızca dosya modu 644→755) listede yok.
+4. *Bilgi* — `check-env.sh` sütun hizası UTF-8 baytlarıyla hesaplandığı için Türkçe etiketlerde kayık (kozmetik).
+5. *Bilgi, F0 için önemli* — Tablodan çıkan somut sonuç: **Debug derlemesi** quest kapısını (`MagicInstance.cpp:267`), blink'i (`User.cpp:4527` ⇐ `GameServer/stdafx.h:7`), oturum zaman aşımını (`GameServerDlg.cpp:737`) ve Lua önbelleğini kapatıyor; paket-handler hatasında bağlantıyı koparmıyor (`KOSocket.cpp:93`). Bot testlerinin **Release** derlemesiyle yapılması gerekir (aksi halde KI-001 ve blink davranışı yanıltır).
+
+**F0 hakkında:** Bu plan T-ENV-02'yi karşıladı (Debug/Release farkı belgelendi). T-ENV-01'in "üç sunucu ayakta + insan istemcisi Ronark'a giriyor" kısmı bu planın kapsamında değildi ve **hâlâ açık**; F0 çıkış koşulu bu yüzden henüz sağlanmadı.
+
+Birleştirme (kullanıcı onayıyla, bu rapor commit edildikten sonra): `git switch main && git merge --no-ff bot/F0-01`. Not: altyapı dosyaları (`docs/`, `AGENTS.md`, `plans/README.md` vb.) hâlâ hiçbir branch'te commit'li değil; `main`'e önce onlar girmeli ya da bu branch'in farkı yalnızca üç dosya olarak kalır.
+
