@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-02` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-01 (KAPANDI, `main`'de) |
@@ -621,3 +621,26 @@ plans/F1-02-zamanlama-oturumu-araclari.md — Doğrulama Turu 1 düzeltmeleri. A
 4. Çalıştırıp rapora yapıştır: (a) python3 tools/packet-trace-summary.py --selftest -> selftest OK; (b) bu 7 satırlık diziyi printf/struct ile geçici dosyaya (/tmp/opencode altında, depoya ekleme) yazıp --cli çıktısının CLI-03 bölümünü olduğu gibi yapıştır; (c) planın K3'ü: git show main:tools/packet-trace-summary.py ile alınan eski betikle --cli'sız çıktının diff'i boş; (d) git status --short çıktısı.
 5. Başka dosyaya dokunma. Raporuna "Tur 2" ekle, "Plandan sapmalar" bölümünü güncelle, Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F1-02` @ `34ce674` (Tur 2 düzeltme commit'i `1214621`; yalnızca `tools/packet-trace-summary.py` değişti, `trace-session.sh` dokunulmadı)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0; yeni iptal vakası ve iki yeni assert dahil, eski assertler silinmemiş |
+| K2 `--cli` doğru ölçüm | ✔ (Tur 1'de ✘) | Tur 1'deki dizi: `skill=101 n=2 p5=300 … max=300`, `CANCEL gap_ms … n=1 … p50=500`; eski kodda `p50=400 max=3300` idi |
+| K3 `--cli`'sız çıktı aynı | ✔ | `main`'deki eski betikle `diff` boş |
+| K4 bozuk girdi | ✔ | `/dev/null` → `cli_target: none`, çıkış 1 |
+| K5 statik | ✔ | `trace-session.sh` Tur 2'de değişmedi; Tur 1 sonuçları geçerli (ASCII, 100755) |
+| K6 çevrimdışı `collect` | ✔ | Tur 1'de doğrulandı, dosya değişmedi |
+| K7 `prepare`/`finish` kod incelemesi | ✔ | Tur 1'de doğrulandı, dosya değişmedi |
+| K8 kapsam | ✔ | Düzeltme farkı yalnızca `tools/packet-trace-summary.py` (+51/−6) ve plan dosyası |
+
+- Ek bağımsız kenar vakaları (DeepSeek'in testlerinde yoktu), hepsi beklenen sonuç: FAIL (opcode 4) 200 ms sonra → `FAIL gap n=1 200`; iptal paketi `skill=0` ile gelse de bekleyeni kapatıyor (`CANCEL gap 600`); CASTING ile EFFECTING arasında **farklı skill'li** (202) EFFECTING bekleyeni tüketmiyor (`CAST skill=101 n=1 400`); bekleyen yokken gelen EFFECTING yok sayılıyor; 13 000 ms'lik eşleşme `0..10000` dışında olduğu için listeye girmiyor.
+- Bulgular: engelleyici yok.
+  1. **Not:** Planın "10 000 ms üstü eşleşme listeye girmez" kuralı korunuyor ama bekleyen yine siliniyor (Uygulama notu 2). Kabul: aynı cast'in çözüldüğü varsayımı makul.
+  2. **Not:** `status` sunucu açıkken çalışma zamanında denenmedi (Tur 1 Bulgu 4); `prepare`/`finish` çalışma zamanı doğrulaması, ilk gerçek oturumda (`docs/15` §4.2.1) yapılacak. Bu, F1-02'nin DOĞRULANDI kararını engellemez: planın K7'si bunları bilerek çalıştırmamayı şart koşuyordu.
+- Düzeltme talimatı: yok.

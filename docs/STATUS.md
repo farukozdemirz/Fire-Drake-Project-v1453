@@ -19,6 +19,7 @@ F0 — Ortam ve temel doğrulama — Durum: GELIŞTIRILIYOR → çıkış koşul
 
 | Faz | Durum | Son rapor | Kabul commit |
 |---|---|---|---|
+| 2026-10-02 | F1-02 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; Tur 1 bulgusu (iptal sonrası bayat CASTING) kapandı, ek kenar vakaları bağımsız doğrulandı. `prepare`/`finish` çalışma zamanı doğrulaması ilk gerçek oturumda |
 | F0 Ortam | GELIŞTIRILIYOR | — | — |
 | F1 Veri ve mekanik doğrulama | PLANLANDI | — | — |
 | F2 Bot oturumu | PLANLANDI | — | — |
@@ -40,7 +41,7 @@ Liste: `plans/README.md`.
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
 | F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | KAPANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
 | F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | KAPANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
-| F1-02 Zamanlama oturumu araçları | DÜZELTME GEREKLİ | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
+| F1-02 Zamanlama oturumu araçları | DOĞRULANDI | `bot/F1-02` (taban: `main`); `plans/F1-02-zamanlama-oturumu-araclari.md`; sonra insan oturumu `docs/15` §4.2.1 |
 
 ## Son doğrulamalar
 
@@ -73,7 +74,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 1. Tamamlandı: birleştirme (`main` @ `93d0dcf`), push (`origin/main` @ `8cc00fd`, 2026-10-02) ve `docs/02` §3 / `docs/15` T-ENV-01 güncellemesi. **Bundan sonra tüm iş `main`'den ilerler:** yeni plan dalları `main`'den açılır, zincirleme taban gerekmez.
 2. Proje sahibi: `docs/phase-reports/F0-taslak.md`'yi okur ve F0'ı kabul eder (`KABUL_EDILDI`) veya düzeltme ister.
-3. Proje sahibi: F1-02 Doğrulama Turu 1 düzeltme talimatını (plan dosyasının sonu) opencode'a verir; sonra `/plan-dogrula`.
+3. Proje sahibi: `bot/F1-02`'yi `main`'e birleştirir (`git merge --no-ff bot/F1-02`).
 4. Sonra proje sahibi: insan zamanlama oturumu (`docs/15` §4.2.1, T-MECH-CLIENT-01..04); Claude sayıları `docs/03` §13/§14'e işler.
 
 ## Otonom döngü
