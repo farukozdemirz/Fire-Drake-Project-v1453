@@ -3,6 +3,7 @@
 #include "KnightsManager.h"
 #include "KingSystem.h"
 #include "MagicInstance.h"
+#include "PacketTrace.h"
 #include "DBAgent.h"
 #include <algorithm>
 #include "../shared/DateTime.h"
@@ -270,6 +271,10 @@ bool CUser::HandlePacket(Packet & pkt)
 		}
 		return true;
 	}
+
+#ifdef FDP_PACKET_TRACE
+	PacketTrace::LogIncoming(GetSocketID(), GetName().c_str(), GetZoneID(), pkt);
+#endif
 
 	// Otherwise, assume we're authed & in-game.
 	switch (command)
