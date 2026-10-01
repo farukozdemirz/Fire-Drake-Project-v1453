@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-02` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-01 (KAPANDI, `main`'de) |
@@ -507,6 +507,82 @@ $ git status --short
 1. **K8 notu:** `git status --short` tamamen boş değil; `?? start.md` (izlenmeyen altyapı dosyası, bu planda dokunulmadı) duruyor. Önceki planlarda da aynı durum raporlanmıştı.
 2. **`collect` çıkış kodları:** Toplanan parçada hiç geçerli kayıt yoksa `--cli` `cli_target: none` ile 1 döner ve `collect` bunu "özet betiği başarısız" sayıp 1 verir; ancak `<etiket>.log` ve `<etiket>.summary.txt` yazılmış olur. Plan "Python hatasında çıkış 1" dediği için bu davranış korundu; istenirse "kayıt yok" ayrı ele alınabilir.
 3. **`status` alt komutu** çalışma zamanında denenmedi (K6 kapsamı dışı; sunucu gerektirir). Kod incelemesi: `.session` yoksa "oturum yok" yazar, `run-servers.sh status` çıkış kodunu yok sayar (`|| true`), kendi çıkış kodu 0'dır.
+
+### Tur 2 — 2026-10-02
+
+**Durum:** UYGULANDI
+
+**Branch ve commit'ler**
+- Aynı branch `bot/F1-02` (Tur 1 sonu `937d55a`; Doğrulama Raporu Tur 1 `502e889`).
+- `1214621` — `[F1-02] Tur 2: cast iptal/fail olcumu ve CASTING eslestirme duzeltmesi` (`tools/packet-trace-summary.py`).
+- Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+
+**Düzeltme talimatı maddeleri ve yapılanlar**
+1. **CASTING/EFFECTING eşleştirmesi** (`write_cli_sections`, CLI-03 bloğu): tek bir `pending_skill`/`pending_time` çifti tutuluyor; yeni `opcode 1` (CASTING) bekleyeni koşulsuz eziyor (en yeni kazanır); `opcode 3` (EFFECTING) yalnızca bekleyenle aynı skill ise eşleşiyor, `0 <= gap <= 10000` ise o skill'in listesine ekliyor ve bekleyeni siliyor (bekleyen yoksa anlık skill olarak yok sayılıyor); `opcode 6` (CANCEL) ve `opcode 4` (FAIL) bekleyeni kapatıp süreyi ayrı listelere yazıyor. İptal/fail paketlerinin `skill` alanı kullanılmıyor.
+2. **Yeni satırlar:** `MAGIC cancel (opcode 6) count=N` satırından hemen sonra `CANCEL gap_ms (CASTING -> opcode 6): <format_stats_short>` ve `FAIL gap_ms (CASTING -> opcode 4): <format_stats_short>`. Liste boşken `n=0 ... n/a` yazılıyor; başka çıktı satırı değişmedi.
+3. **`--selftest`:** 7 satırlık iptal dizisi (CASTING 0, CANCEL 500, CASTING 3000, EFFECTING 3300, CASTING 6000, CASTING 6100, EFFECTING 6400) ayrı bir CLI vakası olarak eklendi; iki yeni `assert` (aşağıda). Eski selftest iddiaları **silinmedi** (mevcut dizi ve assertler aynen duruyor).
+
+**Adım 4 çıktıları (kırpılmadı)**
+
+(a) `python3 tools/packet-trace-summary.py --selftest`:
+```
+$ python3 tools/packet-trace-summary.py --selftest
+selftest OK
+selftest_exit=0
+```
+
+(b) 7 satırlık geçici dizi (`/tmp/opencode/f1-02-cancel.log`, depoya eklenmedi):
+```
+0	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+500	12	TestChar	71	31	23	0665000000010002000000000000000000000000000000
+3000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+3300	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+6000	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+6100	12	TestChar	71	31	23	0165000000010002000000000000000000000000000000
+6400	12	TestChar	71	31	23	0365000000010002000000000000000000000000000000
+```
+`--cli` çıktısının CLI-03 bölümü:
+```
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-02-cancel.log --cli | sed -n '/== CLI-03/,/== CLI-04/p'
+== CLI-03 cast suresi (CASTING -> EFFECTING) ==
+CAST gap_ms per skill:
+  skill=101 n=2 p5=300 p50=300 p95=300 min=300 max=300
+MAGIC cancel (opcode 6) count=1
+CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500
+FAIL gap_ms (CASTING -> opcode 4): n=0 p5=n/a p50=n/a p95=n/a min=n/a max=n/a
+== CLI-04 skill tekrar ==
+```
+Doğrulama bulgusundaki senaryo artık beklenen sonucu veriyor: ilk CASTING iptalde kapanıyor (500 ms), sonraki iki çift 300 ms; eski kodda bu dizi `p50=400 max=3300` üretiyordu.
+
+(c) K3 — `--cli`sız çıktı `main`'deki eski betikle birebir aynı:
+```
+$ git show main:tools/packet-trace-summary.py > /tmp/opencode/pts-old.py
+$ python3 /tmp/opencode/pts-old.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-old.txt
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-01-sample.log > /tmp/opencode/summary-new.txt
+$ diff /tmp/opencode/summary-old.txt /tmp/opencode/summary-new.txt
+(diff boş)
+```
+
+(d) `git status --short` (rapor commit'i öncesi):
+```
+ M plans/F1-02-zamanlama-oturumu-araclari.md
+?? start.md
+```
+(`tools/packet-trace-summary.py` commit edildi; tek kalan yine önceden var olan `?? start.md`.)
+
+**Kriter güncellemesi**
+- **K2** (Tur 1'de ✘): kapanmıştır. CASTING→EFFECTING eşleştirmesi artık iptal/fail/yeni CASTING durumlarında bayat bekleyen bırakmıyor; iptal senaryosunda `skill=101 n=2 p50=300`, `CANCEL` 500 ms. Yeni satırlar `docs/15` §4.2.1'in istediği "iptal zamanlaması" ölçümünü de karşılıyor (Bulgu 2).
+- **K1** ✔ (genişletilmiş selftest, eski assertler dahil `selftest OK`).
+- **K3** ✔ (diff boş). **K4–K8** etkilenmedi; `trace-session.sh` bu turda değişmedi.
+
+**Plandan sapmalar (Tur 2 güncellemesi)**
+- Tur 1 sapma listesi geçerli; bu turda yeni bir sapma yok. İki uygulama notu:
+  1. EFFECTING eşleşmesinde "bekleyen skill == EFFECTING skill" koşulu aranıyor (tek cast kuralı); farklı skill'li EFFECTING bekleyeni tüketmeden yok sayılıyor. İptal/fail paketlerinde skill karşılaştırması hiç yapılmıyor (talimat gereği).
+  2. `opcode 3` bekleyenle eşleşip `gap > 10000` ise süre listeye eklenmiyor ama bekleyen yine de siliniyor (aynı cast'in çözüldüğü kabulü).
+- Bu turda `tools/trace-session.sh` ve diğer dosyalara dokunulmadı; yalnızca `tools/packet-trace-summary.py` değişti.
+
+**Açık sorular / bulgular**
+- Yukarıdaki iki uygulama notu dışında açık soru yok. `start.md` (izlenmeyen altyapı dosyası) yine rapor dışı bırakıldı.
 
 ---
 
