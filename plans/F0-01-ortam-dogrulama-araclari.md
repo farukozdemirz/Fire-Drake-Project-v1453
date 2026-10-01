@@ -238,7 +238,7 @@ file tools/*.sh            # "CRLF" görünmemeli
 - Branch / commit'ler: `bot/F0-01` (taban: `main` @ `0f52027`)
   - `81e754e` — `[F0-01] Ortam kontrol betigi ekle`
   - `90e097e` — `[F0-01] Debug/Release fark raporu betigi ekle`
-  - Bu rapor ve `Durum: UYGULANDI` ayrı bir commit'te.
+  - `3f13b3c` — `[F0-01] Uygulayici raporu ve Durum UYGULANDI`
 - Değişen dosyalar ve nedenleri:
   - `tools/check-env.sh` (yeni): T-01..T-03, R-01..R-04, W-01..W-08, D-01..D-05, O-01..O-02 kontrolleri. `--skip-db`, `-h/--help`; `FDP_RUNTIME_DIR`, `MSBUILD`, `SQLCMD`, `FDP_SQL_INSTANCE`, `FDP_SQL_DB` ortamdan override edilebilir. Veritabanında yalnızca D-01..D-05'teki `SELECT` sorguları çalışır. `.ini` içeriği/değeri yazdırılmaz; yalnızca bölüm anahtarlarının varlığı kontrol edilir.
   - `tools/debug-release-diff.sh` (yeni): Bölüm 1 `grep -a -rnE` ile koşullu `#if/#ifdef/#ifndef/#elif` satırlarını bulur; Bölüm 2 dört `.vcxproj` dosyasını ayrıştırıp tanım tablosu + Debug/Release belirteç özeti üretir; Bölüm 3 aynı koşulların özet iskeletini `(elle doldurulacak)` sütunuyla yazar. Hiçbir dosya/satır bilgisi gömülü değildir.
@@ -450,7 +450,7 @@ Kaynak okunarak dolduruldu; her satır için ilgili kod bloğu bu commit'te `mai
 - K6 ✔ Bölüm 1 istenen 7 konumun tamamını buldu (`shared/stdafx.h:19`, `GameServer/stdafx.h:7`, `GameServer/User.cpp:4527`, `GameServer/MagicInstance.cpp:267`, `GameServer/GameServerDlg.cpp:737`, `shared/KOSocket.cpp:93`, `shared/database/OdbcCommand.cpp:73`) + 6 ek konum; hepsi `grep` ile üretildi, dosya/satır gömülü değil.
 - K7 ✔ Bölüm 2'de dört proje için Debug `_DEBUG`, Release `NDEBUG` görünür. `shared.vcxproj`'da açık tanım yok; `RuntimeLibrary=MultiThreadedDebug` / `MultiThreaded` üzerinden örtük olarak (MSVC `/MTd` → `_DEBUG`, `/MT` → `NDEBUG`) tabloda gösterildi.
 - K8 ✔ `file tools/*.sh` → "ASCII text executable" (CRLF yok); `chmod +x` yapıldı; `bash -n` ikisinde de hatasız. Dosyalar AGENTS.md §3 gereği ASCII tutuldu; Türkçe çıktılar `\u` kaçışlarıyla üretiliyor.
-- K9 ✔ Bu commit öncesi `git status --short`: yalnızca `plans/F0-01-...md`, `tools/check-env.sh`, `tools/debug-release-diff.sh` (üç dosya). Kaynak ağaçta değişiklik yok. Commit sonrası `git diff --stat main...bot/F0-01` doğrulaması doğrulayıcı tarafından tekrarlanabilir.
+- K9 ✔ Commit öncesi `git diff --cached --stat main` ve commit sonrası `git diff --stat main...bot/F0-01` yalnızca üç dosyayı gösterir: `plans/F0-01-...md`, `tools/check-env.sh`, `tools/debug-release-diff.sh`. Altyapı dosyaları (`docs/`, `plans/README.md`, `tools/build.sh` vb.) untracked oldukları için farkta görünmez; R-04'te WARN olarak raporlanır. Kaynak ağaçta değişiklik yok (K10).
 - K10 ✔ `GameServer/`, `AIServer/`, `LogInServer/`, `shared/`, `N3BASE/` altında hiçbir değişiklik yok (`git status --short` temiz; yalnızca untracked altyapı dosyaları var).
 
 ### Plandan sapmalar ve gerekçeleri
