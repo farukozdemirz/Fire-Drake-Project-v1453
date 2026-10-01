@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-01` (taban: `bot/F0-02`) |
 | Bağımlı olduğu planlar | F0-02 (DOĞRULANDI; `main`'e henüz birleşmedi, bu yüzden dal zincirli) |
@@ -173,16 +173,369 @@ Not: `--packet-trace` derlemesinden sonra bayraksız bir derleme yapıldığınd
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-01` (taban: `bot/F0-02` @ `dc7cac3`)
+  - `baf8008` — `[F1-01] Paket izleyici ve kanca eklendi` (`PacketTrace.h`, `PacketTrace.cpp`, `User.cpp`, `proj-GameServer.vcxproj`, `proj-GameServer.vcxproj.filters`)
+  - `a5343c4` — `[F1-01] build.sh --packet-trace secenegi` (`tools/build.sh`)
+  - `bda4f7b` — `[F1-01] Ozet betigi ve selftest` (`tools/packet-trace-summary.py`)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri:
+  - `GameServer/PacketTrace.h` (yeni): `PacketTrace::LogIncoming` bildirimi; tüm içerik `#ifdef FDP_PACKET_TRACE` içinde.
+  - `GameServer/PacketTrace.cpp` (yeni): izleyici; izin listesi (7 opcode), `steady_clock` ms, `./Logs/PacketTrace_<gün>_<ay>_<yıl>.log` (tembel `fopen("a")`, `fflush`, `std::mutex`), isim temizleme, ilk 64 bayt hex, `len==0` iken `-`.
+  - `GameServer/User.cpp` (değişti): yalnızca `#include "PacketTrace.h"` + `#ifdef FDP_PACKET_TRACE` kancası (5 ekleme, 0 silme).
+  - `GameServer/proj-GameServer.vcxproj` (değişti): `FdpTraceDefs` özelliği; Debug/Release `ClCompile` tanım satırlarının başına `$(FdpTraceDefs)`; `PacketTrace.cpp/h` proje girdileri.
+  - `GameServer/proj-GameServer.vcxproj.filters` (değişti): yeni dosyalar için `Source Files` / `Header Files` filtreleri.
+  - `tools/build.sh` (değişti): ikinci argüman `--packet-trace` → `/p:FdpPacketTrace=1`.
+  - `tools/packet-trace-summary.py` (yeni): log özeti + `--selftest`.
+  - `plans/F1-01-paket-izleyici.md`: yalnızca `Durum` satırı ve bu rapor.
+- Bayrak kapalıyken sunucu davranışı değişmez: `FDP_PACKET_TRACE` hiçbir yerde tanımlı değildir; izleyici kodunun tamamı `#ifdef` içindedir (K4: User.cpp 5 ekleme/0 silme; `PacketTrace.cpp` bayraksız derlemede boş çeviri birimi olarak derlenir).
+
+**Adım 1 — imza ve kanca yeri doğrulaması (koddan okundu)**
+```
+pkt.GetOpcode()  -> uint8              shared/Packet.h (GetOpcode)
+pkt.size()       -> size_t             shared/ByteBuffer.h:128
+pkt.contents()   -> const uint8 *      shared/ByteBuffer.h:127
+pkt.rpos()       -> size_t             shared/ByteBuffer.h:98
+GetSocketID()    -> uint16             shared/KOSocket.h:24
+GetName()        -> std::string &      GameServer/User.h:116
+GetZoneID()      -> uint8              GameServer/Unit.h:55
+```
+Kanca, `User.cpp` içinde `return true;` ile biten üç giriş öncesi dalın (crypto/hesap/karakter seçimi) **altında**, `// Otherwise, assume we're authed & in-game.` yorumunun hemen üstündedir; login/karakter paketleri izleyiciye ulaşmaz (K5, fark aşağıda).
+
+**Adım 2/6 — vcxproj + filters farkı (tam)**
+```
+$ git diff main...bot/F1-01 -- GameServer/proj-GameServer.vcxproj
+diff --git a/GameServer/proj-GameServer.vcxproj b/GameServer/proj-GameServer.vcxproj
+index a7cdd7a..cd2d7a5 100644
+--- a/GameServer/proj-GameServer.vcxproj
++++ b/GameServer/proj-GameServer.vcxproj
+@@ -41,6 +41,7 @@
+   <PropertyGroup Label="UserMacros" />
+   <PropertyGroup>
+     <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
++    <FdpTraceDefs Condition="'$(FdpPacketTrace)'=='1'">FDP_PACKET_TRACE;</FdpTraceDefs>
+     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\bin\$(PlatformTarget)-$(Configuration)\Server\</OutDir>
+     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\obj\$(PlatformTarget)-$(Configuration)\Server\$(ProjectName)\</IntDir>
+@@ -59,7 +60,7 @@
+     </Midl>
+     <ClCompile>
+       <Optimization>Disabled</Optimization>
+-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+       <WarningLevel>Level3</WarningLevel>
+       <SuppressStartupBanner>true</SuppressStartupBanner>
+@@ -97,7 +98,7 @@
+     <ClCompile>
+       <Optimization>MaxSpeed</Optimization>
+       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
++      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+       <StringPooling>true</StringPooling>
+       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+       <FunctionLevelLinking>true</FunctionLevelLinking>
+@@ -186,6 +187,7 @@
+     <ClCompile Include="NPCHandler.cpp" />
+     <ClCompile Include="CharacterHandler.cpp" />
+     <ClCompile Include="PartyHandler.cpp" />
++    <ClCompile Include="PacketTrace.cpp" />
+     <ClCompile Include="QuestHandler.cpp" />
+     <ClCompile Include="Region.cpp" />
+     <ClCompile Include="RentalHandler.cpp" />
+@@ -274,6 +276,7 @@
+     <ClInclude Include="MagicProcess.h" />
+     <ClInclude Include="Map.h" />
+     <ClInclude Include="Npc.h" />
++    <ClInclude Include="PacketTrace.h" />
+     <ClInclude Include="Region.h" />
+     <ClInclude Include="StdAfx.h" />
+     <ClInclude Include="Unit.h" />
+
+$ git diff main...bot/F1-01 -- GameServer/proj-GameServer.vcxproj.filters
+diff --git a/GameServer/proj-GameServer.vcxproj.filters b/GameServer/proj-GameServer.vcxproj.filters
+index facc210..f32585f 100644
+--- a/GameServer/proj-GameServer.vcxproj.filters
++++ b/GameServer/proj-GameServer.vcxproj.filters
+@@ -75,6 +75,9 @@
+     <ClCompile Include="PartyHandler.cpp">
+       <Filter>Source Files\Handlers</Filter>
+     </ClCompile>
++    <ClCompile Include="PacketTrace.cpp">
++      <Filter>Source Files</Filter>
++    </ClCompile>
+     <ClCompile Include="FriendHandler.cpp">
+       <Filter>Source Files\Handlers</Filter>
+     </ClCompile>
+@@ -182,6 +185,9 @@
+     <ClInclude Include="Npc.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
++    <ClInclude Include="PacketTrace.h">
++      <Filter>Header Files</Filter>
++    </ClInclude>
+     <ClInclude Include="Region.h">
+       <Filter>Header Files</Filter>
+     </ClInclude>
+```
+
+**Adım 7 — `tools/build.sh` farkı ve boş-dizi testi (K11)**
+```
+$ git diff main...bot/F1-01 -- tools/build.sh
+diff --git a/tools/build.sh b/tools/build.sh
+index afe4299..af3809a 100755
+--- a/tools/build.sh
++++ b/tools/build.sh
+@@ -1,9 +1,13 @@
+ #!/usr/bin/env bash
+ # Builds KnightOnlineServer.sln (Win32, MSVC v143) from WSL.
+-# Usage: tools/build.sh [Release|Debug]
++# Usage: tools/build.sh [Release|Debug] [--packet-trace]
+ set -euo pipefail
+ 
+ CONFIG="${1:-Release}"
++EXTRA=()
++if [ "${2:-}" = "--packet-trace" ]; then
++	EXTRA+=("/p:FdpPacketTrace=1")
++fi
+ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ MSBUILD="${MSBUILD:-/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe}"
+ 
+@@ -13,4 +17,4 @@ if [ ! -f "$MSBUILD" ]; then
+ fi
+ 
+ SLN="$(wslpath -w "$ROOT/KnightOnlineServer.sln")"
+-"$MSBUILD" "$SLN" /p:Configuration="$CONFIG" /p:Platform=Win32 /p:PlatformToolset=v143 /m /nologo /v:minimal
++"$MSBUILD" "$SLN" /p:Configuration="$CONFIG" /p:Platform=Win32 /p:PlatformToolset=v143 /m /nologo /v:minimal "${EXTRA[@]+"${EXTRA[@]}"}"
+
+$ bash -c 'set -u; EXTRA=(); echo ${EXTRA[@]+"${EXTRA[@]}"}'
+bos_dizi_exit=0
+```
+Argümansız çağrıda `EXTRA` boş olduğundan ek argüman eklenmez.
+
+**Adım 8 — özet betiği (K7, K8)**
+```
+$ python3 tools/packet-trace-summary.py --selftest
+selftest OK
+selftest_exit=0
+
+$ printf '0\t12\tTestChar\t71\t06\t11\t0f2c00000000000000000000000000\n100\t12\tTestChar\t71\t06\t11\t0f2c00010000000000000000000000\n250\t12\tTestChar\t71\t08\t15\t0000000a0000\n400\t12\tTestChar\t71\t08\t15\t0000000a0000\n450\t12\tTestChar\t71\t31\t10\t020001000000000000\n550\t12\tTestChar\t71\t31\t10\t030001000000000000\n600\t12\tTestChar\t71\t22\t02\t0102\n700\t12\tTestChar\t71\t22\t02\t0103\n' > /tmp/opencode/f1-01-sample.log
+$ python3 tools/packet-trace-summary.py /tmp/opencode/f1-01-sample.log
+parsed_lines: 8
+skipped_lines: 0
+filtered_out_records: 0
+total_records: 8
+opcode summary:
+  WIZ_MOVE (06): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+  WIZ_ATTACK (08): count=2 interval_ms avg=150.0 median=150.0 min=150 max=150
+  WIZ_TARGET_HP (22): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+  WIZ_MAGIC_PROCESS (31): count=2 interval_ms avg=100.0 median=100.0 min=100 max=100
+WIZ_ATTACK (08) intervals_ms: [150]
+WIZ_TARGET_HP (22) intervals_ms: [100]
+WIZ_MAGIC_PROCESS (31) sub_opcode counts:
+  02: 1
+  03: 1
+WIZ_MOVE (06) packets_per_second: min=2 avg=2.0 max=2 seconds=1
+sample_exit=0
+$ rm -f /tmp/opencode/f1-01-sample.log
+```
+Geçici log depoya eklenmedi.
+
+**Adım 9 — derlemeler ve bayrak kanıtı (K1, K2, K3)**
+
+K1 — `./tools/build.sh Release` (bayraksız), çıkış kodu `0`, son 10 satır:
+```
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2734,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
+  ('/User.cpp' kaynak dosyası derleniyor)
+  Kod üretiliyor
+  1 of 13016 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    61 functions had inline decision re-evaluated but remain unchanged
+  Kodun üretilmesi tamamlandı
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+```
+→ Buradaki `C4834` uyarıları **önceden vardı**; kanıt için değişiklikler geçici olarak `git stash` ile geri alınıp aynı derleme yapıldı:
+```
+$ git stash push -- GameServer/User.cpp GameServer/proj-GameServer.vcxproj GameServer/proj-GameServer.vcxproj.filters tools/build.sh
+$ ./tools/build.sh Release
+baseline_exit=0
+      2 warning C4834
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2714,35): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2729,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
+$ git stash pop
+```
+→ Taban sürümde de aynı iki uyarı (benim eklediğim satırlar yüzünden 2719/2734'e kaydı). `PacketTrace.cpp` sıfır uyarı. **Yeni uyarı yok.**
+
+K2 — `./tools/build.sh Release --packet-trace`, çıkış kodu `0`, son 10 satır:
+```
+C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\User.cpp(2734,34): warning C4834: [[nodiscard]] özniteliğine sahip işlevin dönüş değerinin atılması [C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\proj-GameServer.vcxproj]
+  ('/User.cpp' kaynak dosyası derleniyor)
+  Kod üretiliyor
+  25 of 13035 functions ( 0.2%) were compiled, the rest were copied from previous compilation.
+    9 functions were new in current compilation
+    116 functions had inline decision re-evaluated but remain unchanged
+  Kodun üretilmesi tamamlandı
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+```
+Bayrak değişince GameServer projesi tümüyle yeniden derlendiği için dosyalardaki **mevcut** uyarılar görünür; dosya bazında dağılım:
+```
+$ grep "warning C" /tmp/opencode/f1-release-ptrace.log | sed -E 's/.*[\\/]([A-Za-z0-9_]+\.(cpp|c|h))\(.*warning (C[0-9]+).*/\1 \3/' | sort | uniq -c
+      3 AISocket.cpp C4834
+      2 User.cpp C4834
+      2 GameServerDlg.cpp C4267
+      1 Map.cpp C4834
+      1 MagicProcess.cpp C4834
+      1 MagicInstance.cpp C4838
+      1 MagicInstance.cpp C4834
+      1 LoginHandler.cpp C4267
+      1 GameServerDlg.cpp C4834
+      1 EventHandler.cpp C4267
+      1 DBAgent.cpp C4834
+      1 DBAgent.cpp C4267
+```
+→ Hiçbiri `PacketTrace.cpp`'de değil; tümü değiştirmediğim dosyalarda. Bayrağın gerçekten devrede olduğunun kanıtı — `cl` komut satırı (`/v:detailed` ile bir kez derlendi):
+```
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\HostX86\x86\CL.exe /c /I"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\../src/scripting/Lua/src" /Zi /nologo /W3 /WX- /diagnostics:column /O2 /Ob2 /Ot /Oy- /GL /D FDP_PACKET_TRACE /D WIN32 /D GAMESERVER /D _WINSOCK_DEPRECATED_NO_WARNINGS /D NDEBUG /D _WINDOWS /D _3DSERVER /D _CRT_SECURE_NO_WARNINGS /D _VC80_UPGRADE=0x0600 /D _MBCS /GF /Gm- /EHsc /MT /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /std:c++17 /Yu"stdafx.h" /Fp"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\GameServer.pch" /Fo"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\\" /Fd"C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\obj\x86-Release\Server\GameServer\vc143.pdb" /external:W3 /Gd /TP /analyze- /FC /errorReport:queue PacketTrace.cpp User.cpp
+```
+ve bayraklı `GameServer.exe` içinde log biçim dizgesi; bayraksız exe'de yok:
+```
+$ grep -a -c "PacketTrace_" build/bin/x86-Release/Server/GameServer.exe   # bayrakli derleme sonrasi
+1
+$ grep -a -o "./Logs/PacketTrace_[^\"]*" build/bin/x86-Release/Server/GameServer.exe | head -2
+./Logs/PacketTrace_%d_%d_%d.log - %lld	%u	%s	%u	%02x	%zu	%s
+```
+(Önceki bayraksız derlemede aynı grep `0` döndü.)
+
+K3 — `./tools/build.sh Debug` (bayraksız), çıkış kodu `0`, uyarı yok, son 10 satır:
+```
+  Lua.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\libs\Lua.lib
+  shared.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\libs\shared.lib
+  proj-LogInServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\LogInServer.exe
+  PacketTrace.cpp
+  User.cpp
+  proj-AIServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\AIServer.exe
+  Kod Üretiliyor...
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Debug\Server\GameServer.exe
+```
+
+**K4 / K5 — `GameServer/` farkı**
+```
+$ git diff --numstat main...bot/F1-01 -- GameServer/
+126	0	GameServer/PacketTrace.cpp
+14	0	GameServer/PacketTrace.h
+5	0	GameServer/User.cpp
+5	2	GameServer/proj-GameServer.vcxproj
+6	0	GameServer/proj-GameServer.vcxproj.filters
+
+$ git diff main...bot/F1-01 -- GameServer/User.cpp
+@@ -3,6 +3,7 @@
+ #include "MagicInstance.h"
++#include "PacketTrace.h"
+ #include "DBAgent.h"
+@@ -271,6 +272,10 @@ bool CUser::HandlePacket(Packet & pkt)
+ 		return true;
+ 	}
+ 
++#ifdef FDP_PACKET_TRACE
++	PacketTrace::LogIncoming(GetSocketID(), GetName().c_str(), GetZoneID(), pkt);
++#endif
++
+ 	// Otherwise, assume we're authed & in-game.
+ 	switch (command)
+```
+`User.cpp`: 5 ekleme, 0 silme (K4 üst sınırı 8).
+
+**K6 — izin listesi**
+```
+$ grep -n "WIZ_" GameServer/PacketTrace.cpp
+26:			case WIZ_MOVE:
+27:			case WIZ_ROTATE:
+28:			case WIZ_ATTACK:
+29:			case WIZ_MAGIC_PROCESS:
+30:			case WIZ_TARGET_HP:
+31:			case WIZ_STATE_CHANGE:
+32:			case WIZ_SPEEDHACK_CHECK:
+$ grep -n "WIZ_CHAT\|WIZ_LOGIN\|WIZ_EXCHANGE\|WIZ_ITEM_MOVE\|WIZ_PARTY" GameServer/PacketTrace.cpp
+grep_exit=1
+```
+→ `WIZ_PARTY` de listede değil; gerekçe "Plandan sapmalar" 1. maddede.
+
+**K9 — kodlama**
+```
+$ file GameServer/PacketTrace.h GameServer/PacketTrace.cpp GameServer/User.cpp tools/build.sh tools/packet-trace-summary.py
+GameServer/PacketTrace.h:      C++ source, Unicode text, UTF-8 (with BOM) text, with CRLF line terminators
+GameServer/PacketTrace.cpp:    C source, Unicode text, UTF-8 (with BOM) text, with CRLF line terminators
+GameServer/User.cpp:           C++ source, Unicode text, UTF-8 (with BOM) text, with CRLF line terminators
+tools/build.sh:                Bourne-Again shell script, ASCII text executable
+tools/packet-trace-summary.py: Python script, ASCII text executable
+
+$ grep -c $'\r' tools/build.sh tools/packet-trace-summary.py
+tools/build.sh:0
+tools/packet-trace-summary.py:0
+```
+(`file`, `PacketTrace.cpp`'yi içerik sezgisiyle "C source" sayıyor; kodlama satırı UTF-8 BOM + CRLF.)
+
+**K10 — çalışma ağacı (rapor commit'i öncesi)**
+```
+$ git status --short
+ M plans/F1-01-paket-izleyici.md
+?? start.md
+```
+`start.md` depoda önceden beri izlenmeyen altyapı dosyasıdır (plana göre dokunulmadı); rapor commit'inden sonra yalnızca o kalır. `build/` ve `Logs/` depoda değil.
+
+**Kabul kriterleri öz-değerlendirmesi**
+- K1 ✔ `./tools/build.sh Release` çıkış 0; yeni uyarı yok (taban stash testiyle kanıtlandı; `PacketTrace.cpp` 0 uyarı).
+- K2 ✔ `./tools/build.sh Release --packet-trace` çıkış 0; `cl` komut satırında `/D FDP_PACKET_TRACE` ve `PacketTrace.cpp`; bayraklı exe'de `PacketTrace_` dizgesi var, bayraksızda yok.
+- K3 ✔ `./tools/build.sh Debug` çıkış 0, uyarı yok.
+- K4 ✔ `GameServer/` farkı yalnızca izinli 5 dosya; `User.cpp` 5 ekleme/0 silme.
+- K5 ✔ Kanca giriş öncesi dalların altında, yorumun hemen üstünde; login/karakter seçimi paketleri kapsam dışı.
+- K6 ✔ İzin listesi tek yerde (`IsTracedOpcode`); `WIZ_CHAT`, `WIZ_LOGIN`, `WIZ_EXCHANGE`, `WIZ_ITEM_MOVE` yok; `WIZ_PARTY` de bilinçli olarak yok.
+- K7 ✔ `--selftest` → `selftest OK`, çıkış 0.
+- K8 ✔ Sentetik 8 satırlık log ile özet üretildi; geçici dosya `/tmp/opencode` altındaydı ve silindi.
+- K9 ✔ Yukarıdaki `file` çıktısı; `.sh`/`.py` CR içermiyor.
+- K10 ✔ İzinli dosyalar dışında değişiklik yok; tek kalan `?? start.md` (önceden var, dokunulmadı).
+- K11 ✔ `build.sh` farkı yalnızca `EXTRA` ekliyor; boş dizi testi `set -u` altında hatasız.
+
+**Plandan sapmalar ve gerekçeleri**
+1. **`WIZ_PARTY` izin listesinden çıkarıldı.** Plan adım 4 bunu şarta bağlamıştı: `GameServer/PartyHandler.cpp:14-16` gelen `WIZ_PARTY` (`PARTY_CREATE`/`PARTY_INSERT`) paketinden karakter adı okuyor (`pkt >> strUserID;`). Kişisel metin loglanmaması için 7 opcode kaldı: `WIZ_MOVE`, `WIZ_ROTATE`, `WIZ_ATTACK`, `WIZ_MAGIC_PROCESS`, `WIZ_TARGET_HP`, `WIZ_STATE_CHANGE`, `WIZ_SPEEDHACK_CHECK`.
+2. **Ek standart başlıklar:** `PacketTrace.cpp`'ye `<chrono>`, `<cstdio>`, `<ctime>`, `<mutex>` eklendi (plan risk 3'ün önerisi).
+3. **Bayrak kanıtı için ek doğrulama:** Plan K2 "derleme günlüğünde `cl` satırı; bulamazsan `/v:detailed`" diyordu; `/v:detailed` ile bir kez derlenip `cl` satırı ve üretilen exe'deki dizge birlikte gösterildi. Ek derleme varsayılan `build.sh` davranışını değiştirmedi.
+4. **`tools/packet-trace-summary.py` LF:** Çalışma ağacında LF ve commit'lenen blob LF (`git show HEAD:... | grep -c $'\r'` → 0). Ancak `.gitattributes` yalnızca `*.sh`'yi LF'e sabitliyor; taze bir Windows checkout'unda `.py` CRLF'e dönüşebilir. `.gitattributes` opencode izin listesinde olmadığı için dokunulmadı; ayrıntı "Açık sorular"da.
+5. **Özet betiği çıktısı ASCII/İngilizce** kolon adlarıyla yazıldı (plan ASCII ve Türkçe başlıksız çıktıya izin veriyor).
+
+**Açık sorular / bulgular**
+1. **`.py` satır sonu kalıcılığı:** `tools/packet-trace-summary.py` depoda LF olarak saklanıyor (blob LF), fakat `.gitattributes` `*.py text eol=lf` içermediğinden `core.autocrlf=true` olan bir Windows/WSL checkout'unda CRLF'e dönüşebilir. Kalıcı çözüm `.gitattributes`'a bir satır eklemektir; bu dosya izin listesinde olmadığı için değiştirilmedi (planner/doğrulayıcı kararı).
+2. **F1-02 için ölçüm notu:** `WIZ_PARTY` paketleri parti zamanlaması için artık loglanmayacak; gerekiyorsa yalnızca `t/opcode/len` (isim alanı olmadan) yazan ayrı bir güvenli yol ayrı planda düşünülmeli.
+3. **AIServer'da `PacketTrace.cpp` yok:** İzleyici yalnızca GameServer'a eklendi (plan kapsamı); AIServer/LogInServer'da değişiklik yok.
+4. **Bayraklı derleme zamanlaması:** `--packet-trace` ilk kez verildiğinde GameServer projesi tümüyle yeniden derlenir (tanım değişikliği); bu beklenen davranıştır (plan risk 2).
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F0-02..bot/F1-01` @ `9197379` (5 commit; taban `dc7cac3`). Not: `main...bot/F1-01` farkı zincirli F0-02 işini de içerir; plan kapsamı için `bot/F0-02..bot/F1-01` esas alındı.
+- Kriter sonuçları (hepsi Claude tarafından bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme, yeni uyarı yok | ✔ | `./tools/build.sh Release` exit=0. 18 uyarı satırı (AISocket, DBAgent, EventHandler, GameServerDlg, LoginHandler, MagicInstance, MagicProcess, Map, UpgradeHandler C4789, User C4834); `PacketTrace.cpp` sıfır. `User.cpp` C4834 satırları (2719/2734) `GetSocketID(), GetName().c_str(), bType…` ifadeleri, taban sürümde 2714/2729'da aynı (yalnızca kaydı) |
+| K2 `--packet-trace` derleme + bayrak devrede | ✔ | exit=0, `PacketTrace.cpp` uyarısı 0; bayraklı exe'de `grep -a -c PacketTrace_` = 1; bayraksız Release'e dönünce 0. Raporun `/D FDP_PACKET_TRACE` cl satırı kanıtı kabul edildi (exe dizgesi bağımsız doğrulandı) |
+| K3 Debug derleme | ✔ | `./tools/build.sh Debug` exit=0, uyarı 0 |
+| K4 Bayraksız davranış aynı, fark kapsamı | ✔ | `GameServer/` farkı yalnızca izinli 5 dosya; `User.cpp` +5/−0 (`#include` + `#ifdef` bloğu); vcxproj +5/−2 (yalnızca `FdpTraceDefs`, iki `PreprocessorDefinitions` satırı, 2 yeni girdi) |
+| K5 Kanca yalnızca oyundaki oyuncular | ✔ | `User.cpp` farkı: kanca `// Otherwise, assume we're authed & in-game.` yorumunun hemen üstünde, giriş öncesi `return true;` dallarının altında |
+| K6 İzin listesi | ✔ | `PacketTrace.cpp:26-32` tek `IsTracedOpcode`; 7 opcode; `WIZ_CHAT/LOGIN/EXCHANGE/ITEM_MOVE/PARTY` yok |
+| K7 `--selftest` | ✔ | `selftest OK`, exit=0 |
+| K8 Sentetik log özeti | ✔ | Rapordaki çıktı + bozuk satırlı ek deneme: `skipped_lines: 1`, çökme yok |
+| K9 Kodlama | ✔ | 4 GameServer dosyası + vcxproj/filters: UTF-8 BOM + CRLF (`grep -vc $'\r$'` = 0); `.sh`/`.py` ASCII, CR yok |
+| K10 Çalışma ağacı | ✔ | `git status --short` yalnızca `?? start.md` (önceden var) |
+| K11 `build.sh` | ✔ | Fark yalnızca `EXTRA`; boş dizi `set -u` altında hatasız; argümansız Release derlemesi çalıştı |
+
+- Bulgular (önem sırasıyla; hiçbiri engelleyici değil):
+  1. **Plan sapması 1 (WIZ_PARTY listeden çıkarıldı) doğru ve gerekçeli.** `GameServer/PartyHandler.cpp:14-16` `PARTY_CREATE/INSERT` içinde `pkt >> strUserID` okuyor; plan adım 4 bu durumda çıkarmayı şart koşmuştu. Sonuç: parti zamanlaması izleyiciyle ölçülemez, F1-02 planında gerekirse ismi olmayan ayrı güvenli yol düşünülmeli.
+  2. **`tools/packet-trace-summary.py` satır sonu kalıcılığı (düşük, KI-009).** `.gitattributes` yalnızca `*.sh` için `eol=lf` sabitliyor; `core.autocrlf=true` ile `.py` CRLF'e dönüşebilir (betik shebang'li değil, `python3 dosya` ile çalışır, CRLF'te de çalışır; etki kozmetik). Çözüm `.gitattributes`'a `*.py text eol=lf` eklemek (opencode izin listesi dışı, proje sahibi/Claude).
+  3. **Not (kod kalitesi, engel değil):** `PacketTrace.cpp` her çağrıda mutex alıyor; izin listesi dışı opcode'lar mutex'ten önce döndüğü için yük yalnızca izlenen paketlerde. `localtime` thread-safe değil ama kilit altında çağrılıyor. Dosya tarihi yalnızca ilk açılışta belirleniyor (gece yarısı geçince yeni dosyaya geçmez); ölçüm oturumları için yeterli.
+  4. **Not:** `FDP_PACKET_TRACE`'li exe çalışma zamanında hiç çalıştırılmadı (planda da yok); log biçimi ve gerçek oyuncuyla ölçüm F1-02'de doğrulanacak. Bu yüzden `docs/03` etiketleri **yükseltilmedi**.
+- Düzeltme talimatı: yok.

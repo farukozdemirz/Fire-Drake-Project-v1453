@@ -41,6 +41,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+    <FdpTraceDefs Condition="'$(FdpPacketTrace)'=='1'">FDP_PACKET_TRACE;</FdpTraceDefs>
     <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\bin\$(PlatformTarget)-$(Configuration)\Server\</OutDir>
     <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)build\obj\$(PlatformTarget)-$(Configuration)\Server\$(ProjectName)\</IntDir>
@@ -59,7 +60,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;_DEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <WarningLevel>Level3</WarningLevel>
       <SuppressStartupBanner>true</SuppressStartupBanner>
@@ -97,7 +98,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <PreprocessorDefinitions>WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>$(FdpTraceDefs)WIN32;GAMESERVER;_WINSOCK_DEPRECATED_NO_WARNINGS;NDEBUG;_WINDOWS;_3DSERVER;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -186,6 +187,7 @@
     <ClCompile Include="NPCHandler.cpp" />
     <ClCompile Include="CharacterHandler.cpp" />
     <ClCompile Include="PartyHandler.cpp" />
+    <ClCompile Include="PacketTrace.cpp" />
     <ClCompile Include="QuestHandler.cpp" />
     <ClCompile Include="Region.cpp" />
     <ClCompile Include="RentalHandler.cpp" />
@@ -274,6 +276,7 @@
     <ClInclude Include="MagicProcess.h" />
     <ClInclude Include="Map.h" />
     <ClInclude Include="Npc.h" />
+    <ClInclude Include="PacketTrace.h" />
     <ClInclude Include="Region.h" />
     <ClInclude Include="StdAfx.h" />
     <ClInclude Include="Unit.h" />

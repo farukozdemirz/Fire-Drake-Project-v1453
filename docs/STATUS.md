@@ -39,12 +39,13 @@ Liste: `plans/README.md`.
 |---|---|---|
 | F0-01 Ortam doğrulama araçları | KAPANDI | `main` @ `43d3500` (merge) |
 | F0-02 Sunucu çalıştırma betiği (`tools/run-servers.sh`) | DOĞRULANDI | `bot/F0-02` @ `9c16d5e` (+ Tur 2 doğrulama commit'i); `main`'e birleştirme ve push proje sahibinin onayında; `plans/.aktif-plan` bu plana işaret ediyor |
-| F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | HAZIR | `bot/F1-01` (taban: `bot/F0-02`); `plans/F1-01-paket-izleyici.md`; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
+| F1-01 Paket izleyici (`FDP_PACKET_TRACE`) | DOĞRULANDI | `bot/F1-01` @ `9197379` (taban: `bot/F0-02`); birleştirme sırası: önce F0-02, sonra F1-01; çalışma zamanı kaydı F1-02'de (insan istemcisi) |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
+| 2026-10-02 | F1-01 | DOĞRULANDI (Tur 1) | 11/11 kriter ✔ (Release, Release `--packet-trace`, Debug bağımsız derlendi; bayraklı exe'de log dizgesi var, bayraksızda yok). Sapma: `WIZ_PARTY` kişisel ad okuduğu için izleme dışı (doğru). Yeni: KI-009 (düşük) |
 | 2026-10-01 | F0-02 | DOĞRULANDI (Tur 2) | 14/14 kriter ✔; Tur 1'in 6 bulgusu kapandı (zaman aşımı yolu geçici kopyayla çalışma zamanında doğrulandı). Kalan: KI-008 (düşük, `stop` satırı hep `0 sn`) |
 | 2026-10-01 | F0-02 | DÜZELTME GEREKLİ (Tur 1) | 14/14 kriter ✔ (§5.4 Claude tarafından bağımsız yeniden çalıştırıldı, K11 sahte istemciyle çalışma zamanında doğrulandı). Engelleyen: süre/zaman aşımı duvar saati değil (300 sn ≈ 480 sn), zaman aşımı mesajı son durumu kaybediyor; ayrıca `[DOWN]` satırı yok, `stop` etiketleri plandan farklı. Yeni: KI-007 |
 | 2026-10-01 | F0-01 | DOĞRULANDI | 10/10 kriter; 2 düşük + 3 bilgi bulgusu (`plans/F0-01…` Doğrulama Raporu). Debug/Release tablosu → `docs/02` §2.1 |
@@ -68,10 +69,9 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Proje sahibi: opencode'a `plans/F1-01-paket-izleyici.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`.
-2. Proje sahibi: `bot/F0-02`'yi `main`'e birleştirir (ve onayıyla push). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
-3. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
-4. F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
+1. Proje sahibi: `bot/F0-02`'yi, ardından `bot/F1-01`'i `main`'e `--no-ff` birleştirir (push onayı ayrı). Sonra Claude: `docs/02` §3'e çalıştırma komutunu, `docs/15` T-ENV-01'e "üç sunucu ayakta" kanıtını ve ölçülen açılış sürelerini işler (Release'te her sunucu 1–5 sn'de hazır, `start` toplam ~13–17 sn, `stop` ~9 sn).
+2. Proje sahibi: istemciyle Ronark Land'e giriş (T-ENV-01 kalanı, Blokajlar). Sonucu `docs/STATUS.md`'ye bir satır olarak yazması yeterli.
+3. F1-02 planı (Claude): insan istemcisiyle zamanlama kayıt oturumu (`--packet-trace` derlemesi; T-MECH-CLIENT-01..04). F0 faz sonuç raporu (`docs/templates/PHASE_REPORT.md` → `docs/phase-reports/F0-taslak.md`) ve proje sahibinin F0 kabulü; ardından F1 planları.
 
 ## Otonom döngü
 
