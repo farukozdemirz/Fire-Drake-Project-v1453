@@ -2767,3 +2767,112 @@ UserInOutcome ActionExecutor::TickUserIn(BotSession * s, std::chrono::steady_clo
 	out.received = received;
 	return out;
 }
+
+// --- region-change NPC request slice (ADR-0017 Ek F4-15) ---
+
+NpcInOutcome ActionExecutor::TickNpcIn(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	NpcInOutcome out;
+	out.kind = NpcInOutcome::NOTHING;
+	out.reason = "ok";
+	out.requested = 0;
+	out.received = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame() || user->isDead())
+		return out;
+
+	uint16 batch[BotCore::kNpcInMaxIds];
+	int n = s->PeekNpcInBatch(batch, BotCore::kNpcInMaxIds);
+	if (n == 0)
+		return out;
+
+	BotCore::NpcInCheck c;
+	c.count = n;
+	c.hasLast = s->m_npcInHasLast;
+	c.sinceLastMs = c.hasLast ? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_npcInLast).count() : 0;
+
+	BotCore::NpcInVerdict verdict = BotCore::CheckNpcIn(c);
+
+	// A gap is a harmless timing wait, not a violation: no event, the ids stay pending.
+	if (verdict == BotCore::NPCIN_REJECT_GAP)
+		return out;
+
+	if (verdict != BotCore::NPCIN_OK)
+	{
+		uint32 rejectId = NextDecisionId(s);
+		EmitFairnessReject(s, user, rejectId, "NpcInReq", "CLI-20", "bad_count",
+			(float)n, (float)BotCore::kNpcInMaxIds);
+		s->DropNpcInBatch(batch, n);
+
+		out.kind = NpcInOutcome::REFUSED;
+		out.reason = "bad_count";
+		out.requested = n;
+		return out;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"NpcInReq\",\"count\":" + std::to_string(n);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u16 count then count x u16 id (User.cpp:1260-1280).
+	Packet pkt(WIZ_REQ_NPCIN);
+	pkt << uint16(n);
+	for (int i = 0; i < n; i++)
+		pkt << uint16(batch[i]);
+
+	s->m_npcInEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	// The packet went out, so the timing/counters move even when the reply never comes. Not counted in the CLI-11
+	// window: this is automatic client traffic, not a player action.
+	s->DropNpcInBatch(batch, n);
+	s->m_npcInHasLast = true;
+	s->m_npcInLast = now;
+	s->m_npcInRequests++;
+
+	uint64 e = s->m_npcInEcho.load();
+	bool ok = (e & (1ull << 63)) != 0;
+	int received = ok ? (int)(e & 0xFFFF) : 0;
+	if (ok)
+		s->m_npcInUnits += (uint32)received;
+
+	const char * reason = ok ? "received" : "no_result";
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"NpcInReq\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"count\":" + std::to_string(n)
+			+ ",\"received\":" + std::to_string(received);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (ok)
+	{
+		out.kind = NpcInOutcome::SENT;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = NpcInOutcome::FAILED;
+		out.reason = reason;
+	}
+	out.requested = n;
+	out.received = received;
+	return out;
+}

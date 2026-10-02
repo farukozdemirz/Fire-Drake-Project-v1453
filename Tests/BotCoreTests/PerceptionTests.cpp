@@ -869,3 +869,88 @@ TEST_CASE("Perception_NpcTable")
 	CHECK_EQ(table.Count(), 0);
 	CHECK_EQ(int(table.Overflow()), 0);
 }
+
+static BotCore::NpcObs MakeNpc(uint16_t id)
+{
+	BotCore::NpcObs n;
+	memset(&n, 0, sizeof(n));
+	n.id = id;
+	strcpy(n.name, "n");
+	return n;
+}
+
+TEST_CASE("Perception_PendingIds_Npc")
+{
+	BotCore::NpcTable npcs;
+	BotCore::PendingIds pending;
+
+	{
+		const uint16_t ids[4] = { 10001, 10002, 10001, 10003 };
+		pending.Set(ids, 4, npcs);
+		CHECK_EQ(pending.Count(), 3);
+	}
+
+	npcs.Upsert(MakeNpc(10002));
+	{
+		const uint16_t ids[3] = { 10001, 10002, 10003 };
+		pending.Set(ids, 3, npcs);
+		CHECK_EQ(pending.Count(), 2);
+
+		uint16_t out[10];
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 10), 2);
+		CHECK_EQ(int(out[0]), 10001);
+		CHECK_EQ(int(out[1]), 10003);
+
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 1), 1);
+		CHECK_EQ(pending.Count(), 2);
+	}
+
+	npcs.Upsert(MakeNpc(10001));
+	{
+		uint16_t out[10];
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 10), 1);
+		CHECK_EQ(int(out[0]), 10003);
+		CHECK_EQ(pending.Count(), 1);
+	}
+
+	const uint16_t drop[1] = { 10003 };
+	pending.Remove(drop, 1);
+	CHECK_EQ(pending.Count(), 0);
+
+	BotCore::ObsTable obs;
+	const uint16_t one[1] = { 7 };
+	pending.Set(one, 1, obs);
+	CHECK_EQ(pending.Count(), 1);
+}
+
+TEST_CASE("Perception_CheckNpcIn")
+{
+	CHECK_EQ(int(BotCore::kNpcInMaxIds), 32);
+	CHECK_EQ(int(BotCore::kNpcInMinGapMs), 1000);
+
+	BotCore::NpcInCheck c;
+	c.count = 1;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.count = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+
+	c.count = 33;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+
+	c.count = 32;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_GAP);
+
+	c.sinceLastMs = 1000;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.count = 0;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+}

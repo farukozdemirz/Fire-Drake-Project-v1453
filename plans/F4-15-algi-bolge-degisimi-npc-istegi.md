@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-15` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-13 (`PendingIds`, `CheckUserIn`, `TickUserIn`, `m_obsLock`) — `KAPANDI` (merge `f1acc48`); F4-14 (`NpcTable`, NPC algı bloğu, `m_npcUnresolved`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |

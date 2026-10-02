@@ -19,11 +19,12 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_partyManageHasLast(false),
 		m_chatHasLast(false), m_chatLastHash(0),
 		m_userInHasLast(false), m_userInRequests(0), m_userInUnits(0),
+		m_npcInHasLast(false), m_npcInRequests(0), m_npcInUnits(0),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
-		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0)
+		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0), m_npcInEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -259,6 +260,7 @@ void BotSession::OnPacket(Packet & pkt)
 				m_npcs.Upsert(list[i]);
 			if (n == BotCore::kNpcMaxUnits && declared > n)
 				m_npcs.NoteDropped((uint32_t)(declared - n));
+			m_npcInEcho = (1ull << 63) | (uint64)n;
 		}
 		else if (opcode == WIZ_NPC_REGION)
 		{
@@ -266,6 +268,7 @@ void BotSession::OnPacket(Packet & pkt)
 			int n = BotCore::ParseRegionList(data, len, ids, BotCore::kNpcMaxUnits * 4);
 			std::lock_guard<std::mutex> lock(m_obsLock);
 			m_npcUnresolved = (uint32)m_npcs.Retain(ids, n);
+			m_npcPending.Set(ids, n, m_npcs);
 		}
 		else if (opcode == WIZ_NPC_MOVE)
 		{
@@ -348,6 +351,7 @@ void BotSession::ResetForRespawn()
 		m_obs.Clear();
 		m_obsPending.Clear();
 		m_npcs.Clear();
+		m_npcPending.Clear();
 	}
 	m_obsUnresolved = 0;
 	m_npcUnresolved = 0;
@@ -355,6 +359,10 @@ void BotSession::ResetForRespawn()
 	m_userInRequests = 0;
 	m_userInUnits = 0;
 	m_userInEcho = 0;
+	m_npcInHasLast = false;
+	m_npcInRequests = 0;
+	m_npcInUnits = 0;
+	m_npcInEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;
@@ -375,4 +383,16 @@ void BotSession::DropUserInBatch(const uint16 * ids, int n)
 {
 	std::lock_guard<std::mutex> lock(m_obsLock);
 	m_obsPending.Remove(ids, n);
+}
+
+int BotSession::PeekNpcInBatch(uint16 * out, int cap)
+{
+	std::lock_guard<std::mutex> lock(m_obsLock);
+	return m_npcPending.Peek(m_npcs, (uint16_t)0xFFFF, out, cap);
+}
+
+void BotSession::DropNpcInBatch(const uint16 * ids, int n)
+{
+	std::lock_guard<std::mutex> lock(m_obsLock);
+	m_npcPending.Remove(ids, n);
 }
