@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03 (`KAPANDI`: spawn, `BotSession`), F2-04 (`KAPANDI`: despawn, `PollDespawn`, `m_despawnAfterMs`) |
@@ -222,16 +222,46 @@ file GameServer/Bot/*
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-05` — `<kısa-sha> [F2-05] …`
+- Branch / commit'ler: `bot/F2-05` (taban: `gece/2026-10-02`)
+  - `1dea271` `[F2-05] Bot yeniden spawn dongusu: RESPAWN_CYCLES, ResetForRespawn, ilerleme ve final ozet loglari` (kod)
+  - Rapor + `Durum: UYGULANDI` commit'i bu raporun altındaki commit'tir.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/BotSession.h`: `m_despawnCount` alanı + `ResetForRespawn()` bildirimi.
+  - `GameServer/Bot/BotSession.cpp`: kurucuya `m_despawnCount(0)`; `ResetForRespawn()` gövdesi (yalnızca §5.3'teki alanlar).
+  - `GameServer/Bot/BotManager.h`: `m_respawnCycles`, `m_despawnOk`, `m_namesLeft` alanları ve kurucu başlatıcıları.
+  - `GameServer/Bot/BotManager.cpp`: `CYCLE_PROGRESS_EVERY=50`; `Startup()`'ta `RESPAWN_CYCLES` okuma/kıskaç; `ParseSpawnList`'te `ignored`/`respawn cycles` logları; `TickSessions`'ta `busyCount` faz sayımı, `>=` spawn özeti, `busyCount == 0` despawn özeti + `respawn cycles done`; `PollDespawn`'da sayaçlar, `cycle progress` logu ve `ResetForRespawn()` koşulu.
+- Derleme sonucu (`./tools/build.sh Release`, rc=0; son satırlar):
   ```
-  …
+    BotManager.cpp
+    BotSession.cpp
+    proj-AIServer.vcxproj -> ...\x86-Release\Server\AIServer.exe
+    Kod üretiliyor
+    0 of 13169 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Bu turda Release'te hiç `warning` satırı yok. `./tools/build.sh Debug`, rc=0; yalnızca önceden var olan iki `GameServerDlg.cpp` uyarısı (C4267, satır 1143 ve 1802); `Bot\` dosyalarında uyarı yok.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0; bu turda uyarı yok — Bot dosyaları dahil).
+  - K2 ✔ (Debug rc=0; iki uyarı eski `GameServerDlg.cpp` satırlarında).
+  - K3 ✔ (`git diff --stat gece/2026-10-02...bot/F2-05`: 4 Bot dosyası + plan dosyası; aşağıda).
+  - K4 ✔; `grep -n`: `:58 m_enabled = ini.GetBool`, `:59 if (!m_enabled)`, `:87 int respawnCycles = ini.GetInt(...RESPAWN_CYCLES...)` — okuma erken dönüşten sonra; `[0,100000]` kıskaç `:88-91`; `DESPAWN_AFTER_SEC == 0` iken `m_respawnCycles = 0` + `ignored` logu `:397-403` (yalnızca `!m_sessions.empty()` bloğunda, spawn listesi boşsa hiç okunmaz/uygulanmaz).
+  - K5 ✔; sıra `PollDespawn` içinde `:624 ReleaseSlot(pUser)`, `:625 s->m_pUser = nullptr`, `:626 s->m_phase = PHASE_DESPAWNED`, `:636 m_despawnCount++`, `:658 ResetForRespawn()`. `PHASE_QUEUED` atamaları yalnızca `BotSession.cpp:6` (kurucu) ve `BotSession.cpp:27` (`ResetForRespawn`); `PHASE_FAILED`/`PHASE_DESPAWN_STUCK` hiçbir yerde `PHASE_QUEUED`'a dönmez. `ResetForRespawn` yalnızca `BotManager.cpp:658`'den çağrılır (grep çıktısı 33 satır, yukarıdaki komut).
+  - K6 ✔ tablo:
+    | `RESPAWN_CYCLES` | despawn sonrası `m_despawnCount` | `<= m_respawnCycles`? | toplam spawn |
+    |---|---|---|---|
+    | 0 | 1 | 1<=0 → hayır | 1 |
+    | 1 | 1 → 2 | 1<=1 evet, 2<=1 hayır | 2 |
+    | n | k=1..n+1 | k<=n → n kez evet | 1+n |
+    `RESPAWN_CYCLES=4`, 4 bot → 4×5 = 20 spawn (plan §7.2 ile uyumlu).
+  - K7 ✔ (`ResetForRespawn` gövdesi §5.3 ile birebir: `m_pUser`, `m_phase`, `m_selectSeen`, `m_updateCount`, `m_selectResult`, `m_packetTotal`, `m_opcodeCount[256]`; atomiklere düz atama, kopya/yeniden kurma yok).
+  - K8 ✔; `spawn complete: %u/%u in game, %u failed` (`:544`) ve `despawn complete: ...` (`:561`) metinleri F2-03/F2-04 ile birebir; `>=` `:538`, `busyCount == 0` `:550`. Yeni metinler: `RESPAWN_CYCLES ignored` `:402`, `respawn cycles:` `:407`, `respawn cycles done:` `:572`, `cycle progress:` `:650`. Yeni kodda `printf` yok (`git diff | grep "^+" | grep -i printf` boş).
+  - K9 ✔; `m_pUser`/sayaç satırları yalnızca `TickSessions` (`:426-579`), `BeginDespawn` (`:581-598`), `PollDespawn` (`:600-659`), `StartSession` (`:661-707`), `FailSession` içinde; hepsi `Tick()` → IOCP thread zincirinden. `ResetForRespawn()` yalnızca `PollDespawn`'dan (`:658`).
+  - K10 ✔; `ENABLED` erken dönüşü `:59`'da; ilk yeni satır `:87` (sonrasında). `RESPAWN_CYCLES=0` yolunda `PollDespawn` farkı: `:636-639` sayaç artışları + `:657` `m_despawnCount <= 0` (hiç doğru değil) karşılaştırması. Ayrıca §7'deki "respawn cycles yok" gözlemi plan gereği.
+  - K11 ✔; `file GameServer/Bot/*`: beşi de `ASCII text, with CRLF line terminators`; girinti tab, Allman, yorumlar İngilizce.
+  - K12 ✔; tur sonunda `git status --short` boş; sunucu çalıştırılmadı (`run-servers.sh status`: 0/3, hepsi `[DOWN]`), `GameServer.ini` ve DB'ye dokunulmadı.
+- Plandan sapmalar ve gerekçeleri: Yok. §5.5'teki iki yorum bloğu ("log, tam biçim"/"log") gerçek `snprintf` çağrılarına çevrildi; formatlar ve argüman sırası plandakiyle birebir. `ignored` logu plan gereği `if (!m_sessions.empty())` bloğunun içinde kaldı.
+  - Bulgular (kapsam dışı, düzeltme yapılmadı): Bu turda `Initialize()`'da eksik sıfırlama bulunmadı (kod okuması; doğrulaması §7.2/§7.4 koşusunda Claude'da). `RESPAWN_CYCLES` yalnızca `SPAWN_ON_START` listesi boş değilken okunur/uygulanır; liste boşsa anahtar ini'ye yazılır ama log üretilmez (plan §5.5'in `!m_sessions.empty()` koşulu).
+- Açık sorular: Yok.
 
 ---
 
