@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `m_castEcho`/`m_castSelfId`, `m_cast*` zamanlayıcıları) — `KAPANDI`; F4-02 (`m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -290,11 +290,32 @@ git diff --check gece/2026-10-02...bot/F4-04
 
 ### Tur 1
 
-- Branch / son commit:
+- Branch / son commit: `bot/F4-04` (taban: `gece/2026-10-02`); kod commit'i `b728b6b` (+ bu rapor/Durum commit'i).
 - Yapılanlar:
-- Çalıştırılan komutlar ve çıktıları (build Release/Debug, testler):
+  - `BotCore/BotCombat.h`: pot dilimi saf mantığı eklendi (`kPotCooldownMs = 2500`, `PotSupported`, `PotionCheck`, `PotionVerdict`, `PotionWaitMs`, `CheckPotion`). Mevcut içerik/`#include`'lar değişmedi (yalnızca `<algorithm>`, `<cstdint>`).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_PotCheck_Order` ve `Combat_PotWait` eklendi (mevcut makro stili). Toplam test 24 → 26.
+  - `GameServer/Bot/ActionExecutor.h/.cpp`: `PotionOutcome`; `CountInBag` (yalnızca çanta 14..41), `SubmitPotion` (tek `WIZ_MAGIC_PROCESS`/`MAGIC_EFFECTING`, caster = target = kendi kimliği, `m_castEcho`'dan sonuç), `RejectPotion` (`CLI-06 no_stock`/`pot_cooldown`, `CLI-11 rate`), `BeginPotion`, `TickPotion`, `EndPotion`. Pot, tip-3 ve genel cast zamanlayıcılarını besler; onlardan beklemez.
+  - `GameServer/Bot/BotSession.h/.cpp`: pot serisi üyeleri + ortak zaman (`m_potHasLast`/`m_potLast`); başlatıcı listesi ve `ResetForRespawn()`. `OnPacket()` **değişmedi**.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandPot` bildirimi ve gövdesi; `ExecuteCommand` `pot` fiili + unknown listesi; `TickSessions()` `PHASE_IN_GAME` pot bloğu (cast bloğunun ardından, aynı seviyede); `BeginDespawn()` `EndPotion`; `BuildStatusLines()` `pot=`.
+  - `GameServer/proj-GameServer.vcxproj*`, `BotCore/BotCore.vcxproj`, `Tests/BotCoreTests/BotCoreTests.vcxproj` değişmedi (yeni dosya yok).
+- Çalıştırılan komutlar ve çıktıları:
+  - `./tools/build.sh Release`: rc=0; `proj-GameServer.vcxproj -> ...\GameServer.exe`; yeni dosyalarda uyarı yok (yalnızca eski `GameServerDlg.cpp` C4834/C4267 ve `UpgradeHandler.cpp` C4789).
+  - `./tools/build.sh Debug`: rc=0; `proj-GameServer.vcxproj -> ...\GameServer.exe`.
+  - `./tools/run-tests.sh Release`: `26 tests, 0 failed` (`[ OK ] Combat_PotCheck_Order`, `[ OK ] Combat_PotWait`).
+  - `./tools/run-tests.sh Debug`: `26 tests, 0 failed`.
+  - K4: `grep -n "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` → eşleşme yok; `#include` yalnızca `<algorithm>`, `<cstdint>`.
+  - K5: `WIZ_MAGIC_PROCESS` yalnızca `ActionExecutor.cpp` (SubmitCast `:592`, SubmitPotion `:1005`) ve `BotSession.cpp` (`OnPacket` `:46`). Yasak çağrılar (`MagicPacket`/`MagicInstance`/`m_CoolDownList`/`m_MagicTypeCooldownList`/`MSpChange`/`HpChange`/`RobItem`/`GiveItem`) yalnızca `#include "../MagicInstance.h"` ve açıklama yorumlarında; **çağrı yok**.
+  - K6: `TickPotion` önce `stock < 1` (`:1191`), sonra `PotionWaitMs`, sonra `CheckPotion` (`:1197`) sonra `SubmitPotion`/`HandlePacket` (`:1013`); pot `HandlePacket(pkt)` tek yerde (`SubmitPotion`).
+  - K7: `CountInBag` `INVENTORY_INVENT..INVENTORY_INVENT + HAVE_MAX - 1` (14..41); `grep m_sItemArray GameServer/Bot/*.cpp` boş.
+  - K8: `git diff gece/2026-10-02...bot/F4-04 -- BotManager.cpp | grep '^-'` yalnızca 3 bilinçli satır (unknown command mesajı, `BuildStatusLines` biçimi/argümanı); `OnPacket()` değişmedi.
+  - K9: `git diff --stat` yalnızca §4'teki 8 dosya; vcxproj diff boş.
+  - K10: `file` CRLF; `BotCombat.h`/`CombatTests.cpp` ASCII+CRLF; `git diff --check` temiz.
+  - K11: `grep printf|Sleep|lock_guard|mutex|CreateThread|rand(` `ActionExecutor.*` boş.
+  - K12: `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1; önceki 24 test geçiyor; `EmitFairnessReject` `"Move"`/`"Attack"`/`"Cast"` çağrıları yerinde (yeni `"Potion"` eklendi).
 - Sapmalar / sorular:
-- Kabul kriterleri K1–K12 durumu:
+  - Plandaki "sonraki cast zamanlayıcılarını güncelle" adımında paket `WIZ_MAGIC_PROCESS` yalnızca `SubmitPotion`'da oluşturulur (planla uyumlu); sapma yok.
+  - Çalışma zamanı doğrulaması (§7, K13) Claude'a aittir; yapılmadı.
+- Kabul kriterleri K1–K12 durumu: K1 ✔, K2 ✔, K3 ✔ (26 test, iki yeni ad), K4 ✔, K5 ✔, K6 ✔, K7 ✔, K8 ✔, K9 ✔, K10 ✔, K11 ✔, K12 ✔. (K13 Claude doğrulamasında.)
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
