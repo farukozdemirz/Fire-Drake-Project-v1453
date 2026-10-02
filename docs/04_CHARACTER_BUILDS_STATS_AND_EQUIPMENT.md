@@ -103,6 +103,16 @@ Katsayılar yerel COEFFICIENT tablosundan alınmıştır `[V]`: master warrior H
 
 R vuruşu, hedef profil başına isabette ortalama hasar (oyuncuya, `/2` ve silah direnci sonrası): W-P → W-G 73, → W-P 159, → P 108, → M-F 207; W-G → W-P 93, → W-G 42, → P 63, → M-F 121; priest → W-P 34, → M 44; mage (asa, fiziksel) ≈ 3–6. Warrior Type1 skill'leri R'ye göre ×1,0–2,0 (sHit %100–200; ör. W-P `Carving` → M-F 476). Tam tablolar: `python3 tools/stat-model.py`. Referans ekipmanda elemental/drain sütunları ve `ITEM_OP` proc kaydı yoktur; model bunları atlar. Çalışma zamanı ölçümü (T-MECH-DMG-01, ± %15) yapılmadan etiketler `[V]` olmaz.
 
+**Büyü hasarı ve heal modeli (F1-07, `tools/spell-model.py`) `[D]`/`[I]`:** `MagicInstance::GetMagicDamage` ve `ExecuteType3` formülleri tam sayı/float semantiğiyle uygulandı; `docs/04` yukarıdaki "incineration" örneği asasız satırlarda ±0,1 içinde yeniden üretildi. Asa (sağ el asa, sol el boş, ateş/buz/yıldırım büyüsü) hasara `(0,8×Damage + Damage×Level/60)` ekler (Elixir Staff +7: +236, oyuncuya `/3` sonrası ≈ +79). Örnekler (M-F, CHA 247, S1 ekipman, ortalama / en düşük–en yüksek, bir cast):
+
+| Büyü (MP, cast / recast) | → W-P | → W-G | → P-HD | → M-F |
+|---|---|---|---|---|
+| incineration (390, 1,1 / 21,3 sn) | 953 (829–1076) | 768 | 940 | 980 (853–1107) |
+| meteor Fall (600, 1,3 / 18,3 sn) | 821 | 666 | 810 | 844 |
+| Supernova (400, 1,5 / 15,3 sn; ek DoT 10 × 32) | 723 + 320 | 590 | 714 | 743 + 330 |
+
+M-I (CHA 200, Prismatic buz, 390 MP): → W-P 650, → M-F 540. Maks HP'ye göre (S1): M-F ~1541 → incineration ile 2 cast, W-P 5650 → 6 cast. Heal (stat ölçeği yok, `sFirstDamage` olduğu gibi): Complete healing 10 000 (960 MP, recast 5,4 sn, MP başına 10,4), Group complete healing 10 000 (r=30, 1920 MP), Superior restore HoT 2490 (15 tick × 166). Priest P-HD/P-HB'nin Type3 saldırı büyüsü yoktur; hasarları R iledir. Tam tablolar: `python3 tools/spell-model.py`. Çalışma zamanı ölçümü (T-MECH-DMG-03, ± %15) yapılana kadar etiketler `[V]` olmaz.
+
 Yorum:
 
 - Master mage'in STA başına HP'si 14,6'dır (warrior 27,4). Mage canlılığı büyük ölçüde item HP bonuslarına ve priest buff'larına bağlıdır (ör. massiveness +1500, Undying %160) [05](05_SKILL_CATALOG_AND_COMBAT_RULES.md). Bu, mage'in **solo PK'da kırılgan** olacağını ve party'de priest buff'ı olmadan savaşa girmemesi gerektiğini gösterir ([08](08_MAGE_BEHAVIOR.md), [10](10_SOLO_PK_BEHAVIOR.md)).

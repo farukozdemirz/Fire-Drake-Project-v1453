@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-07` (taban: `main`) |
 | Bağımlı olduğu planlar | F1-04, F1-05, F1-06 (KAPANDI; `tools/stat-model.py` biçimi, botlar DB'de) |
@@ -617,3 +617,26 @@ P cha=200 r=200 staff=yes avg=573.8 doc=-
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `main...bot/F1-07` @ `eb1829a` (2 commit; yalnızca `tools/spell-model.py` ve plan dosyası)
+- Kriter sonuçları (bağımsız yeniden çalıştırıldı):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 (`tdiv`, 904 / 1177, DoT −30/10/300, HoT 53/15/795) |
+| K2 çıktı eksiksiz | ✔ | Aracı çalıştırdım: çıkış 0, **417 satır** (M 336, H 30, H_PCT 36, P 12); M = (WP 1 + MF 28 + MI 27) × 6 savunmacı |
+| K3 P karşılaştırması | ✔ | Asasız satırlar `docs/04` §4 ile ±0,1 içinde (`1070,8/1071`, `780,2/780`, `618,5/619`, `861,5/862`, `626,1/626`, `495,2/495`) |
+| K4 formül → kod satırı, `HpChangeMagic` | ✔ | Tablo raporda; `HpChangeMagic` oyuncu için yalnızca `HpChange`'e düşüyor (`Unit.h:195`), hasarı değiştirmiyor |
+| K5 yalnızca bot satırları, DB'ye yazma yok | ✔ | Tek `USERDATA` sorgusu `LIKE 'Bot%'` (`tools/spell-model.py:66`); `INSERT|UPDATE|DELETE|DROP` araması boş |
+| K6 kapsam | ✔ | Diff: `tools/spell-model.py` (ASCII) + plan; çalışma ağacı temiz |
+| K7 bağımsız hesap | ✔ | Ayrı bir Python uygulamasıyla iki M satırı yeniden hesaplandı: `MF→WP incineration` ort. **952,55** (829–1076) ve `MF→MF` **979,85** (853–1107), araç çıktısıyla aynı (952,6 / 979,9); heal HoT: `112548` `time=2500, dur=30` → `tick 166 × 15 = 2490` elle doğru |
+
+- Bulgular: engelleyici yok.
+  1. **Not (plan hatası, DeepSeek doğru yaptı):** Planım `res[attr]` içine `resistance_bonus` eklemeyi ve sonra `total_r = res[attr] + resistance_bonus` demeyi birlikte söylüyordu (çift sayım olurdu); DeepSeek koda uyarak direnci **tek kez** saydı (sapma 1). Doğru.
+  2. **Not:** DoT'ta `duration_damage` kodda tek bir rastgele örnek; model tüm `random` değerlerinin ortalamasını alıp `int(.../tickCount)` uyguluyor (fark ≤ 1 birim/tick); kabul.
+  3. **Not:** `selftest` içinde `assert 1920 == 1920` anlamsız (plandaki heal örneğinin aritmetiği); zararsız.
+  4. **Bulgu (veri):** Priest PHD/PHB'nin Type3 saldırı büyüsü yok (1127 ağacı `DirectType 2`); bu botların hasarı yalnızca R ile, büyü hasarı mage'e ait.
+- Düzeltme talimatı: yok.

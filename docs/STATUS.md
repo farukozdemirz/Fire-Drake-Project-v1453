@@ -19,6 +19,7 @@ F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 20
 
 | Faz | Durum | Son rapor | Kabul commit |
 |---|---|---|---|
+| 2026-10-02 | F1-07 | DOĞRULANDI (Tur 1) | 7/7 kriter ✔; 417 satırlık çıktı; iki M satırı bağımsız yeniden hesaplandı (952,55 / 979,85), docs/04 §4 incineration örneği ±0,1 ile yeniden üretildi |
 | 2026-10-02 | F1-06 | DOĞRULANDI (Tur 1) | 7/7 kriter ✔; model iki R satırında bağımsız yeniden hesaplandı (aynı), `docs/04` §4 değerleri 13/14'te aynen yeniden üretildi (M-I HP 1581, yuvarlama); referans ekipmanda proc/elemental yok; botlar Hp=Mp=32000 |
 | 2026-10-02 | F1-05 | DOĞRULANDI (Tur 1) | 7/7 kriter ✔; araç bağımsız çalıştırıldı (fail_count=0, 269 satır), ağırlık elle yeniden hesaplandı. Bulgu: envanter şablonundaki 100 × 1440 HP pot (ağırlık 100) 8/12 botu ağırlık sınırının üstüne çıkarıyor; MB-12 kod düzeyinde doğrulandı |
 | 2026-10-02 | F1-04 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; gerçek DB'de bağımsız doğrulandı: 12 bot, bayt çözümü planla birebir, `LOAD_USER_DATA` satırı dönüyor, idempotent, `Upgrade` 0/7/8, rollback temiz (bot olmayan satırlar 6/4/4 değişmedi) |
@@ -51,7 +52,7 @@ Liste: `plans/README.md`.
 | F1-04 Bot karakter kurulum betiği | KAPANDI | `bot/F1-04` (taban: `main`); `plans/F1-04-bot-karakter-kurulum-betigi.md`; DeepSeek yalnızca betik yazar, çalıştırma/doğrulama Claude'da |
 | F1-05 Bot ekipman/ağırlık raporu | KAPANDI | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
 | F1-06 Hasar modeli ve başlangıç HP | KAPANDI | `bot/F1-06` (taban: `main`); `plans/F1-06-hasar-modeli-ve-baslangic-hp.md`; DeepSeek `tools/stat-model.py` yazar, `db/002` Hp/Mp = 32000 yeniden uygular |
-| F1-07 Büyü ve heal modeli | HAZIR | `bot/F1-07` (taban: `main`); `plans/F1-07-buyu-ve-heal-modeli.md`; DeepSeek `tools/spell-model.py` yazar, DB'ye yazılmaz |
+| F1-07 Büyü ve heal modeli | DOĞRULANDI | `bot/F1-07` (taban: `main`); `plans/F1-07-buyu-ve-heal-modeli.md`; DeepSeek `tools/spell-model.py` yazar, DB'ye yazılmaz |
 
 ## Son doğrulamalar
 
