@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-19` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-05 (`BotCore`, birim test çatısı) — `KAPANDI`; F4-01..F4-11 (betiğin sürebileceği komutlar) — `KAPANDI`; F4-12..F4-18 (`see`/`npcs`/`snap` gözlem komutları) — `KAPANDI` (F4-18 merge `a7349a1`) |
@@ -223,16 +223,65 @@ grep -c '^TEST_CASE' Tests/BotCoreTests/ScriptTests.cpp
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-19` (taban: `gece/2026-10-02`). Kod commit'i `59662a7` (`[F4-19] Betik ayrıştırıcı: BotCore/ScriptPlan.h ve 6 birim testi`); bu rapor ve `Durum: UYGULANDI` ayrı bir commit'tedir.
 - Değişen dosyalar ve neden:
-- Derleme/test sonucu (`tools/run-tests.sh` ve `tools/build.sh Release` son satırları):
+  - `BotCore/ScriptPlan.h` (yeni, 256 satır): sınır sabitleri, `ScriptError`, `ScriptStep`, `ScriptParseResult`, `ScriptTrim`, `IsScriptVerb`, `ScriptErrorText`, `ParseScript`; saf başlık, yalnızca standart kütüphane (`<cstddef>`, `<cstdint>`, `<string>`, `<vector>`).
+  - `Tests/BotCoreTests/ScriptTests.cpp` (yeni, 233 satır): altı `TEST_CASE` (`Script_ParseValid`, `Script_VerbWhitelist`, `Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers`).
+  - `BotCore/BotCore.vcxproj` (+1): `Perception.h` ile `Rng.h` arasına `<ClInclude Include="ScriptPlan.h" />`.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (+1): `RngTests.cpp`'den sonra `<ClCompile Include="ScriptTests.cpp" />`.
+  - `plans/F4-19-betik-ayristirici.md`: `Durum` satırı ve bu rapor.
+- Derleme/test sonucu:
+  - `./tools/run-tests.sh` (Release): son satır `82 tests, 0 failed`, rc=0 (altı yeni test adı çıktıda).
+  - `./tools/run-tests.sh Debug`: son satır `82 tests, 0 failed`, rc=0 (plan istemedi; ek güvence).
+  - `./tools/build.sh Release`: rc=0; `BotCore.vcxproj`, `proj-GameServer.vcxproj`, `proj-AIServer.vcxproj`, `proj-LogInServer.vcxproj`, `BotCoreTests.vcxproj` üretildi. `ScriptPlan.h`/`ScriptTests.cpp` `touch` edilip yeniden derlendi, derleme günlüğünde `warning`/`error` 0 (K3).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: `82 tests, 0 failed`, rc=0.
+  - K2 ✔: `grep -c '^TEST_CASE'` = 6; altı ad §5.4 ile birebir.
+  - K3 ✔: `build.sh Release` hatasız, yeni uyarı 0.
+  - K4 ✔: `git diff --stat gece/2026-10-02...bot/F4-19` tam 5 dosya; `GameServer/` farkı boş.
+  - K5 ✔: `grep -rl 'ScriptPlan' GameServer` boş.
+  - K6 ✔: saflık grep'i boş (`windows|stdafx|winsock|../`, `fopen|FILE|printf|chrono|thread|mutex|malloc`).
+  - K7 ✔: dizi tam 20 verb; `spawn|despawn|match|scenario|script` dizide yok, grep boş (Python ile tam eşleşme doğrulandı).
+  - K8 ✔: beş sabit grep'i beş satır döndürdü (tek boşluklu `= değer` biçimi; aşağıdaki sapmaya bakınız).
+  - K9 ✔: `file` iki yeni dosya için `ASCII text, with CRLF line terminators`; her `vcxproj` farkı tam bir eklenen satır (BOM/CRLF korundu).
+  - K10 ✔: `GameServer/` farkı boş (K4 ile aynı kanıt); `ENABLED=0` davranışı değişmez.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - §5.3 iskeletindeki sabit satırlarında `=` işareti hizalıydı (ör. `kScriptMaxBytes    = 8192`), ancak K8 grep'i `kScriptMaxBytes += 8192` (tek boşluk + `=+`) biçiminde verildiğinden çok boşluklu hizalamayla eşleşmez. K8 kabul kriterini sağlamak için sabitlerde `=` öncesi tek boşluk kullanıldı (`kScriptMaxBytes = 8192`); adlar/imzalar ve değerler iskeletle aynı, yalnızca boşluk farkı. Başka sapma yok.
+  - `ScriptTrim` ve `IsScriptVerb` yardımcıları için iskelette gövde yoktu; §5.3 davranış tanımına göre yazıldı (`ScriptTrim` ek genel yardımcı, `IsScriptVerb` imzası iskeletle aynı).
+- Açık sorular: Yok. `BotCoreTests.vcxproj.filters` (varsa) güncellenmedi; plan §4 yalnızca iki `vcxproj`'u izinli listeye koyuyor ve filtre dosyası derlemeyi etkilemez.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 ### Tur 1
+
+- Karar: **DOĞRULANDI** (gece modu, otonom döngü; birleştirmeyi döngü betiği yapar).
+- İncelenen commit: `99bbae4` (`bot/F4-19`; kod commit'i `59662a7`). Taban `gece/2026-10-02`; çalışma ağacı temiz.
+- Derleme/test (kendim çalıştırdım, sunucular kapalıydı): `./tools/run-tests.sh` rc=0, son satır `82 tests, 0 failed`, altı `Script_*` adı çıktıda. `ScriptTests.cpp` ve `ScriptPlan.h` `touch` edilip yeniden derlendi: derleme günlüğünde `warning` 0, `error` 0. `./tools/build.sh Release` rc=0 (GameServer, AIServer, LogInServer, BotCore, BotCoreTests üretildi). Debug planda istenmedi, koşmadım.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `82 tests, 0 failed`, rc 0 | ✔ | `run-tests.sh` çıktısı, rc=0 |
+| K2 altı `TEST_CASE`, adlar §5.4 ile aynı | ✔ | `grep -c '^TEST_CASE'` = 6; adlar sırayla `Script_ParseValid`, `Script_VerbWhitelist`, `Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers` |
+| K3 `build.sh Release` hatasız, yeni uyarı yok | ✔ | rc=0; yeniden derlemede uyarı 0 |
+| K4 yalnızca 5 dosya, `GameServer/` yok | ✔ | `git diff --stat gece/2026-10-02...bot/F4-19`: plan, `ScriptPlan.h`, `BotCore.vcxproj`, `ScriptTests.cpp`, `BotCoreTests.vcxproj`; `GameServer`/`docs`/`AGENTS.md`/`CLAUDE.md` farkı boş |
+| K5 `GameServer`'de `ScriptPlan` yok | ✔ | `grep -rl 'ScriptPlan' GameServer` boş |
+| K6 saflık grep'i boş | ✔ | grep boş (`BotCore/ScriptPlan.h`); yalnızca `<cstddef> <cstdint> <string> <vector>` |
+| K7 20 verb, yasaklılar dizide yok | ✔ | `ScriptPlan.h:62-67` dizi plandaki 20 verb ile aynı sırada; `grep '"(spawn\|despawn\|match\|scenario\|script)"'` boş |
+| K8 beş sabit tam değerli | ✔ | `ScriptPlan.h:12-16` beş satır (8192/128/100/255/600000) |
+| K9 ASCII + CRLF, vcxproj'larda tek satır | ✔ | `file`: `ASCII text, with CRLF line terminators` (iki yeni dosya); `git diff` her vcxproj için tek `+` satırı (`ClInclude ScriptPlan.h`, `ClCompile ScriptTests.cpp`), `git diff --check` temiz |
+| K10 bot sistemi varsayılan davranışı değişmez | ✔ | `GameServer/` farkı boş (K4) |
+
+Kod incelemesi (`ScriptPlan.h`): `ParseScript` §5.3'ün sekiz adımını sırasıyla uyguluyor: bayt sınırı → satır bölme (sondaki `\n` boş satır sayılmıyor, `""` 0 satır → `EMPTY`) → satır sayısı (satır başı denetimlerden önce) → tek sondaki `\r` silme → uzunluk ve kontrol karakteri (işaretsiz bayt, `\t` hariç, yorum/boş satırlar dahil) → kırpma/yorum atlama → ofset (1..9 rakam, `uint64` hesap, aralık, azalmama) → komut/verb → 101. adım. Hatada `steps` hiç doldurulmuyor (yerel `steps`, yalnızca başarıda `result.steps`'e atanıyor): ya-hep-ya-hiç. `IsScriptVerb` locale'siz ASCII küçük harfe çeviriyor. Global durum, G/Ç yok. Test dosyası §5.4'teki sabit metinleri kullanıyor (koddan türetilmiş girdi yok), tam 8192 baytlık metin önce `CHECK_EQ(text.size(), size_t(8192))` ile doğrulanıyor.
+
+Bulgular (engel değil, not):
+1. `ScriptPlan.h:12-16`: sabitlerde `=` hizalaması yok (plan iskeleti hizalıydı ama K8 grep'i tek boşluk istiyordu; plan içi çelişki, uygulayıcı kriteri seçti ve raporda belirtti). Kabul edildi.
+2. `ScriptPlan.h:49`: `ScriptTrim` plan iskeletinde olmayan ek genel yardımcı; yalnızca yükleme anında kullanılan küçük bir yardımcı, kapsam sapması sayılmaz. F4-20 yeniden kullanabilir.
+3. `ScriptErrorText`'in `"?"` (bilinmeyen değer) dalı birim testle sınanmıyor; plan yalnızca 12 değerin boş olmayan metin ve `SCRIPT_OK` için `"ok"` döndürmesini istiyordu, karşılandı.
+4. `.vcxproj.filters` güncellenmedi (BotCore/BotCoreTests'te filters dosyası yok); `GameServer` filters değişmedi, sorun yok.
+
+Uygulayıcı raporu dürüstlük kontrolü: commit listesi, dosya listesi, `82 tests, 0 failed`, uyarı 0 iddiaları gerçekle uyuşuyor. Plandan sapma (K8 boşluğu) raporda açıkça yazılmış.
+
+Çalışma zamanı/sunucu kriteri bu planda yok (sunucuya dokunulmadı). İnsan testi gerekmiyor.
