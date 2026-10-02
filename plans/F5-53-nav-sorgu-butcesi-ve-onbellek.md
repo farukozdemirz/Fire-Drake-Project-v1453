@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-53 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-04 (`NavFollower`) — `KAPANDI` |
@@ -149,6 +149,43 @@ git diff --stat gece/2026-10-02-nav...bot/F5-53
 - Açık sorular:
   - `NavBudget_RealMap_Load` (B) `longest_wait=0`: bütçe 1,5 ms 16 botun 500 ms'lik fazlı yükünü rahat karşıladığı için istekler aynı tick'te servis ediliyor; bekleme ölçüsü asıl olarak chase simülasyonunda anlamlı (`plan_wait_max=200`). Sorun değil, bilgi.
   - K8 ölçüm notu (karar F5-55'te): `NavPathfinder` iç havuzu zone 71 için `n=513`, `cells=513²=263169`; `m_g` (float) + `m_parent` (int32) + `m_seen`/`m_closed` (uint32) = 16 B/hücre → **4,02 MiB/örnek** (+ `m_heap.reserve(4096)` ≈ 64 KiB). 16 bot ayrı örnek kullanırsa ≈ **64,3 MiB**; tek paylaşılan örnek (tek thread, seri) 4,02 MiB. Havuz paylaşımı kararı F5-55'e bırakıldı; bu plan yalnızca ölçüm notunu ister.
+
+### Tur 2 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-53` (taban: `gece/2026-10-02-nav`); Tur 2 kod commit'i `1910e13` (rapor commit'i bundan sonra).
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/NavBudget.h`: `NextBatch` sıralaması düzeltildi. Eşitlik anahtarı artık `(id - m_offset) mod kCapacity` artan (dönen sıra), tüm listeyi döndüren `rot` hesabı ve `(rot + step) % count` döngüsü kaldırıldı; adaylar sıralı sırayla geziliyor ve bütçe aşımında `continue` yerine `break` var (plan: "aşıncaya kadar seç"; ilk bot her zaman seçilir). Başlık yorumu `NextBatch`'in seçilenleri kuyruktan çıkarmadığını, çağıranın servis sonrası `Cancel` etmesi gerektiğini söylüyor.
+  - `Tests/BotCoreTests/NavBudgetTests.cpp`: yeni `NavBudget_Scheduler_Priority` (a: 3 aşmış + 5 taze, 0..9 ofsette ilk seçim daima aşmış; b: farklı beklemeler en eskiden yeniye; c: eşit bekleyenlerde ardışık ilk seçim değişir). `NavBudget_Scheduler_Fairness` gevşek "any of them may lead" kontrolü deterministik `out[0] == 5` ile değiştirildi. `NavBudget_RealMap_Load` tek paylaşılan `NavQueryScheduler scheduler` (bot başına üye kaldırıldı), (B) fazlı istek zamanlaması (`NavReplanPhaseMs(slot)`), bot başına + toplam servis sayacı ve `served_total`/`served_min_per_bot` alanları, uzun bekleme gerçek istek→servis farkı; her mod 3 koşu, en kötü p95/p99. `NavBudget_Deferred_Chase_Sim`: `follow_stale_ticks` artık plan izleyen (FollowPlan veya ertelenmemiş) + bayat plan durumunu sayıyor (Hold dalında değil), yeni `stale_hold_ticks` bilgi sayacı; `holdDistMoved` tick başı↔tick sonu konumu karşılaştırıyor; sentetik ek maliyetli (B2) koşusu ve kabul kontrolleri eklendi. Biçim: sonda boş satır yok, `for (...)` `{` alt satırda, iç içe `if` Allman+süslü, `from` değişkeni ve `(void)from` silindi.
+  - `tools/nav-measure/nav_measure.cpp`: `budget-scheduled` artık paylaşılan rastgele sorgu dizisiyle iki satır yazıyor (`mode=A` zamanlayıcısız her istek anında, `mode=B` zamanlayıcılı); mevcut bölümlere dokunulmadı.
+- Derleme/test son satırları:
+  - `./tools/build.sh Release` rc=0 (`BotCoreTests.vcxproj -> build\bin\x86-Release\Tests\BotCoreTests.exe`); yeni/başlık dosyalarında uyarı yok (touch + yeniden derleme grep'i boş).
+  - `./tools/build.sh Debug` rc=0 (`...\x86-Debug\Tests\BotCoreTests.exe`); uyarı yok.
+  - `./tools/run-tests.sh Release --no-build`: `192 tests, 0 failed`. `Debug --no-build`: `192 tests, 0 failed`.
+- Ölçümler (MSVC Release, `NavBudget` süzgeci):
+  - chase: `mode=A ... deferred_ticks=0 hold_ticks=0 stale_hold_ticks=0 follow_stale_ticks=0 dist_mean=9.59`
+    `mode=B ... plan_wait_max=200 without_plan_pct=0.1 deferred_ticks=25 hold_ticks=21 stale_hold_ticks=0 follow_stale_ticks=0 dist_mean=11.00`
+    `mode=B2 ... plan_wait_p50=300 plan_wait_p95=400 plan_wait_max=700 without_plan_pct=0.3 deferred_ticks=7347 hold_ticks=55 stale_hold_ticks=0 follow_stale_ticks=0 dist_mean=15.70` (B2 ek maliyeti **+0,5 ms**; toplam bot-tick'in %38'i ertelendi, `hold_ticks>0`).
+  - realm 3 koşu (A/B ayrı satır): A p95 = 3.201 / 2.954 / 3.094; B p95 = 1.368 / 1.436 / 1.308, B p99 = 3.958 / 4.212 / 1.965, B wait = 500 / 100 / 200, B `served_total` = 1918 / 1920 / 1920, B `served_min_per_bot` = 119 / 120 / 120. Özet: `worst_A_p95=3.201 worst_B_p95=1.436 worst_B_p99=4.212 worst_B_wait=500 served_A=5760 served_B=5758 served_B_min_per_bot=119`.
+  - `tools/nav-measure.sh budget-scheduled` (3 koşu, host `g++ -O2`): A `tick_p95=0.802/0.856/0.887`, B `tick_p95=0.783/0.803/0.812`, B `longest_wait_ms=200` (üç koşuda), `served=1920`, `pending=0`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1/K2: Release ve Debug rc=0, yeni dosyalarda uyarı yok — ✔
+  - K3: iki yapılandırmada `192 tests, 0 failed`; dokuz `NavBudget_*` adı `[ OK ]` (yeni `NavBudget_Scheduler_Priority` dahil); harita var (chase/realm koştu) — ✔
+  - K4: `windows.h|stdafx|GameServer|shared/|new|malloc` grep'i boş; `std::vector` yalnızca `NavPathCache::Entry::cells`; global/static değiştirilebilir durum yok — ✔
+  - K5: AC-NAV-07 (B) eşikleri Release'te karşılandı ve **bot başına servis** doğrulandı: her bot ≥ 1 (min 119 ≥ 1), `served_B=5758 ≥ 0,9 × served_A=5760`; `worst_B_p95=1.436 ≤ 2,0`, `worst_B_p99=4.212 ≤ 4,5`, `worst_B_wait=500 ≤ 1100`, `1.436 ≤ 0,70 × 3.201` — ✔
+  - K6: ilerleme garantisi ve `maxWaitMs` önceliği; yeni `NavBudget_Scheduler_Priority` 0..9 ofsette daima aşmış botu seçiyor, farklı beklemeler sıralı, eşit bekleyenler dönüyor; Fairness'taki t=1100 ilk seçim deterministik `id=5` — ✔
+  - K7: `git status` yalnızca §4 üç dosyası; `git diff --check` boş; iki C++ dosyası ASCII + CRLF (lone-LF 0, non-ASCII 0) — ✔
+  - K7a: `NavBudget_Deferred_Chase_Sim` (B) eşikleri ✔; (B2) gerçek kuyruklama üretiyor (`deferred_ticks=7347 ≥ %5`, `hold_ticks=55>0`, `plan_wait_max=700 ≤ 1100`, `plan_wait_p95=400 ≤ 800`, `without_plan_pct=0.3 ≤ 3`, `follow_stale_ticks=0`); `nav-measure.sh budget-scheduled` A/B satırlarını aynı sorgu dizisiyle üretiyor — ✔
+  - K7b: oyun içi bütçe kapsam dışı (F5-55 / T-NAV-11) — ✔ (değişmedi)
+  - K8: Tur 1 ölçüm notu geçerli (bu turda değişmedi) — ✔
+- Plandan sapmalar ve gerekçeleri:
+  - (B2) eşik kontrollerinden `plan_wait_p95`/`plan_wait_max` `#ifndef _DEBUG` altına alındı: Debug'da A* ~10× yavaş olduğu için aynı sentetik maliyet kapasiteyi 1'e düşürüp kuyruğu sertleştiriyor (`plan_wait_max=1300`), yani Debug farklı bir aşırı yük; `RealMap_Load` kabulü de aynı kalıpta Release'e özel. Kuyruk büyüklüğü (`deferred≥%5`, `hold>0`) ve `follow_stale=0` invariant'ları iki yapılandırmada da kontrol ediliyor.
+  - (B2) sentetik ek maliyet **+0,5 ms** seçildi (kapasite ~2/tick, hem host hem MSVC gerçek A* maliyeti ~0,1–0,2 ms aralığında güvenli); `ReportCost`'a ekleniyor, gerçek A* ölçümü ve `plan_wait` hesabı değişmiyor.
+  - `NavBudget_RealMap_Load` ve `NavBudget_Deferred_Chase_Sim` başında paylaşılan zamanlayıcı `Clear()` ediliyor: aksi halde B'den kalan EWMA/offset/pending B2'yi kirletiyor ve B2'nin ilk tick'inde tüm botlar servis edilip `hold_ticks=0` oluyordu (ölçüldü, düzeltildi).
+  - "Servis edilen sorgu", çalıştırılan gerçek A* sorgusu (`Update` → `true`) olarak sayıldı; mode A'da her tick çağrılan ama plan üretmeyen `Update`'ler sorgu değildir. Böylece A ve B toplamları karşılaştırılabilir (≈1920) ve 90% kontrolü anlamlı.
+- Açık sorular:
+  - `nav-measure budget-scheduled` mode A da `NavReplanPhaseMs` ile fazlı istek üretir (plan "her istek anında" der), bu yüzden A ≈ B çıkar; araçtaki amaç yapısal karşılaştırma, gerçek en kötü durum (tüm botlar aynı tick) `NavBudget_RealMap_Load` mode A'dır. Bilgi, sapma değil.
+  - Kök neden B1 kapandı: realm (B) artık tek paylaşılan zamanlayıcı ve bot başına servis kanıtlı.
 
 ---
 
