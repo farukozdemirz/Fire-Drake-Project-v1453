@@ -2285,3 +2285,201 @@ PartyOutcome ActionExecutor::RequestPartyLeave(BotSession * s, std::chrono::stea
 	out.peerId = -1;
 	return out;
 }
+
+// --- party promote / kick slice (ADR-0017 Ek F4-10) ---
+
+// Maps a party promote / kick guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PartyOutcome RejectPartyManage(BotSession * s, CUser * user, const char * type,
+	BotCore::PartyManageVerdict verdict, const BotCore::PartyManageCheck & c, int peerId)
+{
+	const char * rule = "CLI-17";
+	const char * reason = "not_leader";
+	float value = 0.0f;
+	float limit = 1.0f;
+
+	switch (verdict)
+	{
+	case BotCore::PARTYMANAGE_REJECT_MEMBER:
+		rule = "CLI-17"; reason = "not_member"; value = 0.0f; limit = 1.0f;
+		break;
+	case BotCore::PARTYMANAGE_REJECT_GAP:
+		rule = "CLI-17"; reason = "manage_gap"; value = (float)c.sinceLastMs; limit = (float)BotCore::kPartyManageGapMs;
+		break;
+	case BotCore::PARTYMANAGE_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, type, rule, reason, value, limit);
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::REFUSED;
+	out.reason = reason;
+	out.peerId = peerId;
+	return out;
+}
+
+// Shared body of RequestPartyPromote / RequestPartyKick: guard, one party packet, result from the published replies only.
+static PartyOutcome RequestPartyManage(BotSession * s, const PartyMemberTarget & target,
+	std::chrono::steady_clock::time_point now, bool kick)
+{
+	const char * type = kick ? "PartyKick" : "PartyPromote";
+	int peerId = (int)target.id;
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::NOTHING;
+	out.reason = "ok";
+	out.peerId = peerId;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// Preconditions (no event): the target must be another valid player, and the bot must itself be in a party.
+	if (target.id < 0 || target.id == (int16)user->GetID())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "bad_target";
+		return out;
+	}
+	if (!user->isInParty())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_party";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	uint32 sinceLastMs = 0;
+	if (s->m_partyManageHasLast)
+		sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_partyManageLast).count();
+
+	BotCore::PartyManageCheck c;
+	c.isLeader = user->isPartyLeader();
+	c.targetInParty = target.inMyParty;
+	c.hasLast = s->m_partyManageHasLast;
+	c.sinceLastMs = sinceLastMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::PartyManageVerdict verdict = BotCore::CheckPartyManage(c);
+	if (verdict != BotCore::PARTYMANAGE_OK)
+		return RejectPartyManage(s, user, type, verdict, c, peerId);
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"" + type + "\",\"target\":" + std::to_string(peerId);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 sub-opcode + u16 member id (PartyHandler.cpp:34-43).
+	Packet pkt(WIZ_PARTY, uint8(kick ? PARTY_REMOVE : PARTY_PROMOTE));
+	pkt << uint16(target.id);
+
+	s->m_castSelfId = user->GetID();
+	if (kick)
+		s->m_partyLeaveEcho = 0;
+	else
+		s->m_partyJoinEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+	s->m_partyManageHasLast = true;
+	s->m_partyManageLast = now;
+
+	// Result only from published replies; never from the server object.
+	bool ok = false;
+	const char * reason = "no_result";
+	if (kick)
+	{
+		uint64 l = s->m_partyLeaveEcho.load();
+		bool gotRemove = (l & (1ull << 63)) != 0
+			&& ((l >> 16) & 0xFF) == 1
+			&& (int)(l & 0xFFFF) == (int)target.id;
+		bool gotDelete = (l & (1ull << 63)) != 0
+			&& ((l >> 16) & 0xFF) == 2;
+		if (gotRemove)
+		{
+			ok = true;
+			reason = "kicked";
+		}
+		else if (gotDelete)
+		{
+			ok = true;
+			reason = "disbanded";
+			s->m_partyEnteredHasAt = false;
+		}
+	}
+	else
+	{
+		uint64 j = s->m_partyJoinEcho.load();
+		bool promoted = (j & (1ull << 63)) != 0
+			&& (int)((j >> 8) & 0xFFFF) == (int)target.id
+			&& (uint8)(j & 0xFF) == 100;
+		if (promoted)
+		{
+			ok = true;
+			reason = "promoted";
+		}
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"" + type + "\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"target\":" + std::to_string(peerId);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (ok)
+	{
+		out.kind = PartyOutcome::SENT;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = PartyOutcome::FAILED;
+		out.reason = reason;
+	}
+	return out;
+}
+
+PartyOutcome ActionExecutor::RequestPartyPromote(BotSession * s, const PartyMemberTarget & target,
+	std::chrono::steady_clock::time_point now)
+{
+	return RequestPartyManage(s, target, now, false);
+}
+
+PartyOutcome ActionExecutor::RequestPartyKick(BotSession * s, const PartyMemberTarget & target,
+	std::chrono::steady_clock::time_point now)
+{
+	return RequestPartyManage(s, target, now, true);
+}

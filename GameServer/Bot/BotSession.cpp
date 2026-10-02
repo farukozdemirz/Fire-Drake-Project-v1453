@@ -16,6 +16,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_hpReqTargetId(-1), m_hpReqHasLast(false), m_deadSeen(false),
 		m_partyInviteHasLast(false),
 		m_partyEnteredHasAt(false),
+		m_partyManageHasLast(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
@@ -190,6 +191,7 @@ void BotSession::ResetForRespawn()
 	m_partyErrorEcho = 0;
 	m_partyJoinEcho = 0;
 	m_partyEnteredHasAt = false;
+	m_partyManageHasLast = false;
 	m_partyLeaveEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;

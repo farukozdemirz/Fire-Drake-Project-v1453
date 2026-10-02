@@ -111,11 +111,21 @@ struct PartyOutcome
 	Kind kind;
 	const char * reason;   // constant text, never freed. SENT: "created" (PartyInvite, PARTY_CREATE confirmed by the bot's own
 	                       // leader state broadcast), "sent" (PartyInvite, PARTY_INSERT: no refusal reply), "joined" (PartyAccept),
-	                       // "declined" (PartyDecline), "left"/"disbanded" (PartyLeave).
+	                       // "declined" (PartyDecline), "left"/"disbanded" (PartyLeave), "promoted" (PartyPromote),
+	                       // "kicked"/"disbanded" (PartyKick).
 	                       // FAILED: "refused_target" (-1), "refused_level" (-2), "refused_zone" (-3), "refused_other", "no_result".
 	                       // REFUSED: "not_in_game", "dead", "bad_target", "no_invite", "invite_pending", "not_in_party", or a guard
-	                       // verdict ("not_leader", "out_of_view", "invite_gap", "accept_wait", "decline_wait", "leave_wait", "rate")
-	int peerId;            // PartyInvite: the target's id; PartyAccept/PartyDecline: the inviter's id; PartyLeave: -1 = none
+	                       // verdict ("not_leader", "not_member", "out_of_view", "invite_gap", "accept_wait", "decline_wait", "leave_wait",
+	                       // "manage_gap", "rate")
+	int peerId;            // PartyInvite / PartyPromote / PartyKick: the target's id; PartyAccept/PartyDecline: the inviter's id; PartyLeave: -1 = none
+};
+
+// Caller-supplied view of a party member the leader acts on (ADR-0017 Ek F4-10). Temporary like PartyInviteTarget: the
+// /bot ppromote and /bot pkick test driver fills it from the two bot sessions; the Perception slice replaces the source.
+struct PartyMemberTarget
+{
+	int16 id;             // target's socket id (the packet payload)
+	bool inMyParty;       // the target is in the acting bot's party (the party panel lists it)
 };
 
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
@@ -235,4 +245,18 @@ public:
 	// own PARTY_REMOVE (sid == its id) -> SENT "left"; PARTY_DELETE -> SENT "disbanded" (it led the party, or only the
 	// leader remained); neither -> FAILED "no_result".
 	static PartyOutcome RequestPartyLeave(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// One-shot leader handover (PARTY_PROMOTE + the target's id through CUser::HandlePacket()) after the guard (CLI-17:
+	// leader only, target in the bot's party, >= 1 s between leader actions; CLI-11). Preconditions without an event:
+	// REFUSED "not_in_game", "dead", "bad_target" (invalid id or the bot itself), "not_in_party". Result only from
+	// published replies: the server broadcasts the new leader's member packet (PARTY_INSERT, sid == target, flag 100) to
+	// every member including the sender -> SENT "promoted"; none -> FAILED "no_result".
+	static PartyOutcome RequestPartyPromote(BotSession * s, const PartyMemberTarget & target,
+		std::chrono::steady_clock::time_point now);
+
+	// One-shot kick (PARTY_REMOVE + the target's id through CUser::HandlePacket()) after the same guard and preconditions
+	// as RequestPartyPromote. Result only from published replies: the sender's own PARTY_REMOVE with sid == target ->
+	// SENT "kicked"; PARTY_DELETE (only the leader remained) -> SENT "disbanded"; neither -> FAILED "no_result".
+	static PartyOutcome RequestPartyKick(BotSession * s, const PartyMemberTarget & target,
+		std::chrono::steady_clock::time_point now);
 };
