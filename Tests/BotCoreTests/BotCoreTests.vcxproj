@@ -85,6 +85,7 @@
     <ClCompile Include="NavSmoothTests.cpp" />
     <ClCompile Include="NavTrackTests.cpp" />
     <ClCompile Include="NavReachTests.cpp" />
+    <ClCompile Include="NavRetreatTests.cpp" />
     <ClCompile Include="PerceptionTests.cpp" />
     <ClCompile Include="RngTests.cpp" />
   </ItemGroup>
