@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03/F2-04 (bot oturumu), F2-06 + F3-04 (komut çekirdeği), F3-01 (telemetri), F3-05 (`BotCore` + test çatısı) — hepsi `KAPANDI` |
@@ -371,20 +371,37 @@ file BotCore/BotMotion.h Tests/BotCoreTests/MotionTests.cpp GameServer/Bot/Actio
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-01` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-01` @ `0610da4` (4 commit: `17017c2`, `e5a835a`, `3ae7887`, `0610da4`; hepsi `[F4-01] ...` biçiminde, merge/force izi yok). Otonom gece modu (`AUTO_LOOP=1`): birleştirme/push döngü betiğinde, bu turda yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 Release derleme | ✔ | `./tools/build.sh Release` rc=0; `ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `MotionTests.cpp` touch'lanıp yeniden derlendi: bu dosyalar için `warning`/`error` satırı 0 (kalan uyarılar eski `UpgradeHandler.cpp`/`User.cpp`) |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` rc=0; yeni dosyalarda uyarı yok |
+| K3 Birim testleri | ✔ | `tools/run-tests.sh Release` ve `Debug`: 6 `Motion_*` + 6 `Rng_*` → `12 tests, 0 failed`; test içeriği §5.2 listesiyle birebir (sınır değerleri 7,5/7,7, 14,9/3000 ms, durma paketi dahil) |
+| K4 `BotMotion.h` saflığı | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `<algorithm>`, `<cmath>`, `<cstdint>` (`BotMotion.h:6-8`) |
+| K5 Paket yolu | ✔ | `grep WIZ_MOVE GameServer/Bot/*.cpp`: `ActionExecutor.cpp:64` (yorum), `:114` (`Packet pkt(WIZ_MOVE)`), `BotManager.cpp:809` (`m_opcodeCount[WIZ_MOVE]`); `MoveProcess\|SetPosition\|m_curx\|m_curz` bot kodunda boş. Alan sırası x, z, y, speed, echo (`ActionExecutor.cpp:115`) |
+| K6 Guard atlanmıyor | ✔ | `ActionExecutor.cpp:88-90` `CheckMoveStep`, `:91-105` `MOVE_OK` dışında `REFUSED` ile erken dönüş; `HandlePacket` `:118` bundan sonra, tek çağrı. Çalışma zamanında da sınandı (aşağıda S3) |
+| K7 `ENABLED=0` değişmez | ✔ | `git diff ... BotManager.cpp \| grep '^-'`: yalnızca `unknown command` metni ve `BuildStatusLines` biçim satırı (3 `-` satırı: 1 + 2); `Startup()`/`Tick()`/ini okuma değişmedi. Çalışma zamanı: `ENABLED=0` → log +0 satır, `BotCommands.txt` dokunulmadı |
+| K8 Kapsam | ✔ | `git diff --name-only`: 12 izinli dosya + plan dosyası; `docs/`, `.claude/`, `AGENTS.md`, başka plan değişmemiş (`git diff --stat gece/2026-10-02...HEAD -- docs .claude CLAUDE.md AGENTS.md` boş; plan farkı yalnızca bu plan) |
+| K9 Kodlama | ✔ | Yeni 4 dosya `ASCII text, with CRLF`; `.vcxproj`/`.filters` BOM + CRLF korunmuş, fark yalnızca eklenen satırlar (BotCore.vcxproj +1, BotCoreTests.vcxproj +1, proj-GameServer.vcxproj +2, .filters +6); değiştirilen `Bot/*` dosyalarında tüm satırlar CRLF; `git diff --check` boş |
+| K10 Yasaklı çağrılar | ✔ | `grep "printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand("` `ActionExecutor.*` içinde boş |
+| K11 Çalışma zamanı | ✔ | S1–S6 aşağıda; hepsi geçti (Release, sunucu 3/3 UP, sonunda 0/3 DOWN, ini md5 geri yüklendi) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Çalışma zamanı sınaması (`ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; `BotWP_K` warrior, `BotMF_K` mage; zone 71, başlangıç (1275,2, 891,3) / (1274,0, 890,0)):
+  - **S1 mutlu yol:** `move BotWP_K 1305.2 891.3` → `walking to`, ~7,6 sn sonra `arrived at (1305.2, 891.3) after 5 packets`; `list`: `pos=1305.2,891.3 moving=0`, **`BotMF_K ... moverx=5`** (gerçek yayın bölgeye ulaştı). JSONL: 5 `ACTION_SUBMIT` + 5 `ACTION_RESULT` (`decision_id` 1–5 eşleşti, `ok:true`, `reason:"ok"`, `latency_us` 57–84); yürüme paketleri `speed:45, echo:3`, son paket `speed:0, echo:0`; ardışık aralık 1535/1534/1540/1526 ms; ardışık `x` farkı 6,7 / 6,9 / 6,9 / 6,9 m (= 4,5 m/s × gerçek süre; guard sınırı 7,575 m'yi aşmaz); `FAIRNESS_REJECT` yok.
+  - **S2 `stop` ortada:** ~3,3 sn sonra `stop BotWP_K` → `stopped at (1284.7, 891.3)` (hedefe varmadan), `moving=0`, telemetride `speed:0, echo:0` durma paketi; `stop all` → `BotWP_K not moving`, `BotMF_K not moving`, `0 stopped, 2 not moving`.
+  - **S3 guard reddi:** `move ... 100` → `refused (speed_field)`; JSONL'de yalnızca `FAIRNESS_REJECT` (`rule":"CLI-05"`, `value":100.00`, `limit":67.00`), **`ACTION_SUBMIT` yok**; `list`'te `in_game`, `GameServer.log` +0 satır, `Cheat_*.log` boş (SpeedHack/Disconnect yok). `speed 0` ve `-5` → `refused (speed_field)` (`value` 0,00 / -5,00); `abc`, 5 argüman, eksik argüman → `usage`. `move ... 67` (30 m): adımlar 10,1 / 10,2 m, son 9,7 m, `after 3 packets`, `speed:67`.
+  - **S4 reddedilen hedefler:** `7000 7000`, `-5 10`, `6600 10` → `refused (bad_target)`; `nan 3`, `inf 3`, `10 1e40` → `usage`; bilinmeyen ad (`Nobody`, `"x%s"`, `Ghost`) → tek satır `unknown or not spawned bot '?'` (ad günlüğe girmedi); `despawn` edilmiş bot → `not in game (phase despawned)` (`move` ve `stop`); `stop` argümansız → `no names given`. Hiçbirinde paket/telemetri olayı yok.
+  - **S5 yaşam döngüsü:** yürürken `despawn BotWP_K` → temiz `despawned (... names cleared yes)`, `pool free 16/16`, despawn sonrası yeni paket yok; yeniden `spawn` → `moving=0 moverx=0`; `RESPAWN_CYCLES=2` iken `move` → `cmd rejected (RESPAWN_CYCLES is active)` ve `respawn cycles done: 6 spawns, 6 despawns, 0 failed, 0 stuck ... pool free 16/16`; `scenario run smoke` → `finished: 2/2 run(s) completed`.
+  - **S6 gerilemesiz:** `TELEMETRY=summary` → yeni `live-*.jsonl`'de `ACTION_*`/`FAIRNESS_*` satırı 0, hareket çalıştı (`arrived ... after 5 packets`, `moverx=5`); `ENABLED=0` → log +0 satır, komut dosyası yerinde; `PERF_SAMPLE` `tick_p95_us` 84–101 µs (hareket sırasında dahil, `skipped_ticks` 0; ≤ 1 ms koşulu sağlandı); `GameServer.log` 32 satır, değişmedi (son satır çalışma öncesi).
+- Bulgular (hepsi not, engel değil):
+  1. Kod planla birebir uyumlu; uygulayıcı raporundaki iddialar (commit listesi, dosya listesi, derleme/test çıktısı, sapmalar) gerçekle uyuşuyor. Sapmalar kabul edildi: `FAIRNESS_REJECT`'e de `decision_id` (`++m_actionSeq`, yalnızca `decisions` açıkken artar, `ActionExecutor.cpp:30-36`), `snprintf` yerine `ostringstream` (K10 grep'i yüzünden), `stop all` özet satırı, `CommandStop`'ta da `'?'` kuralı.
+  2. `moverx` hareket eden botun **kendi** yayınını da sayar (`BotWP_K moverx=5` = kendi 5 paketi); karşı bota ulaşma kanıtı `BotMF_K moverx` sütunudur (S1'de 5). `docs/16`/`docs/13`'e yazılırken bu ayrım belirtilmeli.
+  3. Bot karakterlerinin konumu **logout kaydıyla DB'ye yazılıyor** (`UPDATE_USER_DATA`): `move` sonrası despawn edilen bot bir sonraki spawn'da son konumunda doğuyor (S5'te `BotWP_K` 1296,4'te, hedef yönünde). Doğrulama sonunda `BotWP_K` yürütülüp (1275,2, 891,3)'e geri getirildi; bu, F4+ senaryolarında ("hep (1274, 890)'dan başla") sonraki planlar için bilinmesi gereken bir özelliktir `[V]`. Arena başlangıç konumunu garantilemek F5/F6 (teleport/yürüme-başlangıç) işidir.
+  4. `BeginMove` hız denetimi iki parçalı (`CheckMoveStep(.., 0 m, ..)` + `speedField < 1`): `CheckMoveStep` hız alanı 0'ı geçirdiği için `move ... 0` yalnızca ikinci kontrolle reddedilir; plan da ikisini istiyordu, S3'te `0` ve `-5` doğru reddedildi.
+  5. Test artıkları depo dışında: `C:\dev\fdp\server\Logs\bots\2026-10-02\` altında yeni `live-*.jsonl`/`smoke-*` dosyaları; eski dosyalar `Logs\bots_old_f401\2026-10-02\`'e taşındı; `Scenarios\smoke.yaml` yerinde. İnsan istemcisi gerektiren görsel sınama T-ARCH-06 olarak `docs/STATUS.md` "Proje sahibi testleri"nde (zaten kayıtlı).
+- Düzeltme talimatı: yok (DOĞRULANDI).
