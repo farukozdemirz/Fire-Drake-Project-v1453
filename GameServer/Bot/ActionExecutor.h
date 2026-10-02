@@ -45,7 +45,7 @@ struct CastOutcome
 {
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
-	const char * reason;   // constant text, never freed: "ok", "casting", "effected", "missed", "srv_fail", "no_result",
+	const char * reason;   // constant text, never freed: "ok", "casting", "flying", "effected", "missed", "srv_fail", "no_result",
 	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
 	                       // "stopping", "cancelled", "dropped", "idle"
@@ -199,16 +199,16 @@ public:
 
 	// Validates and arms a cast series of 'count' cycles of skill 'skillId'; sends nothing yet (the same Tick()'s
 	// TickCast() does). 'targetName' empty = self. REFUSED (nothing armed): "not_in_game", "dead",
-	// "bad_skill" (unknown id, other class, level too low, count < 1), "unsupported_skill" (see 5.4 rules),
-	// "bad_target" (moral does not match the target kind).
+	// "bad_skill" (unknown id, other class, level too low, count < 1), "unsupported_skill" (see 5.4 rules;
+	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25), "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 
 	// Called once per Tick() for every in-game session; NOTHING unless s->m_castPhase != CAST_IDLE and the timing
 	// rules (CastWaitMs / CastDurationMs) allow the next packet. Sends at most one WIZ_MAGIC_PROCESS.
-	// SENT: a packet went out and the series continues ("casting" = CASTING accepted, "effected"/"missed"/"srv_fail" =
-	// one cycle finished). FINISHED: last cycle done. REFUSED: guard rejected, series dropped. FAILED: handler produced
-	// no result / dead caster / unknown skill, series dropped.
+	// SENT: a packet went out and the series continues ("casting" = CASTING accepted, "flying" = FLYING accepted,
+	// "effected"/"missed"/"srv_fail" = one cycle finished). FINISHED: last cycle done. REFUSED: guard rejected, series
+	// dropped. FAILED: handler produced no result / dead caster / unknown skill, series dropped.
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 

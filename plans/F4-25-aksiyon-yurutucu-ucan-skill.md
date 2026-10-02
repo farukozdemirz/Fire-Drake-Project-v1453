@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-25` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `CancelCast`, `CAST_CASTING` hareketle iptal) — `KAPANDI` |

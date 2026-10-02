@@ -943,3 +943,67 @@ TEST_CASE("Combat_PlanStanding")
 	CHECK_EQ((int)BotCore::PlanStanding(false, true), (int)BotCore::STAND_PROCEED);
 	CHECK_EQ((int)BotCore::PlanStanding(false, false), (int)BotCore::STAND_PROCEED);
 }
+
+TEST_CASE("Combat_FlyingCast_Rules")
+{
+	CHECK_EQ((int)BotCore::kFlightMinMs, 1000);
+
+	CHECK_EQ(BotCore::IsFlyingCast(3, 191), true);
+	CHECK_EQ(BotCore::IsFlyingCast(3, 0), false);
+	CHECK_EQ(BotCore::IsFlyingCast(2, 191), false);
+	CHECK_EQ(BotCore::IsFlyingCast(1, 191), false);
+
+	CHECK_EQ((int)BotCore::CastManaNeed(50, true), 100);
+	CHECK_EQ((int)BotCore::CastManaNeed(50, false), 50);
+	CHECK_EQ((int)BotCore::CastManaNeed(350, true), 700);
+
+	BotCore::CastStartCheck c = OkCast();
+	c.distanceM = 5.0f;
+	c.skillRange = 78;
+	c.distanceField = 50;
+	c.weaponRangeField = 0;
+	c.needsStanding = false;
+	c.standing = true;
+	c.msp = (uint16_t)BotCore::CastManaNeed(50, true);
+	c.reCastMs = 4300;
+	c.typeGated = true;
+	c.hasSkillLast = false;
+	c.hasTypeLast = false;
+	c.hasAnyLast = false;
+	c.actionsInWindow = 0;
+
+	c.mana = 99;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
+	c.mana = 100;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+}
+
+TEST_CASE("Combat_CastFly_Guard")
+{
+	CHECK_EQ((int)BotCore::CastDurationMs(15), 1580);
+
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 1579, 15, 100, 100, 0), (int)BotCore::CAST_REJECT_TOO_EARLY);
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 1580, 15, 100, 100, 0), (int)BotCore::CAST_OK);
+	CHECK_EQ((int)BotCore::CheckCastFly(false, 1580, 15, 100, 100, 0), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 1580, 15, 99, 100, 0), (int)BotCore::CAST_REJECT_NO_MANA);
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 1580, 15, 100, 100, 6), (int)BotCore::CAST_REJECT_RATE);
+
+	CHECK_EQ((int)BotCore::CheckCastFly(false, 0, 15, 0, 100, 6), (int)BotCore::CAST_REJECT_TOO_EARLY);
+	CHECK_EQ((int)BotCore::CheckCastFly(false, 1580, 15, 0, 100, 6), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 1580, 15, 0, 100, 6), (int)BotCore::CAST_REJECT_NO_MANA);
+
+	CHECK_EQ((int)BotCore::CheckCastFly(true, 0, 0, 100, 100, 0), (int)BotCore::CAST_OK);
+}
+
+TEST_CASE("Combat_CastLand_Guard")
+{
+	CHECK_EQ((int)BotCore::CheckCastLand(true, 999, 50, 50, 0), (int)BotCore::CAST_REJECT_TOO_EARLY);
+	CHECK_EQ((int)BotCore::CheckCastLand(true, 1000, 50, 50, 0), (int)BotCore::CAST_OK);
+	CHECK_EQ((int)BotCore::CheckCastLand(false, 1000, 50, 50, 0), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+	CHECK_EQ((int)BotCore::CheckCastLand(true, 1000, 49, 50, 0), (int)BotCore::CAST_REJECT_NO_MANA);
+	CHECK_EQ((int)BotCore::CheckCastLand(true, 1000, 50, 50, 6), (int)BotCore::CAST_REJECT_RATE);
+
+	CHECK_EQ((int)BotCore::CheckCastLand(false, 0, 0, 50, 6), (int)BotCore::CAST_REJECT_TOO_EARLY);
+	CHECK_EQ((int)BotCore::CheckCastLand(false, 1000, 0, 50, 6), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+	CHECK_EQ((int)BotCore::CheckCastLand(true, 1000, 0, 50, 6), (int)BotCore::CAST_REJECT_NO_MANA);
+}
