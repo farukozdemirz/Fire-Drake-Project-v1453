@@ -31,7 +31,7 @@ public:
 
 	enum SelectResult { SELECT_PENDING = 0, SELECT_OK = 1, SELECT_FAILED = 2 };
 
-	enum CastPhase { CAST_IDLE = 0, CAST_ARMED = 1, CAST_CASTING = 2 };
+	enum CastPhase { CAST_IDLE = 0, CAST_ARMED = 1, CAST_CASTING = 2, CAST_FLYING = 3 };
 
 	BotSession(const char * charName, const char * accountName);
 
@@ -96,6 +96,7 @@ public:
 	uint32 m_castPackets;                                  // IOCP thread only: WIZ_MAGIC_PROCESS packets sent in this series
 	int16 m_castTargetId;                                  // IOCP thread only: target id sent with CASTING (the cancel packet carries it)
 	std::chrono::steady_clock::time_point m_castCastingAt; // IOCP thread only: when CASTING went out (phase CAST_CASTING)
+	std::chrono::steady_clock::time_point m_castFlyingAt;   // IOCP thread only: when FLYING went out (phase CAST_FLYING)
 	std::map<uint32, std::chrono::steady_clock::time_point> m_castSkillLast;   // IOCP thread only: skill id -> last EFFECTING sent
 	bool m_castTypeHas[8];                                 // IOCP thread only: per skill type 0..7
 	std::chrono::steady_clock::time_point m_castTypeLast[8];   // IOCP thread only

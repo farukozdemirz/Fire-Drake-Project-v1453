@@ -532,7 +532,7 @@ void ActionExecutor::EndAttack(BotSession * s)
 
 // Maps a guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
 static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict verdict,
-	const BotCore::CastStartCheck & c, uint32 sinceCastingMs, uint8 castTime, int inWindow)
+	const BotCore::CastStartCheck & c, uint32 sinceCastingMs, uint8 castTime, int inWindow, uint32 earlyLimitMs)
 {
 	const char * rule = "MEC-MAG-11";
 	const char * reason = "out_of_range";
@@ -560,7 +560,7 @@ static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict
 		rule = "CLI-11"; reason = "rate"; value = (float)inWindow; limit = (float)BotCore::kMaxActionsPerWindow;
 		break;
 	case BotCore::CAST_REJECT_TOO_EARLY:
-		rule = "CLI-03"; reason = "too_early"; value = (float)sinceCastingMs; limit = (float)BotCore::CastDurationMs(castTime);
+		rule = "CLI-03"; reason = "too_early"; value = (float)sinceCastingMs; limit = (float)earlyLimitMs;
 		break;
 	// MEC-MAG-11: skill range in metres, or the 0.1 m attack field for a weapon-bound Type1.
 	case BotCore::CAST_REJECT_OUT_OF_RANGE:
@@ -583,10 +583,11 @@ static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict
 // Builds one WIZ_MAGIC_PROCESS packet, runs it through CUser::HandlePacket() and maps the result the server
 // published back (via BotSession::m_castEcho). 'type' is the telemetry action name.
 static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32 skillId,
-	const CastTarget & target, const int16 sData[3], uint32 cycle, uint32 sinceCastingMs,
+	const CastTarget & target, const int16 sData[3], uint32 cycle, uint32 sinceCastingMs, int32 sinceFlyingMs,
 	uint32 castMs, uint64 nowMs, std::chrono::steady_clock::time_point now)
 {
-	const char * type = (opcode == MAGIC_CASTING) ? "CastStart" : "CastEffect";
+	const char * type = (opcode == MAGIC_CASTING) ? "CastStart"
+		: (opcode == MAGIC_FLYING) ? "CastFly" : "CastEffect";
 	uint32 decisionId = NextDecisionId(s);
 	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
 	{
@@ -599,6 +600,8 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 			fields += ",\"cast_ms\":" + std::to_string(castMs);
 		else
 			fields += ",\"since_casting_ms\":" + std::to_string(sinceCastingMs);
+		if (opcode == MAGIC_EFFECTING && sinceFlyingMs >= 0)
+			fields += ",\"since_flying_ms\":" + std::to_string((uint32)sinceFlyingMs);
 		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
 			s->m_charName.c_str(), fields, false);
 	}
@@ -631,6 +634,11 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 		if (opcode == MAGIC_CASTING)
 		{
 			if (op == MAGIC_CASTING) { ok = true; reason = "casting"; }
+			else if (op == MAGIC_FAIL) { reason = "srv_fail"; }
+		}
+		else if (opcode == MAGIC_FLYING)
+		{
+			if (op == MAGIC_FLYING) { ok = true; reason = "flying"; }
 			else if (op == MAGIC_FAIL) { reason = "srv_fail"; }
 		}
 		else
@@ -718,10 +726,11 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 		return out;
 	}
 
+	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
 	bool supportedType = (m->bType[0] == 1 || m->bType[0] == 3);
 	if (!supportedType
 		|| m->bType[1] != 0
-		|| m->bFlyingEffect != 0
+		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
 		|| m->sEtc != 0
 		|| (m->bMoral != MORAL_SELF && m->bMoral != MORAL_FRIEND_WITHME
@@ -790,6 +799,8 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 		return out;
 	}
 
+	bool flying = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
+
 	// CLI-09: a UseStanding skill needs a stop packet and at least one tick before the cast starts. Only the ARMED
 	// phase is held; the next Tick() re-evaluates (the guard below still rejects "not_standing" as a safety net).
 	if (s->m_castPhase == BotSession::CAST_ARMED
@@ -852,7 +863,8 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 	c.needsStanding = (m->sUseStanding == 1);
 	c.standing = !s->m_moveActive;
 	c.mana = user->GetMana();
-	c.msp = m->sMsp;
+	c.msp = (flying && s->m_castPhase != BotSession::CAST_FLYING)
+		? BotCore::CastManaNeed(m->sMsp, true) : (uint32_t)m->sMsp;
 	c.reCastMs = BotCore::CastRecastMs(m->sReCastTime);
 	c.hasSkillLast = hasSkillLast;
 	c.sinceSkillLastMs = sinceSkillLastMs;
@@ -876,14 +888,14 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 
 		BotCore::CastVerdict verdict = BotCore::CheckCastStart(c);
 		if (verdict != BotCore::CAST_OK)
-			return RejectCast(s, user, verdict, c, 0, m->bCastTime, inWindow);
+			return RejectCast(s, user, verdict, c, 0, m->bCastTime, inWindow, BotCore::CastDurationMs(m->bCastTime));
 
 		s->m_castCycle++;
 
 		if (m->bCastTime > 0)
 		{
 			CastOutcome cast = SubmitCast(s, user, MAGIC_CASTING, s->m_castSkillId, target, sData,
-				s->m_castCycle, 0, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
+				s->m_castCycle, 0, -1, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
 			if (cast.reason != nullptr && std::strcmp(cast.reason, "casting") == 0)
 			{
 				s->m_castPhase = BotSession::CAST_CASTING;
@@ -914,13 +926,60 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 		sinceCastingMs = (uint32)elapsed;
 	}
 
+	// ADR-0017 Ek F4-25: a flying skill sends FLYING after the cast time and EFFECTING after the flight time.
+	if (flying && s->m_castPhase != BotSession::CAST_FLYING)
+	{
+		bool flyInRange = BotCore::CastInRange(meters, m->sRange, distanceField, weaponRangeField);
+		BotCore::CastVerdict flyVerdict = BotCore::CheckCastFly(flyInRange, sinceCastingMs, m->bCastTime,
+			c.mana, c.msp, inWindow);
+		if (flyVerdict != BotCore::CAST_OK)
+			return RejectCast(s, user, flyVerdict, c, sinceCastingMs, m->bCastTime, inWindow,
+				BotCore::CastDurationMs(m->bCastTime));
+
+		CastOutcome fly = SubmitCast(s, user, MAGIC_FLYING, s->m_castSkillId, target, sData,
+			s->m_castCycle, sinceCastingMs, -1, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
+		if (fly.reason != nullptr && std::strcmp(fly.reason, "flying") == 0)
+		{
+			s->m_castPhase = BotSession::CAST_FLYING;
+			s->m_castFlyingAt = now;
+			s->m_castTargetId = target.id;   // also for CastTime == 0 (no CASTING went out)
+			return fly;                      // SENT "flying"
+		}
+
+		// FLYING was not accepted (srv_fail / no_result): drop the series. MP was not charged by a failed FLYING.
+		const char * flyReason = fly.reason;
+		EndCast(s);
+		out.kind = CastOutcome::FAILED;
+		out.reason = flyReason;
+		return out;
+	}
+
+	uint32 sinceFlyingMs = 0;
+	if (s->m_castPhase == BotSession::CAST_FLYING)
+	{
+		long long flown = std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_castFlyingAt).count();
+		if (flown < (long long)BotCore::kFlightMinMs)
+			return out;   // NOTHING: the missile is still in the air
+
+		sinceFlyingMs = (uint32)flown;
+		sinceCastingMs = (m->bCastTime > 0)
+			? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(now - s->m_castCastingAt).count()
+			: 0;
+	}
+
 	bool inRange = BotCore::CastInRange(meters, m->sRange, distanceField, weaponRangeField);
-	BotCore::CastVerdict effectVerdict = BotCore::CheckCastEffect(inRange, sinceCastingMs, m->bCastTime, inWindow);
+	BotCore::CastVerdict effectVerdict = flying
+		? BotCore::CheckCastLand(inRange, sinceFlyingMs, c.mana, c.msp, inWindow)
+		: BotCore::CheckCastEffect(inRange, sinceCastingMs, m->bCastTime, inWindow);
 	if (effectVerdict != BotCore::CAST_OK)
-		return RejectCast(s, user, effectVerdict, c, sinceCastingMs, m->bCastTime, inWindow);
+		return flying
+			? RejectCast(s, user, effectVerdict, c, sinceFlyingMs, m->bCastTime, inWindow, BotCore::kFlightMinMs)
+			: RejectCast(s, user, effectVerdict, c, sinceCastingMs, m->bCastTime, inWindow, BotCore::CastDurationMs(m->bCastTime));
 
 	CastOutcome effect = SubmitCast(s, user, MAGIC_EFFECTING, s->m_castSkillId, target, sData,
-		s->m_castCycle, sinceCastingMs, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
+		s->m_castCycle, sinceCastingMs, flying ? (int32)sinceFlyingMs : -1,
+		BotCore::CastDurationMs(m->bCastTime), nowMs, now);
 	const char * reason = effect.reason;
 
 	// Reuse timers: the bot is conservative (the server only records a timestamp on success).
@@ -985,8 +1044,8 @@ CastOutcome ActionExecutor::CancelCast(BotSession * s, const char * cause,
 	if (s == nullptr || s->m_castPhase == BotSession::CAST_IDLE)
 		return out;
 
-	// ARMED: no CASTING packet is in flight, nothing to tell the server.
-	if (s->m_castPhase == BotSession::CAST_ARMED)
+	// ARMED / FLYING: no CASTING packet is in flight, nothing to tell the server (the flight's first MP half is spent).
+	if (s->m_castPhase == BotSession::CAST_ARMED || s->m_castPhase == BotSession::CAST_FLYING)
 	{
 		EndCast(s);
 		out.reason = "dropped";

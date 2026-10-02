@@ -157,7 +157,7 @@ namespace BotCore
 		bool needsStanding;         // MAGIC.UseStanding == 1
 		bool standing;              // the bot has no walk in progress
 		int32_t mana;               // caster's current MP
-		uint16_t msp;               // MAGIC.Msp
+		uint32_t msp;               // MAGIC.Msp, or CastManaNeed(...) for a flying cast
 		uint32_t reCastMs;          // CastRecastMs(MAGIC.ReCastTime)
 		bool hasSkillLast;          // this skill was effected earlier in this spawn
 		uint32_t sinceSkillLastMs;
@@ -248,6 +248,65 @@ namespace BotCore
 
 		if (!inRange)
 			return CAST_REJECT_OUT_OF_RANGE;
+
+		if (actionsInWindow >= kMaxActionsPerWindow)
+			return CAST_REJECT_RATE;
+
+		return CAST_OK;
+	}
+
+	// --- flying cast (ADR-0017 Ek F4-25) ---
+
+	// docs/03 CLI-03 [V]: a flying skill goes CASTING -> FLYING -> EFFECTING; the client sent EFFECTING 1037 ms after FLYING
+	// (one area skill, n = 3). [A] the flight of a single-target skill may depend on distance: the bot waits at least this long.
+	constexpr uint32_t kFlightMinMs = 1000;
+
+	// A Type3 skill with a flying effect (single-typed is checked by the caller). The server charges its MP at FLYING and
+	// again at EFFECTING (docs/03 MEC-MAG-12 [D]).
+	inline bool IsFlyingCast(uint8_t type0, uint16_t flyingEffect)
+	{
+		return type0 == 3 && flyingEffect != 0;
+	}
+
+	// MP the bot must hold before the first packet of a series: a flying cast pays MAGIC.Msp twice.
+	inline uint32_t CastManaNeed(uint16_t msp, bool flying)
+	{
+		return flying ? uint32_t(msp) * 2 : uint32_t(msp);
+	}
+
+	// Guard rule for the FLYING packet. Order: too early (same wait as the EFFECTING of a non-flying cast), range, mana
+	// (manaNeed = CastManaNeed(msp, true): FLYING has not charged anything yet), rate.
+	inline CastVerdict CheckCastFly(bool inRange, uint32_t sinceCastingMs, uint8_t castTime, int32_t mana,
+		uint32_t manaNeed, int actionsInWindow)
+	{
+		if (sinceCastingMs < CastDurationMs(castTime))
+			return CAST_REJECT_TOO_EARLY;
+
+		if (!inRange)
+			return CAST_REJECT_OUT_OF_RANGE;
+
+		if (mana < int32_t(manaNeed))
+			return CAST_REJECT_NO_MANA;
+
+		if (actionsInWindow >= kMaxActionsPerWindow)
+			return CAST_REJECT_RATE;
+
+		return CAST_OK;
+	}
+
+	// Guard rule for the EFFECTING packet of a flying cast. Order: flight time, range, mana (manaNeed = MAGIC.Msp: FLYING
+	// already took the first half), rate.
+	inline CastVerdict CheckCastLand(bool inRange, uint32_t sinceFlyingMs, int32_t mana, uint32_t manaNeed,
+		int actionsInWindow)
+	{
+		if (sinceFlyingMs < kFlightMinMs)
+			return CAST_REJECT_TOO_EARLY;
+
+		if (!inRange)
+			return CAST_REJECT_OUT_OF_RANGE;
+
+		if (mana < int32_t(manaNeed))
+			return CAST_REJECT_NO_MANA;
 
 		if (actionsInWindow >= kMaxActionsPerWindow)
 			return CAST_REJECT_RATE;
