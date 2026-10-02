@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-02 (saldırı dilimi, guard deseni, `m_actionWindow`) — `KAPANDI`; F4-01 (hareket) — `KAPANDI` |
@@ -390,13 +390,38 @@ git diff --check gece/2026-10-02...bot/F4-03
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (doğrulamaya hazır)
+- Branch / commit'ler: `bot/F4-03` (taban: `gece/2026-10-02`), tek commit `c4c8c49` — `[F4-03] cast dilimi: CastStart/CastEffect (Type1/Type3) + CLI-03/04/09/11 guard`
 - Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: §5.2 eklemeleri (sabitler, `CastDurationMs`, `CastRecastMs`, `CastInRange`, `CastStartCheck`, `CastVerdict`, `CastWaitMs`, `CheckCastStart`, `CheckCastEffect`).
+  - `Tests/BotCoreTests/CombatTests.cpp`: beş yeni `TEST_CASE` + `OkCast()` yardımcısı.
+  - `GameServer/Bot/ActionExecutor.h`: `CastTarget`, `CastOutcome`, `BeginCast`/`TickCast`/`EndCast` bildirimleri.
+  - `GameServer/Bot/ActionExecutor.cpp`: cast yolu (`SubmitCast`, `RejectCast`, `BeginCast`, `TickCast`, `EndCast`) + `GameServerDlg.h`/`MagicInstance.h`/`<cstring>` include'ları.
+  - `GameServer/Bot/BotSession.h/.cpp`: cast durumu üyeleri, `#include <map>`, kurucu/`ResetForRespawn` sıfırlamaları, `OnPacket()` içinde `WIZ_MAGIC_PROCESS` sonuç okuma.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandCast`, fiil dağıtımı, `TickSessions()` cast bloğu, `BeginDespawn()` `EndCast`, `BuildStatusLines()` `casting=`/`mp=`.
 - Derleme sonucu:
+  - `./tools/build.sh Release`: rc=0; `proj-GameServer.vcxproj -> ...GameServer.exe`; yeni dosyalarda uyarı yok (kalan uyarılar eski satırlar: `GameServerDlg.cpp:816/1143/1802`, `UpgradeHandler.cpp:634/862`).
+  - `./tools/build.sh Debug`: rc=0; `GameServer.exe` üretildi; aynı eski uyarılar.
+  - `./tools/run-tests.sh Release`: `24 tests, 0 failed`; beş yeni `Combat_Cast*` testi görünüyor.
+  - `./tools/run-tests.sh Debug`: `24 tests, 0 failed`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release hatasız; değişen dosyalarda yeni uyarı yok).
+  - K2 ✔ (Debug hatasız).
+  - K3 ✔ (Release ve Debug `24 tests, 0 failed`).
+  - K4 ✔ (`BotCombat.h`'de sunucu başlığı yok; include yalnızca `<algorithm>`, `<cstdint>`).
+  - K5 ✔ (`WIZ_MAGIC_PROCESS` yalnızca `ActionExecutor.cpp` üretimi + `BotSession.cpp` okuma; `MagicPacket`/`MagicInstance` çağrısı, soğuma listesi, MP/HP yazımı yok; yalnızca `#include "../MagicInstance.h"`).
+  - K6 ✔ (`HandlePacket` cast çağrısı tek yerde (`SubmitCast`); `CheckCastStart` CAST_ARMED'da, `CheckCastEffect` EFFECTING'de, `CAST_OK` dışında erken dönüş).
+  - K7 ✔ (`-` satırları yalnızca bilinçli: unknown command metni, `char message[192]`→`[256]`, `BuildStatusLines` biçim satırı; `Startup`/`Tick` akışı ve ini okuma değişmedi).
+  - K8 ✔ (`git diff --stat`: §4'teki 8 dosya + plan; `vcxproj*` değişmemesi doğrulandı).
+  - K9 ✔ (`file` çıktıları tümü ASCII + CRLF; `git diff --check` temiz).
+  - K10 ✔ (`ActionExecutor.*` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok).
+  - K11 ✔ (`CheckMoveStep` ×2, `CheckAttack` ×1; `Move`/`Attack`/`Cast` `EmitFairnessReject` çağrıları; Motion/Combat testleri geçiyor).
+  - K12 (çalışma zamanı) — DeepSeek yapmaz, Claude yapar.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `CommandCast`'te hedef adı çözümlendikten sonra kendine-cast denetimi için `target == s` erken reddi korundu (planla uyumlu).
+  - `TickCast`'ta `FINISHED`/`FAILED` dönüşlerinde `reason` olarak `CastOutcome.reason` kullanıldı (`SubmitCast` zaten `const char*` sabit döndürür); plandaki tabloyla birebir.
+  - Yok: `recast`/`type_gate`/`gap` durumları `CastWaitMs > 0` iken `NOTHING` döner (plan §5.4 madde 3 ile uyumlu), guard reddi yalnızca gerçek ihlalde yazılır.
+- Açık sorular: yok.
 
 ---
 
