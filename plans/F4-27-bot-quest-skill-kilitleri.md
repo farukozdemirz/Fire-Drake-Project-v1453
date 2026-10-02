@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 3) |
 | Branch | `bot/F4-27` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `BeginCast`), F4-25/F4-26 (uçan ve çift tipli skill; `BeginCast`'in destek kuralları değişti: satır numaraları kaymıştır, sembolle bul) — `KAPANDI` olmalı; F2-03 (bot girişi), `db/002_bot_characters.sql` (12 bot satırı) — `KAPANDI` |
@@ -166,6 +166,37 @@ python3 tools/client-tbl-quests.py --server
 - Açık sorular:
   - K4/K5/K6 komutlarında `-v QuestTestPoints=0` zorunlu hâle geldi (bkz. sapma). §7'deki örnek komutlar bu değişkeni içermiyor; reader'ın bunu bilmesi gerekir.
   - `db/003`'ün bot quest'lerini kalıcı bırakması mı, geri alınmış (db/002) durumda bırakması mı istendiği: ben **geri alınmış/temiz** durumda bıraktım (betik istenince uygulanır). Doğrulamada K8, `db/003`'ü `-v QuestTestPoints=1` ile uygular, test eder; sonra istenirse geri alır.
+
+### Tur 2
+
+- Durum: UYGULANDI (düzeltme yalnızca SQL/README; C++ dosyalarına dokunulmadı, derleme/birim test gerekmedi — Tur 1'deki `103 tests, 0 failed` geçerliliğini korur. SQL yeniden doğrulaması yerel `FDP_kn_online`'da sunucular kapalıyken yapıldı.)
+- Branch / commit'ler: `bot/F4-27` (taban: `gece/2026-10-02`); düzeltme commit'i bu turun sonunda atılır.
+- Değişen dosyalar ve neden:
+  - `db/003_bot_quests.sql`: quest kimlikleri artık sunucunun okuduğu **little-endian uint16 + uint8 durum** düzeniyle yazılıyor ve ayrıştırılıyor (bayt0 = id % 256, bayt1 = id / 256, bayt2 = durum); birleştirme döngüsü ve gerekli-kimlik ekleme döngüsü aynı kuralı kullanıyor (`CONVERT(varbinary(2), CAST(@id AS int))` ve `SUBSTRING(...) AS smallint` ayrıştırması kaldırıldı). Öz denetim, yazma kuralından bağımsız sabit 3 baytlık ikili desenlerle (`51=0x330002`, `510=0xFE0102`, `511=0xFF0102`, `53=0x350002`, `515=0x030202`, `516=0x040202`, `517=0x050202`, `54=0x360002`, `518..523=0x060202..0x0B0202`) kayıt-hizalı konumlarda arıyor; eksik satır `fail` sayılıyor. `OldSkill` yedeği, `QuestTestPoints=1` iken yedek satırda NULL ise `strSkill` test düzenine yazılmadan önce dolduruluyor (doluysa ezilmiyor). Idempotans: gerekli kümedeki tüm kimlikler zaten durum 2 ise satır güncellenmiyor ve `changed` sayılmıyor (sıra farkı değişiklik değil). `IF @count > 200 SET @count = 200;` kaldırıldı; `sQuestCount > 200` olan satırda `RAISERROR(16)`.
+  - `db/README.md`: 003 bölümüne "kimlik little-endian uint16 + durum uint8" notu ve ikinci çalıştırmanın `changed=0` bildirmesinin yalnızca gerekli kimlikler zaten durum 2 iken geçerli olduğu eklendi.
+  - `db/003_bot_quests_rollback.sql`: **değişmedi** (davranış aynı).
+- Derleme: yapılmadı (yalnızca SQL/README değişti; C++ dosyalarına dokunulmadı).
+- Yeniden doğrulama çıktıları (sunucular kapalı, yalnızca sayaçlar; `BINARY_CHECKSUM`):
+  - (a) başlangıç (temiz) BINARY_CHECKSUM toplamı = `49263360`; `backup_rows=0`; `BotWP_K`/`BotMF_K` ağaç5 = 70.
+  - (b) `-v QuestTestPoints=0` iki kez: `changed=12 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`; sonra `changed=0 ...`, `ok=12 fail=0`.
+  - (c) `-v QuestTestPoints=1`: `changed=0 ...`, `BOTQUEST: rows=12 ok=12 fail=0`; yedekte `OldSkill` dolu (BotWP_K/BotMF_K) = **2**; `BotWP_K`/`BotMF_K` ağaç5 = 80.
+  - (d) geri alma: `BOTQUEST_ROLLBACK: restored=12`.
+  - (e) geri alma sonrası BINARY_CHECKSUM toplamı = `49263360` = (a); ağaç5 = 70.
+  - (f) temiz durumdan `-v QuestTestPoints=1`: `changed=12 ...`, `ok=12 fail=0`, `OldSkill` dolu = 2; geri alma `restored=12`; toplam = `49263360`, `backup_rows=0`.
+  - (g) birleştirme kanıtı: `BotMI_K`'ya elle `500:1` (`F4 01 01`) ve `32001:5` (`01 7D 05`) yazıldı; `-v QuestTestPoints=0`: `changed=12 kept_other=2`, `BOTQUEST: rows=12 ok=12 fail=0`; bağımsız desen denetimi `kept500=1 kept32001=1 req_patterns=4 mi_count=6`; geri alma `restored=12`, sonra elle enjeksiyon temizlendi → toplam = `49263360`, ağaç5 = 70.
+  - Test sonu: DB rollback uygulanmış (db/002) durumda (toplam `49263360`, ağaç5 = 70, `backup_rows=0`).
+- Kabul kriterleri öz-değerlendirmesi (Tur 1'de doğrulanan C++ kriterleri değişmedi):
+  - Düzeltme 1–5: ✔ (little-endian yaz/oku, bağımsız öz denetim, `OldSkill` yedeği, idempotans, kırpma yerine `RAISERROR`).
+  - Düzeltme 6: ✔ (rollback değişmedi; README notları eklendi).
+  - Düzeltme 7 (a)–(g): ✔ (yukarıdaki çıktılar; DB db/002'de bırakıldı).
+  - Düzeltme 8: ✔ (C++ dosyalarına dokunulmadı).
+- Plandan sapmalar:
+  - İlk öz denetim denemesinde `SUM(CASE WHEN EXISTS ...)` SQL Server 130'da "aggregate on subquery" hatası verdi; `@missing` sayımı ile düzeltildi (bağımsız sabit-desen denetimi korunur, davranış aynı).
+  - Birleştirme testindeki elle enjeksiyon `-Q` ile yapıldı (geçici dosya Windows sqlcmd yolundan okunamıyordu); enjeksiyon/temizliği yalnızca test amaçlıdır, depoya girmedi.
+  - `kept_other` yalnızca gerçekten birleştirme yapılan satırlarda sayılıyor.
+- Açık sorular:
+  - Birleştirme testindeki elle enjeksiyonun geri alınması (`BotMI_K` `sQuestCount=0`) planın istediği "sonunda db/002" için yapıldı; sunucunun ürettiği gerçek kill sayaçları (32001+) doğal yolda bu betiğe girmeye devam eder.
+
 
 ---
 

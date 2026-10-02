@@ -47,6 +47,7 @@ Bot satırlarındaki (`db/002`) quest listesi boştur; bu yüzden quest ile aç�
 skill'ler (51–54, 510–523) botta kullanılamaz. Betik, her botun sınıfının
 quest'lerini `USERDATA.strQuest`'e **durum 2 (tamamlandı)** olarak yazar; quest
 listesi `db/002`'de sıfırken de skill'ler bir insan oyuncununkiyle aynı olur.
+- Kayıt düzeni: her quest kaydı 3 bayttır; kimlik **little-endian uint16** (bayt0 = kimlik % 256, bayt1 = kimlik / 256) + durum **uint8** (`DBAgent.cpp:402`).
 
 - **Sunucular kapalıyken** çalıştırılmalıdır: oyundaki bir karakter çıkışta
   bellekteki quest listesini `USERDATA`'ya geri yazar, bu yüzden açıkken yazmak
@@ -54,8 +55,8 @@ listesi `db/002`'de sıfırken de skill'ler bir insan oyuncununkiyle aynı olur.
 - Yalnızca 12 bot satırına (açık ad listesi) dokunur; başka satır/tablo okunmaz.
   Satır içeriği ekrana basılmaz.
 - Mevcut kayıtlar (ör. 500 tohum quest'i, kill sayaçları) **korunur**; yalnızca
-  gerekli kimlikler durum 2 ile yeniden yazılır. Betik idempotenttir (ikinci
-  çalıştırma `changed=0`).
+  gerekli kimlikler durum 2 ile yeniden yazılır. Betik idempotenttir; ikinci
+  çalıştırma ancak gerekli kimlikler zaten durum 2 ise `changed=0` bildirir.
 - `QuestTestPoints` **zorunludur** ve `0` ya da `1` olmalıdır: `0` `strSkill`'e
   dokunmaz; `1` yalnızca `BotWP_K` ve `BotMF_K` skill puanlarını 80. seviye
   quest skill'leri (Hell blade 106580, Igzination 110575) atılabilsin diye
