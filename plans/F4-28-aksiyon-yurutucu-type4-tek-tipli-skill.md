@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-28` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-26 (`CastTypesSupported`, `IsGatedType`, `MinGatedSince`, iki tipli kapı) — `KAPANDI` (merge `06a76e8`); F4-27 (`quest_locked`) — `KAPANDI` (merge `b73d31f`) |
@@ -225,4 +225,38 @@ git diff --check gece/2026-10-02...bot/F4-28
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-*(henüz doğrulanmadı)*
+### Tur 1 — 2026-10-03
+
+- **Karar: DOĞRULANDI.**
+- İncelenen commit: `bot/F4-28` @ `00cc446` (kod `734e64e`; taban `gece/2026-10-02`). Çalışma ağacı temizdi; birleştirme otonom döngüde döngü betiğine bırakıldı.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `BotCombat.h`/`CombatTests.cpp`/`ActionExecutor.h` `touch` + `tools/build.sh Release` rc=0; `UpgradeHandler.cpp` dışında hiçbir uyarı yok (derleme günlüğü filtrelendi; eski C4789 uyarıları plan dışı) |
+| K2 | ✔ | `tools/build.sh Debug` rc=0 |
+| K3 | ✔ | Release ve Debug: `104 tests, 0 failed`; `Combat_CastTypes_Supported` ve `Combat_TypeGate_Type4Single` `[ OK ]` |
+| K4 | ✔ | `BotCombat.h` içinde `windows.h/stdafx/GameServer/shared/` eşleşmesi yok; eklenen satırlarda `std::min/max` yok (tek eşleşme plan dosyasındaki rapor metni) |
+| K5 | ✔ | diff yalnızca `CastTypesSupported` bölgesi (`BotCombat.h:317-327`, +4/−4 satır); testte `(4,0)` true, `(4,1)`, `(4,2)`, `(4,3)`, `(4,4)`, `(4,9)`, `(0,4)`, `(1,4)`, `(2,4)` false |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-28`: `ActionExecutor.cpp`, `BotSession.*`, `BotManager.cpp` yok; `ActionExecutor.cpp:729-759` (tek destek çağrısı `:730`, moral `:752-757`), `grep "bType\["` tam olarak plandaki satırları verir; uygulayıcının dört okuma iddiası kodla uyuşuyor |
+| K7 | ✔ | eklenen kod satırlarında `Emit(`/ini/komut/thread yok |
+| K8 | ✔ | değişen dosyalar: `BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.h` + plan dosyası; vcxproj değişmedi |
+| K9 | ✔ | `file`: üç dosya ASCII + CRLF; `git diff --check` boş |
+| K10 | ✔ | `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckCastFly`/`CheckCastLand`/`CheckCastCancel`/`CheckPotion` 1; 104 test geçiyor |
+| K11 | ✔ | `check-perception-contract.py` `RESULT: PASS`, R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0 |
+| K12 | ✔ | S1–S5 çalışma zamanında geçti (aşağıda; iki alt madde için "Notlar" bölümüne bak) |
+
+**Çalışma zamanı (Release, `ENABLED=1`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-021339.jsonl`, `Logs/Bot_3_10_2026.log`):**
+
+- **S1 ✔** Defense `106007`: tek `CastEffect` (`since_casting_ms` 0), `effected`, `op 3`, `code 15`, `snap` `type=2 buff`; sprint `106001`: `code 10`, MP 5370 → 5365 (−5, bir kez), `type=6`; Mana Shield `110815`: `code 40`, MP 6021 → 5871 (−150, bir kez), `type=31`. Log `cast finished (effected) after 1 cycle(s), 1 ok, 1 packet(s) sent`.
+- **S2 ✔** (a) Defense ×2: 2. döngü `ok:false`, `srv_fail`, `op 4`, `code -103`, log `(srv_fail) after 2 cycle(s), 1 ok, 2 packet(s)`; `snap` buff yenilenmedi (14 sn → 3 sn kalan). Mana Shield ×2: ikinci `srv_fail -103`, MP yalnızca bir kez −150 (5871'de kaldı: reddedilen Type4 MP düşürmüyor). (b) `BotWP_K` Defense'liyken `112603` Insensibility Skin (`BuffType 2`): `CastStart` `srv_fail`, `op 4`, `code -100`, `cast stopped (srv_fail)`, EFFECTING yok, priest MP 6392 değişmedi. (c) Strength ×2: 1. döngü `effected` `code 600` (MP −10 görüldü), 2. döngü CASTING `srv_fail -100`.
+- **S3 ✔** Strength `112004` dosta: `CastStart` (`cast_ms 1580`) → `CastEffect` (`since_casting_ms` 1645, `code 600`), `snap BotWP_K` `type=7 buff remain≈595s`; Resist poison kendine `code 600`, `type=8`. Tip kapısı (`112004` → `112006` kendine): 2. `CastStart` 1. `CastEffect`'ten **1099 ms** sonra (≥1000), `FAIRNESS_REJECT` yok. Ice comet `110651` `{3,4}` → Mana Shield: Ice comet `CastEffect` `t=213163988`, Mana Shield `CastEffect` `t=213165078` (**1090 ms**): Type4 damgası çift tipliden geliyor (F4-26'dan kalan boşluk kapandı).
+- **S4 ✔** Malice `112703` düşmana ×2: iki döngü de `effected`, `code 150` (`srv_fail` yok); MP −40 görüldü; `snap BotWP_E` `buff skill=112703 type=2 debuff remain=149s`, ikinci `EFFECTING`'ten ≈3 sn sonra `remain=147s` (süre yenilendi). Confusion/Parasite sınanmadı (plan "aynı sırayı verir" diyor, zorunlu değil).
+- **S5 ✔** `110573` (UseItem) ⇒ `unsupported_skill`; Type4 party `112606` (Moral 4; `MAGIC`'ten bulundu) hem `self` hem adlı hedefle ⇒ `unsupported_skill`; `106007 BotWP_E` ⇒ `bad_target`; `112703 self` ⇒ `bad_target`; `BotWP_K 112004` ⇒ `bad_skill`; hedef 70 m uzakta ⇒ `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range` (`value 70, limit 56`), CASTING gitmedi. Gerilemesiz: Ignition ×3 `effected` ×3 (6 paket, `CastFly` yok); Ice arrow `110615` `CastStart`→`CastFly`→`CastEffect`, 3 paket; Fire ball `110515` aynı, 3 paket; Strength CASTING'inde `cast off` ⇒ `CastCancel` `cancelled`, `op 4`, `code -100`, priest MP 6392 değişmedi, `snap`'te buff yok; ardından yeniden atılan Strength `effected`. İkinci botun `snap BotMF_K events` çıktısı Type4 yayınını gösterdi (`op=3 skill=112004 caster=2986 target=2986`). `tick_p50` 2–4 µs; `GameServer.log`'a yeni hata yazılmadı (son kayıt 2026-10-02). Sunucu 3/3 UP idi; sonunda `stop` ile kapatıldı, `GameServer.ini` değişmedi (yedekle aynı), `Scripts/f428_*` silindi.
+
+**Bulgular (engelleyici yok):**
+
+1. *(not)* Sınama sırasında `PERF_SAMPLE` `tick_p95_us` 72 pencerenin üçünde >1 ms çıktı (1266, 1014, 1348 µs; `tick_p50` 4 µs). Üçü spawn/despawn pencereleridir (`written` yüksek, `sessions` 5'e çıkışı); cast sürelerinde p95 ≈ 100 µs. Bu plan tick yoluna kod eklemediğinden gerileme değil; bilinen spawn maliyetidir.
+2. *(not)* MP düşüşü ölçümü sunucu MP yenilemesiyle karışabildiği için Defense/Strength/Malice için "bir kez −N" yalnızca yakın zamanlı `list`'te (sprint −5, Mana Shield −150, Malice −40, Strength −10) ve reddedilen Mana Shield'in MP'sinin değişmemesiyle kanıtlandı; Defense için (−4) yenileme nedeniyle ayrı ölçüm alınmadı.
+3. *(not)* K12'deki iki alt madde bu turda çalıştırılmadı: `TELEMETRY=summary` iken Type4 cast'i ve `ENABLED=0` davranışı. Diff `ActionExecutor.cpp`/telemetriye dokunmadığı ve tek değişiklik saf bir koşul olduğu için bu yollar yapısal olarak etkilenmez; yeniden başlatma gerektirdiğinden atlandı.
+4. *(not)* Çalışma zamanı sınaması Type4 `CastTime 0` için 1 paketin sunucuca kabul edildiğini doğruladı (§8-d): Defense/sprint/Mana Shield tek `CastEffect` ile `effected`. Gerçek istemci gönderimi hâlâ T-MECH-BUF insan ölçümü işidir.
+5. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; sapma/soru yok.
