@@ -473,4 +473,102 @@ namespace BotCore
 				0.0f, 0.5f, 0.0f, params.penaltyWeight);
 		}
 	}
+
+	// Packet-cadence preset for the real binding (F5-54; docs/12 s13.3). The server position only
+	// changes per move packet (~1500 ms, BotMotion.h kMovePeriodMs), so the default 1500 ms
+	// no-progress window has zero margin and the 4 s / 3-swing oscillation rule is unreachable.
+	// The thresholds are >= 2 packet periods plus tolerance (docs/12 s13.3, [A]; T-NAV-04 revises).
+	inline NavStuckParams NavPacketCadenceParams()
+	{
+		NavStuckParams params;
+		params.noProgressMs = 3200;   // >= 2 packet periods + 100 ms tolerance
+		params.minProgressM = 1.0f;
+		params.oscWindowMs = 8000;
+		params.oscSwings = 3;
+		return params;
+	}
+
+	// Guard-blocked detector (F5-54): a rejected move packet with no sent packet inside the window
+	// is BLOCKED_BY_GUARD, not a stuck episode (docs/12 s13.3). The caller keeps this out of the
+	// NavStuckMonitor ladder. Fixed storage, no allocation, no clock: one-way caller timestamps.
+	class NavGuardBlockDetector
+	{
+	public:
+		enum { kCapacity = 16 };   // >= 16 events
+
+		void Reset();
+		void OnPacketSent(int64_t tMs);
+		void OnPacketRejected(int64_t tMs);
+		// True when at least one packet was rejected and no packet was sent within the last
+		// windowMs (inclusive lower bound). False when there is no event or time went backwards.
+		bool Blocked(int64_t nowMs, int windowMs = 3200) const;
+
+	private:
+		struct Entry
+		{
+			int64_t t = 0;
+			bool rejected = false;
+		};
+
+		Entry m_entries[kCapacity];
+		int m_count = 0;      // valid entries (<= kCapacity)
+		int m_next = 0;       // next write slot
+		int64_t m_lastMs = 0; // last recorded timestamp (call order)
+		bool m_hasLast = false;
+	};
+
+	inline void NavGuardBlockDetector::Reset()
+	{
+		for (int i = 0; i < kCapacity; ++i)
+		{
+			m_entries[i].t = 0;
+			m_entries[i].rejected = false;
+		}
+		m_count = 0;
+		m_next = 0;
+		m_lastMs = 0;
+		m_hasLast = false;
+	}
+
+	inline void NavGuardBlockDetector::OnPacketSent(int64_t tMs)
+	{
+		m_entries[m_next].t = tMs;
+		m_entries[m_next].rejected = false;
+		m_next = (m_next + 1) % kCapacity;
+		if (m_count < kCapacity)
+			++m_count;
+		m_lastMs = tMs;
+		m_hasLast = true;
+	}
+
+	inline void NavGuardBlockDetector::OnPacketRejected(int64_t tMs)
+	{
+		m_entries[m_next].t = tMs;
+		m_entries[m_next].rejected = true;
+		m_next = (m_next + 1) % kCapacity;
+		if (m_count < kCapacity)
+			++m_count;
+		m_lastMs = tMs;
+		m_hasLast = true;
+	}
+
+	inline bool NavGuardBlockDetector::Blocked(int64_t nowMs, int windowMs) const
+	{
+		if (!m_hasLast || nowMs < m_lastMs)
+			return false;
+
+		const int64_t lo = nowMs - (int64_t)windowMs;
+		bool rejected = false;
+		bool sent = false;
+		for (int i = 0; i < m_count; ++i)
+		{
+			if (m_entries[i].t < lo || m_entries[i].t > nowMs)
+				continue;
+			if (m_entries[i].rejected)
+				rejected = true;
+			else
+				sent = true;
+		}
+		return rejected && !sent;
+	}
 }
