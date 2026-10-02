@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-01 (`ActionExecutor` iskeleti, guard deseni, `move`/`stop`) — `KAPANDI` |
