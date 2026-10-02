@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-01 (`ActionExecutor` iskeleti, guard deseni, `move`/`stop`) — `KAPANDI` |
@@ -369,4 +369,39 @@ git diff --check gece/2026-10-02...bot/F4-02
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-_Henüz doğrulanmadı._
+### Tur 1 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-02` @ `f43e822` (3 commit: `e3af982` plan, `ca146e9` uygulama, `f43e822` rapor; hepsi `[F4-02] ...` biçiminde, merge/force izi yok). Otonom gece modu (`AUTO_LOOP=1`): birleştirme/push döngü betiğinde, bu turda yapılmadı.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `./tools/build.sh Release` rc=0; `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp` touch'lanıp yeniden derlendi: bu dosyalar için `warning`/`error` satırı 0 (`BotCombat.h` bunlardan include edilir) |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` rc=0, uyarı/hata satırı yok |
+| K3 Birim testleri | ✔ | `tools/run-tests.sh Release` ve `Debug`: 7 `Combat_*` + 6 `Motion_*` + 6 `Rng_*` → `19 tests, 0 failed` |
+| K4 `BotCombat.h` saflığı | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`BotCombat.h:6-7`); dosya ASCII |
+| K5 Paket yolu | ✔ | `grep WIZ_ATTACK GameServer/Bot/*.cpp`: yalnızca `ActionExecutor.cpp:420` (`Packet pkt(WIZ_ATTACK)`) ve `BotSession.cpp:28` (`OnPacket` sonuç okuma); `Attack(`/`HpChange`/`m_RHitRepeatList`/`m_sHp` grep'i yalnızca `BeginAttack`/`TickAttack`/`EndAttack` tanımları ve `BotManager.cpp` çağrılarını gösteriyor; `CUser::Attack`/`HpChange` çağrısı ve `m_sHp` yazımı yok |
+| K6 Guard atlanmıyor | ✔ | `ActionExecutor.cpp:375` `CheckAttack`, `:376-402` `ATTACK_OK` dışında `EndAttack` + `REFUSED` ile erken dönüş; `HandlePacket` `:426` bundan sonra, saldırı için tek çağrı. Çalışma zamanında da sınandı (S3: `ACTION_SUBMIT` yok) |
+| K7 `ENABLED=0` değişmez | ✔ | `git diff ... BotManager.cpp \| grep '^-'`: yalnızca `unknown command` metni ve `BuildStatusLines` biçim satırı (3 `-` satırı: 1 + 2); `Startup()`/`Tick()`/ini okuma değişmedi; `BotSession` değişikliği yalnızca yeni üyeler, `ResetForRespawn()` ve `OnPacket()` içi atomik yazım. Çalışma zamanı: `ENABLED=0` → `Bot_*.log` +0 satır, `BotCommands.txt` dokunulmadı, `Logs/bots/` oluşmadı |
+| K8 Kapsam | ✔ | `git diff --stat`: §4'teki 10 dosya + plan dosyası; `proj-GameServer.vcxproj*` farkı 0 satır; `docs/`, `.claude/`, `AGENTS.md`, başka plan değişmemiş |
+| K9 Kodlama | ✔ | `BotCombat.h`, `CombatTests.cpp`: `ASCII text, with CRLF`; değiştirilen `Bot/*` dosyaları CRLF/ASCII; `.vcxproj` dosyaları BOM + CRLF korunmuş, fark yalnızca birer `+` satır; `git diff --check` boş |
+| K10 Yasaklı çağrılar | ✔ | `grep "printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand("` `ActionExecutor.*` içinde boş |
+| K11 F4-01 gerilemesiz | ✔ | `CheckMoveStep` sayısı 2; `EmitFairnessReject` iki hareket çağrısı `"Move"` geçiyor (`:94`, `:187`); `Motion_*` 6/6 geçti; çalışma zamanı: 30 m yürüyüş `arrived ... after 5 packets`, `moverx=5` |
+| K12 Çalışma zamanı | ✔ | S1–S6 aşağıda; hepsi geçti (Release, sunucu 3/3 UP, sonunda 0/3 DOWN, ini md5 geri yüklendi) |
+
+- Çalışma zamanı sınaması (`ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; `BotWP_K` Karus warrior, `BotWP_E` El Morad warrior, zone 71; silah `Delay=164` (`delay` alanı 174), eski `Logs/bots/` `Logs\bots_old_f402\`'e taşındı):
+  - **S1 mutlu yol:** `spawn` → iki `in game`, `list`: `hp=5650/5650` (plan 32000 diyordu; sunucu girişte kırpıyor, hata değil). Botlar zaten 1,77 m ayrıktı (`distance` alanı 17 ≤ menzil). `attack BotWP_K BotWP_E 3` → `attacking BotWP_E (3 hit(s))`, `attack finished (hit) after 3 hit(s) sent, 3 ok`; `BotWP_E` `hp` 5650 → 5270, `BotWP_K` 5650 (karşı vuruş yok), `attacking=0`. JSONL: 3 `ACTION_SUBMIT` + 3 `ACTION_RESULT` (`decision_id` 1–3 eşleşti, `"type":"Attack"`, `ok:true`, `reason:"hit"`, `result:1`, `latency_us` 95–121), `target` = 2985 (`BotWP_E` slotu), `delay:174`; ardışık `t` farkı 1647 / 1644 ms (aralık [1640, 1890] içinde); `FAIRNESS_REJECT` yok.
+  - **S2 `off` ortada:** `attack ... 10`, ~2 sn sonra `attack BotWP_K off` → `stopped after 2 hit(s) sent`, yeni paket yok; `attack all off` → `BotWP_K not attacking`, `BotWP_E not attacking`, `0 stopped, 2 not attacking`.
+  - **S3 guard reddi:** `BotWP_E` 14,8 m uzağa yürütüldü (`pos=1290.0,890.0`); `attack BotWP_K BotWP_E 1` → `attack stopped (out_of_range)`; JSONL'de yalnızca `FAIRNESS_REJECT` (`"type":"Attack"`, `"rule":"MEC-R-04"`, `"reason":"out_of_range"`, `value:148.00`, `limit:20.00`), **`ACTION_SUBMIT` yok**, `BotWP_E` `hp` değişmedi, oturum kopmadı, `GameServer.log` 32 satır (değişmedi), `Cheat_*.log` boş.
+  - **S4 reddedilen komutlar:** `attack BotWP_K BotWP_K` → `refused (bad_target)`; `Nobody`, `Ghost`, `%s` → tek satır `unknown or not spawned bot '?'` (ad günlüğe girmedi); `0`, `101`, `abc`, argümansız, tek argüman, 4 argüman → kullanım satırı; despawn edilmiş saldıran → `not in game (phase despawned)`, despawn edilmiş hedef → `target BotMF_K not in game (phase despawned)`; hiçbirinde JSONL olayı yok. `RESPAWN_CYCLES=2` → `cmd rejected` yolu F2-05 başındaki kapıdır (`ExecuteCommand`, bu planda değişmedi; çalışma zamanında yeniden sınanmadı).
+  - **S5 yaşam döngüsü:** seri sürerken hedef `despawn` → `attack stopped (target_lost)`; saldıran `despawn` → `despawned (... names cleared yes)`, sonra JSONL satır sayısı değişmedi (yeni paket yok), `pool free` doğru; yeniden `spawn` → `attacking=0`, `hp` DB'deki son değer (4728/5650). Ters yön (El Morad → Karus) da çalıştı (`BotWP_K` `hp` 5650 → 5395). **Ölüm yolu gözlendi:** `attack BotWP_K BotWP_E 30` → 30/30 `hit` (`attack finished (hit) after 30 hit(s) sent, 30 ok`), `hp` 4728 → 842; ardından `attack ... 10` → vuruş 2 `ok:false, reason:"srv_fail", result:0` (seri **düşmedi**, tasarım gereği), vuruş 8 `ok:true, reason:"killed", result:2` → `attack finished (killed) after 8 hit(s) sent, 7 ok`, `list`: `hp=0/5650`.
+  - **S6 gerilemesiz:** `TELEMETRY=summary` (yeni oturum, `BotWP_K` → `BotPHD_E` 3 vuruş) → `live-*.jsonl`'de `ACTION_*`/`FAIRNESS_*` 0 satır, `hp` 3491 → 3211; aynı oturumda 30 m `move` → `after 5 packets`, `moverx=5`; `ENABLED=0` → bot logu +0 satır, `BotCommands.txt` yerinde, `Logs/bots/` yok; `PERF_SAMPLE` `tick_p95_us` en çok 308 µs (`decisions`, 2 bot saldırırken) / 448 µs (`summary`), `skipped_ticks` 0; `GameServer.log` +0 satır; toplam `decisions` koşusunda 53 `ACTION_SUBMIT` = 53 `ACTION_RESULT`, 1 `FAIRNESS_REJECT`.
+  - Temizlik: ini yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`, önce/sonra aynı), `BotCommands.*` kalmadı, sunucular kapalı. Bot satırları (`BotWP_K/E`, `BotMF_K`, `BotPHD_E`) `Hp=32000` ve `BotWP_E` konumu (1274,0, 890,0) hedefli `UPDATE` ile geri getirildi (yalnızca bu dört bot satırı; kişisel veri tablosu okunmadı). Test artıkları depo dışında `C:\dev\fdp\server\Logs\bots_old_f402\`.
+- Bulgular (hepsi not, engel değil):
+  1. Kod planla birebir uyumlu; uygulayıcı raporundaki iddialar (commit listesi, dosya listesi, derleme/test çıktısı) gerçekle uyuşuyor. Sapma 1 (`Combat_RateWindow`: `CountInWindow(1500)` plandaki 1 yerine `1499 → 1`, `1500 → 0`) **plan hatasıydı**: `nowMs - t < kActionWindowMs` tanımına göre `1500 - 500 = 1000` sayılmaz; uygulayıcının kodu tanıma uyuyor, karar doğru. Sapma 2 (`(void)now`) ve 3 (`result < 0` ile `no_result` ayrımı) kabul edildi.
+  2. `list` botların `hp`'sini 32000 değil sunucunun kırptığı değerle (`5650/5650`) gösterir; plan §7 S1'deki "32000" beklentisi yanlıştı, kod etkilenmez.
+  3. Hedef canlıyken bir vuruş `ATTACK_FAIL` (`srv_fail`, `result:0`) döndü (öldürme serisinin 2. vuruşu); guard bunu seri sonu saymıyor (plan §5.4) ve sonraki vuruşlar `hit`/`killed` geldi. Öldüren vuruş `result:2` ile geldi `[V]`. `srv_fail` nedenini ayırt eden alan yok (hasarsız vuruş/kaçırma olası) `[A]`.
+  4. `+bot` yardım metni (`ChatHandler.cpp:84`, `:1198`) `move`/`stop`/`attack` fiillerini listelemiyor; kod `GameServer/` altında olduğundan Claude değiştirmedi: `docs/KNOWN_ISSUES.md` KI-012.
+  5. Ölü bot (`BotWP_E hp=0`) yeniden doğurulmuyor (kapsam dışı, `Regene` sonraki plan); logout kaydı `hp=0` yazar, doğrulama sonunda DB geri yüklendi (yukarıda).
+- Düzeltme talimatı: yok (DOĞRULANDI).
