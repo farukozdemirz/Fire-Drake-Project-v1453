@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-15` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-13 (`PendingIds`, `CheckUserIn`, `TickUserIn`, `m_obsLock`) — `KAPANDI` (merge `f1acc48`); F4-14 (`NpcTable`, NPC algı bloğu, `m_npcUnresolved`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -328,4 +328,42 @@ git diff --check gece/2026-10-02...bot/F4-15
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+**Karar:** DOĞRULANDI (gece modu; birleştirmeyi döngü betiği yapar). İncelenen commit: `2f8f2b6` (`bot/F4-15`; kod `61dc0a5`, taban `gece/2026-10-02`). Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `build.sh Release` rc=0; beş dosya `touch` edilip yeniden derlendi: uyarı yalnızca mevcut `UpgradeHandler.cpp` (C4789, 2 satır); `Perception.h`, `PerceptionTests.cpp`, `BotSession.cpp`, `ActionExecutor.cpp`, `BotManager.cpp` için uyarı 0 |
+| K2 | ✔ | `build.sh Debug` rc=0; değişen dosyalarda uyarı/hata yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` rc=0, ikisi de `63 tests, 0 failed`; `Perception_PendingIds_Set`, `_PeekRemove`, `_Npc`, `Perception_CheckNpcIn` çıktıda `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `Perception.h:8-10` (`<cstddef>`, `<cstdint>`, `<cstring>`); `std::min/max/new/malloc/vector/string` grep'i boş |
+| K5 | ✔ | iki sözleşme grep'i (`BotSession.cpp`; `TickNpcIn` -A110) boş; `TickNpcIn` botun `CUser`'ından yalnızca `isInGame()`, `isDead()`, `GetSocketID()` okur, `HandlePacket()` çağırır (`ActionExecutor.cpp:2777-2879`) |
+| K6 | ✔ | `m_npcPending`: `BotSession.cpp:271` (NPC_REGION dalı), `:354` (`ResetForRespawn`), `:391`/`:397` (yardımcılar), `BotManager.cpp:2368` (tek `Count()`); `ActionExecutor.cpp` dokunmaz. `Packet pkt(WIZ_REQ_NPCIN)` yalnızca `ActionExecutor.cpp:2825`. `BotManager.cpp`'de `WIZ_REQ_NPCIN` dizgisi yok: planın kendi yeni metni onu içermiyor (plan metni tutarsızlığı, aşağıda not 1) |
+| K7 | ✔ | `grep m_obsLock ActionExecutor.cpp` boş; `HandlePacket()` (`:2832`) kilitsiz; `BotSession.cpp`'de yeni `lock_guard` yalnızca `:390`, `:396`; `CommandNpcs` kilit bloğu üç kopyalama satırı (`copy`, `unresolved`, `pending`), biçimleme kilit dışında |
+| K8 | ✔ | `BotSession.cpp` tek `-` (başlatıcı listesi); `BotManager.cpp` tek `-` (`CommandNpcs` açıklama satırı); `Perception.h` 3 `-` (sınıf yorumu, `Set`/`Peek` imzaları); `ActionExecutor.*` ve `PerceptionTests.cpp` silme yok |
+| K9 | ✔ | `TickNpcIn` gövdesinde `m_actionWindow` yok; `Perception_CheckNpcIn` `actionsInWindow` içermez; `ActionExecutor.cpp` farkı tek hunk (`@@ -2769,0 +2770,109 @@`), `TickUserIn` farkta yok |
+| K10 | ✔ | `GameServer/` içinde yalnızca `Bot/` dosyaları; `Startup/Tick/BuildStatusLines/BeginDespawn/CommandSee` farkta yok; yeni ini anahtarı yok |
+| K11 | ✔ | `--stat`: 7 kod dosyası + plan; `*.vcxproj*` farkı boş |
+| K12 | ✔ | yedi kod dosyası `ASCII text, with CRLF line terminators`; `git diff --check` boş |
+| K13 | ✔ | eklenen satırlarda `printf/Sleep/CreateThread/rand(` yok (yalnızca `snprintf`); `std::mutex` `BotSession.h`'de 1; `Telemetry.*`, `ScenarioRunner.*`, `BotManager.h` farkta yok |
+| K14 | ✔ | `CheckMoveStep` 2; diğer 13 guard ve `CheckNpcIn` 1'er |
+| K15 | ✔ | çalışma zamanı, aşağıda (senaryo 2'nin `gap` dalı gerçek trafikle tetiklenemedi: kısmi) |
+
+**Çalışma zamanı (K15; `Release`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş, zone 71; `GameServer.ini` değiştirilmedi, md5 aynı `265a8e1c...`; üç sunucu `[UP]`; eski `Logs/bots` `bots_old_f415`'e taşındı; kapanış `nazik`; iş bitince `run-servers.sh stop`, `BotCommands.txt` kalmadı):**
+
+1. **Bölge değişimi, bilinmeyen NPC'ler istenir:** `BotWP_K` spawn (1380, 1060) → `npcs`: `sees 25 npc(s) ... unresolved 0`, `npcin requests 0, npcs received 0, pending 0`. (1380, 893)'e yürüyüş: `npcin requested 2, received 2` → `sees 2 npc(s)` (proto 24004 `Karus Commander`, type 1, lvl 48, nation 1; arena dışında). (1380, 1060)'a dönüş: `npcin requested 4, received 4`, `requested 15, received 15`, `requested 6, received 6` → `sees 25 npc(s) (dead 0, dropped 0, unresolved 6)`, açıklama satırı `npcin requests 4, npcs received 27, pending 0`; tablo 18 × proto 5400 + 4 × proto 5410 + `Inn hostess` + `Ardin[sundries]` + `[Outpost Captain]Elrod` (spawn'daki 25 ile aynı küme). F4-14'te ölçülen `sees 0 ... unresolved 25` sınırı kapandı. Her istek N ≤ 32, M = N. Yerel DB `K_NPC` (yasak tablo değil) ile birebir: 5400 Guard tower byGroup 1 byType 62 lvl 90; 5410 lvl 120; 24426 `[Outpost Captain]Elrod` type 102 lvl 50; 26061 `Inn hostess` type 31; 26062 `Ardin[sundries]` type 22; 24004 `Karus Commander` byGroup 1 byType 0 lvl 48. `dist` botun konumuyla tutarlı. Telemetri (`live-164717.jsonl`): 4 × `ACTION_SUBMIT` + 4 × `ACTION_RESULT` `"type":"NpcInReq"`, `"ok":true`, `"reason":"received"`, `"latency_us"` 3–9, `count` = `received`; **`FAIRNESS_REJECT` 0**. Tekrar yürüyüşte (sessiz koşu) `requested 1/15/6`, tablo yine 25.
+2. **Hız sınırı / 32 sınırı:** ardışık `NpcInReq` zaman damgaları 10,7 sn arayla (gerçek yürüyüş hızında bölge geçişleri en az ~10 sn sürüyor): ≥ 1000 ms; `FAIRNESS_REJECT` yok. `gap` ve `> 32` dalları gerçek trafikle tetiklenemedi (en çok 15 bekleyen kimlik): kısmi; kod yolları birim testli (`Perception_CheckNpcIn`, `Perception_PendingIds_Npc` `cap=1`). Kriteri düşürmez (plan §7).
+3. **Spawn'da gereksiz istek yok:** `BotWP_K` spawn, 14 sn sonra `BotMF_K` spawn, sonra `BotWG_E` (El Morad, 630, 920): üçünde de `npcin requests 0, npcs received 0, pending 0`; ilk iki `npcs` 25'er NPC, `BotWG_E` 22 NPC; jsonl'de spawn anında `NpcInReq` yok.
+4. **Kullanıcı isteği bozulmadı:** yürüyüş sonrası `see`: `userin requests 1, units received 1, pending 0` (F4-13 sayaçları bağımsız; `UserInReq` ve `NpcInReq` aynı tick'te de gitti, `t` 179103605/179103606); `despawn all` 3/3 temiz (`names cleared yes`, `pool free 16/16`), sunucu çökmedi, ölü/çıkmış botta istek yok.
+5. **Gerilemesiz:** `sit`, `stand` (CLI-13 `toggle` reddi), `target`/`pot` (kullanım), `regene` (`not_dead`), `pchat` (`not_in_party`), `move` (`sitting` reddi), `see`, `npcs`, `npcs NoSuch` (`'?'`), `list`, `despawn all` beklendiği gibi. `PERF_SAMPLE` `skipped_ticks` 0 (tüm örnekler). `tick_p95_us`: sessiz yürüyüşte (komut yoklaması yok) en çok 113; ilk koşuda 1033-1745 µs'lik pencereler beklerken benim 2 sn'de bir gönderdiğim `list` komutlarının (komut dosyası işleme + günlük yazımı) penceresiyle çakışıyor (aynı hareketli, `NpcInReq`siz pencerelerde de aynı değer; `NpcInReq` `latency_us` 3–9). Ölçüm artefaktı, `TickNpcIn` kaynaklı değil. `ENABLED=0` çalıştırılmadı: yeni kod yalnızca bot oturumlarında çalışır, ini/`Startup` farkta yok.
+
+**Bulgular (önem sırasıyla; hiçbiri engel değil):**
+1. `plans/F4-15-...md` §6 K6 parantezi `BotManager.cpp`'de `WIZ_REQ_NPCIN` dizgisi bekliyor, §5.5'teki yeni `npcs` metni bu dizgiyi içermiyor: plan metni tutarsızlığı; uygulayıcı doğru yorumladı ve raporladı (semantik: paket yalnızca `TickNpcIn`'de).
+2. `ActionExecutor.cpp:2825` civarı: `m_npcPending`'e ek bir kapasite denetimi yok; `PendingIds` kapasitesi 128 ve NPC tablosu da 128 olduğundan taşma yok (`Set` sınırlı). Not.
+3. İki hızlı bölge değişiminde ikinci `WIZ_NPC_REGION` bekleyen listeyi değiştirir (§8, tasarım); gözlenmedi.
+4. Sunucu cevap başlığındaki sayı İSTENEN sayı olduğundan `received` ayrıştırılan sayıdır (`BotSession.cpp:263`); çalışma zamanında `received == requested` her seferinde (ölü/yok kimlik görülmedi).
+5. Uygulayıcı Raporu'ndaki iddialar (derleme rc, 63 test, K1-K14, sapmalar) bağımsız olarak doğrulandı; ek sapma yok.
+6. Yeni bilgi: arena dışında (1380, 893) çevresinde `Karus Commander` (proto 24004) NPC'leri var; sonraki dilimlerde (`PerceptionSnapshot`) tower dışı NPC'ler de tabloda beklenmeli.
+
+**Düzeltme talimatı:** yok (karar `DOĞRULANDI`).
