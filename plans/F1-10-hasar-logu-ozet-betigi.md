@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-09 (log biçimi, `DOĞRULANDI`, `gece/2026-10-02`'ye birleşti), F1-06/F1-07 (model çıktıları, `KAPANDI`) |
@@ -186,6 +186,41 @@ git status --short
   - `--selftest` içinde `_E` profil geri düşüşü, `K` boşluklu skill adı, `lethal`/`app_ratio` ve `ctx=- / primary=0` → `D` ayrıca assert edilir; planın istediği maddelerin tamamı kapsanır.
 
 - Açık sorular: Yok. `docs/15` §4.1 T-MECH-DMG ölçümü insan oturumu; F1-10 sonuç yorumu gerçek log geldiğinde yapılır.
+
+### Tur 2 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-10` (taban: `gece/2026-10-02`); düzeltme commit'i bu rapordaki `Durum` ile birlikte atılır.
+- Değişen dosyalar ve neden:
+  - `tools/damage-trace-summary.py`: Tur 1 bulgularının düzeltmesi (`find_r` dönüş türü, `run_selftest` `_E` güçlendirme, `requested == 0` satırları ve `zero` sayacı, `main(argv=None)`).
+  - `plans/F1-10-hasar-logu-ozet-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Yapılan düzeltmeler (talimat sırasıyla):
+  1. `find_r` (:167): `find_by_profile(stat_r, a_name, t_name, None, "R")` — profil geri düşüşü artık model türü `R` döndürüyor; tam-ad dönüşü ve başka hiçbir dönüş yolu değişmedi.
+  2. `run_selftest` `_E` blokı: üç ayrı durum (`min_n=3`, 6'şar olay). (a) `ctx=R`, `requested=-205 x6`, model `R BotWP_K->BotMI_K ... dmg_avg=205.0 dmg_min=180 dmg_max=230`; (b) `ctx=S109510`, `requested=-210 x6`, model `K BotWP_K->BotMI_K skill=109510 Hammer Drop ... dmg_avg=210.0`; (c) `ctx=S101006` heal, `requested=+300 x6`, saldıran `BotPHD_E`, model `H BotPHD_K skill=101006 Heal ... heal_instant=310`. Üçü de `verdict=OK match=profile` bekliyor; tam ad durumundaki mevcut `match=exact` assert'i korundu.
+  3. `build_d_groups` (:240): `primary=0` ve `requested == 0` satırlar artık gruplanmıyor, `zero` sayacına ekleniyor ve fonksiyon `(groups, zero)` döndürüyor. `write_report` L satırında `zero_a + zero_d` yazıyor; böylece `zero=` hem `A` (primary=1) hem `D` (primary=0) tarafındaki sıfır istekleri sayıyor. Selftest: `ctx=- primary=0 requested=0` satırı `D` bölümünde görünmüyor ve `zero=1`; A+D birlikte `zero=2`.
+  4. `main(argv=None)`; içeride `argv is None` ise `sys.argv[1:]`; `if __name__ == "__main__"` bloğu `sys.exit(main())` çağırıyor (`packet-trace-summary.py` iskeletiyle uyumlu).
+
+- Düzeltme 1 kanıtı (geçici geri alma, tek satır): `/tmp/opencode/dts_bug.py` kopyasında `find_r` son parametresi `None` yapılıp `--selftest` çalıştırıldı → `AssertionError`, çıktıda `C kind=- a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=- diff_pct=- verdict=NO_MODEL match=profile range_viol=-`, `rc=1`; düzeltme geri konunca `selftest OK rc=0`. Geçici kopya silindi.
+
+- Kabul kriterleri öz-değerlendirme (komut çıktıları):
+  - **K1 ✔** `python3 tools/damage-trace-summary.py --selftest` → `selftest OK`, `rc=0` (düzeltme sonrası).
+  - **Adım 5(a) ✔** `/tmp/opencode/f110_a.log --min-n 3 --stat-model /tmp/opencode/f110_a_stat.txt`:
+    ```
+    == C ==
+    C kind=R a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=205.0 diff_pct=+0.0 verdict=OK match=profile range_viol=0
+    ```
+  - **Tur 1 K2 aynı ✔** Tur 1'deki sentetik 5 satırlık log/model yeniden çalıştırıldı; çıktı Tur 1 raporundakiyle **birebir aynı** (`L ... zero=0`, A 3 grup, D 1 satır, C 3 satır; `C kind=R ... match=exact range_viol=0` dahil). Yalnızca `C kind=R` satırı etkilenebilirdi; `_K` tam ad kullanıldığı için fark yok (diff boş).
+  - **Adım 3 ✔** `ctx=- primary=0 requested=0` (tek satır) → `D` boş, `L ... zero=1`; A (primary=1 sıfır) + D (primary=0 sıfır) → `zero=2`.
+  - **K3 ✔** C alan sırası ve `--tol`/`--min-n` varsayılanları (15 / 5) değişmedi; argümansız çalıştırma `USAGE`, `rc=2`.
+  - **K4 ✔** Boş → `parsed=0 bad=0 rc=0`; bozuk → `lines=2 parsed=0 bad=2 rc=0`; olmayan yol → `error: cannot read log: [Errno 2] ...`, `rc=2`. Traceback yok.
+  - **K5 ✔** Model alan adları (`dmg_avg`, `heal_instant`) ve biçimler değişmedi.
+  - **K6 ✔** `file` → `Python script, ASCII text executable`; CR satırı 0; içe aktarımlar yalnızca `io`, `re`, `sys`.
+  - **K7 ✔** `git diff --stat` yalnızca `tools/damage-trace-summary.py` (+64/−13 civarı) ve plan dosyası; `git status --short` bu iki dosyayı gösteriyor (commit öncesi); `/tmp/opencode/f110_*` ve `dts_bug.py` silindi.
+  - **K8 ✔** `./tools/build.sh Release` → `rc=0`; son satırlar: `proj-LogInServer.vcxproj -> ...LogInServer.exe`, `proj-GameServer.vcxproj -> ...GameServer.exe`, `proj-AIServer.vcxproj -> ...AIServer.exe` (sunucular önceden `[DOWN]` idi).
+
+- Plandan sapmalar: Yok. Talimattaki 6 madde dışında dosyaya dokunulmadı; `docs/**`, `GameServer/**`, DB değişmedi.
+- Açık sorular: Yok.
 
 ---
 

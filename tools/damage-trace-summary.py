@@ -164,7 +164,7 @@ def find_r(stat_r, a_name, t_name):
     record = stat_r.get((a_name, t_name))
     if record is not None:
         return "R", record, "exact"
-    return find_by_profile(stat_r, a_name, t_name, None, None)
+    return find_by_profile(stat_r, a_name, t_name, None, "R")
 
 
 def find_dmg_skill(stat_k, spell_m, a_name, t_name, skill):
@@ -238,15 +238,24 @@ def build_a_groups(rows):
 
 
 def build_d_groups(rows):
-    """Groups primary=0 rows by (attacker, target, kind)."""
+    """Groups primary=0 rows by (attacker, target, kind).
+
+    Rows with requested == 0 are out of context and carry no direction; they
+    are counted in the shared zero counter instead of being grouped (the same
+    counter also receives the primary=1 zero requests).
+    """
     groups = {}
+    zero = 0
     for row in rows:
         if row["primary"] != 0:
+            continue
+        if row["requested"] == 0:
+            zero += 1
             continue
         kind = "dmg" if row["requested"] < 0 else "heal"
         key = (row["a_name"], row["t_name"], kind)
         groups.setdefault(key, []).append(row)
-    return groups
+    return groups, zero
 
 
 def group_summary(events):
@@ -389,8 +398,8 @@ def write_c_section(a_groups, indexes, out, tol, min_n):
 def write_report(all_rows, rows, counters, stat_records, spell_records, out,
                  tol, min_n):
     indexes = build_indexes(stat_records, spell_records)
-    a_groups, zero = build_a_groups(rows)
-    d_groups = build_d_groups(rows)
+    a_groups, zero_a = build_a_groups(rows)
+    d_groups, zero_d = build_d_groups(rows)
 
     wall_times = [row["wall_ms"] for row in all_rows]
     span_s = (max(wall_times) - min(wall_times)) / 1000.0 if wall_times else 0.0
@@ -399,7 +408,7 @@ def write_report(all_rows, rows, counters, stat_records, spell_records, out,
     out.write(
         "L files=%d lines=%d parsed=%d bad=%d span_s=%.1f filtered=%d zero=%d\n"
         % (counters["files"], counters["lines"], len(all_rows), counters["bad"],
-           span_s, counters["filtered"], zero)
+           span_s, counters["filtered"], zero_a + zero_d)
     )
     out.write("L note=misses_not_logged hit_rate_not_measured\n")
 
@@ -523,13 +532,53 @@ def run_selftest():
     assert "== C ==\n" in text
     assert text.split("== C ==")[1].strip() == "", text
 
+    zero_d_lines = [
+        make_row(0, "-", 0, "BotWP_K", "BotMI_K", 0, 0),
+    ]
+    text = render(zero_d_lines, r_model, [])
+    assert "== D ==\n== C ==" in text, text
+    assert "L files=1 lines=1 parsed=1 bad=0 span_s=0.0 filtered=0 zero=1" \
+           in text, text
+
+    zero_both_lines = [
+        make_row(0, "R", 1, "BotWP_K", "BotMI_K", 0, 0),
+        make_row(100, "-", 0, "BotWP_K", "BotMI_K", 0, 0),
+    ]
+    text = render(zero_both_lines, r_model, [])
+    assert "== A ==\n== D ==\n== C ==" in text, text
+    assert "zero=2" in text, text
+
     fallback = render(r_lines, r_model, [])
     assert "match=exact" in fallback, fallback
-    e_lines = [
-        make_row(0, "R", 1, "BotWP_E", "BotMI_E", -200, -170),
+
+    e_r_lines = [
+        make_row(index * 100, "R", 1, "BotWP_E", "BotMI_E", -205, -170)
+        for index in range(6)
     ]
-    fallback = render(e_lines, r_model, [], min_n=1)
-    assert "match=profile" in fallback, fallback
+    text = render(e_r_lines, r_model, [], min_n=3)
+    assert "C kind=R a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=205.0 " \
+           "diff_pct=+0.0 verdict=OK match=profile range_viol=0" in text, text
+
+    k_fallback_model = ["K BotWP_K->BotMI_K skill=109510 Hammer Drop "
+                        "hit_pct=0.9200 sHit=250 base=300 dmg_avg=210.0"]
+    e_k_lines = [
+        make_row(index * 100, "S109510", 1, "BotWP_E", "BotMI_E", -210, -170)
+        for index in range(6)
+    ]
+    text = render(e_k_lines, k_fallback_model, [], min_n=3)
+    assert "C kind=K a=BotWP_E t=BotMI_E skill=109510 n=6 meas=210.0 " \
+           "model=210.0 diff_pct=+0.0 verdict=OK match=profile" in text, text
+
+    h_fallback_model = ["H BotPHD_K skill=101006 Heal heal_instant=310 first=310 "
+                        "time=0 dur=0 radius=0 msp=30 cast_s=1.0 recast_s=0.5 "
+                        "hot_tick=0 ticks=0 hot_total=0 heal_per_msp=10.33"]
+    e_h_lines = [
+        make_row(index * 100, "S101006", 1, "BotPHD_E", "BotWP_E", 300, 300)
+        for index in range(6)
+    ]
+    text = render(e_h_lines, [], h_fallback_model, min_n=3)
+    assert "C kind=H a=BotPHD_E t=BotWP_E skill=101006 n=6 meas=300.0 " \
+           "model=310.0 diff_pct=-3.2 verdict=OK match=profile" in text, text
 
     k_model = ["K BotWP_K->BotMI_K skill=109510 Hammer Drop hit_pct=0.9200 "
                "sHit=250 base=300 dmg_avg=210.0"]
@@ -550,7 +599,9 @@ def run_selftest():
     return 0
 
 
-def main(argv):
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
     if "--selftest" in argv:
         return run_selftest()
 
@@ -630,4 +681,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())
