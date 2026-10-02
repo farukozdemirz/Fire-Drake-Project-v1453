@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-56 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`), **F5-52** (pencere 4000/400 ms, `speed` alanı, gözlem yaşı lead'e eklenir) — `DOĞRULANDI`/`KAPANDI` olmalı |
@@ -97,13 +97,43 @@ git diff --stat gece/2026-10-02-nav...bot/F5-56
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-56` (taban `gece/2026-10-02-nav`); `68b6922` uygulama, rapor commit'i bu madde.
 - Değişen dosyalar ve neden:
+  - `Tests/BotCoreTests/NavTrackTests.cpp` (+524): §5.3'teki 11 vaka eklendi (`NavTrack_VelocityRobust_ArrivalJitter`, `_ArrivalBunching`, `_VariableInterval`, `_PacketLoss`, `_Stale`, `_StopStart`, `_Reverse180`, `_SpeedChange`, `_Jump`, `_Quantization`, `NavTrack_Chase_Sim_Cadence`). Yardımcılar dosya sonundaki yeni anonim namespace'te; mevcut vakalara dokunulmadı.
+  - `BotCore/NavTrack.h` (+18): `Velocity()` başına sıçrama koruması — en yeni iki gözlem arası `span >= minSpanMs` iken ima edilen hız `> 30 m/s` ise hız 0 (respawn/ışınlanma). Bu, `_Jump` vakasının (`speed = -1`) sıçrama büyüklüğünde hız üretmesini engeller; `span >= minSpan` kapısı paket yığılmasını (sub-minSpan) bu dala sokmaz ve `NavTrack_Velocity_Speed0`'daki 20 m/s clamp vakasını değiştirmez. `Observe()`/`Velocity()` imzaları korundu.
+  - `tools/nav-measure/nav_measure.cpp` (+184): yeni `velocity-robust` bölümü (aynı dört senaryo, 20 tohum, `VELOCITYR scenario=... zero_pct=... err_p50=... err_p95=... err_max=...` satırları). Mevcut bölümlere dokunulmadı.
 - Derleme sonucu:
+  - `./tools/run-tests.sh Release` → `209 tests, 0 failed` (yeni vakalar dahil), `warning C`/`error C` yok.
+  - `./tools/run-tests.sh Debug` → `209 tests, 0 failed`, uyarı yok.
+  - `tools/nav-measure.sh velocity-robust` (WSL g++ -O2) çalıştı.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dosyalarda yeni uyarı yok.
+  - K2 ✔ Debug rc=0, uyarı yok.
+  - K3 ✔ `209 tests, 0 failed` (Release+Debug); 11 yeni ad `[ OK ]`; mevcut `NavTrack_*` (F5-52) değişmeden geçti.
+  - K4 ✔ sayısal eşikler sağlandı (ölçümler aşağıda); `NavTrack_Chase_Sim_Cadence` `11800 ≤ 1,3 × 11200 = 14560`.
+  - K5 ✔ imzalar korundu; `NavTrack_Perf` Release `near64` `ms_p95=0.565` / mage `0.629` ≤ 2 ms.
+  - K6 ✔ `NavTrack.h`'te yasak başlık yok; yeni kodda dinamik bellek/global durum yok; ASCII + CRLF; `git diff --check` boş; fark yalnızca §4 dosyaları (3 kod dosyası) + plan.
+  - K7 (Claude) — `velocity-robust` çıktısı aşağıda; yeniden koşu Claude'da.
+  - K8 oyun içi kanıt kapsam dışı (bu planda kapanmaz).
+  - Ölçümler (MSVC Release birim testi, 20 tohum en kötüsü):
+    - `ArrivalJitter`: p95 0.1395, max 0.1650, zero_pct 0 (eşik 0.20 / 0.30 / 0).
+    - `ArrivalBunching`: p95 0.1395, max 0.5203, zero_pct 0 (eşik 0.20 / 0.60 / ≤1). Yığılma tek tick'te ~yarı hız hatası veriyor ama clamp sonrası %60 sınırının altında; §3.3(e) (Theil–Sen) gerekmedi.
+    - `VariableInterval`: p95 0.0141, max 0.0182, zero_pct 0 (eşik 0.10).
+    - `PacketLoss` (3000 ms boşluk): p95 0.0074, zero_pct 0 (eşik 0.10); 4500 ms boşlukta yaş `>4000` iken hız 0, yeni gözlemde 1 paket geçici, sonra 4.5 m/s (vakada sınandı).
+  - `tools/nav-measure.sh velocity-robust` (WSL g++, 20 tohum en kötüsü):
+    - `arrival_jitter`: err_p95 0.1359, err_max 0.1691, zero_pct 0.000
+    - `arrival_bunching`: err_p95 0.1360, err_max 0.5217, zero_pct 0.000
+    - `variable_interval`: err_p95 0.0156, err_max 0.0186, zero_pct 0.000
+    - `packet_loss`: err_p95 0.0074, err_max 0.0074, zero_pct 0.000
 - Plandan sapmalar ve gerekçeleri:
+  - Yığılma modeli: "kuyruktan toplu işleme" olarak modellendi; yığılan paket bir sonraki nominal varışa taşınır (zincirleme 4500 ms'lik delikler oluşmasın). Bu modelde mevcut `NavTrack.h` eşikleri sağlıyor; §3.3(e) robust kestirici **gerekmedi** (plan "yalnızca eşik aşılırsa" diyor). Erken-varış zinciri modelinde zero_pct >1 çıkıyordu, ancak o model kuyruk davranışını gerçekçi yansıtmıyor.
+  - `_Jump` vakası `speed = -1` ile kuruldu; bu, §3.3(b) sıçrama korumasını gerektirdi (asgari düzeltme). `speed = 0` ile kurulsaydı mevcut kod da geçerdi, ama bilinmeyen hızda sıçrama gerçek bir açıktı.
+  - `maxExtrapSec` için yeni parametre **eklenmedi**: `NavFollower` zaten `maxLeadSec` (1.5 sn) ile sınırlıyor; `_Stale` vakası `leadSec ≤ 3.0` ve öngörü uzaklığı `≤ v × 3.0` olarak belgeliyor. §3.3(d) gerekmedi.
+  - §3.3(c) bilinmeyen hızda 10 m/s tavanı **eklenmedi** (hiçbir vaka gerektirmedi; `_Jump` sıçrama korumasıyla 0 döndürüyor).
 - Açık sorular:
+  - Yığılma modelinin zincirleme (arka arkaya toplu işleme) biçimi gerçek trafikte görülürse zero_pct artabilir; gerçek `WIZ_MOVE` ölçümü (T-NAV-06) sonrası model ve eşikler `[A]` olarak güncellenmeli.
+  - `_Quantization` sınırı plan formülü (`0,1·√2/aralık + %5`) mutlak hata olarak yorumlandı; 400 ms'de sınır ≈ 0,579 m/s.
 
 ---
 
