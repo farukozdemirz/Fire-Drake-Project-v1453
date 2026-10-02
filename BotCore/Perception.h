@@ -79,9 +79,9 @@ namespace BotCore
 		return &u.hist[idx];
 	}
 
-	// Freshness of the position: a stationary unit (known speed 0) is always fresh; an unknown speed is
-	// treated as moving (conservative, docs/13 section 5.2a). A moving unit is fresh up to 3100 ms, stale
-	// up to 6000 ms, a lost candidate beyond it.
+	// Freshness of the position: a stationary unit (known speed 0 or unknown speed) is always fresh; moving
+	// = last WIZ_MOVE speed > 0. A moving unit is fresh up to 3100 ms, stale up to 6000 ms, a lost candidate
+	// beyond it.
 	inline uint8_t ClassifyPos(bool moving, uint32_t posAgeMs)
 	{
 		if (!moving)
@@ -1038,7 +1038,7 @@ namespace BotCore
 		char     name[kObsNameMax];    // NUL terminated, from the user info record
 		uint32_t posAgeMs;             // nowMs - lastMoveMs (0 if the clock is ahead), clamped to 0xFFFFFFFF
 		int16_t  speedField;           // speed field of the last WIZ_MOVE; -1 unknown, 0 stationary
-		bool     moving;               // speedField != 0: unknown speed is treated as moving (conservative)
+		bool     moving;               // speedField > 0; unknown speed (-1, no WIZ_MOVE since registration) counts as stationary: the server sends a WIZ_MOVE for every step of a moving unit
 		float    vx, vz;               // estimated velocity in m/s (0 when it cannot be estimated)
 		uint8_t  posState;             // POS_FRESH / POS_STALE / POS_LOST
 		uint8_t  src;                  // kSrcObserved / kSrcTeam / kSrcEstimate
@@ -1508,7 +1508,7 @@ namespace BotCore
 			uint64_t posAge = nowMs > u.lastMoveMs ? nowMs - u.lastMoveMs : 0;
 			v.posAgeMs = posAge > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)posAge;
 			v.speedField = u.lastSpeed;
-			v.moving = (u.lastSpeed != 0);
+			v.moving = (u.lastSpeed > 0);
 			EstimateVelocity(u, nowMs, v.vx, v.vz);
 			v.posState = ClassifyPos(v.moving, v.posAgeMs);
 			v.src = kSrcObserved;

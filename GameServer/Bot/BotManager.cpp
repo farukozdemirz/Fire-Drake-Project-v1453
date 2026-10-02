@@ -2351,7 +2351,7 @@ void BotManager::CommandSee(const std::string & args)
 		uint64 age = nowMs > u.lastSeenMs ? nowMs - u.lastSeenMs : 0;
 		uint64 posAge = nowMs > u.lastMoveMs ? nowMs - u.lastMoveMs : 0;
 		uint32 posAgeMs = posAge > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32)posAge;
-		bool moving = (u.lastSpeed != 0);
+		bool moving = (u.lastSpeed > 0);
 		uint8 posState = BotCore::ClassifyPos(moving, posAgeMs);
 		float vx = 0.0f, vz = 0.0f;
 		BotCore::EstimateVelocity(u, nowMs, vx, vz);

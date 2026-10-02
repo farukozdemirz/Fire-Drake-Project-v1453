@@ -1943,8 +1943,8 @@ TEST_CASE("Perception_Snap_MetaFields")
 		CHECK_EQ(v.ageMs, 5000u);
 		CHECK_EQ(v.posAgeMs, 5000u);
 		CHECK_EQ(int(v.speedField), -1);
-		CHECK(v.moving);                 // unknown speed is treated as moving (conservative)
-		CHECK(v.posState == BotCore::POS_STALE);
+		CHECK(!v.moving);                // unknown speed counts as stationary: no MOVE since registration
+		CHECK(v.posState == BotCore::POS_FRESH);
 		CHECK(v.vx == 0.0f);
 		CHECK(v.vz == 0.0f);
 		CHECK_EQ(int(v.src), int(BotCore::kSrcObserved));
@@ -1972,6 +1972,40 @@ TEST_CASE("Perception_Snap_MetaFields")
 			CHECK_EQ(int(out2.enemies[0].speedField), 0);
 			CHECK(!out2.enemies[0].moving);
 			CHECK(out2.enemies[0].posState == BotCore::POS_FRESH);
+		}
+	}
+
+	// A MOVE with speed 45 at t=1000 makes the unit moving: the position ages to stale then lost.
+	{
+		BotCore::ObsTable walked;
+		BotCore::UnitObs u = MakeUnit(5);
+		u.nation = 2;
+		strcpy(u.name, "BotWG_E");
+		u.x10 = 10030;
+		u.z10 = 10040;
+		u.lastSeenMs = 0;
+		CHECK(walked.Upsert(u));
+		CHECK(walked.UpdateMove(5, 10030, 10040, 0, 45, 1000));
+
+		BotCore::PerceptionSnapshot out3;
+		BotCore::BuildSnapshot(self, walked, npcs, 5000, out3);   // pos_age 4000
+		CHECK_EQ(out3.enemyCount, 1);
+		if (out3.enemyCount == 1)
+		{
+			CHECK_EQ(out3.enemies[0].posAgeMs, 4000u);
+			CHECK_EQ(int(out3.enemies[0].speedField), 45);
+			CHECK(out3.enemies[0].moving);
+			CHECK(out3.enemies[0].posState == BotCore::POS_STALE);
+		}
+
+		BotCore::PerceptionSnapshot out4;
+		BotCore::BuildSnapshot(self, walked, npcs, 7500, out4);   // pos_age 6500
+		CHECK_EQ(out4.enemyCount, 1);
+		if (out4.enemyCount == 1)
+		{
+			CHECK_EQ(out4.enemies[0].posAgeMs, 6500u);
+			CHECK(out4.enemies[0].moving);
+			CHECK(out4.enemies[0].posState == BotCore::POS_LOST);
 		}
 	}
 }
