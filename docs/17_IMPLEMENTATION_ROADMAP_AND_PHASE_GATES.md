@@ -21,6 +21,7 @@ flowchart LR
   F8 --> F9[F9 L1 öğrenme]
   F9 --> F10[F10 L2 bandit - opsiyonel]
   F8 -.-> F11[F11 Serbest Ronark - taslak, ADR kapılı]
+  F9 -.-> F12[F12 Karakter bazlı kalıcı öğrenme - taslak, ADR kapılı]
 ```
 
 | Faz | Ad | Temel sürüm (MVP) | Tahmini çaba* |
@@ -37,6 +38,7 @@ flowchart LR
 | F9 | L1 offline parametre optimizasyonu | Hayır (sonraki) | M |
 | F10 | L2 contextual bandit | Hayır (opsiyonel) | M |
 | F11 | Serbest Ronark davranışları (taslak, ADR kapılı) | Hayır | L |
+| F12 | Karakter bazlı kalıcı öğrenme (taslak, ADR kapılı; ADR-0030-DEG) | Hayır | M–L |
 
 \* S/M/L göreli büyüklüktür; takvim tahmini değildir.
 
@@ -242,14 +244,28 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Alan | İçerik |
 |---|---|
 | Amaç | Proje hedefinin tamamı (`docs/01` §1): Ronark Land'de kontrolsüz ortamda, insan oyunculara ve diğer botlara karşı solo/party PK. Kontrollü arena (F0–F8) bu hedefin ölçülebilir ilk adımıdır |
-| Kapsam | (1) ROAM ve çatışma arama (ilgi bölgesi, arama rotaları `P-SOLO-ROAM-ROUTE`); (2) çatışmaya girme/girmeme kararı ve üçüncü taraf; (3) arena **dışında** yeniden gruplanma ve savaşa dönüş (dağılmış party, canavar/guard tower); (4) ≥ 24 saat çalışma: kendini kurtarma (takılma, stok, NP 0 / KI-013, ölüm döngüsü), ikmal yok → STK-04; (5) canlı insanlara etki: sıralama/NP/ödül (K-9), chat sınırı, `+bot pause`; (6) insan+bot karma party |
+| Kapsam | **F11-a güvenli konuma çekilme** (kendi tower halkası, dost konumu veya düşmansız bölge: `docs/11` §4.3 serbest mod metni; `Safe` bayrağı F5-06/F5-07), **F11-b yeniden gruplanma** (dağılmış party'nin arena dışında, harita genelinde regroup noktasında toplanması, üçüncü taraf/canavar), **F11-c savaşa dönüş** (düşmanın konumu bilinmiyor: arama, yeniden giriş kriterleri, takip sınırı); ROAM ve çatışma arama (`P-SOLO-ROAM-ROUTE`), çatışmaya girme/girmeme kararı; ≥ 24 saat çalışma: kendini kurtarma (takılma, stok, NP 0 / KI-013, ölüm döngüsü), ikmal yok → STK-04; canlı insanlara etki: sıralama/NP/ödül (K-9), chat sınırı, `+bot pause`; insan+bot karma party. Arena modundaki geri çekilme/dönüş sonuçları (ADR-0033-DEG) **bunların yerine geçmez** |
 | Kapsam dışı | Diğer zone'lar, savaş etkinlikleri, rogue/archer (`docs/01` §2): ayrıca ADR |
 | Ön koşullar | F8 kabulü (`baseline-v1`), F9 sonucu (iyileşme var/yok), **yeni ADR: A-03 kapsam kararı** (hangi insanlar, hangi gözetim/geri alma), Q-14 sonrası AIServer ilişkisi, canavar/guard tower etkileşimi |
-| Testler (öneri) | T-FREE-01 çatışma arama süresi, T-FREE-02 sayısal dezavantajda kaçış, T-FREE-03 ≥ 24 sa dayanıklılık, T-FREE-04 insan değerlendirmesi (kör test), T-FREE-05 üçüncü taraf/canavar |
-| Kabul | AC-FREE-01..05 (F11 planlanırken yazılır); insan oyuncu rahatsızlık/şikâyet göstergesi; sistem kapalıyken sıfır etki (AC-ARCH-02) |
+| Testler (öneri) | T-FREE-01 çatışma arama süresi, T-FREE-02 sayısal dezavantajda kaçış, T-FREE-03 ≥ 24 sa dayanıklılık, T-FREE-04 insan değerlendirmesi (kör test), T-FREE-05 üçüncü taraf/canavar, **T-FREE-06** güvenli konuma çekilme (HP < %30'da güvenli noktaya varış süresi, yolda ölüm oranı, MET-SUR-01/03), **T-FREE-07** yeniden gruplanma (dağılmış party'nin regroup noktasında ≥ %75 toplanma süresi, MET-PTY-04 serbest harita), **T-FREE-08** savaşa dönüş (düşman bulma süresi, yeniden giriş sonrası ilk 20 sn hayatta kalma, MET-SUR-02/07) |
+| Kabul | AC-FREE-01..08 (F11 planlanırken yazılır); insan oyuncu rahatsızlık/şikâyet göstergesi; sistem kapalıyken sıfır etki (AC-ARCH-02) |
 | Riskler | R-08, A-03, canlı oyuncu güvenliği, R-11 |
 | Geri alma | `/bot disable`, bayrak, F8 baseline'a dönüş |
 | Durum | **TASLAK:** ADR olmadan plan yazılmaz |
+
+### F12 — Karakter bazlı kalıcı öğrenme (TASLAK, ADR kapılı; ADR-0030-DEG)
+
+| Alan | İçerik |
+|---|---|
+| Amaç | Her karakterin **kendi maç geçmişinden kalıcı olarak** gelişmesi (nihai hedefin parçası, proje sahibi kararı 2026-10-02); rol politikasını bozmadan |
+| Kapsam | (1) Karakter politika dosyası: rol politikası sürümüne referans + sınırlı sapma `δ_c` (kapalı parametre listesi `docs/14` §4, izinli aralığın alt bandı, rol politikasına çekilme λ); (2) karakter başına deneyim kaydı (telemetri: `MATCH_END`, karar sonuçları, ödül bileşenleri; yalnızca bot verisi); (3) güncelleme yöntemi (L1/L2'nin karakter düzeyi türü, ADR-0008 sonrası) ve minimum maç sayısı eşiği; (4) `PolicyStore` karakter anahtarlı sürümleme, canary, otomatik geri alma (`δ_c = 0`); (5) öğrenme eğrisi raporu (aynı karakterin ilk N vs sonraki N maçı), A/B rakip havuzu ayrımı |
+| Kapsam dışı | İnsan oyunculara özel model (`docs/14` §13), karakterler arası politika paylaşımı (rol politikası zaten ortak), RL/taklit öğrenme |
+| Ön koşullar | F9 kabulü (PolicyStore, canary, rollback, evalset; F9 "iyileşme yok" ise ayrı ADR), F8 harness, kararlı karakter kimliği (`BOT_TABLE`/DB), değerlendirme kapasitesi (R-10) |
+| Kabul | **AC-CHR-01** sapma izinli aralık dışına çıkamaz (yüklemede reddedilir, birim); **AC-CHR-02** karakter politikası rol politikasını kilitli evalset'te SPRT ile geçmeden etkin olmaz, geçemeyende `δ_c = 0`; **AC-CHR-03** geri alma: guard metrikleri bozulunca karakter→rol politikasına otomatik dönüş (oyun içi canary ≤ 10 dk); **AC-CHR-04** tekrarlanabilirlik (aynı dosya + seed → istatistiksel aynı sonuç); **AC-CHR-05** bireysel gelişim kanıtı: aynı karakterin sonraki N maçı ilk N maçından kilitli sette anlamlı iyi **veya** "iyileşme yok" kanıtı, yeni rakip profillerinde genelleme; **AC-CHR-06** insan değerlendirmesi: karakterler arası davranış farkı gözlenebilir ve zararsız |
+| Riskler | Aşırı uyum, veri azlığı (karakter başına maç), karakter sayısı × test matrisi, ödül sömürüsü |
+| Geri alma | Tüm karakterlerde `δ_c = 0` (dosya işaretçisi) |
+| Durum | **TASLAK:** F9 sonrası; ADR olmadan plan yazılmaz; F10/F11'den bağımsız |
+
 ## 3. Temel sürüm ve sonraki geliştirmeler
 
 | Temel sürüm (F0–F8) | Sonraki (kapsam büyümesi ADR ile) |
@@ -288,12 +304,14 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | G7a Priest destek | Buff, cure, debuff, diriltme, iki priest | ADR-0018 m.4, m.6, m.8; F4-52/53 | T-IGT-PRI-01, T-PRI-03..06/08 | küçük takım |
 | G7b Mage summon | Güvenli summon akışı | ADR-0018 m.6 (summon dilimi), G6c | T-IGT-MAG-01 | küçük takım |
 | G7c Takım | Ortak hedef, debuff çağrısı, healer'a geçiş, regroup/geri çekilme | G7a, G7b | T-IGT-PTY-01, T-IGT-SUR-01, T-PTY-* | 2v2..5v5 |
-| G8 8v8 ve baseline | Sıfırlanabilir, tekrarlanabilir değerlendirme | `db/003` (20 karakter), `ScenarioReset` (`docs/15` §6a), `win_rule` (§6b), `evalset-v1` | T-IGT-EVAL-01, AC-EVAL-01..03 | MVP sonu |
+| G8 8v8 ve baseline | Sıfırlanabilir, tekrarlanabilir değerlendirme | `db/003` (ulus başına 10, toplam **20**: 16 + 4, `docs/15` §6a), `ScenarioReset` (§6a, ADR-0032-DEG), `win_rule` türleri (§6b, ADR-0031-DEG), `evalset-v1` | T-IGT-EVAL-01, AC-EVAL-01..03 | MVP sonu |
 | G9 öğrenme | L1 | G8 | AC-LRN-01..08 | "iyileşme yok" geçerli |
-| G11 serbest Ronark | F11 | G8, ADR | T-FREE-* | taslak |
+| G11 serbest Ronark | F11 (güvenli konuma çekilme, yeniden gruplanma, savaşa dönüş dahil) | G8, ADR | T-FREE-01..08 | taslak |
+| G12 karakter bazlı öğrenme | F12 | G9 | AC-CHR-01..06 | taslak |
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.1 | Değerlendirme: §2.1 aksiyon desteği matrisi ve zincir, F11 taslağı, §3 satırı, §4 oyun içi kanıt maddesi, §5 oyun içi kabul kapıları (G4..G11) |
+| 2026-10-02 | v1.2 | Değerlendirme eki (proje sahibi kararları): F11 alt kalemleri F11-a/b/c ve T-FREE-06..08, F12 karakter bazlı kalıcı öğrenme taslağı (AC-CHR-01..06), G8 20 karakter dökümü, G12 |

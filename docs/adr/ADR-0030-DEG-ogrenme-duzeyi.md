@@ -1,39 +1,45 @@
-# ADR-0030-DEG: Öğrenme düzeyi: rol profili (değerlendirme ajanında Claude kararı — gözden geçirilmeli)
+# ADR-0030-DEG: Öğrenme düzeyi: önce rol profili, sonra karakter bazlı kalıcı öğrenme (F12)
 
-Durum: ÖNERİLDI (arka plan değerlendirme ajanı kabul etti; proje sahibi gözden geçirecek)
-Tarih: 2026-10-02 · Karar veren: Claude (değerlendirme ajanı, soru sorulamadı)
-İlgili: docs/14 §6, §6.1; F9, F10; `docs/reports/degerlendirme-2026-10-02.md` DEG-25
+Durum: KABUL (proje sahibi, 2026-10-02: "ilk aşamada rol profili öğrenmesi ve oturum içi kestirim; karakter başına kalıcı öğrenme nihai hedefin parçası, kapsamdan çıkarma, sonraki faz olarak kaydet")
+Tarih: 2026-10-02 · Karar veren: proje sahibi (ilk taslak: Claude değerlendirme ajanı)
+İlgili: docs/14 §6, §6.1; docs/17 F9, F10, **F12**; `docs/reports/degerlendirme-2026-10-02.md` DEG-25, `docs/reports/degerlendirme-2026-10-02-ek.md` madde 1
 
 ## Bağlam
 
-- Proje hedefi "deneyimlerinden gelişen botlar" üretmektir (kullanıcı hedefi).
-- `docs/14` §6 politikayı **rol profili** düzeyinde tutar, karakter düzeyinde tutmaz `[Ö]`; ama bu ayrım proje sahibi tarafından bir K-kararı olarak kayıtlı değildi ve "her bot oynadıkça ustalaşır" beklentisiyle örtüşmediği değerlendirmede işaretlendi.
-- Maç başına süre dakikalar; 8v8 değerlendirme kapasitesi sınırlı (R-10). Karakter başına veri az ve rakibe aşırı uyum riski yüksek (docs/14 §6, §7.3).
+- Proje hedefi "deneyimlerinden gelişen botlar"dır; nihai hedefte **her karakterin kendi maç geçmişinden kalıcı olarak gelişmesi** vardır.
+- `docs/14` §6 politikayı rol profili düzeyinde tutar (veri miktarı, aşırı uyum, tekrarlanabilirlik). Karakter başına veri az ve rakibe aşırı uyum riski yüksektir; ayrıca rol politikası kararlı olmadan karakter sapmasının neyin üstüne eklendiği belli değildir.
 
 ## Karar
 
-Öğrenme **üç ayrı düzeyde** tanımlanır ve ayrı ölçülür (docs/14 §6.1):
+Öğrenme **iki aşamada** ve üç düzeyde yürür; karakter bazlı kalıcı öğrenme kapsamdan **çıkarılmaz**, ayrı faz olarak planlanır:
 
-1. **Oturum içi kestirim (L0.5)**: tek bot/takım, kısa pencere; maç sonunda silinir; "öğrenme" sayılmaz.
-2. **Rol profili politikası (L1/L2)**: aynı rolü oynayan **tüm** botlar aynı sürümlü politikayı paylaşır; asıl öğrenme budur (F9/F10).
-3. **Karakter düzeyi kalıcı politika: planlanmaz.** Yalnızca telemetri/teşhis.
+| Aşama | Düzey | İçerik | Faz | Durum |
+|---|---|---|---|---|
+| 1 | Oturum içi kestirim (L0.5) | Tek botun/takımın rakip kestirimi (heal hızı, burst); maç sonunda silinir; öğrenme sayılmaz | F6–F7 | planlı |
+| 1 | Rol profili politikası (L1/L2) | Aynı rolü oynayan **tüm** botların ortak sürümlü politikası | F9/F10 | planlı |
+| 2 | **Karakter bazlı kalıcı öğrenme** | Karakter başına kalıcı, sınırlı sapma (`δ_c`) rol politikasının üstünde; kendi maç geçmişinden | **F12** (TASLAK, ADR kapılı) | kapsamda, faz taslağı `docs/17` |
 
-"Oynadıkça ustalaşma" beklentisi filo düzeyinde (toplam deneyim) karşılanır; bireysel kalıcı öğrenme proje sahibinin ayrı onayını gerektirir.
+F12 şu ilkelere bağlıdır (ayrıntı ve kabul kriterleri `docs/17` F12, `docs/14` §6.1):
+
+1. **Rol politikası zemindir:** karakter politikası = rol politikası + sınırlı sapma; sapma izinli aralıkların bir alt bandındadır ve rol politikasına çekilir (shrinkage). `δ_c = 0` her zaman geçerli geri alma konumudur.
+2. **Kabul kilitli sette:** karakter politikası, rol politikasını kilitli `evalset-v1`'de (B rakip grubu) SPRT ile geçmedikçe etkin olmaz; geçemeyen karakterde `δ_c = 0` kalır.
+3. **Kalıcılık:** sürümlü, değişmez karakter politika dosyası (`PolicyStore`, karakter anahtarlı); DB şeması değişikliği ve insan verisi içermez (yalnız bot telemetrisi).
+4. **Bağımlılık:** F9 (politika altyapısı, canary, otomatik geri alma, değerlendirme seti) kabul edilmiş olmalı; F9 "iyileşme yok" sonucuyla bitse bile F12 ayrı ADR ile değerlendirilir (rol düzeyinde iyileşme bulunmayan bir alanda karakter düzeyi iyileşmesi ayrıca kanıt ister).
 
 ## Değerlendirilen alternatifler
 
-| Alternatif | Artılar | Eksiler | Neden seçilmedi |
+| Alternatif | Artılar | Eksiler | Sonuç |
 |---|---|---|---|
-| A. Yalnız rol profili (seçilen) | Veri çoğalır, genelleme, açıklanabilir, tekrarlanabilir | Bireysel "karakter gelişimi" yok | — (seçildi) |
-| B. Rol politikasına çekilmiş sınırlı karakter sapması (shrinkage; karakter başına ±δ, `PolicyStore`'da karakter anahtarlı) | Bireysel farklılık, "kişilik" | Veri az → gürültü, rakibe aşırı uyum, test matrisi 12–20 karakterle çarpılır, geri alma karmaşık | F9 sonucu görülmeden erken; F10 sonrası ADR ile açılabilir |
-| C. Karakter başına bağımsız politika | Tam bireysellik | Veri çok az, ezberleme (docs/14 §13 yasaklar) | Hedefle ve §6 gerekçesiyle çelişir |
+| A. Yalnız rol profili, karakter düzeyi hiç yok | Basit | Nihai hedefin bir parçasını siler | Reddedildi (proje sahibi) |
+| B. Rol politikasına çekilmiş sınırlı karakter sapması | Bireysellik + güvenlik; geri alma basit | Veri az → gürültü; test matrisi karakter sayısıyla çarpılır | **F12'de uygulanır** (aşama 2) |
+| C. Karakter başına bağımsız politika | Tam bireysellik | Aşırı uyum, tekrarlanamaz | Reddedildi (`docs/14` §13) |
 
 ## Sonuçlar
 
-- Olumlu: F9 hedefi net; AC-LRN-08 ile başarı ayrı ölçülür; kapsam şişmez.
-- Olumsuz: Kullanıcı bireysel kalıcı öğrenme bekliyorsa beklenti karşılanmaz (doküman bunu açıkça söyler).
-- Geri alma: B seçeneği ayrı ADR ile F10'da eklenebilir; mevcut politika dosyası biçimi karakter anahtarını sonradan alabilir.
+- Olumlu: Hedef kaybolmaz; aşama 1 hemen yürür, aşama 2 temel üzerine kurulur; risk (aşırı uyum) kabul kapısıyla sınırlı.
+- Olumsuz: F12 kabulü F9 sonrasına bağlıdır; karakter başına yeterli maç sayısı (kapasite R-10) ayrı sorun.
+- Geri alma: tüm karakterlerde `δ_c = 0` (dosya işaretçisi değişikliği).
 
 ## Doğrulama
 
-`docs/14` AC-LRN-01..08; F9 raporunda "iyileşme var/yok" kanıtı; proje sahibinin bu ADR'yi onaylaması veya B'yi seçmesi.
+`docs/14` AC-LRN-01..08 (aşama 1); `docs/17` F12 AC-CHR-01..06 (aşama 2).

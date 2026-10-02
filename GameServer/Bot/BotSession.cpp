@@ -9,7 +9,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_attackActive(false), m_attackLeft(0), m_attackHasLast(false),
 		m_attackSent(0), m_attackHits(0),
 		m_castPhase(CAST_IDLE), m_castSkillId(0), m_castLeft(0), m_castCycle(0),
-		m_castDone(0), m_castPackets(0), m_castAnyHas(false),
+		m_castDone(0), m_castPackets(0), m_castTargetId(-1), m_castAnyHas(false),
 		m_potActive(false), m_potItemId(0), m_potSkillId(0), m_potKind(0),
 		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
 		m_stanceHasLast(false),
@@ -229,11 +229,11 @@ void BotSession::OnPacket(Packet & pkt)
 		}
 		else if (opcode == WIZ_MOVE)
 		{
-			uint16 sid = 0, x10 = 0, z10 = 0, y10 = 0;
-			if (BotCore::ParseMove(data, len, sid, x10, z10, y10))
+			BotCore::MoveObs move;
+			if (BotCore::ParseMoveFull(data, len, move))
 			{
 				std::lock_guard<std::mutex> lock(m_obsLock);
-				m_obs.UpdatePosition(sid, x10, z10, y10, nowMs);
+				m_obs.UpdateMove(move.sid, move.x10, move.z10, move.y10, move.speed, nowMs);
 			}
 		}
 		else if (opcode == WIZ_DEAD && len >= 2)
@@ -331,6 +331,7 @@ void BotSession::ResetForRespawn()
 	m_castCycle = 0;
 	m_castDone = 0;
 	m_castPackets = 0;
+	m_castTargetId = -1;
 	m_castSkillLast.clear();
 	for (int i = 0; i < 8; i++)
 		m_castTypeHas[i] = false;

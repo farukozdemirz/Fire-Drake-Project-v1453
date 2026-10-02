@@ -125,6 +125,8 @@ REENTER ⇔ hp/maxhp ≥ P-SUR-REENTER-HP ∧ mp ≥ rol_min ∧ (party modu ENG
 
 Geri çekilme mesafesi party modunda ön hattan en fazla 40 m'dir. Daha uzağa çekilme yalnızca takım RETREAT modundaysa yapılır ([09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §10).
 
+**Mod ayrımı (ADR-0033-DEG, 2026-10-02):** yukarıdaki "kendi tower halkasına / düşmansız bölgeye" kuralı **serbest Ronark modu** (F11) içindir. **Arena modunda** (kontrollü testler) güvenli nokta arenanın içindedir (party: arka hat; solo: arenanın kendi ulus yarısı); tower halkası arenanın 233 m (Karus) / 640 m (El Morad) dışındadır ve aday değildir. Serbest modda güvenli konuma çekilme, yeniden gruplanma ve savaşa dönüş ayrı kalemlerdir (`docs/17` F11-a/b/c, T-FREE-06..08).
+
 ### 4.4 Sıkışma fallback'i (son direniş)
 
 `last_stand` şu durumlarda doğrudur: kaçış yolu yok (navigasyon güvenli nokta bulamadı), kök/stun altında ve cure 2 sn içinde beklenmiyor, ya da `ttd` < kaçış süresi tahmini. Bu durumda bot geri çekilmez:
@@ -183,3 +185,4 @@ Metrikler: MET-POT-01..04, MET-SUR-01..06 ([16](16_TELEMETRY_DEBUGGING_AND_PERFO
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.1 | Değerlendirme: pot kapasite hesabı ortak 2,5 sn aralığa çevrildi (768 MP/sn), AC-SUR-04 ve 200 ms notu hizalandı |
+| 2026-10-02 | v1.2 | Değerlendirme eki: §4.3 arena modu / serbest Ronark modu ayrımı (ADR-0033-DEG) |

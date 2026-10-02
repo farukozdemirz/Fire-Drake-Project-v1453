@@ -211,7 +211,7 @@ MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetridek
 | MET-OUT-02 | Kill/death farkı | Takım bazında |
 | MET-OUT-03 | Maç süresi | Zaman aşımı oranı ile birlikte |
 | MET-OUT-04 | Elo/TrueSkill | Politika sürümleri ve taktik profilleri arası lig |
-| MET-OUT-05 | Sonuç kodu dağılımı | `win_a`/`win_b`/`draw`/`invalid` oranı ve `invalid` nedenleri (`NO_ENGAGE`, `SETUP_FAIL`, `TEST_TELEPORT`, `THIRD_PARTY`) |
+| MET-OUT-05 | Sonuç kodu dağılımı | `win_a`/`win_b`/`draw`/`invalid`/`no_result` oranı, `win_rule` türüne göre ayrı; `invalid` nedenleri (`NO_ENGAGE`, `SETUP_FAIL`, `TEST_TELEPORT`, `THIRD_PARTY`); `killdiff_timed` için `fark` ortalaması/standart sapması ve beraberlik oranı (pilot kalibrasyonu, `docs/15` §6b) |
 
 ### 6.8 Performans
 
