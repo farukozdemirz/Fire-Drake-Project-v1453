@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 6 "Analiz aracı") |
 | Branch | `bot/F3-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-01 (`KAPANDI`: JSONL biçimi, `PERF_SAMPLE`), F3-02 (`KAPANDI`: `<match>.jsonl`, `summary.json`) |
