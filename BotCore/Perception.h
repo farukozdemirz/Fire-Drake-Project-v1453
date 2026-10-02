@@ -386,8 +386,8 @@ namespace BotCore
 	constexpr int      kUserInMaxIds   = 32;    // ids per WIZ_REQ_USERIN request (CLI-19, design limit) [A]
 	constexpr uint32_t kUserInMinGapMs = 1000;  // min time between two requests (CLI-19, design limit) [A]
 
-	// Copyable, lock-free list of ids a WIZ_REGIONCHANGE or WIZ_NPC_REGION listed and the table did not know. The
-	// caller holds the lock; insertion order is kept.
+	// Copyable, lock-free list of ids a WIZ_REGIONCHANGE or WIZ_NPC_REGION listed and the table did not know. The caller holds the
+	// lock; insertion order is kept.
 	class PendingIds
 	{
 	public:
@@ -401,7 +401,7 @@ namespace BotCore
 		int Count() const { return m_count; }
 
 		// Replaces the content with the ids of 'ids' that 'obs' does not know yet. Repeats are skipped; at most
-		// kObsPendingMax kept. 'obs' is an ObsTable or an NpcTable (both offer Find(uint16_t)).
+		// kObsPendingMax kept.
 		template <class TableT>
 		void Set(const uint16_t * ids, int n, const TableT & obs)
 		{
@@ -417,7 +417,7 @@ namespace BotCore
 		}
 
 		// Drops the ids that 'obs' knows by now and 'selfSid'; copies up to 'cap' of the rest to 'out' in order
-		// WITHOUT removing them. Returns how many were copied. 'obs' is an ObsTable or an NpcTable.
+		// WITHOUT removing them. Returns how many were copied.
 		template <class TableT>
 		int Peek(const TableT & obs, uint16_t selfSid, uint16_t * out, int cap)
 		{

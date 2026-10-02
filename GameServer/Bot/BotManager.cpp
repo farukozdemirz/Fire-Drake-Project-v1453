@@ -2357,7 +2357,7 @@ void BotManager::CommandNpcs(const std::string & args)
 		return;
 	}
 
-	// Copy the table and the counters under the lock, then format with the lock released.
+	// Copy the table and the counter under the lock, then format with the lock released.
 	BotCore::NpcTable copy;
 	uint32 unresolved = 0;
 	uint32 pending = 0;
