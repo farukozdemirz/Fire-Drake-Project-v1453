@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-14` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ByteReader`, `ParseRegionList`, `ObsTable`, `OnPacket()` algı bloğu, `m_obsLock`) — `KAPANDI` (merge `dcd8f80`); F4-13 (`PendingIds`, `m_obsPending`) — `KAPANDI` (merge `f1acc48`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -326,20 +326,40 @@ git diff --check gece/2026-10-02...bot/F4-14
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-14` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-14` @ `77168c5` (kod commit'i `9d51ae8`; üçüncü commit `77168c5` yalnızca plan §5.2 test 3'ün istediği 2 baytlık bozuk paket vakasını ekler; taban `17aca68` ile plan). Gece modu (`AUTO_LOOP=1`): birleştirme/push döngü betiğinde.
+- Kriter sonuçları (13/13 ✔):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0; `Perception.h`, `PerceptionTests.cpp`, `BotManager.cpp`, `BotSession.cpp` `touch` ile yeniden derlendi (derleme satırları log'da), log'da `warning C` 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0; değişen dosyalar için uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `61 tests, 0 failed`; altı yeni test adı Release çıktısında `[ OK ]`; test gövdeleri plandaki beklentilerle uyumlu (31/32 karakter ad sınırı, NUL sonrası sıfır, her kısa önek `false`, OUT 3 bayt / 2 bayt `false`, işaret baytsız liste, `declared 5` / `cap 1` / kesik ikinci kayıt, 9/10/11 bayt `NPC_MOVE`, tablo 128 dolu → `false` + `Overflow`, `MarkDead` → taze `Upsert` `dead=false`, tekrarlı `Retain`) |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` ve `std::min/max/new/malloc/vector/string` grep'leri boş; `#include` yalnızca `Perception.h:8-10` (`<cstddef>`, `<cstdint>`, `<cstring>`) |
+| K5 | ✔ | iki sözleşme grep'i (`BotSession.cpp` ve `CommandNpcs` gövdesi) boş; `grep "me->"` yalnızca `BotManager.cpp:2371-2372` (`GetX()`, `GetZ()`) |
+| K6 | ✔ | `m_npcs` yalnızca `BotSession.cpp:247-283` (`OnPacket()`), `:350` (`ResetForRespawn()`) ve `BotManager.cpp:2365` (`CommandNpcs`, tek kopyalama satırı); `CommandNpcs` kilit bloğu iki satır (`copy`, `unresolved`), günlük kilit dışında; `OnPacket()` ayrıştırması kilit dışında, her dalda `lock_guard` yalnızca tablo çağrıları için; `name[]` NUL sonrası sıfırlama `Perception.h` `ParseNpcInfo` iki döngüsü + test 1 |
+| K7 | ✔ | `BotSession.cpp` tek `-` satırı (başlatıcı listesi); `BotManager.cpp` tek `-` satırı ("unknown command" mesajı); `Perception.h` ve `PerceptionTests.cpp` farkında `-` satırı yok (üçüncü commit'in 1 silinen satırı kendi dalında, taban farkında görünmez) |
+| K8 | ✔ | fark `Startup/Tick/TickSessions/BuildStatusLines/BeginDespawn/CommandSee`'ye dokunmuyor; `GameServer/` içinde yalnızca `Bot/BotSession.*`, `Bot/BotManager.*`; ini okuma değişmedi; çalışma zamanında `ENABLED=1` dışı yol denenmedi (aşağıda not) |
+| K9 | ✔ | `--stat` yalnızca §4'teki 6 dosya + plan; dört `vcxproj*` farkı 0 satır |
+| K10 | ✔ | altı dosya `ASCII text, with CRLF line terminators` (`file`); `git diff --check` boş |
+| K11 | ✔ | `std::mutex` sayısı `BotSession.h`'de 1; eklenen satırlarda `printf/Sleep/CreateThread/rand(` yok (yalnızca `snprintf`); `ActionExecutor.*`, `Telemetry.*`, `ScenarioRunner.*` farkta yok |
+| K12 | ✔ | `CheckMoveStep` 2, diğer 13 guard 1'er; önceki 55 test geçiyor (toplam 61) |
+| K13 | ✔ | çalışma zamanı, aşağıda (senaryo 3 ve 4 kısmen: hareketli NPC ve NPC ölümü gözlenmedi) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+Çalışma zamanı (K13; `Release`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş, zone 71; `GameServer.ini` değiştirilmedi, md5 aynı `265a8e1c...`; AIServer açıktı; eski `Logs/bots` `bots_old_f414`'e taşındı; kapanış `nazik`; iş bitince `run-servers.sh stop`, `BotCommands.txt` kalmadı):
 
-```
-…
-```
+1. **Spawn ve toplu kayıt:** `BotWP_K` spawn (1439, 1090) → `npcs BotWP_K`: `sees 21 npc(s) (dead 0, dropped 0, unresolved 0)`: 18 guard tower (proto 5400/5410), `Inn hostess` (26061), `Ardin[sundries]` (26062), `[Outpost Captain]Elrod` (24426). Yerel DB `K_NPC` (yasak tablo değil) ile karşılaştırma: `5400` Guard tower byGroup 1 byType 62 lvl 90; `5410` Guard tower 1/62/120; `24426` `[Outpost Captain]Elrod` 1/102/50; `26061` Inn hostess 1/31/50; `26062` Ardin[sundries] 1/22/50 → ad, tip, seviye ve ulus (1) birebir. `dist` botun konumuyla tutarlı (örn. (1423, 1066) → 28,8 = √(16²+24²)). `BotWG_E` (630, 920): 22 NPC, hepsi `nation=2` (proto 5300/5310 tower, `[Outpost Captain]Della` 14426, 16061, 16062); iki çağrıda aynı kayıtlar, `age` yalnızca büyür (29494 → 38266 ms). Plan §5.2 alan düzeni (tip tek bayt, işaret baytsız liste) gerçek sunucu/AIServer paketleriyle doğrulandı. ✔
+2. **Tower halkası / bilinen sınır:** `BotWP_K` ölü olarak yeniden doğurulmadı (aşağıda 4). Bunun yerine bölge geçişi: (1439, 1090) → (1380, 1060): tablo 21 NPC korundu, `unresolved 4`. Arena dışına (1380, 893) → `sees 0 npc(s)` (`WIZ_NPC_REGION` `Retain` hepsini düşürdü, `unresolved 0`). Oradan tekrar (1380, 1060) → `sees 0 npc(s) (... unresolved 25)`: planın tanımladığı **bilinen sınır** (bot `WIZ_REQ_NPCIN` istemiyor, bölgeye yürüyünce NPC'ler gelmiyor; F4-15 kapatacak) çalışma zamanında doğrulandı; hata değil, `unresolved` sayacı bunu dürüstçe gösteriyor. ✔ (kısmi: ölü-yeniden doğuş yolundaki toplu kayıt denenmedi)
+3. **Hareket:** her iki bot çevresinde hareketli NPC/canavar yoktu; `WIZ_NPC_MOVE` gözlenmedi (kod yolu `Perception_ParseNpcMove` + `Perception_NpcTable` ile birim testli; kriteri düşürmez). ✔ (gözlenmedi)
+4. **Ölüm ve çıkış:** `WIZ_DEAD` ile NPC ölümü gözlenmedi (arena çevresinde öldürülebilir NPC yok; El Morad botu 750 m uzakta doğuyor, yürüyüş yolu denenmedi); `dead 0` sabit. Bölgeyi terk edince kayıtların `Retain` ile düşmesi gözlendi (2'de: 21 → 0). ✔ (kısmi)
+5. **Gerileme:** `npcs` kullanım (`npcs`, `npcs BotWG_E extra`), bilinmeyen bot (`NoSuchBot` → `'?'`, spawn edilmemiş `BotMF_K` → ad), "unknown command" listesinde `npcs`; `see`, `sit`, `stand` (CLI-13 `toggle` reddi), `target` (kullanım), `pchat` (`not_in_party`), `pinvite` (CLI-15 `out_of_view`), `pot` (kullanım), `move` (sitting reddi), `regene` (`not_dead`) beklendiği gibi; `see` açıklama satırında F4-13 `userin requests 0, units received 0, pending 0`. `PERF_SAMPLE` `tick_p95_us` en çok 337 (≤ 500), `skipped_ticks` 0 (65 örnek). İki `FAIRNESS_REJECT` (CLI-13 `toggle`, CLI-15 `out_of_view`) test komutlarının tasarlanmış reddi. `despawn all` 2/2 temiz (`names cleared yes`), sunucu çökmedi. `ENABLED=0` ve `RESPAWN_CYCLES=2` bu turda **çalıştırılmadı**: `RESPAWN_CYCLES` reddi `BotManager.cpp:603` fiil dağıtımından önce (fark dokunmuyor), `ENABLED=0` yolu `Startup/Tick`'e dokunmuyor (K8); F4-12/F4-13'te doğrulanmıştı. ✔ (kısmi)
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `BotSession.cpp:268` / `Perception.h` `NpcTable::Retain`: bozuk veya boş `WIZ_NPC_REGION` paketi `ParseRegionList` içinde `0` kimlik döndürür ve `Retain(ids, 0)` tabloyu **tamamen boşaltır**. Sunucu paketi her zaman geçerli olduğundan pratik risk yok; planın "boş liste tabloyu boşaltır" kuralıyla uyumlu. F4-15'te paketin gerçekten boş mu yoksa ayrıştırılamadı mı olduğunun ayrımı yararlı olabilir.
+  2. `Retain` O(tablo × liste) (en çok 128 × 512 karşılaştırma) `m_obsLock` altında; bölge değişimi başına bir kez, ölçülen `tick_p95_us` etkilenmedi (≤ 337). Not.
+  3. `NpcObs.gateOpen` yalnızca bilgi paketi anındaki değerdir (`WIZ_OBJECT_EVENT` işlenmiyor; plan kapsamı dışı). `PerceptionSnapshot` tüketicisi bunu bilmeli (`docs/13` notu).
+  4. Uygulayıcı Raporu üçüncü commit'i (`77168c5`) anmıyor ve satır sayısını +330 veriyor (gerçek +331); içerik planla uyumlu, yalnızca rapor eksiği.
+  5. Çalışma zamanı kapsamı: NPC ölümü (`WIZ_DEAD`), hareketli NPC (`WIZ_NPC_MOVE`) ve ölü-yeniden doğuş sonrası toplu kayıt gerçek trafikle gözlenmedi; F4-15 sonrası betikli test dizilerinde sınanabilir.
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
