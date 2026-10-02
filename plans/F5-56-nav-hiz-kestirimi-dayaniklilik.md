@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-56 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`), **F5-52** (pencere 4000/400 ms, `speed` alanı, gözlem yaşı lead'e eklenir) — `DOĞRULANDI`/`KAPANDI` olmalı |
@@ -134,6 +134,43 @@ git diff --stat gece/2026-10-02-nav...bot/F5-56
 - Açık sorular:
   - Yığılma modelinin zincirleme (arka arkaya toplu işleme) biçimi gerçek trafikte görülürse zero_pct artabilir; gerçek `WIZ_MOVE` ölçümü (T-NAV-06) sonrası model ve eşikler `[A]` olarak güncellenmeli.
   - `_Quantization` sınırı plan formülü (`0,1·√2/aralık + %5`) mutlak hata olarak yorumlandı; 400 ms'de sınır ≈ 0,579 m/s.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-56` (taban `gece/2026-10-02-nav`); uygulama commit'i bu maddeyle atılır (önceki: `54bb121` Doğrulama Tur 1, `68b6922`/`cf06837` Tur 1). Düzeltme talimatı aynı branch'te uygulandı; yeni dal açılmadı.
+- Değişen dosyalar ve neden:
+  - `BotCore/NavTrack.h` (`Velocity()`): eski `if (m_count >= 2) { jspan ... }` sıçrama bloğu kaldırıldı; koruma artık **seçilen çifte** uygulanıyor. `haveOld`/`span > 0` sonrası, `vx`/`vz` hesabından önce `dx = newest.x - oldX`, `dz = newest.z - oldZ` ile ima edilen hız `sqrt(dx²+dz²)·1000/span` hesaplanıyor; `limit = (newest.speed < 0) ? 10.0f : 30.0f`; `implied > limit` ise sıfır dönülüyor. Doc yorumu tek kısa İngilizce blokla güncellendi. Böylece (a) sıçramadan hemen sonra yığılmış (< `minSpanMs`) paket sıçramanın öncesiyle eşleşip sıçrama büyüklüğünde hız üretmiyor, (b) bilinmeyen hızda 2500 ms aralıklı +53 m (21,3 m/s) 0 dönüyor; bilinen hızda 30 m/s ve mevcut `NavTrack_Velocity_Speed0` 20 m/s kırpma vakası değişmedi (45/67 için `speed/10×1,1` kırpması önce uygulanmıyor, `implied` < 30).
+  - `Tests/BotCoreTests/NavTrackTests.cpp`: `_Jump` alt vakaları (a) yığılmış sıçrama 4505 ms → tam sıfır, (b) +53 m/2500 ms → sıfır, (c) bilinmeyen hızda 9 m/s geçer / 11 m/s reddedilir, sıçrama sonrası iki temiz gözlem 4,5'e döner; `_Quantization` plan sınırına uyduruldu (`bound = 0.1·√2/aralık + 0.05`; iki eksende `vx=3,2, vz=3,1`, 7 hizasız aralık, t0 kaydırma, 7×200 yineleme, `NAVTRACK quant` satırları, en az bir aralıkta `worst_abs > 0,05`); `_Reverse180` geçiş örneği (dönüş 3750, 4500 = 13,5, 6000 = 6,75; 4500'de +x yok ve ≤ 4,95, 6000'de vx ≈ −4,5); `_SpeedChange` (a) yürüyüş gürültüsü 4,95'e kırpılır (7,37 DEĞİL), (b) sprint gürültüsü 7,37'ye kırpılır, (c) bilinmeyen hızda 6,7 geçer; `_Stale` `leadSec <= params.maxLeadSec + 1e-4f`. Mevcut vakalara dokunulmadı.
+  - `tools/nav-measure/nav_measure.cpp`: **değişmedi** (talimat madde 7 yalnızca koşu ve rapor istiyor; senaryolar bilinen hız 45 kullanır, ortak `NavTrack.h` değişikliğini otomatik alır).
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `BotCore/NavTrack.h` + `NavTrackTests.cpp` `touch` sonrası `warning C`/`error C` 0.
+  - `./tools/build.sh Debug` rc=0; `touch` sonrası `warning C`/`error C` 0.
+  - `./tools/run-tests.sh Release --no-build` → `209 tests, 0 failed`.
+  - `./tools/run-tests.sh Debug --no-build` → `209 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, `touch` sonrası yeni uyarı yok.
+  - K2 ✔ Debug rc=0, uyarı yok.
+  - K3 ✔ `209 tests, 0 failed` (Release+Debug); 11 yeni ad hâlâ `[ OK ]`; mevcut `NavTrack_*` (F5-52 ve `NavTrack_Velocity_Speed0`, `NavTrack_Tracker_Velocity` 10 m/s sınır durumu dahil) değişmeden geçti.
+  - K4 ✔ düzeltme sonrası eşikler korunuyor (ölçümler aşağıda); `NavTrack_Chase_Sim_Cadence` `11800 ≤ 1,3 × 11200 = 14560`.
+  - K5 ✔ imzalar korundu; `NavTrack_Perf` Release `exact` p95 = 0,592 ms, `mage` p95 = 0,624 ms ≤ 2 ms.
+  - K6 ✔ `NavTrack.h`'te yasak başlık yok; yeni kodda dinamik bellek/global durum yok; iki dosya ASCII + CRLF (satır = CRLF); `git diff --check` boş; `git diff --stat` yalnızca bu iki kod dosyası + plan.
+  - K7 (Claude) — `velocity-robust` yeniden koşu aşağıda; eşikler (bunching zero ≤ 1, p95 ≤ 0,20, max ≤ 0,60) sağlanıyor.
+  - K8 oyun içi kanıt kapsam dışı (bu planda kapanmaz).
+- Ölçümler (MSVC Release birim testi, 20 tohum en kötüsü; Tur 1 → Tur 2 değişmedi):
+  - `ArrivalJitter`: p95 0,1395 / max 0,1650 / zero 0 (0,20 / 0,30 / 0).
+  - `ArrivalBunching`: p95 0,1395 / max 0,5203 / zero 0 (0,20 / 0,60 / ≤1).
+  - `VariableInterval`: p95 0,0141 / max 0,0182 / zero 0 (0,10).
+  - `PacketLoss`: p95 0,0074 / max 0,0074 / zero 0 (0,10).
+  - `NAVTRACK chase_cadence caught_ms_perfect=11200 caught_ms_cadence=11800`.
+  - `NAVTRACK quant` satırları (yeni): interval=400 `worst_abs=0.250 bound=0.404`; 413 `0.272 / 0.392`; 577 `0.180 / 0.295`; 700 `0.132 / 0.252`; 911 `0.125 / 0.205`; 1237 `0.071 / 0.164`; 1500 `0.033 / 0.144` (en az biri > 0,05 → test boş değil).
+  - `tools/nav-measure.sh velocity-robust` (WSL g++, 20 tohum; öncesi/sonrası aynı): `arrival_jitter` err_p95 0,1359 / err_max 0,1691 / zero_pct 0,000 (Tur 1 ile aynı); `arrival_bunching` 0,1360 / 0,5217 / 0,000 (aynı); `variable_interval` 0,0156 / 0,0186 (aynı); `packet_loss` 0,0074 / 0,0074 (aynı). Beklendiği gibi değişmedi: araç senaryoları bilinen hız (45) kullanır ve yeni 10 m/s tavanı yalnızca bilinmeyen hızı bağlar.
+- Plandan sapmalar ve gerekçeleri:
+  - Talimat `limit` eşiğini `implied > limit` (katı) istedi; uygulandı. Seçilen çift 10,0 m/s'yi tam veren mevcut `NavTrack_Tracker_Velocity` kapasite sargı vakası (`0,1 m / 10 ms`) float yuvarlamasında sınırın üstüne taşmadı; test geçti (takılırsa durup soru yazılacaktı, gerekmedi).
+  - `_Quantization` hatası, talimat gereği velocity **vektör** hatasının normu (`sqrt((vx−vx₀)²+(vz−vz₀)²)`) olarak ölçüldü; sınır formülüyle (`0,1·√2/aralık`) aynı türden.
+  - `tools/nav-measure/nav_measure.cpp` talimat maddelerinde geçmediği için değiştirilmedi (yalnızca koşu + rapor).
+- Açık sorular:
+  - Yok. Talimat maddelerinin tamamı uygulandı; mevcut testler değişmeden geçti, durup sorulacak bir çelişki çıkmadı.
 
 ---
 
