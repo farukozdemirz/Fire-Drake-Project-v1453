@@ -42,6 +42,13 @@ public:
 	// puts the session back into PHASE_QUEUED with fresh per-spawn counters.
 	void ResetForRespawn();
 
+	// IOCP thread only. Copies up to 'cap' ids the table still does not know (selfSid and ids learned meanwhile are
+	// dropped) without removing them.
+	int PeekUserInBatch(uint16 selfSid, uint16 * out, int cap);
+
+	// IOCP thread only. Removes the ids from the pending list (call after the request went out).
+	void DropUserInBatch(const uint16 * ids, int n);
+
 	const std::string m_charName;
 	const std::string m_accountName;
 
@@ -122,8 +129,14 @@ public:
 	uint32 m_chatLastHash;                                 // IOCP thread only: BotCore::ChatTextHash of that message
 	BotCore::ChatRateWindow m_chatWindow;                  // IOCP thread only: CLI-18 per-minute window
 
-	std::mutex m_obsLock;                                  // guards m_obs: OnPacket() may run on any thread, see below
+	bool m_userInHasLast;                                  // IOCP thread only: m_userInLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_userInLast;    // IOCP thread only: when the last WIZ_REQ_USERIN request went out
+	uint32 m_userInRequests;                               // IOCP thread only: WIZ_REQ_USERIN requests sent in this spawn
+	uint32 m_userInUnits;                                  // IOCP thread only: total units carried by the replies in this spawn
+
+	std::mutex m_obsLock;                                  // guards m_obs and m_obsPending: OnPacket() may run on any thread
 	BotCore::ObsTable m_obs;                               // guarded by m_obsLock: players in view, from received packets only (Perception, ADR-0017 Ek F4-12)
+	BotCore::PendingIds m_obsPending;                      // guarded by m_obsLock: ids of the last WIZ_REGIONCHANGE the table did not know (Perception, ADR-0017 Ek F4-13)
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
@@ -142,5 +155,6 @@ public:
 	std::atomic<uint64> m_partyLeaveEcho;                  // written by OnPacket(): valid bit | kind << 16 | sid of the last PARTY_REMOVE (kind 1, sid = the removed member) or PARTY_DELETE (kind 2, sid 0)
 	std::atomic<uint32> m_chatEchoHash;                    // written by OnPacket() BEFORE m_chatEcho: BotCore::ChatTextHash of the last WIZ_CHAT message received (0 when longer than kChatMaxLen)
 	std::atomic<uint64> m_chatEcho;                        // written by OnPacket(): valid bit | chat type << 32 | uint16 sender sid of the last WIZ_CHAT received
-	std::atomic<uint32> m_obsUnresolved;                   // written by OnPacket(): ids of the last WIZ_REGIONCHANGE that were not in m_obs (no WIZ_REQ_USERIN is sent yet)
+	std::atomic<uint32> m_obsUnresolved;                   // written by OnPacket(): ids of the last WIZ_REGIONCHANGE that were not in m_obs, the bot itself included
+	std::atomic<uint64> m_userInEcho;                      // written by OnPacket(): valid bit (63) | number of units parsed from the last WIZ_REQ_USERIN reply
 };

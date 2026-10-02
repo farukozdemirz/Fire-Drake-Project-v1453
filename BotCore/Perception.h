@@ -379,4 +379,121 @@ namespace BotCore
 		int m_count;
 		uint32_t m_overflow;
 	};
+
+	// --- region-change user request (ADR-0017 Ek F4-13) ---
+
+	constexpr int      kObsPendingMax  = 128;   // ids kept from one WIZ_REGIONCHANGE list (design limit; the table holds 64)
+	constexpr int      kUserInMaxIds   = 32;    // ids per WIZ_REQ_USERIN request (CLI-19, design limit) [A]
+	constexpr uint32_t kUserInMinGapMs = 1000;  // min time between two requests (CLI-19, design limit) [A]
+
+	// Copyable, lock-free list of ids a WIZ_REGIONCHANGE listed and the table did not know. The caller holds the
+	// lock; insertion order is kept.
+	class PendingIds
+	{
+	public:
+		PendingIds() { Clear(); }
+
+		void Clear()
+		{
+			m_count = 0;
+		}
+
+		int Count() const { return m_count; }
+
+		// Replaces the content with the ids of 'ids' that 'obs' does not know yet. Repeats are skipped; at most
+		// kObsPendingMax kept.
+		void Set(const uint16_t * ids, int n, const ObsTable & obs)
+		{
+			m_count = 0;
+			for (int i = 0; i < n && m_count < kObsPendingMax; i++)
+			{
+				if (obs.Find(ids[i]) != nullptr)
+					continue;
+				if (Contains(ids[i]))
+					continue;
+				m_ids[m_count++] = ids[i];
+			}
+		}
+
+		// Drops the ids that 'obs' knows by now and 'selfSid'; copies up to 'cap' of the rest to 'out' in order
+		// WITHOUT removing them. Returns how many were copied.
+		int Peek(const ObsTable & obs, uint16_t selfSid, uint16_t * out, int cap)
+		{
+			int keep = 0;
+			for (int i = 0; i < m_count; i++)
+			{
+				if (m_ids[i] == selfSid || obs.Find(m_ids[i]) != nullptr)
+					continue;
+				m_ids[keep++] = m_ids[i];
+			}
+			m_count = keep;
+
+			int written = keep < cap ? keep : cap;
+			for (int i = 0; i < written; i++)
+				out[i] = m_ids[i];
+			return written;
+		}
+
+		// Removes the listed ids (order of the others is kept).
+		void Remove(const uint16_t * ids, int n)
+		{
+			int keep = 0;
+			for (int i = 0; i < m_count; i++)
+			{
+				bool listed = false;
+				for (int j = 0; j < n; j++)
+				{
+					if (ids[j] == m_ids[i])
+					{
+						listed = true;
+						break;
+					}
+				}
+				if (!listed)
+					m_ids[keep++] = m_ids[i];
+			}
+			m_count = keep;
+		}
+
+	private:
+		bool Contains(uint16_t id) const
+		{
+			for (int i = 0; i < m_count; i++)
+			{
+				if (m_ids[i] == id)
+					return true;
+			}
+			return false;
+		}
+
+		uint16_t m_ids[kObsPendingMax];
+		int m_count;
+	};
+
+	// Guard input for a WIZ_REQ_USERIN request (CLI-19).
+	struct UserInCheck
+	{
+		int count;               // ids the request would carry
+		bool hasLast;            // a request was sent earlier in this spawn
+		uint32_t sinceLastMs;    // since that request
+	};
+
+	enum UserInVerdict
+	{
+		USERIN_OK = 0,
+		USERIN_REJECT_COUNT = 1,   // CLI-19: count < 1 or > kUserInMaxIds (defensive; the caller already clamps)
+		USERIN_REJECT_GAP = 2      // CLI-19: previous request < kUserInMinGapMs ago
+	};
+
+	// Order: count, gap. Not rate limited by CLI-11 (automatic client traffic, see ADR-0017 Ek F4-13).
+	inline UserInVerdict CheckUserIn(const UserInCheck & c)
+	{
+		if (c.count < 1 || c.count > kUserInMaxIds)
+			return USERIN_REJECT_COUNT;
+
+		if (c.hasLast && c.sinceLastMs < kUserInMinGapMs)
+			return USERIN_REJECT_GAP;
+
+		return USERIN_OK;
+	}
 }

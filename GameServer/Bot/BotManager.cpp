@@ -2260,10 +2260,12 @@ void BotManager::CommandSee(const std::string & args)
 	// Copy the table and the counter under the lock, then format with the lock released.
 	BotCore::ObsTable copy;
 	uint32 unresolved = 0;
+	uint32 pending = 0;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		copy = s->m_obs;
 		unresolved = s->m_obsUnresolved.load();
+		pending = (uint32)s->m_obsPending.Count();
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2294,7 +2296,11 @@ void BotManager::CommandSee(const std::string & args)
 		"BotManager: cmd see: %s sees %d unit(s) (enemies %d, allies %d, dropped %u, unresolved %u)",
 		s->m_charName.c_str(), total, enemies, allies, (unsigned)copy.Overflow(), (unsigned)unresolved);
 	WriteBotLog(message);
-	WriteBotLog("BotManager: cmd see:   (unresolved counts the last region id list incl. the bot itself; no WIZ_REQ_USERIN is sent yet)");
+	char note[256];
+	snprintf(note, sizeof(note),
+		"BotManager: cmd see:   (unresolved counts the last region id list incl. the bot itself; userin requests %u, units received %u, pending %u)",
+		(unsigned)s->m_userInRequests, (unsigned)s->m_userInUnits, (unsigned)pending);
+	WriteBotLog(note);
 
 	for (int i = 0; i < copy.Count(); i++)
 	{
@@ -2567,6 +2573,24 @@ void BotManager::TickSessions()
 						snprintf(message, sizeof(message),
 							"BotManager: bot %s move stopped (%s)",
 							s->m_charName.c_str(), outcome.reason);
+						WriteBotLog(message);
+					}
+
+					UserInOutcome userIn = ActionExecutor::TickUserIn(s, now);
+					if (userIn.kind == UserInOutcome::SENT)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s userin requested %d, received %d",
+							s->m_charName.c_str(), userIn.requested, userIn.received);
+						WriteBotLog(message);
+					}
+					else if (userIn.kind == UserInOutcome::REFUSED || userIn.kind == UserInOutcome::FAILED)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s userin failed (%s)",
+							s->m_charName.c_str(), userIn.reason);
 						WriteBotLog(message);
 					}
 				}

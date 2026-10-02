@@ -411,3 +411,130 @@ TEST_CASE("Perception_ObsTable")
 	CHECK_EQ(table.Count(), 0);
 	CHECK_EQ(int(table.Overflow()), 0);
 }
+
+static BotCore::UnitObs MakeUnit(uint16_t sid)
+{
+	BotCore::UnitObs u;
+	memset(&u, 0, sizeof(u));
+	u.sid = sid;
+	return u;
+}
+
+TEST_CASE("Perception_PendingIds_Set")
+{
+	BotCore::ObsTable obs;
+	BotCore::PendingIds pending;
+
+	{
+		const uint16_t ids[4] = { 5, 7, 5, 9 };
+		pending.Set(ids, 4, obs);
+		CHECK_EQ(pending.Count(), 3);
+
+		uint16_t out[8];
+		CHECK_EQ(pending.Peek(obs, 0xFFFF, out, 8), 3);
+		CHECK_EQ(int(out[0]), 5);
+		CHECK_EQ(int(out[1]), 7);
+		CHECK_EQ(int(out[2]), 9);
+	}
+
+	obs.Upsert(MakeUnit(7));
+	{
+		const uint16_t ids[3] = { 5, 7, 9 };
+		pending.Set(ids, 3, obs);
+		CHECK_EQ(pending.Count(), 2);
+
+		uint16_t out[8];
+		CHECK_EQ(pending.Peek(obs, 0xFFFF, out, 8), 2);
+		CHECK_EQ(int(out[0]), 5);
+		CHECK_EQ(int(out[1]), 9);
+	}
+
+	{
+		uint16_t ids[200];
+		for (int i = 0; i < 200; i++)
+			ids[i] = (uint16_t)(1000 + i);
+		pending.Set(ids, 200, obs);
+		CHECK_EQ(pending.Count(), BotCore::kObsPendingMax);
+	}
+
+	pending.Set(nullptr, 0, obs);
+	CHECK_EQ(pending.Count(), 0);
+
+	const uint16_t one[1] = { 42 };
+	pending.Set(one, 1, obs);
+	CHECK_EQ(pending.Count(), 1);
+	pending.Clear();
+	CHECK_EQ(pending.Count(), 0);
+}
+
+TEST_CASE("Perception_PendingIds_PeekRemove")
+{
+	BotCore::ObsTable obs;
+	BotCore::PendingIds pending;
+
+	const uint16_t ids[5] = { 1, 2, 3, 4, 5 };
+	pending.Set(ids, 5, obs);
+	CHECK_EQ(pending.Count(), 5);
+	obs.Upsert(MakeUnit(2));
+
+	uint16_t out[8];
+	CHECK_EQ(pending.Peek(obs, 4, out, 10), 3);
+	CHECK_EQ(int(out[0]), 1);
+	CHECK_EQ(int(out[1]), 3);
+	CHECK_EQ(int(out[2]), 5);
+	CHECK_EQ(pending.Count(), 3);
+
+	CHECK_EQ(pending.Peek(obs, 4, out, 2), 2);
+	CHECK_EQ(int(out[0]), 1);
+	CHECK_EQ(int(out[1]), 3);
+	CHECK_EQ(pending.Count(), 3);
+
+	const uint16_t drop[1] = { 3 };
+	pending.Remove(drop, 1);
+	CHECK_EQ(pending.Count(), 2);
+	CHECK_EQ(pending.Peek(obs, 4, out, 8), 2);
+	CHECK_EQ(int(out[0]), 1);
+	CHECK_EQ(int(out[1]), 5);
+
+	const uint16_t unknown[1] = { 9999 };
+	pending.Remove(unknown, 1);
+	CHECK_EQ(pending.Count(), 2);
+
+	const uint16_t all[2] = { 1, 5 };
+	pending.Remove(all, 2);
+	CHECK_EQ(pending.Count(), 0);
+	CHECK_EQ(pending.Peek(obs, 4, out, 8), 0);
+}
+
+TEST_CASE("Perception_CheckUserIn")
+{
+	CHECK_EQ(int(BotCore::kUserInMaxIds), 32);
+	CHECK_EQ(int(BotCore::kUserInMinGapMs), 1000);
+	CHECK_EQ(int(BotCore::kObsPendingMax), 128);
+
+	BotCore::UserInCheck c;
+	c.count = 1;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_OK);
+
+	c.count = 0;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_REJECT_COUNT);
+
+	c.count = 33;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_REJECT_COUNT);
+
+	c.count = 32;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_OK);
+
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_REJECT_GAP);
+
+	c.sinceLastMs = 1000;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_OK);
+
+	c.count = 0;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_REJECT_COUNT);
+}

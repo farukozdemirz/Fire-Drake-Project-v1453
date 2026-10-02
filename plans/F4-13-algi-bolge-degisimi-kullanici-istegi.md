@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-13` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`, `OnPacket()` algı bloğu, `m_obsLock`) — `KAPANDI` (merge `dcd8f80`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -291,20 +291,62 @@ git diff --check gece/2026-10-02...bot/F4-13
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-13` — `<kısa-sha> [F4-13] …`
+- Branch / commit'ler: `bot/F4-13` — `989999e [F4-13] Perception dilim 2: bolge degisiminde WIZ_REQ_USERIN (TickUserIn, CLI-19)` (+ bu rapor/`Durum` commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
-  ```
-  …
-  ```
-- Test sonucu (`tools/run-tests.sh Release` / `Debug`): …
-- Kabul kriterleri öz-değerlendirme: K1 … K14 (K15 Claude).
-- Plandan sapmalar: …
-- Açık sorular: …
+  - `BotCore/Perception.h`: `PendingIds` (bekleyen kimlik listesi), `kObsPendingMax`/`kUserInMaxIds`/`kUserInMinGapMs`, `UserInCheck`/`UserInVerdict`/`CheckUserIn` (CLI-19) eklendi (dosya sonuna, `ObsTable`'dan sonra; yeni include yok).
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: dosya-yerel `MakeUnit` yardımcısı + üç `TEST_CASE` (`Perception_PendingIds_Set`, `Perception_PendingIds_PeekRemove`, `Perception_CheckUserIn`).
+  - `GameServer/Bot/BotSession.h`: `m_obsPending` (kilit altında), `m_userInHasLast`/`m_userInLast`/`m_userInRequests`/`m_userInUnits` (IOCP), `m_userInEcho` (atomik); `PeekUserInBatch`/`DropUserInBatch` bildirimleri; `m_obsUnresolved` yorumu güncellendi.
+  - `GameServer/Bot/BotSession.cpp`: başlatıcı listesi, `ResetForRespawn()`, `OnPacket()` `WIZ_REGIONCHANGE`/`WIZ_REQ_USERIN` dallarına ekleme, iki yardımcı fonksiyon.
+  - `GameServer/Bot/ActionExecutor.h`: `UserInOutcome` + `TickUserIn` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `TickUserIn` (dosya sonuna; guard CLI-19, tek `WIZ_REQ_USERIN`, sonuç `m_userInEcho` yankısından, CLI-11'e sayılmaz).
+  - `GameServer/Bot/BotManager.cpp`: `TickSessions()` canlı dalında `TickUserIn` çağrısı + günlük; `CommandSee` bekleyen sayaç ve açıklama satırı.
+- Derleme sonucu (`tools/build.sh Release` son satır): `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. Değişen beş dosyada uyarı yok; yalnızca eski `GameServerDlg.cpp` (C4834, 2× C4267) ve `UpgradeHandler.cpp` (2× C4789) uyarıları var. `Debug` de rc=0.
+- Test sonucu (`tools/run-tests.sh Release` / `Debug`): her ikisinde `55 tests, 0 failed`; üç yeni test adı çıktıda.
+- Kabul kriterleri öz-değerlendirme: K1 ✔ K2 ✔ K3 ✔ K4 ✔ K5 ✔ K6 ✔ K7 ✔ K8 ✔ K9 ✔ K10 ✔ K11 ✔ K12 ✔ K13 ✔ K14 ✔ (K15 Claude).
+- Plandan sapmalar: yok. `PendingIds::Peek` plandaki "bilinen ve kendini düşür" cümlesine ve `Perception_PendingIds_PeekRemove` beklentisine göre bilinen/kendini listeden kalıcı düşürür, kopyalanan uygun kimlikleri bırakır (`cap` uygulanırken silmez); `Count()` bu budanmış hâli verir.
+- Açık sorular: yok.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz doğrulanmadı.)
+### Tur 1 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-13` @ `a667734` (kod commit'i `989999e`; taban `6960129`). Gece modu (`AUTO_LOOP=1`): birleştirme/push döngü betiğinde.
+- Kriter sonuçları (15/15 ✔):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0; beş dosya `touch` ile yeniden derlendi (`ActionExecutor.cpp`, `PerceptionTests.cpp`, `BotManager.cpp`, `BotSession.cpp` derleme satırları log'da), log'da `warning`/`error` 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0; `Perception`/`BotSession`/`ActionExecutor`/`BotManager` için uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `55 tests, 0 failed`; `Perception_PendingIds_Set`, `Perception_PendingIds_PeekRemove`, `Perception_CheckUserIn` çıktıda `[ OK ]`; test gövdeleri plandaki beklentilerle birebir (tekrar atlama, 200 → 128, `Peek` kaldırmaz, `Remove` sırayı korur, 999/1000 ms sınırı, sıra count→gap) |
+| K4 | ✔ | yasak dizge grep'i boş; `#include` yalnızca `Perception.h:8-10`; `std::min/max/new/malloc/vector/string` grep'i boş |
+| K5 | ✔ | iki sözleşme grep'i boş (`BotSession.cpp` ve `TickUserIn` gövdesi); `TickUserIn` botun `CUser`'ından yalnızca `isInGame()`, `isDead()`, `GetSocketID()` okur (`ActionExecutor.cpp:2670-2676`) |
+| K6 | ✔ | `m_obsPending` yalnızca `BotSession.cpp:210` (REGIONCHANGE dalı), `:291` (`ResetForRespawn`), `:311`/`:317` (iki yardımcı) ve `BotManager.cpp:2268` (`Count()`); `ActionExecutor.cpp`'de yok; `WIZ_REQ_USERIN` paketi yalnızca `ActionExecutor.cpp:2716` (`TickUserIn`), `BotSession.cpp` yalnızca algı bloğu (`:174`, `:195`) |
+| K7 | ✔ | `grep m_obsLock ActionExecutor.cpp` boş; `HandlePacket()` (`ActionExecutor.cpp:2723`) kilitsiz; `BotSession.cpp`'de `lock_guard` yalnızca `OnPacket()` dalları, `ResetForRespawn()` ve iki yardımcıda; `CommandSee` kilit bloğu üç kopyalama satırı (`copy`, `unresolved`, `pending`) |
+| K8 | ✔ | `-` satırları: `BotManager.cpp` tek açıklama satırı; `BotSession.cpp` yalnızca başlatıcı satırı; `BotSession.h` iki yorum satırı (`m_obsLock`, `m_obsUnresolved`, planın istediği güncelleme); `ActionExecutor.*` ve `Perception.h`/`PerceptionTests.cpp` farkında silinen satır yok |
+| K9 | ✔ | `TickUserIn` gövdesinde `m_actionWindow` yok; `Perception_CheckUserIn`'de `actionsInWindow` yok |
+| K10 | ✔ | `Startup()/Tick()/BuildStatusLines()/BeginDespawn()/ini` farkta yok; `GameServer/` içinde yalnızca `Bot/BotSession.*`, `ActionExecutor.*`, `BotManager.cpp`; yeni ini anahtarı yok |
+| K11 | ✔ | `--stat` yalnızca §4'teki 7 dosya + plan; dört `vcxproj*` farkı 0 satır |
+| K12 | ✔ | yedi kod dosyası ASCII + CRLF (`file`); `git diff --check` boş |
+| K13 | ✔ | yeni `printf/Sleep/CreateThread/rand(` yok (yalnızca `snprintf`); `mutex` satırları yalnızca `#include`, `m_obsLock` bildirimi, `lock_guard`'lar (iki yeni `lock_guard` planlı yardımcılarda); `Telemetry.*`, `ScenarioRunner.*`, `BotManager.h` farkta yok |
+| K14 | ✔ | `CheckMoveStep` 2, diğer 12 guard 1'er; önceki 52 test geçiyor (toplam 55) |
+| K15 | ✔ | çalışma zamanı, aşağıda (senaryo 2 ve 4 kısmen, bkz. notlar) |
+
+Çalışma zamanı (K15; `Release`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş, zone 71; ini hiç değiştirilmedi, md5 aynı `265a8e1c...`; kapanış `nazik`; eski `Logs/bots` `bots_old_f413`'e taşındı):
+
+1. **Bölge değişimi:** `BotWP_K` (1380, 893) ve `BotMF_K` (1380, 1090) spawn'da birbirini görmüyor (`sees 0`, `userin requests 0`); `move BotWP_K 1380 1060` → günlükte `BotWP_K userin requested 1, received 1`; `see BotWP_K`: `sees 1 unit(s)`, `sid=2985 BotMF_K ally nation=1 class=110 lvl=80 pos=(1380.0, 1090.0) dist=30.0 alive`; açıklama satırı `userin requests 1, units received 1, pending 0`. Telemetri: `ACTION_SUBMIT`/`ACTION_RESULT` `"type":"UserInReq"`, `"count":1`, `"received":1`, `"ok":true`, `"reason":"received"`, `latency_us` 2. ✔
+2. **Hız sınırı:** sınırda (x = 1439 / 1441, bölge 29|30) üç gidiş-dönüşle üç ek istek; `ACTION_SUBMIT` zaman damgaları 175209250 → 175214749 → 175220230 ms (aralık ≈ 5,5 sn ≥ 1000); `FAIRNESS_REJECT` sayısı 0. **`gap` beklemesi dalı çalışma zamanında tetiklenemedi:** hareket paketi aralığı 1,5 sn (CLI-05) ve komut dosyası 1 sn aralıkla okunduğu için art arda iki bölge değişimi < 1 sn'ye inmiyor; dal birim testi (`Perception_CheckUserIn`) ve kod okumasıyla (`ActionExecutor.cpp:2689-2691`: olay yok, kimlik düşürülmez) kabul. ✔ (kısmi)
+3. **Spawn'da gereksiz istek yok:** `BotWP_K`, 16 sn sonra `BotMF_K` → ikisinde de `userin requests 0`, jsonl'de `UserInReq` yok. ✔
+4. **Ölü/çıkmış bot:** `BotWG_E` hareket sırasında canavar/oyun tarafından öldü (`move stopped (dead)`, `hp=0/5650`); ölüyken 12 sn arayla iki `see`: `userin requests 2` sabit. `attack` ile `BotMF_K` öldürme denenmedi (ölü botta yeni bölge değişimi olmadığından `isDead()` kapısı yalnızca pasif sınandı; kapı `ActionExecutor.cpp:2676` kod okumasıyla). `despawn all` 3/3 temiz (`names cleared yes`, `pool free 16/16`), sunucu çökmedi. ✔ (kısmi)
+5. **Gerileme:** `regene` (`respawned at (630.0, 920.0)`), `sit`/`stand`, `target`, `pinvite` (`created`), `pchat`, `move`, `pot` kullanım satırı, `see`; `PERF_SAMPLE` `tick_p95_us` en çok 273 (≤ 500), `skipped_ticks` 0; `FAIRNESS_REJECT` 0. `ENABLED=0` bu turda **yeniden denenmedi** (F4-12'de doğrulandı; bu diff `Startup/Tick` ve ini okumaya dokunmuyor, K10). ✔
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `BotCore/Perception.h` `PendingIds::Peek`: adı salt-okuma çağrıştırır ama bilinen ve kendi kimlikleri listeden **kalıcı olarak budar** (`Count()` budanmış hâli verir). Yorum ve test bunu belirtiyor, plan ile uyumlu; yalnızca adlandırma notu.
+  2. `BotSession.cpp:200`: `m_userInEcho` her `WIZ_REQ_USERIN` cevabında (spawn'daki `UserInOutForMe` dahil) yazılır; `TickUserIn` isteğin hemen öncesinde `0`'a sıfırladığı ve cevap eşzamanlı geldiği için yanlış eşleşme yok. Birden çok kaynaktan cevap gelirse yankı ayrımı gerekir (şimdilik gerekmiyor).
+  3. Çalışma zamanı kapsamı: `gap` dalı ve `isDead()` kapısı gerçek trafikle zorlanamadı (yukarıda, 2 ve 4); ileride betikli test dizilerinde (aynı tick'te iki bölge değişimi üreten senaryo) sınanabilir.
+  4. Davranış notu: `Peek` sonrası en çok 32 kimlik gider, kalanlar listede kalıp ≥ 1 sn sonra istenir (tablo 64 birimle sınırlı; bu planın tasarımı).
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
+
