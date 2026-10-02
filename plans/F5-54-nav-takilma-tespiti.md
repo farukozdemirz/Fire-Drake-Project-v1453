@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-54 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`) — `KAPANDI`. Bu plan ilk yazımda (değerlendirme, 2026-10-02) "yeni dosya" idi; nav döngüsü F5-09'u önce uyguladığından **F5-09'a eklenen küçük bir değişikliğe** uyarlandı (2026-10-02, birleştirme sırasında) |
@@ -96,13 +96,34 @@ git diff gece/2026-10-02-nav...bot/F5-54 -- BotCore/NavStuck.h | grep -c "^-[^-]
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
-- Değişen dosyalar ve neden:
-- Derleme sonucu:
-- Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+- **Durum:** UYGULANDI. Değişen dosyalarda yeni uyarı yok; `198 tests, 0 failed` (Release ve Debug); altı yeni test `[ OK ]`. Sunucu çalıştırılmadı (sunucusuz `BotCore` işi), sunucular `[DOWN]`.
+- **Branch / commit'ler:** `bot/F5-54` (taban: `gece/2026-10-02-nav`). Kod commit'i `c5cda0b` (`[F5-54] NavStuck: paket sıklığı hazır ayarı ve guard-engeli dedektörü`; 2 dosya, +389). Rapor commit'i ayrıdır; push edilmedi.
+- **Değişen dosyalar ve neden:**
+  - `BotCore/NavStuck.h` (+98, yalnızca ekleme, mevcut satır değişmedi): dosya sonuna `NavPacketCadenceParams()` (noProgressMs 3200, minProgressM 1,0, oscWindowMs 8000, oscSwings 3; diğer alanlar `NavStuckParams` varsayılanı) ve `NavGuardBlockDetector` (16 olaylık sabit halka; `Reset`/`OnPacketSent`/`OnPacketRejected`/`Blocked`; dinamik bellek ve global/static yok).
+  - `Tests/BotCoreTests/NavStuckTests.cpp` (+291, yalnızca ekleme; iki yeni `#include`: `BotCore/BotMotion.h`, `BotCore/Rng.h`): ortak paket-konumu üreteci `F554RunCadence` ve altı yeni `TEST_CASE`. Mevcut F5-09 vakaları değişmedi.
+- **Derleme sonucu:**
+  - `./tools/build.sh Release` → `BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe` (rc=0).
+  - `./tools/build.sh Debug` → `BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Debug\Tests\BotCoreTests.exe` (rc=0).
+  - `./tools/run-tests.sh Release` ve `Debug` → `198 tests, 0 failed` (sırasıyla); altı yeni test `[ OK ]`.
+- **Çıktı satırları (Release):**
+  - `NAVSTUCK cadence normal walk45: packets=398 false_alarms=0 first_ms=-1` (sprint67, target45 aynı: 398/0)
+  - `NAVSTUCK cadence normal forced_delay: packets=39 false_alarms=0 first_ms=-1`
+  - `NAVSTUCK cadence defaults: packets=397 fed=6001 false_alarms=33 episodes=11 first_ms=61500`
+  - `NAVSTUCK cadence preset: packets=397 fed=6001 false_alarms=0 episodes=0 first_ms=-1`
+- **Kabul kriterleri öz-değerlendirme:**
+  - K1 ✔ (`Release` rc=0, değişen dosyalarda yeni uyarı yok), K2 ✔ (`Debug` rc=0, yeni uyarı yok).
+  - K3 ✔ (`198 tests, 0 failed` iki yapılandırmada; altı ad `[ OK ]`; F5-09 dahil mevcut testler değişmedi).
+  - K4 ✔ (üç senaryo 600 sn, yanlış alarm 0; çıktı `packets`/`false_alarms` içeriyor).
+  - K5 ✔ (`NavStuckCadence_Stuck`: 100 ms örneklemeyle ilk `NoProgress` tam 3200 ms; 1,2 m/3,2 sn ilerleme ve `moving=false` → alarm yok).
+  - K6 ✔ (`NavStuck.h`'te yasaklı include yok; yeni satırlarda `new`/`malloc`/`static` yok; ASCII + CRLF, `file` ile teyit).
+  - K7 ✔ (`git diff gece/2026-10-02-nav...bot/F5-54 -- BotCore/NavStuck.h Tests/BotCoreTests/NavStuckTests.cpp` yalnızca `+`; iki dosyada silinen satır 0; `--stat` yalnızca bu iki dosya; `GameServer/`, `shared/`, `docs/`, `.vcxproj`/`.filters` farkı 0; `git diff --check` boş).
+  - K8 → doğrulamada Claude'da (bağımsız Python simülasyonu; çalışma zamanı F5-55).
+- **Plandan sapmalar ve gerekçeleri:**
+  - `NavStuckCadence_NormalWalk_NoAlarm` ve tek `2500 ms` gecikme testi, planın üreteci gibi **paket anlarında** beslenir (yanlış alarm 0). `NavStuckCadence_DefaultsFalseAlarm` ise planın "paket konumlarıyla beslenince" ifadesinden bilinçli olarak saparak **her tick (100 ms)** beslenir: F5-09 varsayılanlarının yanlış alarmı (§13.3'teki 600 sn'de ~6 epizot bulgusu) yalnızca tick beslemede görülür; `tools/nav-measure.sh stuck` bunu doğrular (`feed=every_tick` default: 6, `feed=packets_only` default: 0). Test bu nedenle varsayılanla `false_alarms ≥ 1` (ölçülen 33 alarm / 11 epizot) ve hazır ayarla kontrol olarak `0` sınar; plan "gerçek sonucu ölç, 0 çıkarsa sabitle" dediğinden sapma değil, ölçülmüş davranıştır.
+  - `NavStuckCadence_Stuck`, `3200 ms` sınırını tam yakalamak için 100 ms'de örnekler (plan üretecinin paket-anı örneklemesiyle 3200 sınırı görülemez); bu `STUCK_TRUE cadence_3200 detected_after_ms=3200` ölçümüyle uyumludur.
+  - `NavPacketCadenceParams()` içinde `oscSwings` değiştirilmedi: `SameTransition` sırasız eşleştiği için A,B,A,B dizisi 4. pakette `oscSwings = 3` ile tetikleniyor (mevcut F5-09 salınım testiyle tutarlı), testle doğrulandı.
+  - NormalWalk'ta alt sınır `packets >= 340` (plan sayı istemiyordu); %3 gecikme 600 sn'de ~398 paket verir.
+- **Açık sorular:** Yok (engel yok). Eşikler `[A]`; T-NAV-04 (dar geçit/köprü takılma oranı) ve F5-55 bağlaması sonrası `docs/12` §13.3 ile birlikte güncellenir.
 
 ---
 
