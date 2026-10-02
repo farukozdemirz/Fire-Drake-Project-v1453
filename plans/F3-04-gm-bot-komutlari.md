@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-06 (`KAPANDI`: komut çekirdeği, `EnqueueCommand`), F3-02 (`KAPANDI`: `match`), F3-03 (`KAPANDI`: `scenario`) |
@@ -218,13 +218,37 @@ file GameServer/Bot/* GameServer/ChatHandler.cpp GameServer/User.h
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
-- Değişen dosyalar ve neden:
-- Derleme sonucu (`tools/build.sh Release`, son satırlar):
-- Kabul kriterleri öz-değerlendirme (kanıt §7 çıktılarında):
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F3-04` (taban: `gece/2026-10-02` @ `13526d9`). Kod commit'i `e7e33e6` (`[F3-04] Oyun ici GM +bot komutu, anlik list yanit (BuildStatusLines/GetStatusSnapshot)`, 4 dosya). Plan (Durum + bu rapor) ayrı commit edilir.
+- **Değişen dosyalar ve nedenleri:**
+  - `GameServer/Bot/BotManager.h`: `GetStatusSnapshot` (public, any thread) + `BuildStatusLines`/`RefreshStatusSnapshot` (private, IOCP) bildirimleri ve `m_statusLock`/`m_statusLines`/`m_lastStatusRefresh` üyeleri (plan §5.2).
+  - `GameServer/Bot/BotManager.cpp`: `STATUS_REFRESH_MS=1000`; `CommandList` gövdesi `BuildStatusLines`'ı kullanacak şekilde yeniden yazıldı (log metni birebir korundu); `BuildStatusLines`/`RefreshStatusSnapshot`/`GetStatusSnapshot` eklendi; `Tick()` içine `TickSessions()` sonrasına `RefreshStatusSnapshot(...)` eklendi (plan §5.3).
+  - `GameServer/ChatHandler.cpp`: `CUser` komut tablosuna `bot` satırı ve `COMMAND_HANDLER(CUser::HandleBotCommand)` gövdesi eklendi (plan §5.6).
+  - `GameServer/User.h`: `COMMAND_HANDLER(HandleBotCommand);` bildirimi (plan §5.5).
+- **Derleme sonucu (`tools/build.sh Release`, son satırlar):**
+  ```
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ```
+  `rc=0`. Tam derlemede yalnızca eski dosya uyarıları (`MagicProcess.cpp`, `Map.cpp`, `User.cpp`, `UpgradeHandler.cpp`); `BotManager.cpp`/`ChatHandler.cpp` `touch` edilip yeniden derlendi → **0 uyarı**.
+  Debug: `rc=0`; 6 uyarı eski dosyalarda (`DBAgent.cpp`, `EventHandler.cpp`, `GameServerDlg.cpp`, `LoginHandler.cpp`, `MagicInstance.cpp`), `BotManager.cpp`/`ChatHandler.cpp` uyarısız.
+- **Kabul kriterleri öz-değerlendirme:**
+  - K1 ✔ Release rc=0, yeni uyarı yok (kanıt yukarıda).
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F3-04` yalnızca 4 dosya (`BotManager.cpp` 47, `BotManager.h` 11, `ChatHandler.cpp` 54, `User.h` 1); `User.h` +1/−0; `ChatHandler.cpp` +54/−0.
+  - K4 ✔ `BotManager::Instance()` çağrıları: `1154`/`1174` mevcut konsol işleyicisi; yeni işleyicide yalnızca `isEnabled` (`1189`), `GetStatusSnapshot` (`1206`), `EnqueueCommand` (`1227`). `m_statusLines` yazımı yalnızca `771` (`m_statusLock` altında `772`), okuması yalnızca `780` (`m_statusLock` altında `781`); `BuildStatusLines` kilit dışında çağrılır (`769`, `788`).
+  - K5 ✔ `BuildStatusLines` başlık `"%u session(s), pool free %u/%u"`, satır `"  %s phase=%s slot=%s despawns=%u"`; `CommandList` öneki `"BotManager: cmd list: "` (`:791`). Diff'te eski gövde `-`, yeni gövde yan yana; log metni bayt bayt aynı.
+  - K6 ✔ `Tick()` farkı yalnızca `TickSessions();` sonrası tek satır `RefreshStatusSnapshot(std::chrono::steady_clock::now());`; 1 sn sınırı (`STATUS_REFRESH_MS`); `ENABLED=0`'da `Tick` çalışmaz, `GetStatusSnapshot` `false`.
+  - K7 ✔ `!isGM()` → `false`; `!isEnabled()` → tek yanıt; `list` (tek argüman, `_stricmp`) kuyruğa girmez, `GetStatusSnapshot`; diğerleri `EnqueueCommand`'a satır olarak gider (§5.6 kanıt sed çıktısı).
+  - K8 ✔ Diğer fonksiyon gövdeleri değişmedi; yalnızca `CommandList` yeniden yazıldı, 3 yeni fonksiyon, `Tick`'e 1 satır, tablo satırı, `User.h` bildirimi.
+  - K9 ✔ Yeni kodda `printf`/yeni `WriteBotLog` yok; GM yanıtı `SendHelpDescription`.
+  - K10 ✔ `file`: `BotManager.cpp`/`.h` ve `User.h` "ASCII ... CRLF"; `ChatHandler.cpp` "UTF-8 (with BOM) ... CRLF".
+  - K11 ✔ `m_statusLines` yalnızca `RefreshStatusSnapshot`'ta (IOCP, `Tick` üzerinden) yazılır; `Tick` `ENABLED=1` değilse çalışmaz; `+bot` önce `isEnabled()` kontrol eder.
+  - K12 ✔ `git status --short` yalnızca plan dosyasını gösterir (o da commit'lenecek); sunucu çalıştırılmadı, `GameServer.ini`/`BotCommands.txt`/DB değişmedi.
+- **Plandan sapmalar:** Yok. Plan §2'deki satır numaraları kodla uyuştu; tüm eklemeler plandaki metinle aynı.
+- **Açık sorular:** Yok. (Çalışma zamanı doğrulaması ve `+bot` oyun içi yolu T-ARCH-05 Claude/proje sahibinde; DeepSeek çalışma zamanı testi yapmadı.)
 
 ---
 
