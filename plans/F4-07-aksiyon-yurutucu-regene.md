@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-07` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-06 (hedef HP dilimi, `OnPacket()` ekleme kalıbı, `m_actionWindow`) — `KAPANDI`; F4-05 (`SetStance` iskeleti) — `KAPANDI`; F4-02 (ölen botu üreten `attack` serisi) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -266,13 +266,36 @@ git diff --check gece/2026-10-02...bot/F4-07
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
-- Değişen dosyalar ve nedenleri:
-- Derleme sonucu (`tools/build.sh Release` son satırlar):
+- Durum: UYGULANDI (derleme ve birim testleri yeşil; çalışma zamanı doğrulaması Claude'da, K14).
+- Branch / commit'ler: `bot/F4-07` (taban: `gece/2026-10-02`); `d5714a8` `[F4-07] Regene yeniden dogus dilimi: WIZ_REGENE, CLI-14 guard, /bot regene`. Durum satırı + bu rapor sonraki commit'te.
+- Değişen dosyalar ve nedenleri (tam olarak §4'teki 8 dosya + plan):
+  - `BotCore/BotCombat.h` — `kRegeneMinDeadMs`, `RegeneCheck`, `RegeneVerdict`, `CheckRegene` (saf guard; yeni `#include` yok, `std::min/max` yok).
+  - `Tests/BotCoreTests/CombatTests.cpp` — `Combat_RegeneCheck_Order`, `Combat_RegeneCheck_Boundaries` (2 yeni test, toplam 33).
+  - `GameServer/Bot/BotSession.h` — `m_deadSeen`/`m_deadSince` (IOCP) ve `m_regeneEcho` (atomik).
+  - `GameServer/Bot/BotSession.cpp` — başlatıcı listesi, `ResetForRespawn()` ve `OnPacket()` sonuna `WIZ_REGENE` okuma bloğu (yalnızca ekleme).
+  - `GameServer/Bot/ActionExecutor.h` — `RegeneOutcome` + `RequestRegene` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp` — dosya sonuna `RejectRegene` + `RequestRegene` (gerçek `WIZ_REGENE` tip 1, guard `HandlePacket`'tan önce).
+  - `GameServer/Bot/BotManager.h` — `CommandRegene` bildirimi.
+  - `GameServer/Bot/BotManager.cpp` — fiil dağıtımı, `unknown command` listesi, `CommandRegene`, `TickSessions()` ölü bot dalına iki ekleme satırı.
+- Derleme sonucu:
+  - `./tools/build.sh Release` RC=0; son satır `BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe`. Değişen 4 `.cpp` (ActionExecutor, CombatTests, BotManager, BotSession) için uyarı **0** (kalan uyarılar eski `GameServerDlg.cpp:816/1143/1802` ve `UpgradeHandler.cpp:634/862`).
+  - `./tools/build.sh Debug` RC=0.
+  - `./tools/run-tests.sh Release` RC=0, `33 tests, 0 failed` (iki yeni test dahil); `Debug` aynı.
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ (Release RC=0, ilgili dosyalarda uyarı yok). K2 ✔. K3 ✔ (33 test, iki ad görünür, iki konfigürasyon da 0 failed).
+  - K4 ✔ (`windows.h|stdafx|GameServer|shared/` eşleşmesi yok; `#include` yalnızca `<algorithm>`+`<cstdint>`; `std::min/max` yok).
+  - K5 ✔ (`WIZ_REGENE` yalnızca `ActionExecutor.cpp:1662` paket ve `BotSession.cpp:89` okuma; `(->|\.)Regene\(|SetPosition|HpChange|m_bResHpType=` grep'i boş).
+  - K6 ✔ (kod okuması: `not_in_game`/`not_dead`/`no_np`/`CheckRegene` erken dönüşleri, `HandlePacket` çağrısı `ActionExecutor.cpp:1668`'de tek; `GetLoyalty()` kontrolü ondan önce).
+  - K7 ✔ (`m_sHp|m_iMaxHp|GetHealth|GetMaxHealth|GetX()|GetZ()` eşleşmeleri yalnızca 85–1482 satırlarında, `RequestRegene` (1596–1713) aralığında **yok**; `x`/`z` `m_regeneEcho`'dan; `isDead()` yalnızca ön koşul ve `alive`).
+  - K8 ✔ (`BotSession.cpp` `-` satırları yalnızca başlatıcı listesinin bilinçli iki satırı; `OnPacket()` mevcut bloklar değişmedi, `WIZ_DEAD` bloğu yok).
+  - K9 ✔ (`BotManager.cpp` `-` satırı yalnızca `unknown command` mesajı; `Startup`/`Tick`/`BuildStatusLines`/`BeginDespawn`/ini değişmedi; `TickSessions()` farkı iki ekleme satırı).
+  - K10 ✔ (`git diff --stat` yalnızca 8 dosya + plan; `proj-GameServer.vcxproj*`, `BotCore.vcxproj`, `BotCoreTests.vcxproj` farkı boş).
+  - K11 ✔ (tüm dosyalar `ASCII text, with CRLF`; BOM eklenmedi; `git diff --check` boş).
+  - K12 ✔ (`printf|Sleep|lock_guard|mutex|CreateThread|rand(` eşleşmesi yok).
+  - K13 ✔ (`CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckPotion`/`CheckStance`/`CheckTargetHp`/`CheckRegene` ≥ 1; 31 eski test hâlâ geçiyor; `EmitFairnessReject` çağrıları `"Move"/"Attack"/"Cast"/"Potion"/"State"/"TargetHp"` + yeni `"Regene"`).
+  - K14 — DeepSeek değerlendirmez (Claude'un `/plan-dogrula` çalışma zamanı işi; sunucu **çalıştırılmadı**).
+- Plandan sapmalar ve gerekçeleri: Yok. `CheckRegene` bildirim yerine `CheckTargetHp` kalıbındaki gibi tek yerde `inline` gövde olarak yazıldı (plan §5.2 "Gövde ... aynı yerde `inline`" talimatı). Diğer her şey plan metniyle birebir.
+- Açık sorular: Yok. Çalışma zamanı varsayımları `[A]`/`[V]` aynen plan §8'deki gibidir (özellikle sunucunun `WIZ_REGENE` cevabını botun kendi alıcısına ilettiği; iletilmezse Claude `no_result` olarak raporlayacak).
 
 ---
 
