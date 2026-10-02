@@ -2,9 +2,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
+#include <vector>
 
 class CUser;
 class Thread;
+class BotSession;
 
 class BotManager
 {
@@ -35,11 +38,20 @@ public:
 private:
 	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
-		m_tickCount(0), m_tickThreadId(0) {}
+		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
 	void Tick(); // IOCP worker thread only
+
+	// Spawn list from [BOT] SPAWN_ON_START (parsed in Startup(); sessions are never freed in F2-03).
+	void ParseSpawnList(const std::string & list);
+	void TickSessions();                          // IOCP thread only, called from Tick()
+	void StartSession(BotSession * s);            // IOCP thread only
+	void FailSession(BotSession * s, const char * reason); // IOCP thread only
+
+	std::vector<BotSession *> m_sessions;
+	bool m_spawnSummaryDone;                      // IOCP thread only
 
 	bool m_enabled;
 	uint16 m_poolSize;

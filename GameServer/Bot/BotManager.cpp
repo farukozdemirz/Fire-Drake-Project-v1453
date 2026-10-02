@@ -1,10 +1,20 @@
 #include "stdafx.h"
 #include "BotManager.h"
 #include "IBotSink.h"
+#include "BotSession.h"
 #include "../../shared/Ini.h"
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
+
+// Delay after the first tick, so the AI server has time to connect.
+static const uint32 SPAWN_START_DELAY_MS = 5000;
+// SelectCharacter() sends its reply before SetUserAbility(false)/SetRegion finish running
+// on the DB thread; a real client's loading time hides that, so let the bot settle.
+static const uint32 SELECT_SETTLE_MS = 1000;
+static const uint32 LOADED_DELAY_MS = 200;
+static const uint32 PHASE_TIMEOUT_MS = 15000;
 
 BotManager & BotManager::Instance()
 {
@@ -29,6 +39,16 @@ static void WriteBotLog(const char * line)
 	fclose(fp);
 }
 
+// Only these db/002 bot characters may spawn; the ini list never introduces new accounts.
+struct BotAccountEntry { const char * charName; const char * accountName; };
+static const BotAccountEntry BOT_TABLE[] =
+{
+	{ "BotWP_K", "BotAccWPK" }, { "BotWG_K", "BotAccWGK" }, { "BotPHD_K", "BotAccPHDK" },
+	{ "BotPHB_K", "BotAccPHBK" }, { "BotMF_K", "BotAccMFK" }, { "BotMI_K", "BotAccMIK" },
+	{ "BotWP_E", "BotAccWPE" }, { "BotWG_E", "BotAccWGE" }, { "BotPHD_E", "BotAccPHDE" },
+	{ "BotPHB_E", "BotAccPHBE" }, { "BotMF_E", "BotAccMFE" }, { "BotMI_E", "BotAccMIE" }
+};
+
 bool BotManager::Startup()
 {
 	CIni ini(CONF_GAME_SERVER);
@@ -50,6 +70,9 @@ bool BotManager::Startup()
 	else if (tickMs > 1000)
 		tickMs = 1000;
 	m_tickMs = (uint32)tickMs;
+
+	std::string spawnList;
+	ini.GetString("BOT", "SPAWN_ON_START", "", spawnList);
 
 	auto & mgr = g_pMain->m_socketMgr;
 	std::lock_guard<std::recursive_mutex> lock(mgr.GetLock());
@@ -161,6 +184,9 @@ bool BotManager::Startup()
 	printf("%s\n", message);
 	WriteBotLog(message);
 
+	if (ok)
+		ParseSpawnList(spawnList);
+
 	return ok;
 }
 
@@ -253,4 +279,256 @@ void BotManager::Tick()
 			elapsed, elapsed / 100.0, (unsigned)m_skippedTicks);
 		WriteBotLog(message);
 	}
+
+	TickSessions();
+}
+
+void BotManager::ParseSpawnList(const std::string & list)
+{
+	if (list.empty())
+		return;
+
+	size_t pos = 0;
+	while (pos <= list.size())
+	{
+		size_t comma = list.find(',', pos);
+		std::string name = list.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+
+		size_t first = name.find_first_not_of(" \t\r\n");
+		if (first == std::string::npos)
+		{
+			if (comma == std::string::npos)
+				break;
+			pos = comma + 1;
+			continue;
+		}
+		size_t last = name.find_last_not_of(" \t\r\n");
+		name = name.substr(first, last - first + 1);
+
+		const BotAccountEntry * entry = nullptr;
+		for (size_t i = 0; i < sizeof(BOT_TABLE) / sizeof(BOT_TABLE[0]); i++)
+		{
+			if (_stricmp(name.c_str(), BOT_TABLE[i].charName) == 0)
+			{
+				entry = &BOT_TABLE[i];
+				break;
+			}
+		}
+
+		char message[192];
+		if (entry == nullptr)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: SPAWN_ON_START: unknown bot name '%s' ignored", name.c_str());
+			WriteBotLog(message);
+		}
+		else
+		{
+			bool duplicate = false;
+			for (size_t i = 0; i < m_sessions.size(); i++)
+			{
+				if (_stricmp(m_sessions[i]->m_charName.c_str(), entry->charName) == 0)
+				{
+					duplicate = true;
+					break;
+				}
+			}
+
+			if (!duplicate)
+			{
+				if (m_sessions.size() >= m_poolSize)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: SPAWN_ON_START: '%s' ignored (pool size %u)",
+						entry->charName, (unsigned)m_poolSize);
+					WriteBotLog(message);
+				}
+				else
+				{
+					m_sessions.push_back(new BotSession(entry->charName, entry->accountName));
+				}
+			}
+		}
+
+		if (comma == std::string::npos)
+			break;
+		pos = comma + 1;
+	}
+
+	if (!m_sessions.empty())
+	{
+		std::string names;
+		for (size_t i = 0; i < m_sessions.size(); i++)
+		{
+			if (i != 0)
+				names += ",";
+			names += m_sessions[i]->m_charName;
+		}
+
+		char message[320];
+		snprintf(message, sizeof(message), "BotManager: spawn list: %u bot(s) queued (%s)",
+			(unsigned)m_sessions.size(), names.c_str());
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::TickSessions()
+{
+	if (m_sessions.empty() || m_spawnSummaryDone)
+		return;
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - m_firstTickTime < std::chrono::milliseconds(SPAWN_START_DELAY_MS))
+		return;
+
+	bool startedThisTick = false;
+	uint32 okCount = 0, failCount = 0;
+
+	for (size_t i = 0; i < m_sessions.size(); i++)
+	{
+		BotSession * s = m_sessions[i];
+
+		switch (s->m_phase)
+		{
+		case BotSession::PHASE_QUEUED:
+			// One new spawn per tick, so the DB thread is never flooded.
+			if (!startedThisTick)
+			{
+				StartSession(s);
+				startedThisTick = true;
+			}
+			break;
+
+		case BotSession::PHASE_WAIT_SELECT:
+			{
+				int selectResult = s->m_selectResult.load();
+				if (selectResult == BotSession::SELECT_FAILED)
+				{
+					FailSession(s, "select rejected");
+				}
+				else if (selectResult == BotSession::SELECT_OK)
+				{
+					if (!s->m_selectSeen)
+					{
+						s->m_selectSeen = true;
+						s->m_selectSeenAt = now;
+					}
+
+					if (now - s->m_selectSeenAt >= std::chrono::milliseconds(SELECT_SETTLE_MS))
+					{
+						Packet pkt(WIZ_GAMESTART, uint8(1));
+						s->m_pUser->HandlePacket(pkt);
+						s->m_phase = BotSession::PHASE_WAIT_LOADED;
+						s->m_phaseStart = now;
+					}
+				}
+				else if (now - s->m_phaseStart > std::chrono::milliseconds(PHASE_TIMEOUT_MS))
+				{
+					FailSession(s, "select timeout");
+				}
+			}
+			break;
+
+		case BotSession::PHASE_WAIT_LOADED:
+			if (now - s->m_phaseStart >= std::chrono::milliseconds(LOADED_DELAY_MS))
+			{
+				Packet pkt(WIZ_GAMESTART, uint8(2));
+				s->m_pUser->HandlePacket(pkt);
+
+				if (s->m_pUser->isInGame())
+				{
+					s->m_phase = BotSession::PHASE_IN_GAME;
+
+					char message[256];
+					snprintf(message, sizeof(message),
+						"BotManager: bot %s in game (slot %u, zone %u, pos %.1f,%.1f, hp %d/%d, packets %u, myinfo %u)",
+						s->m_charName.c_str(), (unsigned)s->m_pUser->GetSocketID(),
+						(unsigned)s->m_pUser->GetZoneID(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
+						s->m_pUser->GetHealth(), s->m_pUser->GetMaxHealth(),
+						(unsigned)s->m_packetTotal.load(), (unsigned)s->m_opcodeCount[WIZ_MYINFO].load());
+					WriteBotLog(message);
+				}
+				else
+				{
+					FailSession(s, "game start failed");
+				}
+			}
+			break;
+
+		default:
+			break;
+		}
+
+		if (s->m_phase == BotSession::PHASE_IN_GAME)
+			okCount++;
+		else if (s->m_phase == BotSession::PHASE_FAILED)
+			failCount++;
+	}
+
+	if (okCount + failCount == m_sessions.size())
+	{
+		m_spawnSummaryDone = true;
+
+		char message[200];
+		snprintf(message, sizeof(message),
+			"BotManager: spawn complete: %u/%u in game, %u failed",
+			(unsigned)okCount, (unsigned)m_sessions.size(), (unsigned)failCount);
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::StartSession(BotSession * s)
+{
+	if (g_pMain->GetUserPtr(s->m_charName, TYPE_CHARACTER) != nullptr)
+	{
+		FailSession(s, "character already online");
+		return;
+	}
+
+	if (g_pMain->GetUserPtr(s->m_accountName, TYPE_ACCOUNT) != nullptr)
+	{
+		FailSession(s, "account already online");
+		return;
+	}
+
+	CUser * pUser = AcquireSlot();
+	if (pUser == nullptr)
+	{
+		FailSession(s, "no free slot");
+		return;
+	}
+
+	// Same order as a real connection: OnConnect()/Initialize() first, then the account,
+	// then the sink, so SelectCharacter()'s reply reaches the session.
+	pUser->OnConnect();
+	pUser->EnableCrypto();
+	pUser->m_strAccountID = s->m_accountName;
+	pUser->m_botSink = s;
+	g_pMain->AddAccountName(pUser);
+	s->m_pUser = pUser;
+
+	Packet req(WIZ_SEL_CHAR);
+	req << s->m_charName << uint8(1);
+	g_pMain->AddDatabaseRequest(req, pUser);
+
+	s->m_phase = BotSession::PHASE_WAIT_SELECT;
+	s->m_phaseStart = std::chrono::steady_clock::now();
+
+	char message[224];
+	snprintf(message, sizeof(message),
+		"BotManager: bot %s spawning (slot %u, account %s)",
+		s->m_charName.c_str(), (unsigned)pUser->GetSocketID(), s->m_accountName.c_str());
+	WriteBotLog(message);
+}
+
+void BotManager::FailSession(BotSession * s, const char * reason)
+{
+	// The slot is deliberately not released and the session is not deleted: the DB thread
+	// may still be running this session's CUser. Cleanup is F2-04's job.
+	s->m_phase = BotSession::PHASE_FAILED;
+
+	char message[200];
+	snprintf(message, sizeof(message),
+		"BotManager: bot %s spawn FAILED (%s)", s->m_charName.c_str(), reason);
+	WriteBotLog(message);
 }
