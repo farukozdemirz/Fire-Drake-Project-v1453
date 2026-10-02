@@ -332,6 +332,13 @@ namespace BotCore
 		return type >= 1 && type <= 7;
 	}
 
+	// Quest-gated skill (docs/03 MEC-MAG-14): the server asks for the skill's quest (MAGIC.Etc) unless it runs a Debug
+	// build or the caster is a GM (MagicInstance.cpp:269-275). The bot applies the same rule in every build.
+	inline bool CastQuestAllowed(int etc, bool isGm, bool questDone)
+	{
+		return etc == 0 || isGm || questDone;
+	}
+
 	// One entry per type of a skill: whether the bot effected that type earlier in this spawn and how long ago.
 	struct TypeStamp
 	{

@@ -46,7 +46,7 @@ struct CastOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "flying", "effected", "missed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "bad_target",
+	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
 	                       // "stopping", "cancelled", "dropped", "idle"
 };
@@ -201,7 +201,8 @@ public:
 	// TickCast() does). 'targetName' empty = self. REFUSED (nothing armed): "not_in_game", "dead",
 	// "bad_skill" (unknown id, other class, level too low, count < 1), "unsupported_skill" (see 5.4 rules;
 	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25; single Type3 + Type4 (dual-typed) skills are
-	// supported, ADR-0017 Ek F4-26), "bad_target" (moral does not match the target kind).
+	// supported, ADR-0017 Ek F4-26), "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
+	// "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 

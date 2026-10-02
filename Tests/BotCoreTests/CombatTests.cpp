@@ -1073,6 +1073,15 @@ TEST_CASE("Combat_TypeGate_MinSince")
 	CHECK_EQ((int)since, 500);
 }
 
+TEST_CASE("Combat_CastQuestAllowed")
+{
+	CHECK_EQ(BotCore::CastQuestAllowed(0, false, false), true);
+	CHECK_EQ(BotCore::CastQuestAllowed(511, false, false), false);
+	CHECK_EQ(BotCore::CastQuestAllowed(511, false, true), true);
+	CHECK_EQ(BotCore::CastQuestAllowed(511, true, false), true);
+	CHECK_EQ(BotCore::CastQuestAllowed(0, false, true), true);
+}
+
 TEST_CASE("Combat_TypeGate_DualCast")
 {
 	BotCore::CastStartCheck c = {};

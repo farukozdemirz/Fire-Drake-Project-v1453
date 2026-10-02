@@ -730,12 +730,21 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
-		|| m->sEtc != 0
 		|| (m->bMoral != MORAL_SELF && m->bMoral != MORAL_FRIEND_WITHME
 			&& m->bMoral != MORAL_ENEMY && m->bMoral != MORAL_ALL))
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "unsupported_skill";
+		return out;
+	}
+
+	// Quest-gated skill (docs/03 MEC-MAG-14): the server asks for MAGIC.Etc unless it runs a Debug build or the caster
+	// is a GM (MagicInstance.cpp:269-275). The bot applies the same rule in every build; the quest map is written only at
+	// login (LoadUserData, DB thread) and read here on the bot tick (IOCP thread), so no extra lock is needed.
+	if (!BotCore::CastQuestAllowed(m->sEtc, user->isGM(), m->sEtc == 0 || user->CheckExistEvent(m->sEtc, 2)))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "quest_locked";
 		return out;
 	}
 
