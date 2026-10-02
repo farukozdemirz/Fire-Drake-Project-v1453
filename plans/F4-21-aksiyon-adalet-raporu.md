@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-21` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-06 (`tools/bot-telemetry-report.py`) — `KAPANDI`; F4-20 (`SCRIPT_*` telemetrisi) — `KAPANDI` (merge `e36d9d1`); F4-01..F4-18 (`ACTION_*`/`FAIRNESS_REJECT` yazan kod) — `KAPANDI` |
@@ -150,35 +150,95 @@ git diff --stat gece/2026-10-02...bot/F4-21
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-21` — `<kısa-sha> [F4-21] …`
+- Branch / commit'ler: `bot/F4-21` (taban `gece/2026-10-02`) — `ad760d4 [F4-21] MET-ACT-02/MET-FAIR-01 raporu ve betik kosu ozeti (bot-telemetry-report.py)`
 - Değişen dosyalar ve neden:
-  - `…`
+  - `tools/bot-telemetry-report.py`: `ACT_GATE_PCT`/`ACT_LIMIT_PCT`/`SRV_INVALID_REASONS` sabitleri ve üç not metni; `classify_action_result`/`act_verdict`/`add_bot` saf fonksiyonları; `load_file` toplayıcıları (`act_submit`, `act_result`, `act_reasons`, `fair`, `bots`, `t_first`/`t_last`, `scripts`, dosya sonu uyarıları + `NO_END`); `build_action_row`/`build_action_total`/`build_fair_row`/`build_script_rows`; `gather` rapor sözlüğüne `actions`/`action_reasons`/`fairness`/`fairness_reasons`/`scripts`; `render_markdown` beş yeni bölüm (MET-ACT-02, Action failures by reason, MET-FAIR-01, Fairness rejects by rule, Scripts); `has_violation` `actions` FAIL denetimi; `run_selftest` Vaka 7-9.
+  - `plans/F4-21-aksiyon-adalet-raporu.md`: yalnızca `Durum` satırı (`HAZIR` → `UYGULANIYOR` → `UYGULANDI`) ve bu rapor.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+  BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  rc=0. `./tools/run-tests.sh` → `82 tests, 0 failed`, rc=0.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `python3 tools/bot-telemetry-report.py --selftest` → `selftest OK`, rc=0; Vaka 1-6 `assert`'leri değişmedi (git diff'te bu satırlarda `-` yok).
+  - K2 ✔ Vaka 8: 8 sınıflandırma + 8 hüküm karşılaştırması (16 assert) selftest içinde.
+  - K3 ✔ `/tmp/f4-21-sample.jsonl` (14 kayıt): `| f4-21-sample.jsonl | 4 | 4 | 2 | 1 | 1 | 0 | 25.0 | FAIL |`; `## MET-FAIR-01` satırı `rejects 2`, `rejects_per_bot_hour_est 1800.0`; `## Scripts` satırı `s1`, `completed`, `submit 4`, `invalid 1`.
+  - K4 ✔ `--strict` sentetik örnekle rc=1; yalnızca `PERF_SAMPLE` içeren `/tmp/f4-21-plain.jsonl` ile rc=0.
+  - K5 ✔ `## Files`, `## Matches`, `## MET-PERF-02`, `## Events`, `## Warnings` sırası aynı; git diff yalnızca ekleme (`-` satırı yok; sadece plan `Durum` satırı değişti).
+  - K6 ✔ `--json` anahtarları: `['action_reasons','actions','events','fairness','fairness_reasons','files','ignored_selftest','matches','perf','scripts','warnings']`.
+  - K7 ✔ `file` → "Python script, ASCII text executable"; `py_compile` hatasız; yalnızca `json/os/statistics/sys/tempfile` (standart).
+  - K8 ✔ `git diff --stat gece/2026-10-02...bot/F4-21` yalnızca `tools/bot-telemetry-report.py` (+545) ve plan dosyası (+1/-1) gösterir (commit sonrası).
+  - K9 ✔ `tools/build.sh Release` rc=0 (yeni uyarı yok, sunucu kodu değişmedi); `./tools/run-tests.sh` → `82 tests, 0 failed`.
+- Plandan sapmalar ve gerekçeleri:
+  - Vaka 7'de `bot_hours_est == 0.0011` karşılaştırması kayan nokta güvenliği için `abs(...) < 1e-9` toleransıyla yazıldı (plan "== 0.0011" diyor; değer aynı).
+  - `build_action_total(rows)` dosya adı argümanı almadan `"(total)"` sabitini kullanır (plan §5 adım 3 "file == \"(total)\"" der; davranış aynı).
+  - Diğer her şey plan metnine göre.
+- Açık sorular:
+  - Gerçek telemetri dosyası bu çalışma ağacında yoktu (plan §8: "gerçek koşu verisi yoktu" yaz); K3/K4 yalnızca sentetik örnekle yapıldı. Gerçek `script_smoke_2bot` koşusunun çapraz denetimi Claude'dadır.
+  - `ACTION_SUBMIT`/`ACTION_RESULT` farkı, betik dışı normal komut kullanımında da (dosya genelinde) uyarı üretir; plan bu uyarıyı dosya geneli istiyor (§5 adım 2), bu yüzden davranış plandaki gibidir.
+
+  Örnek çıktı (`/tmp/f4-21-sample.jsonl`, yalnızca yeni bölümler):
+  ```
+  ## MET-ACT-02 (invalid actions)
+  | file | submit | result | ok | invalid | no_result | other | invalid_pct | verdict |
+  |---|---|---|---|---|---|---|---|---|
+  | f4-21-sample.jsonl | 4 | 4 | 2 | 1 | 1 | 0 | 25.0 | FAIL |
+
+  ## Action failures by reason
+  | type | reason | class | count |
+  |---|---|---|---|
+  | CastEffect | srv_fail | invalid | 1 |
+  | UsePotion | no_result | no_result | 1 |
+
+  ## MET-FAIR-01 (fairness rejects)
+  | file | rejects | bots | span_s | bot_hours_est | rejects_per_bot_hour_est |
+  |---|---|---|---|---|---|
+  | f4-21-sample.jsonl | 2 | 2 | 2.0 | 0.0011 | 1800.0 |
+
+  ## Fairness rejects by rule
+  | type | rule | reason | count |
+  |---|---|---|---|
+  | Attack | CLI-01 | too_soon | 2 |
+
+  ## Scripts
+  | file | script | steps_total | steps_run | result | elapsed_ms | max_late_ms | submit | invalid | no_result | rejects |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | f4-21-sample.jsonl | s1 | 2 | 2 | completed | 2000 | 10 | 4 | 1 | 1 | 2 |
+  ```
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-21` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-21` @ `c468b3a` (2 commit: `ad760d4` kod, `c468b3a` rapor; ikisi de `[F4-21]` önekli, merge/force izi yok). Gece modu (`AUTO_LOOP=1`): birleştirme ve push döngü betiğinde, bu turda yapılmadı. Sunucular kapalıydı (`run-servers.sh status` 0/3).
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/bot-telemetry-report.py --selftest` → `selftest OK`, rc=0 (kendi çalıştırmam). Diff'te Vaka 7-9 `run_selftest` sonuna, `print("selftest OK")` öncesine eklenmiş; Vaka 1-6'ya dokunulmamış (`git diff ... \| grep -c '^-[^-]'` = 0). |
+| K2 | ✔ | Vaka 8: 8 `classify_action_result` + 8 `act_verdict` assert'i (`bot-telemetry-report.py` Vaka 8 bloğu), planın tüm eşleşmeleri; selftest geçti. Kod: `classify_action_result` `tools/bot-telemetry-report.py:99` (`ok is True/False` denetimi, `refused_` öneki), `act_verdict` `:113` (tam sayı karşılaştırması). |
+| K3 | ✔ | `/tmp/f4-21-sample.jsonl` (Vaka 7 kayıtları, kendim yazdım): `\| f4-21-sample.jsonl \| 4 \| 4 \| 2 \| 1 \| 1 \| 0 \| 25.0 \| FAIL \|`; MET-FAIR-01 `2 / 2 / 2.0 / 0.0011 / 1800.0`; Scripts `s1 / 2 / 2 / completed / 2000 / 10 / 4 / 1 / 1 / 2`; Warnings `(none)`. |
+| K4 | ✔ | `--strict` örnekle `rc=1`; aksiyonsuz (`PERF_SAMPLE`) dosyayla `rc=0`; gerçek koşu (`live-184432.jsonl`, PASS) ile de `rc=0`. |
+| K5 | ✔ | Bölüm sırası: `## Files`, `## Matches`, `## MET-PERF-02`, (yeni beş bölüm), `## Events`, `## Warnings`. Araç dosyası diff'inde silinen satır 0; `gather`/`has_violation`/`render_markdown` yalnızca ekleme. |
+| K6 | ✔ | `--json` anahtarları: `['action_reasons','actions','events','fairness','fairness_reasons','files','ignored_selftest','matches','perf','scripts','warnings']`. |
+| K7 | ✔ | `file` → "Python script, ASCII text executable"; CR sayısı 0; ASCII dışı karakter yok; `py_compile` hatasız; importlar `json/os/statistics/sys/tempfile`. |
+| K8 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-21` yalnızca `tools/bot-telemetry-report.py` (+545) ve plan dosyası; plan diff'inde yalnızca `Durum` satırı ve Uygulayıcı Raporu şablonu dolduruldu. |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning C`/`error C` sayısı 0 (çıktı `/tmp/f4-21-build.log`); `./tools/run-tests.sh` → `82 tests, 0 failed`, rc=0. |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Ek doğrulama (plan §8: gerçek koşu Claude'da): F4-20 doğrulamasından kalan gerçek dosya `/mnt/c/dev/fdp/server/Logs/bots/2026-10-02/live-184432.jsonl` araçla çalıştırıldı. Ham sayım (`grep -c`): SUBMIT 3, RESULT 3, FAIRNESS_REJECT 1, SCRIPT_START 3, SCRIPT_STEP 18, SCRIPT_END 3 = araç çıktısı (submit 3, result 3, ok 3, invalid 0, `PASS`; rejects 1, `State/CLI-13/toggle`, 2 bot, 166.165 sn, bot-saat 0.0923, 10.83/bot-saat). Betik satırları F4-20 çalışma zamanı kaydıyla uyuşuyor: `smoke` 7/7 `completed` (max_late 99), `longrun` 7/10 `stopped`, `fair` 4/4 `completed` ve `rejects` 1. Bu veride `srv_fail`/`no_result` yok; `invalid` yolu yalnızca sentetik veriyle sınandı.
+- Proje kuralları: sunucu/`BotCore`/`docs` dosyasına dokunulmamış, mekanik ve bot avantajı etkilenmez; bot sistemi varsayılanı değişmez (yalnızca Python aracı); araç yalnızca sayaç/küme tutuyor, ham satır saklamıyor, `name` alanı rapora yazılmıyor (gerçek koşu çıktısında bot adı yok); JSON'da demet anahtarlı sözlük yok (sebep tabloları satır listesi), sıralar `(-count, ...)` tam sıralı, iki `gather` çıktısı birebir aynı (Vaka 9).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `ACTION_SUBMIT`/`ACTION_RESULT` fark uyarısı dosya geneli ve gece/canlı bir dosyada, sonuç henüz gelmemiş son aksiyon varken (ör. sunucu kapanışı) yanlış alarm üretebilir; plan §5 adım 2 bunu böyle istiyor, uygulayıcı da raporunda belirtti. Kabul edilebilir.
+  2. Not: betik penceresi dosya sırasıyla atanıyor; `SCRIPT_END` sonrası gelen son-adım sonuçları sayılmaz (rapor notu bunu söylüyor). Planla uyumlu.
+  3. Not: üst üste binen `SCRIPT_START` ile kapanan koşuda `steps_run` `-` görünür (yalnızca `result=NO_END`); plan yalnızca `result`'ı istiyor.
+  4. Sapmalar kabul: `bot_hours_est` kontrolü `abs(..) < 1e-9` ile (değer aynı), `build_action_total` dosya adı argümansız `"(total)"` sabitiyle.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
