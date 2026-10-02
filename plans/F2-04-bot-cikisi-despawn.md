@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`: slot havuzu, `ReleaseSlot`), F2-02 (`KAPANDI`: `Tick()`), F2-03 (`KAPANDI`: `BotSession`, `TickSessions`, spawn) |
@@ -317,20 +317,40 @@ file GameServer/Bot/* GameServer/GameServerDlg.cpp GameServer/DatabaseThread.cpp
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F2-04` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F2-04` @ `5ed5d65` (uygulama `660dd3f`, rapor `5ed5d65`); çalışma ağacı temiz; otonom gece modu (`AUTO_LOOP=1`), birleştirme/push yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `BotManager.cpp`, `BotSession.cpp`, `GameServerDlg.cpp`, `DatabaseThread.cpp` touch'lanıp `./tools/build.sh Release` rc=0 (tam kod üretimi). Uyarılar: `GameServerDlg.cpp(816,94) C4834`, `(1143,16) C4267`, `(1802,18) C4267`, `UpgradeHandler.cpp(634)/(862) C4789`; `Bot\` altında uyarı yok, `:743-748`'e eklenen satırlarda uyarı yok (hepsi eski satırlar/türler) |
+| K2 | ✔ | Aynı dört dosya touch'lanıp `./tools/build.sh Debug` rc=0, `error` yok |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F2-04`: `BotManager.cpp` 132, `BotManager.h` 11, `BotSession.cpp` 4, `BotSession.h` 10, `DatabaseThread.cpp` 3 (+2/−1), `GameServerDlg.cpp` 4 (+4/−0), plan dosyası; yalnızca §4'teki 6 dosya + plan (plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu). `GameServerDlg.cpp` +4 = 3 kod satırı + 1 boş satır (plan "boş satır dahil değil" diyor); silinen tek satır `if (m_bLogout != 2)` eski hâli |
+| K4 | ✔ | `GameServerDlg.cpp:746-748` `if (pUser->m_botSink != nullptr) continue;` (`Timer_UpdateSessions` for-döngüsü içinde, `#ifndef DEBUG`'tan önce); `DatabaseThread.cpp:458` `m_bLogout != 2 && m_botSink == nullptr`. Bot olmayan oturumda `m_botSink == nullptr` → davranış aynı |
+| K5 | ✔ | `grep`: `m_pUser`/`HandlePacket`/`Update()`/`OnDisconnect()`/`IsDeleted()`/`ReleaseSlot(` yalnızca `TickSessions` (436-489), `BeginDespawn` (543-547), `PollDespawn` (560-585), `StartSession` (625) içinde; `ReleaseSlot(` çağrıları `:162` (F2-01 havuz kurulumu geri alma) ve `:584` (`PollDespawn`); `TickSessions` yalnızca `Tick()`'ten (IOCP thread'i, çalışma zamanında `tick OK on IOCP thread` logu) |
+| K6 | ✔ | `BotManager.cpp:566` `IsDeleted()` true ise `:568` `waited > DESPAWN_TIMEOUT_MS` → `PHASE_DESPAWN_STUCK` ve **iade yok**, `return`; yalnızca `IsDeleted()==false` iken `:584` `ReleaseSlot`. `delete` yalnızca `:233` (F2-02 `m_timerThread`); `erase`/`remove` yok; oturum silinmiyor. Çalışma zamanı: `logout save 109-110 ms` ile iade, `0 stuck` |
+| K7 | ✔ | `BeginDespawn` `:543-550` yalnızca `pUser->OnDisconnect()` + faz + zaman; `grep "LogOut\|Disconnect"` yalnızca yorum satırları `:544,546`; çağrı yok. Çalışma zamanı: `despawned ... names cleared yes` (isim haritaları temizlendi, `WIZ_LOGOUT` işlendi) |
+| K8 | ✔ | `UPDATE_PERIOD_MS = 1000` (`:18`); `PHASE_IN_GAME` dalı `:478-490` `now - m_lastUpdate >= 1000 ms` ile sınırlı; `TickSessions` ilk ifadesi `if (m_sessions.empty()) return;` (`:393`); `m_spawnSummaryDone` yalnızca özet bloğunda. Çalışma zamanı: 20 sn'de `updates 18` (4 botta da) |
+| K9 | ✔ | `ENABLED` `:57` erken dönüşü; `DESPAWN_AFTER_SEC` `:79` (sonra); `[0,86400]` kıskaç `:79-84`. Çalışma zamanı: `DESPAWN_AFTER_SEC=0` → `despawn after` ve `despawning` satırı yok, 45 sn sonra botlar açık, `ENABLED=0` → log yok ve ini'ye `DESPAWN_AFTER_SEC` yazılmadı |
+| K10 | ✔ | Sabitler 1000/30000; log metinleri `:384` `despawn after`, `:553` `despawning (slot`, `:590` `despawned (slot`, `names cleared`, `:575` `despawn TIMEOUT after`, `despawn complete:`; `spawn complete: %u/%u in game, %u failed` F2-03 ile aynı; dosyadaki tek `printf` `:193` eski F2-01 satırı. Çalışma zamanında metinler loga birebir yazıldı |
+| K11 | ✔ | `FailSession` `:641-646`: yalnızca `m_spawnFailed++` eklendi; `ReleaseSlot`/`delete` yok |
+| K12 | ✔ | `file`: `Bot/*` "ASCII text, with CRLF"; `GameServerDlg.cpp`, `DatabaseThread.cpp` "UTF-8 (with BOM), CRLF" |
+| K13 | ✔ | `git status --short` boş (derleme ve test sonrası da); uygulayıcı sunucu çalıştırmadı (doğrulama öncesi 0/3 UP); ini/DB değişikliği commit'te yok |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Çalışma zamanı doğrulaması (Release; `GameServer.ini`'ye `[BOT]` eklendi, her senaryo sonrası yedekten geri yüklendi, md5 `d1646328...` aynı; sunucular kapatıldı, 0/3 UP):
+  - `ENABLED=1, MAX_BOTS=16`, dört bot, `DESPAWN_AFTER_SEC=20` → `spawn list: 4 bot(s) queued`, `despawn after 20 s (DESPAWN_AFTER_SEC)`, dört `in game`, `spawn complete: 4/4 in game, 0 failed`, dört `despawning (slot 2984..2987)`, dört `despawned (... logout save 109-110 ms, updates 18, packets 17/17/21/21, names cleared yes)`, `despawn complete: 4/4 released, 0 stuck, 0 never spawned, pool free 16/16`; sunucu 3/3 UP, `GameServer.log`'a yeni satır yazılmadı (son kayıt 02:17, doğrulama öncesi).
+  - `DESPAWN_AFTER_SEC=0` → despawn satırı yok, dört bot açık kaldı, 3/3 UP.
+  - `MAX_BOTS=2` + `BotWP_K,BotMF_K`, 20 sn → `reserved 2 sessions (ids 2998-2999)`, iki `despawned (... names cleared yes)`, `despawn complete: 2/2 released, 0 stuck, 0 never spawned, pool free 2/2`.
+  - `ENABLED=0` → yeni bot log satırı 0, ini'ye `DESPAWN_AFTER_SEC` eklenmedi, 3/3 UP.
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not (düşük, F2-05 girdisi): `Timer_UpdateSessions` oturum haritasının kopyasını 30 sn'de bir alır; `m_botSink` kontrolü kopya alındıktan sonra yapılır. Bot, kopya ile kontrol arasında `ReleaseSlot` ile iade edilirse (`m_botSink = nullptr`, `isInGame()` hâlâ true) o tek turda zamanlayıcı thread'inden `Update()` çağrılabilir. Pencere çok dar, gerçek oyuncuların kopya/çıkış yarışıyla aynı sınıf (plan §3 R-CODE-03 ile uyumlu); 1000 spawn/despawn dayanıklılık testinde (F2-05) izlenmeli.
+  2. Not: `despawned` satırındaki `packets` farkı (17/21, in game'deki 14/18'e göre +3) `OnDisconnect`/`WIZ_LOGOUT` yolundaki `Send` çağrılarından gelir; beklenen.
+  3. Not: Sunucu kapanışında `KickOutAllUsers` açık kalan botları kaydeder (plan §8; `DESPAWN_AFTER_SEC=0` senaryosu); bot satırları güncellenmiş olabilir, gerekirse `db/002` yeniden uygulanır. Despawn'daki `UPDATE_USER_DATA` da bot kaydını yazar (gerçek oyuncuyla aynı).
+  4. Not: Uygulayıcı raporu dürüst: commit'ler, dosya listesi, +4/−0 sapması ve K7 grep nüansı gerçekle uyuşuyor; rapordaki uyarı listesi doğru.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
 
 ```
-…
+(yok)
 ```
