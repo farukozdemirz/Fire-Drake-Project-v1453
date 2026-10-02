@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-09 (`m_partyLeaveEcho`, `OnPacket()` `PARTY_REMOVE`/`PARTY_DELETE` kaydı, `RejectParty*` kalıbı) — `KAPANDI` (merge `6dc7979`); F4-08 (`m_partyJoinEcho`, `PartyOutcome`, `BotManager` test sürücüsü kalıbı) — `KAPANDI` (merge `851afdc`) |
@@ -257,3 +257,41 @@ git diff --check gece/2026-10-02...bot/F4-10
 8. **Gerilemesiz:** F4-01..F4-09 komutları (`move`/`attack`/`cast`/`pot`/`sit`/`target`/`regene`/`pinvite`/`paccept`/`pdecline`/`pleave`) çalışır; `tick_p95_us` ≤ 500.
 
 Beklenmeyen `no_result` bu planın hatası değil, **sonuç olarak raporlanır** (özellikle devir yayınının devredenin kendi alıcısına gelip gelmediği; gelmiyorsa **durup** raporla, bot sunucu nesnesine bakarak "başarılı" demez). Sınanmayan durumlar (öldürerek ölü bot vb.) raporda açıkça yazılır.
+
+---
+
+## Uygulayıcı Raporu
+
+### Tur 1
+
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F4-10` (taban: `gece/2026-10-02`); `ab1d2b0` `[F4-10] PartyPromote/PartyKick dilimi: guard, aksiyonlar ve komutlar`; bu rapor ve `Durum=UYGULANDI` ayrı bir commit'te.
+- **Değişen dosyalar (8 kod + plan):**
+  - `BotCore/BotCombat.h`: `namespace BotCore` içine `kPartyManageGapMs`, `PartyManageCheck`, `PartyManageVerdict`, `CheckPartyManage` eklendi (yalnızca ekleme; `#include` değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_PartyManageCheck_Order` ve `Combat_PartyManageCheck_Boundaries` eklendi (toplam 41 test).
+  - `GameServer/Bot/ActionExecutor.h`: `PartyMemberTarget` yapısı, `PartyOutcome::reason` yorumu, `RequestPartyPromote`/`RequestPartyKick` bildirimleri.
+  - `GameServer/Bot/ActionExecutor.cpp`: dosya sonuna party promote/kick dilimi (`RejectPartyManage`, ortak `RequestPartyManage`, iki genel fonksiyon) eklendi; mevcut F4-08/F4-09 kodu değişmedi.
+  - `GameServer/Bot/BotSession.h/.cpp`: `m_partyManageHasLast`/`m_partyManageLast` alanları, başlatıcı listesi ve `ResetForRespawn()` sıfırlaması; `OnPacket()` değişmedi.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandPartyManage` bildirimi/fiil dağıtımı, `IsSamePartyMember` yardımcısı, `unknown command` listesi.
+- **Derleme:** `./tools/build.sh Release` ve `./tools/build.sh Debug` rc=0. Yeni/değişen dosyalarda uyarı yok; çıkan uyarılar yalnızca eski `GameServerDlg.cpp` satırlarından (816 C4834, 1143/1802 C4267). Son satırlar: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`, `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`.
+- **Testler:** `./tools/run-tests.sh Release` ve `Debug` → `41 tests, 0 failed` (her ikisi rc=0); iki yeni test adı çıktıda göründü.
+- **Kriter öz-değerlendirmesi:**
+  - K1 ✔ (Release rc=0, değişen dosyalarda uyarı yok).
+  - K2 ✔ (Debug rc=0).
+  - K3 ✔ (iki yeni test, 41 test, iki konfigürasyonda da 0 failed).
+  - K4 ✔ (`grep` boş; `std::min`/`std::max` yok; yeni include yok).
+  - K5 ✔ (`WIZ_PARTY` yalnızca `ActionExecutor.cpp` + `BotSession.cpp`; party-iç yapı grep'i boş; `GetPartyID` tek satır, `BotManager.cpp:2086` `IsSamePartyMember`).
+  - K6 ✔ (`HandlePacket(pkt)` `RequestPartyManage`'da tek, satır 2406; promote `PARTY_PROMOTE`+`uint16(target.id)`, kick `PARTY_REMOVE`+`uint16(target.id)`; `PARTY_DELETE` grep'i boş).
+  - K7 ✔ (sonuç yalnızca `m_partyJoinEcho`/`m_partyLeaveEcho`; `isInParty`/`isPartyLeader` yalnızca eski satırlar + `RequestPartyManage`'in iki girdisi; HP alanları geçmiyor).
+  - K8 ✔ (`ActionExecutor.cpp` silme yok; `BotSession.cpp` silme yok, `OnPacket()` diff yok).
+  - K9 ✔ (`BotManager.cpp` silme yalnızca `unknown command` mesaj satırı).
+  - K10 ✔ (`diff --stat` yalnızca §4'teki 8 dosya + plan; vcxproj'lar değişmedi).
+  - K11 ✔ (`BotCombat.h` ve `CombatTests.cpp` ASCII + CRLF; `git diff --check` boş).
+  - K12 ✔ (yasaklı diziler yok; `"mode"` anahtarı yok).
+  - K13 ✔ (`CheckPartyManage` = 1, önceki guard'lar korunuyor; `EmitFairnessReject` yeni iki tipi `RejectPartyManage`'a parametre olarak alıyor).
+  - K14 — Claude'un çalışma zamanı doğrulaması (bu raporun kapsamı dışında).
+- **Plandan sapmalar:**
+  - `RequestPartyManage` ve `RejectPartyManage` plan gereği dosya-yerel `static` yardımcılar olduğu için `ActionExecutor::` niteliksiz; yalnızca iki genel fonksiyon nitelikli. Plan da bunu böyle tanımlıyor.
+  - `BotSession.cpp` başlatıcı listesinde `m_partyManageHasLast(false)` yeni satır olarak eklendi (silinen satır yok) — `m_partyEnteredHasAt(false)` sonrası, üye bildirim sırasıyla aynı.
+  - `ActionExecutor.cpp` dosya-sonu başlığındaki yorumda `WIZ_PARTY` dizgesi kullanılmadı ("one party packet") ki K5 grep'i paket oluşturma satırlarını göstersin.
+- **Açık sorular:** Yok. Çalışma zamanı doğrulamasını (K14, §7 senaryoları 1–8) Claude `/plan-dogrula`'da yapar; planın istediği gibi sunucu bu turda çalıştırılmadı.
