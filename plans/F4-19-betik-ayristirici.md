@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `66342b7`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-19` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-05 (`BotCore`, birim test çatısı) — `KAPANDI`; F4-01..F4-11 (betiğin sürebileceği komutlar) — `KAPANDI`; F4-12..F4-18 (`see`/`npcs`/`snap` gözlem komutları) — `KAPANDI` (F4-18 merge `a7349a1`) |
