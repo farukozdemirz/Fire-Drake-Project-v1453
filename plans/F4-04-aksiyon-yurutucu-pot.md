@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `355feb2`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `m_castEcho`/`m_castSelfId`, `m_cast*` zamanlayıcıları) — `KAPANDI`; F4-02 (`m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |
