@@ -3,11 +3,14 @@
 // Chord (single movement packet step) walkability check (F5-50; docs/12 s13.1, CLI-08).
 // Pure logic: the standard library only, no server header, no global/static state and no dynamic
 // memory. Two layers:
-//   (a) conservative supercover of the closed segment (Amanatides-Woo; cell corners/vertices and
-//       boundary-hugging segments included): every touched cell must be Walk;
-//   (b) the slope / no-corner-cut rule along the same cell path NavLineClear validates, i.e. the
-//       canonical Bresenham walk between the endpoint cells using NavGrid::EdgeOpen, so the guard
-//       never rejects a segment the planner produced.
+//   (a) the mandatory conservative supercover of the closed segment (Amanatides-Woo; cell
+//       corners/vertices and boundary-hugging segments included): every touched cell must be Walk.
+//       This layer is always on and yields Ok / OutOfBounds / BlockedCell;
+//   (b) the optional slope / no-corner-cut rule (checkSlope), along the same cell path
+//       NavLineClear validates, i.e. the canonical Bresenham walk between the endpoint cells
+//       using NavGrid::EdgeOpen. It is only consistent with the planner for full segments whose
+//       endpoints are planner waypoints; it gives no guarantee for arbitrary sub-chords, so it
+//       defaults off and is opted into with checkSlope = true.
 // A rejected chord is never sent; the executor side guard is F5-55.
 
 #include "NavGrid.h"
@@ -37,13 +40,26 @@ namespace BotCore
 	// so a blocked cell touched only at a corner is caught. `double` arithmetic, no allocation.
 	// The two endpoints are swapped into canonical (x, then z) order so the verdict and the
 	// reported cell are symmetric in the segment direction.
-	inline NavSegmentResult NavCheckSegment(const NavGrid & grid, double ax, double az, double bx, double bz)
+	inline NavSegmentResult NavCheckSegment(const NavGrid & grid, double ax, double az, double bx, double bz, bool checkSlope = false)
 	{
 		NavSegmentResult res;
 
 		const int n = grid.Size();
 		const double unit = (double)grid.Unit();
 		if (n < 1 || unit <= 0.0)
+		{
+			res.verdict = NavSegmentVerdict::OutOfBounds;
+			res.cellX = -1;
+			res.cellZ = -1;
+			return res;
+		}
+
+		// Reject non-finite or absurdly large inputs before any (int) conversion; NaN/+-inf and
+		// out-of-int-range coordinates are the caller's bug, and fail-closed is OutOfBounds.
+		const double limit = 1e9;
+		if (!std::isfinite(ax) || !std::isfinite(az) || !std::isfinite(bx) || !std::isfinite(bz) ||
+			std::fabs(ax / unit) > limit || std::fabs(az / unit) > limit ||
+			std::fabs(bx / unit) > limit || std::fabs(bz / unit) > limit)
 		{
 			res.verdict = NavSegmentVerdict::OutOfBounds;
 			res.cellX = -1;
@@ -185,16 +201,20 @@ namespace BotCore
 		while (x != ex || z != ez)
 		{
 			if (++guard > guardMax)
-				break;   // numerical safety net; a correct traversal reaches the target cell
+			{
+				// numerical safety net; never reached by a correct traversal
+				fail(NavSegmentVerdict::OutOfBounds, -1, -1);
+				return res;
+			}
 
-			if (tMaxX < tMaxZ - 1e-12)
+			if (tMaxX < tMaxZ - 1e-9)
 			{
 				x += stepX;
 				tMaxX += tDeltaX;
 				if (!visitMain(x, z))
 					return res;
 			}
-			else if (tMaxZ < tMaxX - 1e-12)
+			else if (tMaxZ < tMaxX - 1e-9)
 			{
 				z += stepZ;
 				tMaxZ += tDeltaZ;
@@ -237,56 +257,59 @@ namespace BotCore
 			}
 		}
 
-		// Slope and no-corner-cut along the canonical Bresenham cell walk (same path the planner
-		// validates with NavLineClear): an EdgeOpen failure is a slope failure, because the
-		// supercover pass above already found every non-Walk cell.
-		int bx0 = startCellX;
-		int bz0 = startCellZ;
-		int bx1 = ex;
-		int bz1 = ez;
-		if (bx1 < bx0 || (bx1 == bx0 && bz1 < bz0))
+		if (checkSlope)
 		{
-			const int t = bx0;
-			bx0 = bx1;
-			bx1 = t;
-			const int t2 = bz0;
-			bz0 = bz1;
-			bz1 = t2;
-		}
-
-		if (bx0 != bx1 || bz0 != bz1)
-		{
-			const int ddx = bx1 - bx0;
-			const int ddz = bz1 - bz0;
-			const int adx = ddx < 0 ? -ddx : ddx;
-			const int adz = ddz < 0 ? -ddz : ddz;
-			const int sx = bx0 < bx1 ? 1 : -1;
-			const int sz = bz0 < bz1 ? 1 : -1;
-			int err = adx - adz;
-			int cx = bx0;
-			int cz = bz0;
-			while (cx != bx1 || cz != bz1)
+			// Slope and no-corner-cut along the canonical Bresenham cell walk (same path the
+			// planner validates with NavLineClear): an EdgeOpen failure is a slope failure,
+			// because the supercover pass above already found every non-Walk cell.
+			int bx0 = startCellX;
+			int bz0 = startCellZ;
+			int bx1 = ex;
+			int bz1 = ez;
+			if (bx1 < bx0 || (bx1 == bx0 && bz1 < bz0))
 			{
-				const int e2 = 2 * err;
-				int mx = 0;
-				int mz = 0;
-				if (e2 > -adz)
+				const int t = bx0;
+				bx0 = bx1;
+				bx1 = t;
+				const int t2 = bz0;
+				bz0 = bz1;
+				bz1 = t2;
+			}
+
+			if (bx0 != bx1 || bz0 != bz1)
+			{
+				const int ddx = bx1 - bx0;
+				const int ddz = bz1 - bz0;
+				const int adx = ddx < 0 ? -ddx : ddx;
+				const int adz = ddz < 0 ? -ddz : ddz;
+				const int sx = bx0 < bx1 ? 1 : -1;
+				const int sz = bz0 < bz1 ? 1 : -1;
+				int err = adx - adz;
+				int cx = bx0;
+				int cz = bz0;
+				while (cx != bx1 || cz != bz1)
 				{
-					err -= adz;
-					mx = sx;
+					const int e2 = 2 * err;
+					int mx = 0;
+					int mz = 0;
+					if (e2 > -adz)
+					{
+						err -= adz;
+						mx = sx;
+					}
+					if (e2 < adx)
+					{
+						err += adx;
+						mz = sz;
+					}
+					if (!grid.EdgeOpen(cx, cz, mx, mz))
+					{
+						fail(NavSegmentVerdict::SlopeTooSteep, cx + mx, cz + mz);
+						return res;
+					}
+					cx += mx;
+					cz += mz;
 				}
-				if (e2 < adx)
-				{
-					err += adx;
-					mz = sz;
-				}
-				if (!grid.EdgeOpen(cx, cz, mx, mz))
-				{
-					fail(NavSegmentVerdict::SlopeTooSteep, cx + mx, cz + mz);
-					return res;
-				}
-				cx += mx;
-				cz += mz;
 			}
 		}
 
@@ -295,8 +318,8 @@ namespace BotCore
 	}
 
 	// float convenience wrapper for the executor side (F5-55).
-	inline NavSegmentResult NavCheckStep(const NavGrid & grid, float x0, float z0, float x1, float z1)
+	inline NavSegmentResult NavCheckStep(const NavGrid & grid, float x0, float z0, float x1, float z1, bool checkSlope = false)
 	{
-		return NavCheckSegment(grid, (double)x0, (double)z0, (double)x1, (double)z1);
+		return NavCheckSegment(grid, (double)x0, (double)z0, (double)x1, (double)z1, checkSlope);
 	}
 }

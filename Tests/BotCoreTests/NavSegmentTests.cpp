@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <vector>
 
 namespace
@@ -67,9 +68,9 @@ namespace
 		return (double)grid.CellCenter(i);
 	}
 
-	NavSegmentVerdict Check(const NavGrid & grid, double ax, double az, double bx, double bz)
+	NavSegmentVerdict Check(const NavGrid & grid, double ax, double az, double bx, double bz, bool checkSlope = false)
 	{
-		return BotCore::NavCheckSegment(grid, ax, az, bx, bz).verdict;
+		return BotCore::NavCheckSegment(grid, ax, az, bx, bz, checkSlope).verdict;
 	}
 
 	bool CellBlocked(const NavGrid & grid, int x, int z)
@@ -210,6 +211,13 @@ TEST_CASE("NavSegment_Basic")
 	// Zero length: only the start cell matters.
 	CHECK(Check(grid, CenterX(grid, 5), CenterX(grid, 5), CenterX(grid, 5), CenterX(grid, 5)) == NavSegmentVerdict::Ok);
 	CHECK(Check(blocked, CenterX(blocked, 6), CenterX(blocked, 5), CenterX(blocked, 6), CenterX(blocked, 5)) == NavSegmentVerdict::BlockedCell);
+
+	// Non-finite and absurdly large coordinates are rejected as OutOfBounds before any conversion.
+	const double nan = std::numeric_limits<double>::quiet_NaN();
+	const double inf = std::numeric_limits<double>::infinity();
+	CHECK(Check(grid, nan, CenterX(grid, 5), CenterX(grid, 5), CenterX(grid, 5)) == NavSegmentVerdict::OutOfBounds);
+	CHECK(Check(grid, CenterX(grid, 5), inf, CenterX(grid, 5), CenterX(grid, 5)) == NavSegmentVerdict::OutOfBounds);
+	CHECK(Check(grid, 1e12, CenterX(grid, 5), CenterX(grid, 5), CenterX(grid, 5)) == NavSegmentVerdict::OutOfBounds);
 }
 
 TEST_CASE("NavSegment_Corner")
@@ -254,7 +262,7 @@ TEST_CASE("NavSegment_Slope")
 			atLimit[CellIndex(n, x, z)] = (x >= 10) ? 2.5f : 0.0f;
 	}
 	NavGrid limitGrid = MakeNav(n, unit, RingEvents(n), atLimit);
-	CHECK(Check(limitGrid, CenterX(limitGrid, 8), CenterX(limitGrid, 5), CenterX(limitGrid, 12), CenterX(limitGrid, 5)) == NavSegmentVerdict::Ok);
+	CHECK(Check(limitGrid, CenterX(limitGrid, 8), CenterX(limitGrid, 5), CenterX(limitGrid, 12), CenterX(limitGrid, 5), true) == NavSegmentVerdict::Ok);
 
 	// Just above the limit: SlopeTooSteep, reported at the entered cell.
 	std::vector<float> above((size_t)n * (size_t)n, 0.0f);
@@ -265,23 +273,26 @@ TEST_CASE("NavSegment_Slope")
 	}
 	NavGrid aboveGrid = MakeNav(n, unit, RingEvents(n), above);
 	BotCore::NavSegmentResult r = BotCore::NavCheckSegment(aboveGrid,
-		CenterX(aboveGrid, 8), CenterX(aboveGrid, 5), CenterX(aboveGrid, 12), CenterX(aboveGrid, 5));
+		CenterX(aboveGrid, 8), CenterX(aboveGrid, 5), CenterX(aboveGrid, 12), CenterX(aboveGrid, 5), true);
 	CHECK(r.verdict == NavSegmentVerdict::SlopeTooSteep);
 	CHECK_EQ(r.cellX, 10);
 	CHECK_EQ(r.cellZ, 5);
+
+	// The slope layer is optional and defaults off: the same steep chord only checks Walk.
+	CHECK(Check(aboveGrid, CenterX(aboveGrid, 8), CenterX(aboveGrid, 5), CenterX(aboveGrid, 12), CenterX(aboveGrid, 5)) == NavSegmentVerdict::Ok);
 
 	// Vertex (diagonal) step uses the unit*sqrt(2) scale: limit = 0.625 * 4 * sqrt(2) = 3.5355 m.
 	const int m = 12;
 	std::vector<float> diag((size_t)m * (size_t)m, 0.0f);
 	diag[CellIndex(m, 6, 6)] = 3.5f;
 	NavGrid diagOk = MakeNav(m, unit, RingEvents(m), diag);
-	CHECK(Check(diagOk, CenterX(diagOk, 5), CenterX(diagOk, 5), CenterX(diagOk, 6), CenterX(diagOk, 6)) == NavSegmentVerdict::Ok);
+	CHECK(Check(diagOk, CenterX(diagOk, 5), CenterX(diagOk, 5), CenterX(diagOk, 6), CenterX(diagOk, 6), true) == NavSegmentVerdict::Ok);
 
 	std::vector<float> diagBad((size_t)m * (size_t)m, 0.0f);
 	diagBad[CellIndex(m, 6, 6)] = 3.6f;
 	NavGrid diagSteep = MakeNav(m, unit, RingEvents(m), diagBad);
 	BotCore::NavSegmentResult d = BotCore::NavCheckSegment(diagSteep,
-		CenterX(diagSteep, 5), CenterX(diagSteep, 5), CenterX(diagSteep, 6), CenterX(diagSteep, 6));
+		CenterX(diagSteep, 5), CenterX(diagSteep, 5), CenterX(diagSteep, 6), CenterX(diagSteep, 6), true);
 	CHECK(d.verdict == NavSegmentVerdict::SlopeTooSteep);
 	CHECK_EQ(d.cellX, 6);
 	CHECK_EQ(d.cellZ, 6);
@@ -409,8 +420,8 @@ TEST_CASE("NavSegment_RealMap_Planner")
 	int segments = 0;
 	int segmentBad = 0;
 	int chords = 0;
-	int chordBlocked = 0;
-	int chordSlope = 0;
+	int chordViolations = 0;
+	int chordSlopeOpt = 0;
 
 	for (int q = 0; q < queries; ++q)
 	{
@@ -422,8 +433,8 @@ TEST_CASE("NavSegment_RealMap_Planner")
 			continue;
 		++paths;
 
-		// Planner waypoint segments: these are exactly the chords NavLineClear validated, so the
-		// guard must return Ok for every one of them.
+		// Planner waypoint segments: these are exactly the chords NavLineClear validated, so with
+		// the optional slope layer on (checkSlope = true) the guard must return Ok for every one.
 		for (size_t i = 1; i < result.waypoints.size(); ++i)
 		{
 			const double ax = CenterX(grid, result.waypoints[i - 1].x);
@@ -431,14 +442,14 @@ TEST_CASE("NavSegment_RealMap_Planner")
 			const double bx = CenterX(grid, result.waypoints[i].x);
 			const double bz = CenterX(grid, result.waypoints[i].z);
 			++segments;
-			if (Check(grid, ax, az, bx, bz) != NavSegmentVerdict::Ok)
+			if (Check(grid, ax, az, bx, bz, true) != NavSegmentVerdict::Ok)
 				++segmentBad;
 		}
 
-		// 6.75 m packet chords along the smoothed polyline: the hard guarantee is that no chord
-		// meets a blocked cell. A chord whose own endpoint cells make a steeper digital line than
-		// the parent segment may additionally be refused as SlopeTooSteep; that is the intended
-		// conservative direction and is reported, not failed.
+		// 6.75 m packet chords along the smoothed polyline, checked with the mandatory Walk-only
+		// supercover (slope off): the hard guarantee is that no chord meets a blocked cell, so
+		// every default verdict must be Ok. Separately count how many of the same chords the
+		// optional slope layer would refuse (information only; a sub-chord has no planner context).
 		double curx = CenterX(grid, result.waypoints[0].x);
 		double curz = CenterX(grid, result.waypoints[0].z);
 		for (size_t i = 1; i < result.waypoints.size(); ++i)
@@ -450,37 +461,32 @@ TEST_CASE("NavSegment_RealMap_Planner")
 				const double sdx = tx - curx;
 				const double sdz = tz - curz;
 				const double remain = std::sqrt(sdx * sdx + sdz * sdz);
-				if (remain <= step + 1e-9)
+				const bool last = remain <= step + 1e-9;
+				double nx = tx;
+				double nz = tz;
+				if (!last)
 				{
-					++chords;
-					const NavSegmentVerdict v = Check(grid, curx, curz, tx, tz);
-					if (v == NavSegmentVerdict::BlockedCell)
-						++chordBlocked;
-					else if (v == NavSegmentVerdict::SlopeTooSteep)
-						++chordSlope;
-					curx = tx;
-					curz = tz;
-					break;
+					nx = curx + sdx / remain * step;
+					nz = curz + sdz / remain * step;
 				}
-				const double nx = curx + sdx / remain * step;
-				const double nz = curz + sdz / remain * step;
 				++chords;
-				const NavSegmentVerdict v = Check(grid, curx, curz, nx, nz);
-				if (v == NavSegmentVerdict::BlockedCell)
-					++chordBlocked;
-				else if (v == NavSegmentVerdict::SlopeTooSteep)
-					++chordSlope;
+				if (Check(grid, curx, curz, nx, nz) != NavSegmentVerdict::Ok)
+					++chordViolations;
+				if (Check(grid, curx, curz, nx, nz, true) == NavSegmentVerdict::SlopeTooSteep)
+					++chordSlopeOpt;
 				curx = nx;
 				curz = nz;
+				if (last)
+					break;
 			}
 		}
 	}
 
-	std::printf("NAVSEG planner: paths=%d segments=%d segment_bad=%d chords=%d chord_blocked=%d chord_slope=%d\n",
-		paths, segments, segmentBad, chords, chordBlocked, chordSlope);
+	std::printf("NAVSEG planner: paths=%d segments=%d segment_bad=%d chords=%d chord_violations=%d chord_slope_opt=%d\n",
+		paths, segments, segmentBad, chords, chordViolations, chordSlopeOpt);
 	CHECK(paths > 0);
 	CHECK_EQ(segmentBad, 0);
-	CHECK_EQ(chordBlocked, 0);
+	CHECK_EQ(chordViolations, 0);
 }
 
 TEST_CASE("NavSegment_RealMap_Straight")
