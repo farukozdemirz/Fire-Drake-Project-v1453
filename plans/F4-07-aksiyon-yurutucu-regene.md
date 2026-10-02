@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-07` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-06 (hedef HP dilimi, `OnPacket()` ekleme kalıbı, `m_actionWindow`) — `KAPANDI`; F4-05 (`SetStance` iskeleti) — `KAPANDI`; F4-02 (ölen botu üreten `attack` serisi) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -300,3 +300,41 @@ git diff --check gece/2026-10-02...bot/F4-07
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F4-07` @ `a6e3559` (uygulama commit'i `d5714a8`; taban `gece/2026-10-02` @ `f8a74b1`; gece modu, `AUTO_LOOP=1`: birleştirme/push döngü betiğinde, bu oturumda yapılmadı). Çalışma ağacı temizdi.
+- Kriter sonuçları:
+
+| # | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `tools/build.sh Release` rc=0; `ActionExecutor`/`BotSession`/`BotManager`/`BotCombat`/`CombatTests` için `warning`/`error` çıktısı boş |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, ilgili dosyalarda uyarı yok |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug`: `33 tests, 0 failed`; `Combat_RegeneCheck_Order` ve `Combat_RegeneCheck_Boundaries` `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`:6-7`); `std::min/max` yok |
+| K5 | ✔ | `WIZ_REGENE` yalnızca `ActionExecutor.cpp:1662` (paket) ve `BotSession.cpp:89` (`OnPacket`); `(->\|\.)Regene\(\|SetPosition\|HpChange\|m_bResHpType=` `GameServer/Bot/` içinde boş |
+| K6 | ✔ | `ActionExecutor.cpp:1620` `GetLoyalty() == 0` → `no_np`, `:1648-1650` `CheckRegene` + `!= REGENE_OK` → `RejectRegene` erken dönüş, `:1668` `HandlePacket` (WIZ_REGENE için tek). Çalışma zamanı: `dead_wait` ve `no_np` reddinde JSONL'de `ACTION_SUBMIT` yok |
+| K7 | ✔ | `m_sHp\|m_iMaxHp\|GetHealth\|GetMaxHealth\|GetX()\|GetZ()` `RequestRegene` aralığında (`:1596-1713`) boş; `x`/`z` `m_regeneEcho`'dan (`:1675-1685`); `isDead()` yalnızca ön koşul ve `alive`. Çalışma zamanı: cevaptaki (630.0, 920.0) `list` `pos=` ile aynı |
+| K8 | ✔ | `BotSession.cpp` silinen satırlar yalnızca başlatıcı listesinin iki satırı; `OnPacket()` mevcut blokları değişmedi, `WIZ_REGENE` bloğu yalnızca ekleme (`:87-95`), `WIZ_DEAD` bloğu yok |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı; `TickSessions()` farkı iki ekleme satırı (`:2070`, `:2083`); `Startup/Tick/BuildStatusLines/BeginDespawn` farkta yok. `ENABLED=0` çalışma zamanında: `regene` komutu dosyası tüketilmedi (`BotCommands.txt` yerinde), `Bot_*.log` satır farkı 0, `Logs/bots` oluşmadı |
+| K10 | ✔ | `diff --stat`: yalnızca §4'teki 8 dosya + plan; dört `.vcxproj`/`.filters` farkı boş (0 satır); `GameServer/` içinde `Bot/` dışında değişiklik yok; `docs/`, `CLAUDE.md`, `AGENTS.md`, `.claude/` değişmemiş |
+| K11 | ✔ | `file`: tüm değişen dosyalar `ASCII text, with CRLF line terminators`; `git diff --check` rc=0 |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(` `ActionExecutor.*`'de boş |
+| K13 | ✔ | `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckPotion`/`CheckStance`/`CheckTargetHp` 1; `EmitFairnessReject` tipleri `Move`(2)/`Cast`/`Potion`/`State`/`TargetHp` + yeni `Regene`; önceki 31 test geçiyor. Çalışma zamanında F4-01..F4-06 komutları önceki çıktıyı verdi (aşağıda 7) |
+| K14 | ✔ | Çalışma zamanı §7 senaryoları 1–7 aşağıda (senaryo 6'da `RESPAWN_CYCLES=2` yeniden sınanmadı) |
+
+- **Çalışma zamanı (K14, Release, AIServer bağlı, `TELEMETRY=decisions`, zone 71; `BotWP_K`/`BotWP_E`/`BotMF_K`):**
+  1. Mutlu yol: `attack BotWP_K BotWP_E 60` → `killed` (45 vuruş, 43 ok); `regene BotWP_E` → `respawned at (630.0, 920.0)`; JSONL `ACTION_SUBMIT` (`Regene`, `regene_type:1`) → `ACTION_RESULT` (`ok:true`, `reason:"respawned"`, `x:630.0`, `z:920.0`, `alive:true`, `latency_us:100`). Konum El Morad başlangıcı (MEC-DTH-06 `[V]` ile uyumlu; rastgele ofset bu çalıştırmalarda hep 0 çıktı). `list`: `pos=630.0,920.0`, `hp=5650/5650`, bot `in_game`. **`[A]`(b) doğrulandı:** sunucunun `WIZ_REGENE` cevabı botun alıcısına geliyor. **MP dolmama (MEC-DTH-07) bu çalıştırmada ayırt edilemedi:** bot ölmeden önce MP zaten maksimumdaydı (5370/5370); `[A]` olarak kalır. İlk ölüm turunda `regene` komutu ölümden >3 sn sonra verildiği için `dead_wait` o turda görülmedi; `dead_wait` senaryo 3'te ve senaryo 4'te sınandı.
+  2. `not_dead`: canlı `BotWP_K` ve doğduktan hemen sonra `BotWP_E` → `refused (not_dead)`, JSONL'de olay yok (0 `FAIRNESS_REJECT`).
+  3. Doğuş sonrası: `move BotWP_E 650 920` → `arrived`, `ACTION_RESULT` `ok:true`; `target BotWP_E BotWP_K` → `refused (out_of_view)` (BotWP_E El Morad noktasında, bölge farkı; beklenen). İkinci ölüm: `attack ... killed`, ölümden 763 ms sonra `regene BotWP_E` → `refused (dead_wait)`, `FAIRNESS_REJECT` `CLI-14 dead_wait value:763.00 limit:3000.00`, ardından `ACTION_SUBMIT` yok; ≥ 3 sn sonra `respawned` (`decision_id:2`, `latency_us:120`): `m_deadSeen` doğuşta temizleniyor, ikinci ölümde bekleme yeniden başlıyor.
+  4. Ölü açılış: öldürülen bot `despawn` + `spawn` → `hp 0/5650` ile açıldı (F4-06 bulgusu 3; bu turda `regene` 10 sn sonra verildiği için doğrudan `respawned` verdi). Beklemeyi ayırt etmek için bot satırı `Hp=0` ile hedefli `UPDATE`'lenip `spawn` sonrası `in game` görülür görülmez `regene` verildi: `refused (dead_wait)`, `value:1746.00 limit:3000.00`; ≥ 3,05 sn sonra `respawned`. (Ölü açılış `UPDATE Hp=0` kısayoluyla sınandı; öldürerek açılış yolu da `hp=0` ile açıldığı gösterildi.)
+  5. `no_np`: `Loyalty=0` + `Hp=0` bot spawn, ≥ 3 sn sonra `regene` iki kez → `refused (no_np)`, JSONL'de `Regene` olayı yok (10 → 10), bot `hp=0` ölü kaldı, sunucu botu ışınlamadı. `Loyalty=1000` geri yazılıp yeniden `spawn` + bekleme → `respawned`. (Ölü hâl `UPDATE Hp=0` ile üretildi; öldürme yolu guard için aynıdır, ek bir kod yolu yok.)
+  6. `despawn` sonrası → `not in game (phase despawned)`; `regene Ghost` → `unknown or not spawned bot '?'`; argümansız ve `regene BotWP_K BotWP_E` → `usage: regene <bot>` (tek satır). `RESPAWN_CYCLES=2` reddi yeniden sınanmadı (bu planda dokunulmadı; F4-06'da sınandı).
+  7. Gerilemesiz: `attack BotWP_K BotWP_E 3` (`finished (hit)`), `target` → `observed hp 5220/5650`, `sit`/`stand`, `pot ... 2` (`effected`), `cast BotMF_K 110518 BotWP_E 2` (`effected`, 2 ok), `move` çalışıyor; `PERF_SAMPLE` `tick_p95_us` ≤ 451 (≤ 1 ms); sunucu 3/3 UP, AIServer bağlı kaldı (`AG_USER_REGENE` sorunsuz); `GameServer.log` oturum boyunca değişmedi (son değişiklik 02:17, oturumdan önce). `TELEMETRY=summary`: `regene` `dead_wait` → `respawned` → `not_dead` çalışıyor, JSONL'de `ACTION_*`/`FAIRNESS_REJECT` 0. `ENABLED=0`: K9'daki gibi.
+- Bulgular (önem sırasına göre; hiçbiri engel değil):
+  1. **Not (sınanmadı):** MEC-DTH-07 (MP dolmaz) bu çalıştırmada ayırt edilemedi (MP ölmeden önce zaten maksimumdu); `docs/03` etiketi değişmedi. İnsan testi `T-ARCH-12` kapsamında.
+  2. **Not (sınanmadı):** `RESPAWN_CYCLES=2` ile `regene` reddi yeniden sınanmadı (kod yolu değişmedi).
+  3. **Not (üslup):** `dead_wait`/`rate` reddi `decision_id` tüketiyor (önceki dilimlerle aynı); `TickSessions()` ekleme satırları tek satırlık `{ }` bloğu (plan metniyle birebir).
+- Temizlik: `GameServer.ini` yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`, önce/sonra aynı), `BotCommands.txt` kaldırıldı, `Logs/bots` → `bots_old_f407a`/`bots_old_f407b`, sunucular kapatıldı (`0/3 hazır`); üç bot satırı (`BotWP_K`, `BotWP_E`, `BotMF_K`) hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000`, `Loyalty=1000` geri yazıldı (3 satır; kişisel veri tablosu okunmadı).
+- Düzeltme talimatı: Yok.
