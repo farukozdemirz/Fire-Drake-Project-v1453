@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-23` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12, F4-14, F4-16, F4-17, F4-18 (`Perception` dilimleri) — `KAPANDI`; F4-22 — `KAPANDI` (merge `1a42d6a`) |
@@ -250,16 +250,32 @@ git diff --stat gece/2026-10-02...bot/F4-23
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-23` — `<kısa-sha> [F4-23] …`
+- Branch / commit'ler: `bot/F4-23` (taban: `gece/2026-10-02`) — `157b631 [F4-23] Algi sozlesmesi statik denetim araci: bes kural (R1-R5), selftest ve JSON ciktisi`
 - Değişen dosyalar ve neden:
-  - `…`
+  - `tools/check-perception-contract.py` (yeni): tek Python dosyası; `GameServer/Bot/` + `BotCore/` taraması, R1-R5 kuralları, `--selftest` (V1-V7), `--json`, çıkış kodu 0/1/2. Yalnızca standart kütüphane, ASCII, LF.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+  C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\UpgradeHandler.cpp(634): warning C4789: ... [C:\...\proj-GameServer.vcxproj]
+  C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\UpgradeHandler.cpp(862): warning C4789: ... [C:\...\proj-GameServer.vcxproj]
+    All 14017 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `rc=0`; yeni uyarı yok (iki C4789 mesajı eski `UpgradeHandler.cpp` satırlarından, `GameServerDlg.cpp(1802)` C4267 da eski). Yalnızca Python eklenip C++ kaynağı değişmedi.
+- `./tools/run-tests.sh` son satırı: `82 tests, 0 failed` (`rc=0`).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: `--selftest` → `selftest OK`, `rc=0` (V1-V7; temiz ağaç, yorum/dizge/blok yorum yok sayma, R2 istisna/taşma/başka işlev/bayat/dosya-statik, R3 kendi oturumu/başkası/izin/taşma, R4 dört biçim + yorum, R5 alan/yapı yok/dosya yok, metin+JSON belirlenim).
+  - K2 ✔: `rc=0`; `files scanned: 19`, `| R1 | ... | 0 | 0 |`, `| R2 | ... | 0 | 28 |`, `| R3 | ... | 0 | 18 |`, `| R4 | ... | 0 | 0 |`, `| R5 | ... | 0 | 0 |`, `RESULT: PASS`; `## Stale allowlist entries` yok.
+  - K3 ✔: enjeksiyon kopyasında `rc=1`; `GameServer/Bot/BotManager.cpp:3301: R1 GetNpcPtr in Injected::Test (forbidden)`, `:3302: R2 GetUserPtr in Injected::Test (not allowlisted)`, `:3303: R3 m_pUser in Injected::Test (not allowlisted)`.
+  - K4 ✔: `PASS 19 ['allowlisted', 'files', 'result', 'rules', 'stale', 'violations']`; iki ardışık `--json` çıktısı `cmp` ile aynı.
+  - K5 ✔: `## Allowlisted` tam 20 satır (15 R2 + 5 R3), her satırda `hits` = `max`; R2 toplamı 28, R3 toplamı 18.
+  - K6 ✔: `file` → `Python script, ASCII text executable` (CRLF yok); `python3 -m py_compile` hatasız; import'lar yalnızca `json, os, re, shutil, sys, tempfile`.
+  - K7 ✔: commit sonrası fark yalnızca `tools/check-perception-contract.py` ve bu plan dosyası; `-- GameServer BotCore Tests shared AIServer docs` boş.
+  - K8 ✔: `tools/build.sh Release` `rc=0`, yeni uyarı yok; `run-tests.sh` `82 tests, 0 failed`.
+- Plandan sapmalar ve gerekçeleri:
+  - Yok. Sabitler, istisna tabloları ve çıktı biçimi planla birebir; gerçek ağaç çıktısı §2'deki beklenen değerlerle aynı (`R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0`, `files 19`, `RESULT: PASS`).
+  - İki küçük uygulama ayrıntısı (plandaki ifadeyi birebir izler, karar değil): işlev başlığı kapısında `;` denetimi `code.rstrip()` üzerinden yapıldı; `--root` hem boşluklu hem `--root=DIR` biçimini kabul eder.
+- Açık sorular: Yok. Çalışma zamanı assert'i (AC-LRN-03'ün ikinci yarısı) ve gözlem alanlarının anlamsal denetimi (`docs/03` §16) plan gereği kapsam dışıdır.
 
 ---
 
