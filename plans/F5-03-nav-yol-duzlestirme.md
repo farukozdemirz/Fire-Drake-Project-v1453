@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-03` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`) ve F5-02 (`BotCore/NavPath.h`): ikisi `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`) |
@@ -256,20 +256,28 @@ git diff --stat gece/2026-10-02-nav...bot/F5-03
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F5-03` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F5-03` @ `0e852d7` (kod commit'i `c18a6ba`; paralel hat `nav`, otonom mod: birleştirme ve push yapılmadı, sunuculara/DB'ye dokunulmadı)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `touch BotCore/NavSmooth.h Tests/BotCoreTests/NavSmoothTests.cpp` sonrası `./tools/build.sh Release` rc=0; çıktıda `NavSmoothTests.cpp` derlendi, toplam `warning` satırı 0 |
+| K2 | ✔ | `run-tests.sh Release --no-build --list`: 88 ad, sekiz `NavSmooth_*` adının tamamı var |
+| K3 | ✔ | `run-tests.sh Release --no-build` rc=0, `88 tests, 0 failed`, `SKIPPED` 0; sekiz `NavSmooth_*` `[ OK ]`; `NAVSMOOTH arena A->B: cells=150 waypoints=14 length=630.319 cost=660.617` (≤ 25 ara nokta, 570,4..661,1); `NAVSMOOTH perf set=near64 paths=997 cells_mean=51.5 waypoints_mean=5.9 length_ratio_mean=0.959 ms_p50=0.006 ms_p95=0.032 ms_p99=0.059` |
+| K4 | ✔ | `build/nav/zone71.navgrid` geçici taşındı: `NavSmooth_` rc=0, `8 tests, 0 failed`, iki gerçek harita testi `SKIPPED`, diğer altı `[ OK ]`; dosya geri kondu (`md5sum -c` OK) |
+| K5 | ✔ | `./tools/run-tests.sh Debug` rc=0, `88 tests, 0 failed`, `warning` 0; Debug perf satırı `paths=100` (Debug'da süre kapısı yok) |
+| K6 | ✔ | `NAVSMOOTH random: paths=240 cells=3681 waypoints=1286 clear_pairs=108` (`p>0`, `c>0`); `NavSmooth_Invariants_Random` ve `NavSmooth_WallGap_NoCornerCut` `[ OK ]` (Release ve Debug) |
+| K7 | ✔ | Üç ayrı `NavSmooth_Perf` koşusu: `ms_p95` 0.033 / 0.034 / 0.033 (≤ 0.500), `paths=997`, `waypoints_mean=5.9 < cells_mean=51.5`, `length_ratio_mean=0.959`; `nproc=16` (Ryzen 7 7800X3D, uygulayıcı raporu) |
+| K8 | ✔ | saflık grep'i boş (rc=1); `git diff --stat gece/2026-10-02-nav...bot/F5-03`: `BotCore/BotCore.vcxproj` (+1), `BotCore/NavSmooth.h` (+128), `Tests/BotCoreTests/BotCoreTests.vcxproj` (+1), `Tests/BotCoreTests/NavSmoothTests.cpp` (+661), kendi plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h` yok; plan farkı yalnızca `Durum` ve Uygulayıcı Raporu |
+| K9 | ✔ | `Nav_` 10 test, `NavPath_` 9 test `[ OK ]`, rc=0; `NAVPATH T-NAV-03 set=near64 … found=997 … ms_p95=0.564` (tam koşuda 0.531; ≤ 2.000) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `BotCore/NavSmooth.h:33-36`: `dx` kanonik sıralamadan sonra negatif olamaz, `ax = dx < 0 ? -dx : dx` gereksiz; planın metnine uyduğu için bırakıldı, davranışı etkilemez.
+  2. Not: `NavLineClear` Bresenham'dır, `supercover` değildir (plan §8 ve ADR-0006 Eki F5-03'te bilinen sınırlama `[A]`); sınır MET-NAV-01 / F5-09 ile ölçülecek.
+  3. Not: Arena A→B sonucu prototipten farklı (14 ara nokta / 630,319 m, prototip 13 / 635,787): C++ A* beraberlik sırası farklı, eşit maliyetli 150 hücrelik yol seçiyor; plan aralıkları içinde, kural sayıya uydurulmamış.
+  4. Doğruluk incelemesi: `NavLineClear` kanonik yön, ızgara dışı/engelli uç, `a == b` ve her adımda tek `EdgeOpen` kenarı plan §5.1'e birebir; `NavSmoothPath` boş/tek hücre, `maxLookahead < 1` ve `j == i + 1` ayrımı plana uygun, sızıntı/aliasing yok; testler planın sayılarına (16,0 m, 93,255 m, 3..5 ara nokta, `36,0` m) birebir; `CHECK` makrosu `do { } while` olduğundan `if` gövdesinde güvenli.
+  5. Dosya biçimi: yeni dosyalar ASCII + CRLF (çalışma ağacı) + tab/Allman; vcxproj'larda yalnızca birer satır eklendi, BOM korundu; `build/` commit'te yok.
+- Düzeltme talimatı: yok (DOĞRULANDI).
