@@ -186,7 +186,9 @@ void CUser::SelectCharacter(Packet & pkt)
 		return;
 	}
 
-	SetLogInInfoToDB(bInit);
+	// Bot sessions skip the CURRENTUSER/TB_USER bookkeeping (ADR-0014).
+	if (m_botSink == nullptr)
+		SetLogInInfoToDB(bInit);
 
 	result << GetZoneID() << GetSPosX() << GetSPosZ() << GetSPosY() << g_pMain->m_byOldVictory;
 	m_bSelectedCharacter = true;
