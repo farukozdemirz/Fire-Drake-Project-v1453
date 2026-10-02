@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-28` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-26 (`CastTypesSupported`, `IsGatedType`, `MinGatedSince`, iki tipli kapı) — `KAPANDI` (merge `06a76e8`); F4-27 (`quest_locked`) — `KAPANDI` (merge `b73d31f`) |
@@ -190,13 +190,36 @@ git diff --check gece/2026-10-02...bot/F4-28
 
 ### Tur 1
 
-- Durum: …
-- Branch / commit'ler: …
-- Değişen dosyalar ve nedenleri: …
-- Derleme sonucu (`tools/build.sh Release` son satırları): …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-28` (taban `gece/2026-10-02` @ `8b71514`); `734e64e` `[F4-28] Type4 tek tipli skill destegi: CastTypesSupported (4,0) ve testler` (3 kod dosyası); rapor/`Durum` commit'i bu satırın altında.
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/BotCombat.h`: `CastTypesSupported` kuralı `type1 == 0` iken artık `type0 == 4`'ü de kabul eder (tek mantık değişikliği); başlık/fonksiyon yorumu `MEC-MAG-15` ve F4-28'i anar. `IsGatedType`/`CastQuestAllowed`/`TypeStamp`/`MinGatedSince` değişmedi.
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastTypes_Supported` güncellendi (`(4, 0)` artık `true`; `false` bloğuna `(4, 1)`, `(4, 2)`, `(4, 4)`, `(4, 9)` eklendi; diğer satırlar aynen); yeni `Combat_TypeGate_Type4Single` (`(4,0)` tip damgası kapısı, `MinGatedSince`/`CheckCastStart`/`CastWaitMs`; plan §5.2-b). 103 → 104 test.
+  - `GameServer/Bot/ActionExecutor.h`: yalnızca yorumlar (`CastOutcome::reason`, `BeginCast` destek cümlesi, `TickCast` tek-tipli Type4 sonuç notu). Kod değişikliği yok.
+- Derleme sonucu:
+  - `./tools/build.sh Release`: rc=0; son satır `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. Yalnızca önceden var olan `UpgradeHandler.cpp(634/862)` C4789 uyarıları; `BotCombat.h`/`CombatTests.cpp`/`ActionExecutor.h` ve içeren `.cpp`'lerde (`ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `ScenarioRunner.cpp`) uyarı yok.
+  - `./tools/build.sh Debug`: rc=0; son satır `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`.
+  - `./tools/run-tests.sh Release`: rc=0, `104 tests, 0 failed`; `.[ OK ] Combat_CastTypes_Supported`, `.[ OK ] Combat_TypeGate_Type4Single` (ayrıca `Combat_TypeGate_MinSince`, `Combat_TypeGate_DualCast`). `Debug`: rc=0, `104 tests, 0 failed`.
+- §5.3-a kod okuma doğrulamaları (satırlar `bot/F4-28` @ `734e64e`):
+  1. `grep -n "bType\["` yalnızca `729, 730, 809, 851, 855, 1001, 1283, 1284` (`:1283-1284` pot sınıflandırması, Type3); `BeginCast`'te `CastTypesSupported` dışında Type4'ü reddeden koşul yok (`:730`).
+  2. `bad_target`: `:752-757` `wantedSelf = (bMoral == MORAL_SELF)`, `wantedTarget = (bMoral == MORAL_ENEMY)`; `MORAL_SELF` hedefsiz, `MORAL_ENEMY` hedefli ister, `MORAL_FRIEND_WITHME`/`MORAL_ALL` ikisini de kabul eder (koşul yalnızca bu ikisi).
+  3. `TickCast` tip kapısı `:849-859` (`typeGated` iki tip; `typeStamps[i].has = (ty < 8 && s->m_castTypeHas[ty])`); EFFECTING sonrası damga döngüsü `:1001-1007` `bType[0] == 4` için `m_castTypeHas/Last[4]`'ü okur/yazar (dizi 8 elemanlı); `CastStartCheck` `:883`.
+  4. `SubmitCast` sonuç eşlemesi `:637-651`: `op == MAGIC_EFFECTING` ⇒ `effected` (`SKILLMAGIC_FAIL_ATTACKZERO` ⇒ `missed`), `MAGIC_FAIL` ⇒ `srv_fail`; tek hedefli Type4 süresi pozitif olduğundan `missed` üretilmez.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, değişen dosyalarda uyarı yok; yalnızca eski `UpgradeHandler.cpp` C4789).
+  - K2 ✔ (Debug rc=0).
+  - K3 ✔ (Release ve Debug `104 tests, 0 failed`; iki test adı `[ OK ]`).
+  - K4 ✔ (`grep` eşleşme yok; yalnızca `<algorithm>`/`<cstdint>`; eklenen satırlarda `std::min`/`std::max` yok).
+  - K5 ✔ (yalnızca `CastTypesSupported` bölgesi değişti; `(4,0)` true, `(4,1)`, `(4,2)`, `(4,3)`, `(4,4)`, `(4,9)`, `(1,4)`, `(2,4)`, `(0,4)` false).
+  - K6 ✔ (`ActionExecutor.cpp`, `BotSession.*`, `BotManager.cpp` ve vcxproj dosyaları fark yok; §5.3-a dört okuma yukarıda).
+  - K7 ✔ (yeni ini anahtarı/komut/thread/telemetri olayı yok; eklenen satırlarda `Emit(` yok).
+  - K8 ✔ (`git diff --stat gece/2026-10-02...bot/F4-28` yalnızca §4'teki 3 dosyayı gösterir; rapor/`Durum` commit'i plan dosyasını ekler).
+  - K9 ✔ (`file`: üç dosya da ASCII + CRLF; `git diff --check` boş).
+  - K10 ✔ (`CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart`/`CheckCastEffect`/`CheckCastFly`/`CheckCastLand`/`CheckCastCancel`/`CheckPotion` 1; 103 eski test de geçiyor).
+  - K11 ✔ (`python3 tools/check-perception-contract.py` `RESULT: PASS`; `R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0`; 19 dosya).
+  - K12 (Claude çalışma zamanı S1–S5) — bu turda çalıştırılmadı (doğrulama işi).
+- Plandan sapmalar: Yok. `ActionExecutor.h` yorumlarında plan metnindeki tek tırnaklı alıntılar komşu satırların üslubuna uyularak çift tırnaklı yazıldı (metin anlamı aynı). `BotCore/BotCombat.h` yorumunda plan `MEC-MAG-15`'i anar.
+- Açık sorular: Yok. Uygulama sırasında Type4 için eksik bir kural görülmedi (ör. sunucu `MAGIC_FAIL` yolları, moral denetimi, tip kapısı, yankı eşlemesi plan §2/§5.4 ile birebir).
 
 ---
 
