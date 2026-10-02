@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-18` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-17 (`SelfState` genişletme, `FillSelfExtras`, `/bot snap`) — `KAPANDI` (merge `6f66164`); F4-16 (`PerceptionSnapshot`, `BuildSnapshot`) — `KAPANDI`; F4-12 (`ObsTable`, `OnPacket()` gözlem kalıbı) — `KAPANDI`; F4-08..F4-10 (party aksiyonları: üyelik oluşturmak için) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -26,8 +26,8 @@ Saf mantık (`BotCore/Perception.h`): bayt ayrıştırıcı, `TeamTable`, `Build
 - `docs/adr/ADR-0017-aksiyon-yurutucu-ve-adalet-korumasi.md` Ek F4-17 madde 7 — "party HP (`PARTY_HPCHANGE`, `TeamView`)" sıradaki dilim olarak ayrılmıştı; Claude Ek F4-18'i yazar.
 - İlgili kod (hepsini açıp doğrula; satırlar `6f66164` itibarıyla):
   - `shared/packets.h:238-250` — alt-opcode değerleri: `PARTY_PERMIT 0x02`, `PARTY_INSERT 0x03`, `PARTY_REMOVE 0x04`, `PARTY_DELETE 0x05`, `PARTY_HPCHANGE 0x06`, `PARTY_LEVELCHANGE 0x07`.
-  - **Paket düzenleri** (`Packet`'in `<<` işleçleri: `uint8` 1 bayt, `uint16`/`int16` 2 bayt, `std::string` = **1 bayt uzunluk + metin** (`shared/ByteBuffer.h:59-71`; varsayılan tek bayt), hepsi little-endian; sunucu paket gövdesi `Packet::contents()` ile alt-opcode baytından başlar):
-    - **Üye kaydı** — `GameServer/PartyHandler.cpp:233-241` (katılana, mevcut her üye için), `:254-260` (katılan dahil tüm üyelere yayın), `:315-326` (`PartyPromote`, bayrak 100): `u8 PARTY_INSERT | u16 sid | u8 flag | str name | i16 maxHp | i16 hp | u8 level | u16 class | i16 maxMp | i16 mp | u8 nation` (`m_iMaxHp`/`m_iMaxMp` `short`: `GameServer/User.h:237`; `m_sHp`/`m_sMp` `int16`: `:135`; `GetLevel()` `uint8`: `GameServer/Unit.h:93`; `GetClass()` `uint16`: `User.h:384`; `GetNation()` `uint8`: `Unit.h:92`). `flag` = 1 (katılma) ya da 100 (lider devri: "reset position to leader"). Toplam uzunluk `17 + name.size()` bayt.
+  - **Paket düzenleri** (`Packet`'in `<<` işleçleri: `uint8` 1 bayt, `uint16`/`int16` 2 bayt, `std::string` = uzunluk + metin; **uzunluk varsayılan olarak 2 bayttır** (`shared/ByteBuffer.h:11` `m_doubleByte(true)`; `SByte()` çağrılmayan paketlerde `u16` uzunluk, `PartyHandler.cpp` üye kayıtlarında `SByte()` yoktur). [Doğrulama Turu 1 düzeltmesi: plan ilk yazıldığında burada "1 bayt / varsayılan tek bayt" yazıyordu; bu yanlıştı, çalışma zamanında yakalandı], hepsi little-endian; sunucu paket gövdesi `Packet::contents()` ile alt-opcode baytından başlar):
+    - **Üye kaydı** — `GameServer/PartyHandler.cpp:233-241` (katılana, mevcut her üye için), `:254-260` (katılan dahil tüm üyelere yayın), `:315-326` (`PartyPromote`, bayrak 100): `u8 PARTY_INSERT | u16 sid | u8 flag | u16 nameLen + name | i16 maxHp | i16 hp | u8 level | u16 class | i16 maxMp | i16 mp | u8 nation` (`m_iMaxHp`/`m_iMaxMp` `short`: `GameServer/User.h:237`; `m_sHp`/`m_sMp` `int16`: `:135`; `GetLevel()` `uint8`: `GameServer/Unit.h:93`; `GetClass()` `uint16`: `User.h:384`; `GetNation()` `uint8`: `Unit.h:92`). `flag` = 1 (katılma) ya da 100 (lider devri: "reset position to leader"). Toplam uzunluk `18 + name.size()` bayt (düzeltildi: önceki `17 +` tek baytlık uzunluk varsayımına dayanıyordu).
     - **Ret/iptal** — aynı alt-opcode, **3 bayt**: `u8 PARTY_INSERT | i16 code` (`PartyHandler.cpp:80-82` ve `:164`). Üye kaydı **değildir**; mevcut `BotSession.cpp:123` aynı ayrımı `pkt.size() == 3` ile yapar.
     - **HP/MP değişimi** — `GameServer/User.cpp:2057-2065` (`SendPartyHPUpdate`, `Send_PartyMember` ile gönderene de gider): `u8 PARTY_HPCHANGE | u16 sid | i16 maxHp | i16 hp | i16 maxMp | i16 mp` = 11 bayt.
     - **Ayrılma/atma** — `PartyHandler.cpp:393-395`: `u8 PARTY_REMOVE | u16 sid` (3 bayt; atılan kişiye de gider, çünkü yayın üyelik silinmeden önce yapılır). **Dağılma** — `PartyHandler.cpp:433-434`: `u8 PARTY_DELETE` (1 bayt).
@@ -401,4 +401,47 @@ git diff --check gece/2026-10-02...bot/F4-18
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-—
+### Tur 1 — 2026-10-02
+
+**Karar:** DÜZELTME GEREKLİ (gece modu, `AUTO_LOOP=1`; birleştirme/push yok). İncelenen commit: `49f071c` (`bot/F4-18`; kod `0288532`, taban `gece/2026-10-02`). Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | beş dosya `touch` edilip `build.sh Release` rc=0; günlükte `warning`/`error` satırı 0 |
+| K2 | ✔ | `build.sh Debug` rc=0; `warning`/`error` satırı 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `76 tests, 0 failed`; beş yeni ad `[ OK ]`. Test gövdeleri okundu: plandaki değerler sınanıyor (ama bkz. bulgu 1: `AddPartyMember` ad uzunluğunu 1 baytla yazıyor, yani aynı yanlış varsayımı sınıyor) |
+| K4 | ✔ | `windows.h\|stdafx\|GameServer\|shared/` grep'i boş; `#include` yalnızca `<cstddef> <cstdint> <cstring> <cmath>`; yasak sözcük grep'i boş |
+| K5 | ✔ | `UnitView`/`NpcView`/`TeamMemberView` grep'leri boş; `CommandSnap` ve `FillSelfExtras` yasak-erişim grep'leri boş; yeni `OnPacket` bloğu (satır 146-161, CRLF temizlenerek) `g_pMain\|GetUserPtr\|GetPartyPtr\|_PARTY_GROUP\|uid[\|m_pUser` içermiyor (Uygulayıcı'nın CRLF/`sed` artefakt açıklaması doğru) |
+| K6 | ✔ | `std::mutex` = 1; yeni blokta `m_obsLock` = 1 ve `ParsePartyEvent` (`BotSession.cpp:154`) `lock_guard`'dan (`:157`) önce; `CommandSnap`'te `m_obsLock` = 1; `m_team` yalnızca `BotSession.cpp:158` (lock altında), `:372` (`m_obsLock` bloğu), `BotManager.cpp:2510` (kopyalama bloğu) |
+| K7 | ✔ | dört dosyada `-` satırı yok; `BotManager.cpp`'de tek `-` satırı izinli yorum |
+| K8 | ✔ | farkta eklenen satırlarda `m_party*Echo`/`m_partyInviteAtMs` yok; `BuildSnapshot` gövdesi ve `SelfState` önceki alanları farkta yok |
+| K9 | ✔ | statik: yeni ini anahtarı yok; `TickSessions`'a tek satır (`m_selfSid`, `isInGame()` doğrulamasından sonra); `GameServer/` içinde yalnızca `Bot/`. `ENABLED=0` çalışma zamanında denenmedi (önceki turlardaki kalıp) |
+| K10 | ✔ | `--stat`: 5 kod dosyası + plan; `*.vcxproj*`, `BotManager.h`, `ActionExecutor.*` farkı 0 satır |
+| K11 | ✔ | `file`: ASCII + CRLF (çalışma ağacı), `git ls-files --eol` `i/lf w/crlf` taban ile aynı; `git diff --check` boş |
+| K12 | ✔ | eklenen satırlarda `printf`(`snprintf` dışı)/`Sleep`/`CreateThread`/`rand(` yok |
+| K13 | ✔ | `CheckMoveStep` 2; diğer 14 `Check*` her biri 1; `BuildSnapshot` (`BotManager.cpp:2535`) ve `BuildTeam` (`:2536`) `CommandSnap`'ten çağrılır |
+| K14 | ✘ | çalışma zamanı: yapı doğru, **üye alanları yanlış** (aşağıda) |
+
+**Çalışma zamanı (K14; `Release`, ini değiştirilmedi (`GameServer.ini` md5 öncesi/sonrası `265a8e1c...`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş); üç sunucu `[UP]`, `AI=bağlı`; iş bitince `run-servers.sh stop`, `BotCommands.*` kalmadı; `Logs/bots/` eski klasörleri silinmedi (silme komutu reddedildi, sonuçları etkilemez)):**
+
+1. **İki kişilik party (S1): kısmen.** `spawn` üç bot (zone 71, başlangıç konumları ~170 m uzak: ilk `pinvite` `refused (out_of_view)`, `BotWP_K`/`BotPHD_K` `BotMF_K`'ya yürütüldü). `pinvite BotWP_K BotMF_K` + `paccept BotMF_K` sonrası: `snap BotWP_K` → `team in_party=1 self_leader=1 leader=self members 1 (total 1)` ✔; `snap BotMF_K` → `in_party=1 self_leader=0 leader=id=2984 members 1 (total 1)` ✔ ("ilk kayıt = lider" `[A]` kuralı teyit edildi); `snap BotPHD_K` → `in_party=0 members 0` ✔. **Ama üye satırları yanlış:** `member id=2985 name= class=28240 lvl=6 hp=1286/1355 mp=-31465/-31488` (gerçek: `BotMF_K`, level 80, `list` çıktısında `hp=1541/1541 mp=6021/6021`).
+2. **Üçüncü üye (S2) ✔ yapı:** `pinvite BotWP_K BotPHD_K` + `paccept` → üç botun `snap`'i aynı kimlik kümesini gösteriyor (`BotPHD_K`/`BotMF_K` iki üye, lider `id=2984` işaretli); alan değerleri yine yanlış.
+3. **Lider devri (S3) ✔ yapı:** `ppromote BotWP_K BotMF_K` → `snap BotPHD_K` `leader=id=2985` ve `leader` öneki `BotMF_K` satırında; `snap BotMF_K` `self_leader=1 leader=self`; `snap BotWP_K` `self_leader=0 leader=id=2985` (flag-100 yolu doğru).
+4. **HP/MP güncellemesi (S4): gözlenmedi** (tam HP'li botlarda `PARTY_HPCHANGE` tetiklenmedi); `PARTY_HPCHANGE` düzeninde dize yok, kod okumasıyla (`User.cpp:2057-2065`) birim testteki düzenle aynı. Kriteri tek başına düşürmez.
+5. **Ayrılma/atma/dağılma (S5) ✔ yapı:** `pkick BotMF_K BotPHD_K` → `snap BotPHD_K` `in_party=0 members 0`, `snap BotMF_K` bir üye; `pleave BotMF_K` → üç botta `in_party=0 members 0`; yeni party `pinvite BotPHD_K BotWP_K` + `paccept BotWP_K` → `snap BotPHD_K` yalnızca `BotWP_K`, eski üyelerden kalıntı yok ✔. Gerilemesiz: `snap` argümansız → `usage: snap <bot>`; `snap NoSuch` → `unknown or not spawned bot '?'`; `see`, `npcs`, `list`, `move`, `pinvite/paccept/ppromote/pkick/pleave`, `despawn all` (3 bot temiz çıktı) çalıştı. Günlükte `WARN`/`ERROR` 0.
+
+**Bulgular (önem sırasıyla):**
+
+1. **[Yüksek, düzeltme] `BotCore/Perception.h` `ParsePartyEvent` `kPartyInsert` dalı (`r.Str(m.name, kObsNameMax)`): üye adı yanlış okunuyor.** Sunucu `PartyInsert`/`PartyPromote` paketlerinde `SByte()` çağırmaz, `ByteBuffer`'ın varsayılanı çift baytlık uzunluktur (`shared/ByteBuffer.h:11` `m_doubleByte(true)`; `PartyHandler.cpp:233-241`, `:254-260`, `:315-326`): düzen `u8 sub | u16 sid | u8 flag | u16 nameLen + name | i16 maxHp | i16 hp | u8 level | u16 class | i16 maxMp | i16 mp | u8 nation`. Kod 1 bayt uzunluk okuyor: `07 00 'B'…` için `n = 7`, ilk karakter NUL olduğundan ad boş, ve sonraki tüm alanlar **1 bayt kayık**. Kayığın teyidi: `BotMF_K` `maxHp` 1541 = `0x0605`; kayık okuma `'K'(0x4B)` + `0x05` = `0x054B` = **1355** (snap'te görülen değer). Etkiler: ad boş, sınıf/seviye/HP/MP/ulus yanlış, `dead` yanlış (`hp <= 0` yanlış değerden). Üye kimliği, lider, sayı, görünürlük ve mesafe doğru (kimlik kayıktan önce okunuyor). **Kök neden planın hatasıdır (Claude, §2 "varsayılan tek bayt" iddiası yanlıştı; plan metni bu turda düzeltildi); Uygulayıcı planı olduğu gibi uyguladı.** Birim testler geçti çünkü `AddPartyMember` aynı yanlış düzeni (`Buf.Str`, 1 bayt) üretiyor: sınama sunucu paketine karşı değil, kendi varsayımına karşı. Çalışma zamanı denetimi yakaladı.
+2. **[Orta, test boşluğu]** `Perception_Party_ParseMember` gerçek bir sunucu bayt dizisi (elle yazılmış sabit) içermiyor; düzeltmede eklenecek (talimat 2).
+3. **[Not]** Uygulayıcı sapmaları kabul: (1) takım bölümü `PerceptionSnapshot`'tan önce (değer üye olduğu için zorunlu), (2) `PartyEvent.nowMs` (HP dalı `lastSeenMs` için gerekli), (3) K5 `sed` artefaktı, (4) `m_selfSid(-1)` ayrı satır (K7 `-` kuralı). Hepsi gerekçeli ve davranış değiştirmiyor.
+4. **[Not]** `ageMs` 60 sn üstüne çıkabiliyor (HP değişimi olmayan üyelerde yalnızca kayıt anı damgası): tasarım gereği (plan: "kaydı son dokunan paket"); karar katmanı bunu bilmeli (ADR Eki'nde not edilecek).
+
+**Düzeltme talimatı:**
+
+```
+plans/F4-18-algi-takim-gorunumu.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. BotCore/Perception.h, ParsePartyEvent, kPartyInsert dalı: üye adı r.Str(m.name, kObsNameMax) ile (1 bayt uzunluk) okunuyor; sunucu bu paketlerde SByte() çağırmadığı için adı u16 uzunluk + metin olarak yazar (shared/ByteBuffer.h:11 m_doubleByte(true); PartyHandler.cpp:233-241, :254-260, :315-326). Bu r.Str çağrısını (ve onu saran if'i) şu mantıkla değiştir; ByteReader'a ve yeni include'lara dokunma: `uint16_t nameLen = r.U16(); if (!r.ok() || nameLen > kObsNameMax - 1) return false; for (uint16_t i = 0; i < nameLen; i++) m.name[i] = (char)r.U8(); if (!r.ok()) return false; m.name[nameLen] = '\0';` (m önceden memset ile sıfırlı). Alan sırası ve dalın geri kalanı aynı kalır. ParsePartyEvent'in başlık yorumuna bir cümle ekle: "member name = u16 length + bytes (ByteBuffer default, no SByte())"; yorumda "shared/" yazma (K4 grep'i).
+2. Tests/BotCoreTests/PerceptionTests.cpp: AddPartyMember adı u16 uzunlukla yazsın (b.U16((uint16_t)strlen(name)) + her karakter b.U8); Buf'a yeni yöntem ekleme, bu yardımcıda Buf::Str kullanma. Perception_Party_ParseMember içine (yeni TEST_CASE açma; toplam 76 kalır) şunları ekle: (a) elle yazılmış gerçek paket: `const uint8_t raw[25] = {0x03,0x07,0x00,0x01,0x07,0x00,0x42,0x6F,0x74,0x57,0x50,0x5F,0x4B,0xB8,0x0B,0xC4,0x09,0x50,0x6A,0x00,0xB0,0x04,0x84,0x03,0x01};` ParsePartyEvent(raw, 25, 5000, ev) true; kind MEMBER; flag 1; member.sid 7; ad "BotWP_K"; maxHp 3000; hp 2500; level 80; cls 106; maxMp 1200; mp 900; nation 1; raw[0..23] (24 bayt, son bayt kesik) false ve kind NONE; (b) ad uzunluğu 0 (u16 0) olan kayıt true ve ad ""; (c) 23 karakterlik ad true; 24 karakterlik ad (u16 24) false; (d) nameLen = 0xFFFF (ardından birkaç bayt) false ve kind NONE. Var olan vakalar (flag 0/2, 3 baytlık ret, kesik, nullptr) kalır.
+3. Dört doğrulama: ./tools/build.sh Release, ./tools/build.sh Debug, ./tools/run-tests.sh Release, ./tools/run-tests.sh Debug (76 test, 0 failed); Perception.h ve PerceptionTests.cpp touch edilip uyarısız derlendiğini kontrol et; ASCII + CRLF korunur; git diff gece/2026-10-02...bot/F4-18 -- BotCore/Perception.h Tests/BotCoreTests/PerceptionTests.cpp GameServer/Bot/BotSession.h GameServer/Bot/BotSession.cpp | grep '^-' | grep -v '^---' boş kalır. Başka dosyaya dokunma. Çalışma zamanı sınamasını (snap çıktısında ad/sınıf/seviye/HP/MP doğruluğu) Claude yapar; sen yapma.
+```
