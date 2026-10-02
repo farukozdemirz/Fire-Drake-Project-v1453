@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 6 "Analiz aracı") |
 | Branch | `bot/F3-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-01 (`KAPANDI`: JSONL biçimi, `PERF_SAMPLE`), F3-02 (`KAPANDI`: `<match>.jsonl`, `summary.json`) |
@@ -208,35 +208,72 @@ git diff --stat gece/2026-10-02...bot/F3-06
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F3-06` — `<kısa-sha> [F3-06] …`
+- Branch / commit'ler: `bot/F3-06` (taban: `gece/2026-10-02`) — `f4d0163 [F3-06] Telemetri analiz aracı (JSONL -> Markdown/JSON rapor)`; bu rapor ayrı bir commit'te (`[F3-06] Uygulayıcı raporu: UYGULANDI`).
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `tools/bot-telemetry-report.py` (yeni, 839 satır): JSONL telemetri dosyalarını/klasörlerini okuyup Markdown (varsayılan) veya `--json` rapor üreten; `--selftest` yerleşik sınamalı; yalnızca Python stdlib. Sunucu koduna dokunulmadı.
+  - `plans/F3-06-telemetri-analiz-araci.md`: `Durum` satırı (`HAZIR` → `UYGULANIYOR` → `UYGULANDI`) ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Yeni uyarı yok; görülen uyarılar yalnızca eski satırlarda (`GameServerDlg.cpp` 816/1143/1802, `UpgradeHandler.cpp` 634/862). Değişen dosya Python olduğu için derlemeyi etkilemez.
+- Kabul kriterleri öz-değerlendirme:
+  - **K1 ✔** `file`: `Python script, ASCII text executable`; import'lar yalnızca `json, os, statistics, sys, tempfile`; CRLF/BOM yok (LF).
+  - **K2 ✔** argümansız → `USAGE`, çıkış 2; `--bogus x.jsonl` → `unknown argument: --bogus` + `USAGE`, çıkış 2; `/nonexistent/path` → `error: cannot read path: no such path`, çıkış 2.
+  - **K3 ✔** `--selftest` çıkış 0, son satır `selftest OK`. §5.6 madde eşlemesi:
+    1. *Geçerli maç:* `assert match["status"] == "VALID"`, `duration_s == 15.364`, `perf_samples == 3`, `warnings == []`; MET pencereleri için `windows==3, ticks==40, p50_med_us==2, p95_est_us==225` (ağırlıklı: `(10·100+10·200+20·300)/40`), `p95_worst_us==300, p99_worst_us==400, max_us==450, in_game_max==4, verdict=="OK"`; ayrıca Markdown'da `| 15.4 |`.
+    2. *Geçersizlik kodları:* `bad.jsonl` (mode `eval`, `in_game=4 < n_comp=5`, `result=aborted`, `dropped_hard=1`, `TEST_TELEPORT`, ilk satır bozuk) → `reasons == ["ABORTED","SPAWN_SHORT","DROPPED_HARD","TELEPORT_IN_EVAL","BAD_LINES"]`, `status=="INVALID"`, `first_bad_line==1`; ayrıca `noend.jsonl` → `reasons == ["NO_END"]`.
+    3. *Bütçe:* `build_perf_row` doğrudan: `5000→OK` (bütçe 5000), `5001→FAIL`, `in_game=17` + `5001→15000/OK`, `in_game=65→NO_BUDGET`, pencere yok → `NO_DATA`.
+    4. *SELFTEST/bilinmeyen olay:* 3 `SELFTEST` + 2 `DECISION` + 1 `PERF_SAMPLE` → `ignored_selftest==3`, `events == {"DECISION":2,"PERF_SAMPLE":1}` (SELFTEST yok), Markdown'da `| SELFTEST |` yok ve `ignored SELFTEST lines: 3`.
+    5. *summary.json çapraz denetimi:* doğru özet (K1 senaryosu) → uyarı yok; `lines=99` yapılmış özet → `warnings` içinde `summary mismatch`.
+    6. *Klasör/determinizm/JSON:* `collect_paths` özyinelemeli, `t1.summary.json` giriş değil, sıralı; aynı basename iki klasörde → `a/t1.jsonl`/`b/t1.jsonl`; `gather` iki kez → `render_markdown` ve `render_json` bayt-eşit; `json.loads(render_json(...))` sözlük döndürür.
+  - **K4 ✔** Bütçe sınır değerleri K3/3'te assert ediliyor (yukarıda); değerler kodda açıkça okunabilir.
+  - **K5 ✔** Gerçek klasör iki kez çalıştırıldı, `md5sum` aynı: `f43b25869d44fc30d869956cd2475397`.
+  - **K6 ✔** Gerçek veride çıkış 0; `Matches` tablosunda dört maç var; `summary mismatch` uyarısı yok (`Warnings (none)`). `t1-7-1`: `duration_s 15.4`, `perf_samples 3`, `p95_worst_us 1270`, `max_us 1638`, `in_game_max 4`, `verdict OK`. `t3-4294967295-3`: `duration_s 8.8`, `p95_worst_us 95`, `max_us 1244`. (`t2-5-4` beklenen şekilde `INVALID/ABORTED`, özetiyle uyumlu.)
+  - **K7 ✔** `live-063701.jsonl` (8197 satır; `grep -c SELFTEST` = 8192) hatasız işlendi; `Events` tablosunda SELFTEST yok, `ignored SELFTEST lines: 8192` yazıyor; tüm komut ~0,15 sn (< 5 sn).
+  - **K8 ✔** `--json` çıktısı `json.load` ile çözülüyor; `--out /tmp/f306-x.md` dosyaya doğrudan çıktıyla bit-eşit Markdown yazıyor, stdout/stderr 0 bayt; `INVALID` maç içeren geçici girdiyle `--strict` çıkış 1, `--strict` olmadan çıkış 0.
+  - **K9 ✔** Çalıştırma öncesi/sonrası `Logs/bots/2026-10-02` altındaki 14 dosyanın tamamı `md5sum -c` ile OK.
+  - **K10 ✔** `tools/build.sh Release` rc=0; yeni uyarı yok.
+  - **K11 ✔** `git status` yalnızca `tools/bot-telemetry-report.py` (yeni) ve plan dosyasını (Durum + rapor) gösteriyor; `GameServer/`, `shared/`, `docs/`, ini dosyalarında fark yok.
+- Plandan sapmalar ve gerekçeleri:
+  - `p95_est_us` ve `p50_med_us` tamsayıya yuvarlandı (`int(round(...))`); §5.5 "Sayılar tamsayı" kuralına uymak için. Selftest değerleri tam sayı olacak şekilde seçildi.
+  - `Matches` satırı `MATCH_END` veya `MATCH_START`'dan en az biri varsa üretilir (planda yalnızca "en fazla bir maç" deniyor); yalnızca `MATCH_END` içeren kuramsal dosya da raporlanır.
+  - Bir dosyada ikiden çok `MATCH_START` olsa da `multiple MATCH_START (using first)` uyarısı yalnızca bir kez eklenir (tekrarı önlemek için).
+  - `--selftest` dışında `--out` yazımı UTF-8/LF; planla uyumlu.
+- Açık sorular:
+  - `summary.json` çapraz denetim uyarıları dosya adı içermiyor (plan metni `summary mismatch: lines 5 != 6` biçimini istiyor). Aynı uyarı birden çok dosyada oluşursa ayırt etmek zor olabilir; ileride `<dosya>: ...` öneki eklenmesi istenirse küçük bir değişikliktir.
+  - `Events` bölümü boşsa `(none)` yazılıyor; plan yalnızca `Matches`/`Warnings` için `(none)` belirtiyordu (zararsız ek).
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F3-06` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F3-06` @ `9479ba8` (3 commit: `f4d0163` araç, `83205a9` + `9479ba8` rapor). Otonom gece modu: birleştirme/push yapılmadı (döngü betiği yapar).
+- Kriter sonuçları (hepsi bağımsız çalıştırıldı):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `file`: `Python script, ASCII text executable`; CRLF sayısı 0; import'lar `json, os, statistics, sys, tempfile` (`tools/bot-telemetry-report.py:24-28`) |
+| K2 | ✔ | argümansız → `USAGE`, rc=2; `--bogus x.jsonl` → `unknown argument: --bogus` + `USAGE`, rc=2; `/nonexistent` → `error: cannot read path: no such path`, rc=2 |
+| K3 | ✔ | `--selftest` rc=0, son satır `selftest OK`. §5.6'nın altı maddesi kodda: 1 → `:617-658`, 2 → `:660-691`, 3 → `:693-703`, 4 → `:705-722`, 5 → `:724-742`, 6 → `:744-763` |
+| K4 | ✔ | Elle bozma (geçici kopya, sonra silindi): `in_game_max <= 16` → `< 16`, `budget = 15000` → `14999`, `p95_worst_us <= budget` → `< budget` hepsinde selftest rc=1 (yakalandı). `in_game_max <= 64` → `< 64` selftest'i **geçti** (64 sınırı sınanmıyor; plan yalnızca 17 ve 65 istiyor → not 2) |
+| K5 | ✔ | gerçek klasör iki kez: `f43b25869d44fc30d869956cd2475397` = `f43b25869d44fc30d869956cd2475397` |
+| K6 | ✔ | rc=0; `Matches` 4 satır (`t1-7-1`, `t1-7-2`, `t2-5-4` [`INVALID`/`ABORTED`], `t3-4294967295-3`); `Warnings (none)` (summary uyuşuyor). `t1-7-1`: 15.4 s, `perf_samples 3`, `p95_worst 1270`, `max 1638`, `in_game_max 4`, `OK`. `t3-4294967295-3`: 8.8 s, `p95_worst 95`, `max 1244` |
+| K7 | ✔ | `live-063701.jsonl` 8197 satır, `Events`'te `SELFTEST` yok, `ignored SELFTEST lines: 8192`; komut 0,148 s |
+| K8 | ✔ | `--json` `json.load` ile çözüldü (anahtarlar `events,files,ignored_selftest,matches,perf,warnings`); `--out /tmp/x.md` stdout 0 bayt/stderr 0 bayt, dosya stdout çıktısıyla `cmp` eşit; elle hazırlanan `SPAWN_SHORT` girdisiyle `--strict` rc=1, `--strict`siz rc=0 |
+| K9 | ✔ | `md5sum -c` (çalıştırma öncesi liste): 14 dosyada OK dışı satır 0 |
+| K10 | ✔ | `tools/build.sh Release` rc=0, uyarı satırı 0. Not: bu dalda artımlı derleme 1 sn'de "güncel" döndü; fark yalnızca Python dosyası olduğundan derleme çıktısı tabandan farklı olamaz |
+| K11 | ✔ | `git diff --stat gece/2026-10-02...bot/F3-06`: yalnızca `tools/bot-telemetry-report.py` (+839) ve bu plan dosyası (Durum + rapor); `GameServer/`, `shared/`, `docs/`, ini farkı yok |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Ek denetimler: commit mesajları `[F3-06] ...`; merge/force izi yok; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişmiş; araç yalnızca okur (`--out` dışında yazma yok); satır sayısı iddiası (839) doğru; `p95_est_us` başlıkta "est" ve `VERDICT_NOTE` ile bilgi amaçlı etiketli; `ticks == 0` iken `p95_est_us` `-` (elle denendi); rapor iddiaları gerçekle uyuşuyor, abartı yok.
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Patholojik satırda çökme (düşük).** `:122-125` yalnızca `ValueError` yakalıyor; çok derin iç içe satır (`[` × 200000) `RecursionError` ile süreci düşürüyor (rc=1, izli), oysa §5.2 "çözülemezse kötü satır say, çökme yok" diyor. Benzer: `composition` içinde tek başına vekil karakter (`"\ud800"`) geçerli JSON'dur ama çıktı yazımı (`:831`, `:826`) `UnicodeEncodeError` ile düşer. Sunucu bu iki biçimi üretmez (düz, ASCII JSON); gerçek kesik/bozuk dosyalar `ValueError` yoluna girer ve doğru işlenir. `docs/KNOWN_ISSUES.md` KI-011 olarak kaydedildi.
+  2. **Selftest `<= 64` sınırını sınamıyor (düşük).** `in_game_max = 64` → 15000 / `OK` durumu kodda assert edilmiyor (`:693-703` yalnızca 16, 17, 65). Plan K4 bunu istemiyor, ama sınır koşulu hükmün parçası.
+  3. **Uyarılar dosya adı taşımıyor (kullanışlılık).** `Warnings` bölümü (`:240-250`, `:142`, `:172`) tüm dosyalar için tek liste; çok dosyalı raporda `t not monotonic at line N` veya `summary mismatch: ...` hangi dosyaya ait belli değil. Plan metni öneki istemiyor (Uygulayıcı bunu açık soru olarak yazdı); sonraki sürümde `<dosya>: ` öneki eklenmesi öneriliyor.
+  4. Sapmalar kabul: `p95_est_us`/`p50_med_us` tamsayıya yuvarlama (§5.5 "Sayılar tamsayı"), `Events` boşken `(none)`, yalnızca `MATCH_END` içeren dosyanın da maç satırı üretmesi (zararsız). Açık sorular yanıtı: dosya öneki isteğe bağlı iyileştirme olarak bırakıldı (bulgu 3).
+  5. Veri notu (araç hatası değil): `live-063701.jsonl` `dropped_soft (cum.)` 856 / `dropped_hard (cum.)` 952 gösteriyor; bu F3-01'in 8192'lik öz-sınama taşmasıdır (STATUS'ta kayıtlı), maç dosyalarında 0.
+- Düzeltme talimatı: gerekmiyor.
