@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-02 (`KAPANDI`: `BotManager::Tick()`), F2-06 (`KAPANDI`: `BotManager` son hâli) |
@@ -298,13 +298,30 @@ file GameServer/Bot/* GameServer/proj-GameServer.vcxproj GameServer/proj-GameSer
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F3-01` (taban: `gece/2026-10-02`); uygulama commit'i (`[F3-01] Telemetri kuyrugu, yazici thread ve PERF_SAMPLE`) ve rapor+Durum commit'i bu dalda.
 - Değişen dosyalar ve neden:
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/Telemetry.h` (yeni): `TelemetryLevel`, `TelemetryEvent`, `TelemetryStats`, `Telemetry` tekili (sınırlı kuyruk, yazıcı thread, `SOFT_LIMIT=6144`, `HARD_LIMIT=8192`). Plandaki başlığa `FILE` için `#include <cstdio>` eklendi (planda istenmişti).
+  - `GameServer/Bot/Telemetry.cpp` (yeni): `Start`/`Stop`/`Emit`/`GetStats`/`WriteBatch`/`WriterLoop`/`RunSelfTest`, `JsonEscape`, `WriteTelemetryLog` (`BotManager.cpp:35-48` `WriteBotLog` kopyası). `printf` yok; yalnızca `snprintf`/`fprintf`.
+  - `GameServer/Bot/BotManager.h`: `RecordTick`/`EmitPerfSample` bildirimleri ve `m_tickUs`/`m_perfWindowStart`/`m_perfWindowOpen` üyeleri (kurucu listesine dokunulmadı).
+  - `GameServer/Bot/BotManager.cpp`: `Telemetry.h` + `<algorithm>` include; `Startup()` sonunda `Telemetry::Instance().Start()`; `Shutdown()` sonunda `Stop()`; `Tick()` başında `tickStart`, sonunda `IsEnabled(TEL_SUMMARY)` kapılı `RecordTick`; `RecordTick`/`EmitPerfSample` (5 sn pencere, p50/p95/p99/max, `PERF_SAMPLE`).
+  - `GameServer/proj-GameServer.vcxproj` (+2 satır) ve `.filters` (+6 satır): `Bot\Telemetry.cpp`/`.h` girdileri.
+- Derleme sonucu (`tools/build.sh Release` son satırlar): `Kodun üretilmesi tamamlandı` / `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. `Telemetry.cpp` ve `BotManager.cpp` uyarısız derlendi; görülen uyarılar yalnızca eski satırlardan (`Map.cpp:162` C4834, `User.cpp:2748/2763` C4834, `UpgradeHandler.cpp:634/862` C4789). `./tools/build.sh Debug` da rc=0 bitti (`...\x86-Debug\Server\GameServer.exe`).
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ Release rc=0; `Bot\` dosyalarında yeni uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F3-01` yalnızca §4'teki 6 dosya + plan; `BotManager.cpp` farkı salt ekleme (`git diff ... | grep '^-'` boş); mevcut gövdelere dokunulmadı.
+  - K4 ✔ `m_file` yalnızca `Start`/`Stop`/`WriteBatch` (yazıcı); JSON satırı yalnızca `WriteBatch`'te birleşir, `Emit` yalnızca yapı kopyalar.
+  - K5 ✔ Kilit altında yalnızca sayaç/`push_back`/`swap`/`size`/`reserve`/`m_written +=`; kilit altında `fwrite`/`snprintf` yok.
+  - K6 ✔ `SOFT_LIMIT = 6144`, `HARD_LIMIT = 8192`; yumuşakta yalnızca `droppable`, sertte tümü, ayrı sayaçlar.
+  - K7 ✔ `TELEMETRY=off`/bilinmeyen değer öncesi klasör/dosya/thread yok; `Emit` `m_running` false ise `false`; `Tick()` kancası `IsEnabled(TEL_SUMMARY)`; `Startup()` `!m_enabled` erken döner.
+  - K8 ✔ `PERF_SAMPLE` 14 alan, sıra §5.5 ile birebir; `ev`/alan adları `docs/16` §3.3 uyumlu.
+  - K9 ✔ `WriteBotLog` ve mevcut loglar değişmedi; yeni satırlar `Telemetry: ` önekli ve `Telemetry.cpp`'de; `printf` grep yalnızca `snprintf`/`fprintf` (fprintf sadece `WriteTelemetryLog`).
+  - K10 ✔ `file GameServer/Bot/*`: `ASCII text, with CRLF`; `proj-GameServer.vcxproj*`: `UTF-8 (with BOM) ... CRLF`; tab/Allman/İngilizce yorum.
+  - K11 ✔ `vcxproj +2`, `.filters +6` (yalnızca ekleme).
+  - K12 ✔ `git status --short` yalnızca izinli dosyalar (commit'lenecek); sunucu çalıştırılmadı, ini/DB değişmedi.
+- Plandan sapmalar ve gerekçeleri: Yok. (Plana uygun olarak `Telemetry.h`'ye `<cstdio>` eklendi, `<cmath>` eklenmedi çünkü `GameServer/StdAfx.h:4` zaten `<math.h>` içeriyor.)
+- Açık sorular: Çalışma zamanı doğrulaması (öz-sınama, `PERF_SAMPLE`, `TELEMETRY=off/bogus`, `ENABLED=0`, F2-05 gerilemesiz) plan §7'ye göre Claude'da; bu turda sunucu çalıştırılmadı.
 
 ---
 
