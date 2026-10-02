@@ -394,8 +394,34 @@ recover() { # $1 = neden
 	return 0
 }
 
+# Kuyruk (plans/.queue, git'te degil): her satir bir plan yolu. Onceden yazilmis HAZIR planlari
+# /plan-olustur cagirmadan (Claude kullanimi harcamadan) sirayla aktif yapar. Yazilan satir kuyruktan duser;
+# HAZIR olmayan / bulunamayan satirlar kuyrukta kalir ve atlanir. 0 = yolu yazdirdi, 1 = kuyruk bos.
+pop_queued_plan() {
+	local q="plans/.queue" p st
+	[ -f "$q" ] || return 1
+	while IFS= read -r p || [ -n "$p" ]; do
+		p="$(printf '%s' "$p" | tr -d '\r' | sed -E 's/[[:space:]]+$//')"
+		case "$p" in '' | '#'*) continue ;; esac
+		[ -f "$p" ] || { log "  kuyruk: $p bulunamadi, atlandi" >&2; continue; }
+		st="$(plan_durum "$p")"
+		if [ "$st" = "HAZIR" ]; then
+			awk -v t="$p" '{ l=$0; sub(/\r$/, "", l); if (l != t) print $0 }' "$q" >"$q.tmp" && mv "$q.tmp" "$q"
+			printf '%s' "$p"
+			return 0
+		fi
+		log "  kuyruk: $p durumu '$st' (HAZIR degil), atlandi" >&2
+	done <"$q"
+	return 1
+}
+
 next_plan() { # 0 = yeni plan hazir, 1 = yazilmadi, 2 = hedef tamam
-	local before after slog try
+	local before after slog try qp
+	if $NIGHT && switch_to "$INTEGRATION_BRANCH" && qp="$(pop_queued_plan)"; then
+		printf '%s' "$qp" >"$ACTIVE_PLAN_FILE"
+		log "  -> kuyruktan plan secildi: $qp"
+		return 0
+	fi
 	for try in 1 2; do
 		before="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
 		$NIGHT && { switch_to "$INTEGRATION_BRANCH" || { append_blocker "entegrasyon dalina gecilemedi"; return 1; }; }
