@@ -219,12 +219,12 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Priest buff (AC/HP/direnç) | Type4 dost | ✘ | **m.4** (F7'den önce) | dost buff gözlemi: F4-52/53 | T-PRI-04 |
 | Priest cure | Type5 (REMOVE_TYPE4/disease) | ✘ | **m.6** (F7'den önce) | dost debuff gözlemi: F4-53 | T-PRI-05 |
 | Priest diriltme | Type5 + Stone of Life (`iUseItem`) | ✘ | **m.6 + m.8** (taş stoğu) | ceset (`WIZ_DEAD` ✔), kendi taş stoğu | T-PRI-08 |
-| Priest debuff + hedef çağrısı | Type4 düşman (Malice/Parasite) | ◐ F4-28 HAZIR (tek hedef, `Moral` 7; hedef çağrısı/provoke ayrı) | **m.4** (F7'den önce) | debuff başarısı: F4-52; düşman durumu: F4-53; düşman adı: F4-50 | T-PRI-06 |
+| Priest debuff + hedef çağrısı | Type4 düşman (Malice/Parasite) | ◐ F4-28 KAPANDI (tek hedef, `Moral` 7; hedef çağrısı/provoke ayrı) | **m.4** (F7'den önce) | debuff başarısı: F4-52; düşman durumu: F4-53; düşman adı: F4-50 | T-PRI-06 |
 | Priest'e baskı: cast kesme/geri çekilme | cast iptali | ✘ | **m.1** | düşman konum+hız: F4-50 | T-PRI-07 |
 | Mage tek hedef, uçmayan, tek tipli Type3 | Type3 düşman (Ignition) | ✔ | — | düşman HP: F4-51 | T-MAG-01 |
 | Mage uçan büyü (Fire ball, Ice arrow...) | Type3 uçan | ◐ tek tipli Type3 uçan ✔ (F4-25: Fire ball/Fire spear/Static orb); çift tipli uçan (Ice arrow/orb) F4-26 | **m.2** ✔ + **m.3** (F6'dan önce) | düşman konum+hız: F4-50 | T-MAG-01/02 |
 | Mage çift tipli Type3 (buz büyüleri, Prismatic) | Type3 `bType[1] != 0` | ✔ F4-26 KAPANDI (`{3, 4}` çifti, tek hedef; alan/`UseItem` çiftleri hariç) | **m.3** (F6'dan önce) | — | T-MAG-02 |
-| Mage alan büyü (Fire burst, Supernova, ice storm) | Type3 alan, hedef noktası | ✘ | **m.5** (CLI-07; F6'dan önce) | düşman kümesi: F4-50 | T-MAG-02 |
+| Mage alan büyü (Fire burst, Supernova, ice storm) | Type3 alan, hedef noktası | ◐ F4-29 HAZIR (`Moral` 10, uçmayan: Inferno, Supernova, Blizzard, Frost nova; uçan alan Fire/Ice/Thunder burst ayrı dilim) | **m.5** (CLI-07; F6'dan önce) | düşman kümesi: F4-50 | T-MAG-02 |
 | Mage summon (Type8 friend) + Gate | Type8 | ✘ | **m.6** (summon açıkça listelenmeli: **ADR-0018'e eklenmeli**; F7'den önce) | yaşayan/yeniden doğmuş üye (`WIZ_USER_INOUT` respawn ✔ F4-12, party ✔) | T-IGT-MAG-01 |
 | Pot ve envanter (pot/taş/scroll doldurma) | `UsePotion` | ✔ kullanım; doldurma ✘ | **m.8** | self stok ✔ | T-POT-01..03, `ScenarioReset` |
 | Beceri doğrulaması (T-MECH-SKILL) | tüm çekirdek | — | **m.9** | — | T-MECH-SKILL-* |
