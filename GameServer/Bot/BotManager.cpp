@@ -2462,6 +2462,9 @@ static void FillSelfExtras(BotSession * s, CUser * me, std::chrono::steady_clock
 				BotCore::SnapRemainingSec((int64_t)kv.second.m_tEndTime, (int64_t)UNIXTIME));
 		}
 	}
+
+	self.inParty = me->isInParty();
+	self.partyLeader = me->isPartyLeader();
 }
 
 void BotManager::CommandSnap(const std::string & args)
@@ -2496,13 +2499,15 @@ void BotManager::CommandSnap(const std::string & args)
 		return;
 	}
 
-	// Copy both tables under the lock (only these two assignments), then build and format with the lock released.
+	// Copy the tables under the lock (only these three assignments), then build and format with the lock released.
 	BotCore::ObsTable obsCopy;
 	BotCore::NpcTable npcCopy;
+	BotCore::TeamTable teamCopy;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		obsCopy = s->m_obs;
 		npcCopy = s->m_npcs;
+		teamCopy = s->m_team;
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2528,6 +2533,7 @@ void BotManager::CommandSnap(const std::string & args)
 
 	BotCore::PerceptionSnapshot snap;
 	BotCore::BuildSnapshot(self, obsCopy, npcCopy, nowMs, snap);
+	BotCore::BuildTeam(self, teamCopy, obsCopy, nowMs, snap.team);
 
 	char message[320];
 
@@ -2567,6 +2573,38 @@ void BotManager::CommandSnap(const std::string & args)
 		snprintf(message, sizeof(message),
 			"BotManager: cmd snap:   cooldown skill=%u remain=%ums",
 			(unsigned)cd.skillId, (unsigned)cd.remainingMs);
+		WriteBotLog(message);
+	}
+
+	char leaderText[24];
+	if (snap.team.leaderId == BotCore::kTeamNone)
+		snprintf(leaderText, sizeof(leaderText), "unknown");
+	else if (snap.team.leaderId == self.sid)
+		snprintf(leaderText, sizeof(leaderText), "self");
+	else
+		snprintf(leaderText, sizeof(leaderText), "id=%u", (unsigned)snap.team.leaderId);
+
+	snprintf(message, sizeof(message),
+		"BotManager: cmd snap:   team in_party=%d self_leader=%d leader=%s members %d (total %d)",
+		snap.team.inParty ? 1 : 0, snap.team.selfLeader ? 1 : 0, leaderText,
+		snap.team.memberCount, snap.team.memberTotal);
+	WriteBotLog(message);
+
+	for (int i = 0; i < snap.team.memberCount; i++)
+	{
+		const BotCore::TeamMemberView & t = snap.team.members[i];
+		if (t.inView)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd snap:   member id=%u name=%s class=%u lvl=%u hp=%d/%d mp=%d/%d %s%s dist=%.1f age=%ums",
+				(unsigned)t.id, t.name, (unsigned)t.cls, (unsigned)t.level,
+				t.hp, t.maxHp, t.mp, t.maxMp, t.leader ? "leader " : "", t.dead ? "dead" : "alive",
+				t.dist, (unsigned)t.ageMs);
+		else
+			snprintf(message, sizeof(message),
+				"BotManager: cmd snap:   member id=%u name=%s class=%u lvl=%u hp=%d/%d mp=%d/%d %s%s out_of_view age=%ums",
+				(unsigned)t.id, t.name, (unsigned)t.cls, (unsigned)t.level,
+				t.hp, t.maxHp, t.mp, t.maxMp, t.leader ? "leader " : "", t.dead ? "dead" : "alive",
+				(unsigned)t.ageMs);
 		WriteBotLog(message);
 	}
 
@@ -2790,6 +2828,7 @@ void BotManager::TickSessions()
 					s->m_inGameSince = now;
 					s->m_lastUpdate = now;
 					s->m_slotId = s->m_pUser->GetSocketID();
+					s->m_selfSid = (int)s->m_pUser->GetSocketID();
 					m_spawnOk++;
 
 					char message[256];
