@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-09` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-08 (`PartyOutcome`, `m_partyInviteEcho`/`m_partyInviteAtMs` kayıtları, `OnPacket()` `WIZ_PARTY` bloğu, `RejectParty*` kalıbı) — `KAPANDI` (merge `851afdc`); F4-07, F4-01 — `KAPANDI` |
@@ -289,16 +289,25 @@ git diff --check gece/2026-10-02...bot/F4-09
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-09` — `<kısa-sha> [F4-09] …`
+- Branch / commit'ler: `bot/F4-09` — `6b31acb [F4-09] PartyDecline/PartyLeave dilimi: guard, aksiyonlar ve komutlar` (+ bu rapor/Durum commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `kPartyDeclineMinMs`/`kPartyLeaveMinMs`, `PartyDeclineCheck`/`PartyDeclineVerdict`/`CheckPartyDecline`, `PartyLeaveCheck`/`PartyLeaveVerdict`/`CheckPartyLeave` (yalnızca ekleme; `#include` değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_PartyDeclineCheck`, `Combat_PartyLeaveCheck_Order`, `Combat_PartyLeaveCheck_Boundaries` (dosya sonuna ekleme).
+  - `GameServer/Bot/ActionExecutor.h`: `PartyOutcome::reason` yorumu genişletildi; `RequestPartyDecline`/`RequestPartyLeave` bildirimleri.
+  - `GameServer/Bot/ActionExecutor.cpp`: F4-08'in `created`/`joined` başarı dallarına party giriş zamanı; dosya sonuna `RejectPartyDecline`/`RejectPartyLeave` + `RequestPartyDecline`/`RequestPartyLeave` (tamamı ekleme; `grep '^-'` boş).
+  - `GameServer/Bot/BotSession.h/.cpp`: `m_partyEnteredHasAt`/`m_partyEnteredAt`, `m_partyLeaveEcho`; başlatıcı listesi, `ResetForRespawn()`, `OnPacket()` `WIZ_PARTY` bloğuna `else if` (PARTY_REMOVE/PARTY_DELETE) ve yorum satırları eklendi.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandPartyDecline`/`CommandPartyLeave`; `pdecline`/`pleave` fiil dağıtımı ve `unknown command` listesi.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `Release`/`Debug` rc=0; `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp`, `BotCombat.h` için uyarı yok (yalnızca eski `GameServerDlg.cpp:816/1143/1802` uyarıları).
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔ (`39 tests, 0 failed`, Release+Debug; üç yeni ad çıktıda), K4 ✔ (grep'ler boş; `#include` yalnızca `<algorithm>`/`<cstdint>`), K5 ✔ (`WIZ_PARTY` yalnızca `ActionExecutor.cpp` 4 satır + `BotSession.cpp` 1; sunucu party sembol grep'i boş), K6 ✔ (`PARTY_DELETE`/`PARTY_PROMOTE` grep'i boş; `HandlePacket` her fonksiyonda tek; guard sırası plana uygun), K7 ✔ (`isInParty`/`isPartyLeader` yalnızca 1816/1817 + 2200/2226, hepsi `HandlePacket`'tan önce; `m_sHp` vb. yok), K8 ✔ (`ActionExecutor.cpp` `-` boş; `BotSession.cpp` `-` yalnızca başlatıcı listesi satırı), K9 ✔ (`BotManager.cpp` `-` yalnızca `unknown command` satırı), K10 ✔ (tam olarak §4'teki 8 dosya; dört vcxproj farkı boş; `Bot/` dışında GameServer dosyası yok), K11 ✔ (`file` hepsi ASCII+CRLF; `git diff --check` boş), K12 ✔ (`printf`/`Sleep`/`mutex`/`rand(`/`SByte`/`DByte` yok; `\"mode\"` yok), K13 ✔ (tüm `Check*` sayaçları beklenen; `39 tests, 0 failed`). K14 çalışma zamanı Claude'da.
+- Plandan sapmalar ve gerekçeleri: `ActionExecutor.cpp`'de `RequestPartyInvite`'ın `if (created)` gövdesi süslü parantezsiz tek satır olduğundan, giriş zamanı atamaları (`m_partyEnteredHasAt`/`m_partyEnteredAt`) mevcut `if/else` bloğunun hemen ardından ayrı bir `if (created) { ... }` bloğuyla eklendi. Böylece plandaki "başka satır değişmez / yalnızca ekleme" (K8) şartı korunurken davranış birebir aynı kaldı (atamalar yalnızca `created` iken yapılır). `RequestPartyAccept`'ta `joined` dalı süslü olduğundan atamalar doğrudan dalın içine eklendi.
+- Açık sorular: yok.
 
 ---
 
