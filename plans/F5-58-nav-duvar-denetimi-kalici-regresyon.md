@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-58 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | **F5-50** (`BotCore/NavSegment.h`, `NavCheckSegment`) — `KAPANDI` olmalı; F5-01/F5-02/F5-03 `KAPANDI` |
@@ -95,13 +95,32 @@ git diff --stat gece/2026-10-02-nav...bot/F5-58
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-58` (taban: `gece/2026-10-02-nav`); `5c216fd` [F5-58] Duvar denetimi kalici regresyon testleri (NavSegmentAuditTests) ve bu plan dosyası (Durum + rapor) izleyen commit.
 - Değişen dosyalar ve neden:
+  - `Tests/BotCoreTests/NavSegmentAuditTests.cpp` (yeni): §5.3'teki üç `TEST_CASE`; `MiniTest.h`, `Rng`, `NavGrid/NavPath/NavSegment/NavSmooth` kullanılır; gerçek harita `build/nav/zone71.navgrid` yoksa (veya ana bileşen 88508 değilse) ilgili test `SKIPPED` satırı yazıp döner.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: tek `ClCompile` satırı (`NavSegmentAuditTests.cpp`).
+  - Plan dosyası: `Durum` + bu rapor. Başka hiçbir dosyaya dokunulmadı.
 - Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; hedef bazlı artımlı yeniden derlemede `warning`/`error` satırı 0 (yalnızca yeni dosya `touch`'lanıp yeniden derlendi).
+  - `./tools/build.sh Debug` rc=0; aynı şekilde uyarı/hata 0.
+  - `./tools/run-tests.sh Release` → `179 tests, 0 failed`; `./tools/run-tests.sh Debug` → `179 tests, 0 failed`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: Release rc=0, yeni dosyada uyarı yok.
+  - K2 ✔: Debug rc=0, uyarı yok.
+  - K3 ✔: Release ve Debug `0 failed`; `NavSegmentAudit_Planner`, `NavSegmentAudit_LineClear`, `NavSegmentAudit_StraightSteps` üçü de `[ OK ]`; harita mevcut olduğu için `SKIPPED` yok; mevcut testler geçmeye devam ediyor.
+  - K4 ✔: `NAVAUDIT planner paths=2986 raw_edges=188355 raw_bad=0 smooth_segments=16573 smooth_bad=0 chords=133501 chord_bad=0`; `NAVAUDIT lineclear pairs=398103 clear=298681 false_positive=0`.
+  - K5 ✔: üç sabit vektör `BlockedCell` (raporlanan hücre `Walk` değil), kontrol `(1274,890)->(1280,890)` `Ok`; bağımsız Python oracle (`tools/nav-segment-check.py`) da üçü `BLOCKED`, kontrol `OK` verdi.
+  - K6 ✔: `git diff --stat gece/2026-10-02-nav...bot/F5-58` yalnızca iki dosya (`BotCoreTests.vcxproj` +1, `NavSegmentAuditTests.cpp` yeni 437 satır) + plan; `BotCore/GameServer/shared/docs` farkı 0; dosya ASCII + CRLF; `git diff --check` boş.
+  - K7 (Claude): ön bilgi için `tools/nav-measure.sh smoothing --n 6000` (`paths=5977 raw_bad=0 smooth_bad=0 chord_bad=0`, `LINECLEAR pairs=1002585 clear=360288 false_positive=0`, `STRAIGHT pairs=6000 blocked=447`) ve `synthetic` (`single_block false_positive=0`, `random_clutter false_positive=0`) çalıştırıldı; test sayımları aynı sıfırları ve `blocked > 0` sonucunu veriyor (test 3000 sorgu + `BotCore::Rng`, ölçüm aracı 6000 sorgu + `std::mt19937`, bu yüzden sayılar birebir değil).
+  - K8 (oyun içi, bu planda kapanmaz): kapsam dışı; sunucu guard'ı F5-55.
+  - `NAVAUDIT straight pairs=6000 blocked=429` (%7,15; ölçüm aracı %7,45) — planlayıcısız düz adımın yürünebilirlik garantisi vermediğinin kalıcı kanıtı; `blocked > 0` eşiği karşılandı.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - Test 2'nin yolu havuzu tohumu `BotCore::Rng(20261002)`; ölçüm aracı `std::mt19937(20261002)` kullanır. Plan tohum numarasını sabitler, üreteci değil; test düzeni `NavSmoothTests.cpp` ile uyumlu kalsın diye ve bağımlılıksız `BotCore::Rng` seçildi. Aynı sıfırlar (`false_positive=0`) korunur.
+  - Sabit vektör V0'da C++ `NavCheckSegment` engelli hücre olarak `(392,219)`, bağımsız Python oracle `(391,218)` bildiriyor; her ikisi de `Walk` değil ve hüküm `BlockedCell` aynı. Plan yalnızca hükmü ve "raporlanan hücre `Walk` değil" koşulunu istediği için sapma sayılmaz (F5-50'de kabul edilen traversal-sırası farkı).
+  - Testlerin adları ve çıktı satırları plandaki gibi birebir.
+- Açık sorular: yok.
+
 
 ---
 
