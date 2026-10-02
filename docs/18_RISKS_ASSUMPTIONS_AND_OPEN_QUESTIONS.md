@@ -73,6 +73,7 @@ Değerlendirme (2026-10-02) ADR'leri **KABUL** (proje sahibi kararları, 2026-10
 | Q-24 | Değerlendirme için gerekli maç sayısına ulaşmak üzere paralel sunucu örnekleri çalıştırılabilir mi (ayrı DB/port) | R-10 | Deneme | F8 |
 | Q-25 | Priest/mage insan aksiyon hızı ve cast döngüsü dağılımı (heal/cure rotasyonu, toplam aksiyon/sn); CLI-11 6/sn emniyet ağının ve cast sınırlarının insanla eşdeğerliği | Adalet (üç katman, `docs/03` §13.4) | Priest ve mage ile T-MECH-CLIENT-01..04 yeniden (insan) | F6 |
 | Q-26 | İstemci suya/göl cebine girebiliyor mu, suda yavaşlıyor mu, kıyı olay ızgarasıyla uyumlu mu (T-NAV-09) | Su katmanı gerekir mi (`docs/12` §13.1) | İstemcide göl kıyısında yürüme + sunucu konum kaydı | F5 |
+| Q-27 | 51–54 quest kimlikleri (32 skill) sunucuda `UseStanding` sütununda: sunucu bu quest'leri uygulamasın mı kalsın, yoksa `Etc`'e taşınıp (`UseStanding` 0) sunucu da uygulasın mı (KI-017 yan etkisi de kalkar) | Bot ve insan eşitliği, T-MECH-SKILL ölçümü, KI-017 | Karar (ADR) + `docs/03` MEC-MAG-14; öneri: mevcut hâl (ADR-0003 quest şartlarını gevşetmişti), bot satırlarına yine de quest yazılır | F4 |
 | Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-DEG-01, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
 
 ## 4. Riskler
@@ -98,7 +99,7 @@ Değerlendirme (2026-10-02) ADR'leri **KABUL** (proje sahibi kararları, 2026-10
 ## 5. Bu araştırmanın sınırları
 
 - Sunucu **çalıştırılmadı**. Tüm davranış iddiaları kod okuması (`[D]`), yerel veri (`[V]`) veya dış kaynaklara (`[S]`/`[B]`) dayanıyor. Çalışma zamanında doğrulama F1'in işidir.
-- İstemci `.tbl` dosyaları (ör. `Skill_Magic_Main_us.tbl`) şifrelidir ve çözülmedi. İstemci tarafı skill verisi sunucu verisiyle karşılaştırılmadı (Q-01, Q-05 ile ilişkili).
+- İstemci `.tbl` dosyaları (ör. `Skill_Magic_Main_us.tbl`) şifrelidir. **2026-10-03: `Skill_Magic_Main_us.tbl` çözüldü** (yuvarlanan XOR, `tools/client-tbl-quests.py`; 31 kolon × 1779 satır, dosya sonuna tam oturur) ve sunucu `MAGIC` verisiyle quest kolonu üzerinden karşılaştırıldı: istemci 104 skill'i 18 quest'e bağlar; 72'si sunucu `Etc`'iyle aynı (510–523), 32'si sunucuda `UseStanding`'de (51–54, KI-017/KI-018, `docs/03` MEC-MAG-14/MB-15). Hâlâ karşılaştırılmayan: diğer kolonlar ve diğer `.tbl` dosyaları (Q-01, Q-05 ile ilişkili).
 - ko4life forum konuları (1245, 1258) erişim engeli nedeniyle okunamadı.
 - Kalais ve benzeri dönem kaynakları çoğunlukla 2005–2008 tarihlidir ve bazıları JAPKO/MYKO istatistiklerine dayanır. Kullanılan değerler yerel DB ile karşılaştırıldı.
 - Kişisel veri içeren tablolar okunmadı; USERDATA'dan yalnızca sütun şeması ve varsayılanlar okundu.

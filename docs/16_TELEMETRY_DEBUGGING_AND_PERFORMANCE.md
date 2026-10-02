@@ -110,7 +110,7 @@ Kurallar:
 
 ### 5.1 Aksiyon sonuç kodları
 
-`OK`, `SRV_FAIL_<sebep>` (sunucunun döndürdüğü fail sebebi; sebep adları [03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md)'teki doğrulama sırasına göre), `GUARD_<kural>` (fairness guard), `PRECHECK_<sebep>` (botun kendi ön kontrolü: menzil, kaynak, cooldown, hedef geçersiz), `TIMEOUT` (beklenen sonuç gelmedi).
+`OK`, `SRV_FAIL_<sebep>` (sunucunun döndürdüğü fail sebebi; sebep adları [03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md)'teki doğrulama sırasına göre), `GUARD_<kural>` (fairness guard), `PRECHECK_<sebep>` (botun kendi ön kontrolü: menzil, kaynak, cooldown, hedef geçersiz, `quest_locked`: skill'in `Etc` quest'i botun listesinde tamamlanmamış, `docs/03` MEC-MAG-14), `TIMEOUT` (beklenen sonuç gelmedi).
 
 ### 5.2 Hedef değişim gerekçeleri
 
