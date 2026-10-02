@@ -56,6 +56,17 @@ Simetrik ve izole bir merkez nokta bulunamadı. İki respawn noktasına eşit uz
 - Arena yarıçapı `P-ARENA-R` = 60 m; botlar arena dışına yol planlamaz ([12](12_NAVIGATION_AND_POSITIONING.md) §7).
 - Başlangıç noktaları: arena merkezinden ±35 m, iki takım karşılıklı.
 
+### 2.4.1 Çalışma zamanı ölçümleri (2026-10-03, proje sahibi oturumu) `[V]`
+
+Paket izleyicili sunucu (`FDP_PACKET_TRACE`), insan istemcisi, `WIZ_MOVE` kayıtları (`speed` alanı 0,1 m/s birimi; hareket paketi ~1,5 sn'de bir):
+
+| Test | Sonuç |
+|---|---|
+| T-ENV-ARENA-04 (Karus) | Karus W-G, `/town` → respawn (1369,9; 1090,3) → arena A (1274,5; 892,6): **69,8 sn**, izlenen yol **323 m** (düz mesafe 220 m, dolambaç oranı 1,47), hız 4,54 m/s. Karşılaştırma: F1-08 ızgara A* uzunluğu 259,8 m: insan rotası ~%24 uzun |
+| T-ENV-ARENA-04 (El Morad) | El Morad W-G, `/town` → respawn (630,0; 920,0) → arena A (1276,3; 889,0): **165,1 sn (2,75 dk)**, izlenen yol **731 m** (düz 647 m, oran 1,13), hız 4,53 m/s, tek 5 sn duraklama. F1-08 A* uzunluğu 678,1 m: insan rotası ~%8 uzun. Summon/geri dönüş süre hesabı bu değerlere dayanır |
+| T-ENV-ARENA-03 | El Morad W-G (5650 HP) Karus kapısının (1375, 1085) güneybatısından yaklaştı: (1307,1; 1072,3) en yakın kuleye (1335, 1061) **30,1 m**, (1314,0; 1073,0) 24,2 m'de hâlâ yürüyordu; **26,0 m'de durduğunda öldü** (`DeathUser`: `Killer=Guard tower`, SID 5400, X=1311 Z=1072). Beklenen 20–30 m saldırı aralığıyla uyumlu, kule birkaç saniyede 5650 HP'li savaşçıyı öldürür: ≥ 35 m yasak halka (F5-06 `forbiddenPenalty`) zorunlu |
+| T-ENV-ARENA-01 (otomatik) | Arena A'da `BotWP_K`'nın NPC tablosu 60 sn aralıkla `npcs` ile taranır (`Scripts/arena-npcs.txt`, 10 dk × 3 tur): ilk turun taramalarında **0 NPC/canavar** (kalan turlar tamamlanınca güncellenir) |
+
 ### 2.5 Test modu ve izolasyon
 
 | Kimlik | Önlem | Tür |
