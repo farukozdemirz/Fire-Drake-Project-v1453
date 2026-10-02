@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-09` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`, `NavPathfinder`), F5-03 (`BotCore/NavSmooth.h`: `NavLineClear`), F5-04 (`BotCore/NavTrack.h`: `NavRingCells`), F5-06 (`BotCore/NavDanger.h`: `NavCostLayer`, `NavCostField`): hepsi `KAPANDI`, `gece/2026-10-02-nav` içinde (F5-08 merge `69ced3b`); bu planın testleri 129 testin üstüne eklenir |
