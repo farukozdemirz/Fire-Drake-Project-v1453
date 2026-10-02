@@ -363,7 +363,7 @@ next_plan() { # 0 = yeni plan hazir, 1 = yazilmadi, 2 = hedef tamam
 }
 
 merge_into_integration() { # $1 = plan yolu; 0 = tamam
-	local br
+	local br conflicts attempt rlog
 	br="$(plan_branch "$1")"
 	if [ -z "$br" ] || ! git rev-parse --verify --quiet "$br" >/dev/null; then
 		log "  plan dali bulunamadi ('$br'); birlestirme atlandi."
@@ -374,13 +374,29 @@ merge_into_integration() { # $1 = plan yolu; 0 = tamam
 	fi
 	switch_to "$INTEGRATION_BRANCH" || return 1
 	log "  -> git merge --no-ff $br -> $INTEGRATION_BRANCH"
-	if ! git merge --no-ff "$br" -m "Merge $br ($INTEGRATION_BRANCH, otonom gece döngüsü)
+	if git merge --no-ff "$br" -m "Merge $br ($INTEGRATION_BRANCH, otonom gece döngüsü)
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" >>"$MAIN_LOG" 2>&1; then
-		git merge --abort >>"$MAIN_LOG" 2>&1 || true
-		return 1
+		return 0
 	fi
-	return 0
+	# Cakisma (genelde docs/STATUS.md, plans/README.md tablo satirlari): Claude cozer.
+	for attempt in 1 2; do
+		conflicts="$(git diff --name-only --diff-filter=U | tr '\n' ' ')"
+		[ -n "$conflicts" ] || break
+		rlog="$LOG_DIR/merge-resolve-$(basename "$br")-$attempt-$(date +%s).log"
+		log "  birlestirme cakismasi ($conflicts); Claude cozuyor (deneme $attempt, log: $rlog)"
+		state "birlestirme cakismasi cozuluyor"
+		run_claude "BİRLEŞTİRME ÇAKIŞMASI ÇÖZÜMÜ (otonom döngü). Şu an $INTEGRATION_BRANCH dalında '$br' dalını birleştirirken yarım kalmış bir merge var. Çakışan dosyalar: $conflicts. Görev: her dosyadaki çakışma işaretlerini (<<<<<<<, =======, >>>>>>>) kaldır. Kural: entegrasyon dalının (HEAD, 'ours') içeriğini temel al; '$br' dalının getirdiği yeni bilgiyi KAYBETME: tablo satırlarında ikisinin birleşimini al (aynı satır iki tarafta da varsa durumu daha ilerisini seç: KAPANDI > DOĞRULANDI > UYGULANDI > HAZIR), 'Son doğrulamalar' satırlarını ve 'Sıradaki adımlar'ı entegrasyon dalındakini temel alarak güncelle, 'Proje sahibi testleri (bekleyen)' bölümünü iki taraftan birleştir. Kod/betik dosyası çakışırsa iki tarafın değişikliğini birlikte koru ve derlenebilir bırak. Sonra çakışan dosyaları 'git add' ile ekle. 'git commit', 'git merge --abort' veya başka merge komutu ÇALIŞTIRMA (commit'i döngü yapar). Çalışma ağacında başka dosyaya dokunma." "$rlog" || log "  cozum claude cagrisi sifir olmayan kodla bitti."
+		if [ -z "$(git diff --name-only --diff-filter=U)" ] && ! git grep -n -E '^(<<<<<<<|>>>>>>>) ' -- $conflicts >/dev/null 2>&1; then
+			if git commit --no-edit >>"$MAIN_LOG" 2>&1; then
+				log "  cakisma cozuldu, birlestirme commit'lendi."
+				return 0
+			fi
+		fi
+		log "  cakisma tam cozulemedi (deneme $attempt)."
+	done
+	git merge --abort >>"$MAIN_LOG" 2>&1 || true
+	return 1
 }
 
 log "=== auto-loop.sh basladi (mod: $($NIGHT && echo "gece, dal=$INTEGRATION_BRANCH, hedef=$TARGET_PHASE" || echo klasik), model: $OPENCODE_MODEL / $CLAUDE_MODEL ($CLAUDE_EFFORT)) ==="
