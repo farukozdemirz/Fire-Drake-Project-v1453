@@ -235,7 +235,7 @@ Skill ile diriltilen karakter ceset konumunda kalır, **MP 0** olur, buff'lar s�
 
 ### 6.1 Mekanizma `[D]`
 
-- **MEC-POT-01** Pot kullanımı ayrı bir item opcode'u değildir; potun `ITEM.Effect1` alanındaki MAGIC satırı `WIZ_MAGIC_PROCESS` ile cast edilir. Sunucu `MAGIC.UseItem` alanındaki item'ı kontrol eder ve başarılı olursa tüketir.
+- **MEC-POT-01** Pot kullanımı ayrı bir item opcode'u değildir; potun `ITEM.Effect1` alanındaki MAGIC satırı `WIZ_MAGIC_PROCESS` ile cast edilir. Sunucu `MAGIC.UseItem` alanındaki item'ı kontrol eder ve başarılı olursa tüketir. Anlık HP/MP potu (`Type1 = 3`, `DirectType` 1/2) HP/MP dolu olan kendine cast'te de `MAGIC_EFFECTING` (opcode 3) yayınlar `[V]` (F4-04 çalışma zamanı, 2026-10-02: `BotWP_K` HP 5650/5650 iken 1440 HP potu `op:3`, çantadan 1 adet düştü).
 - **MEC-POT-02** Cooldown yalnızca **pot skill ID'sine özgü** recast'tir. HP ve MP potlarının cooldown'ları **ayrıdır**; farklı kademedeki potların (720 HP ile 1440 HP gibi) cooldown'ları da ayrıdır `[D]` `[V]`.
 - **MEC-POT-03** Aynı saniye açığı (MEC-MAG-05) potlarda da geçerlidir.
 - **MEC-POT-04** Ölü, sessizleştirilmiş (Silence) veya Kaul iken pot kullanılamaz. No-Potion debuff'ı yalnızca item sınıfı 0 olan **HP** potlarını engeller.
@@ -365,7 +365,7 @@ Sunucunun **uygulamadığı** ama gerçek istemcinin uyguladığı sınırlar. `
 | CLI-03 | Cast süresi | `CASTING` gönder → `bCastTime·100 ms` bekle → `EFFECTING` gönder; cast sırasında hareket varsa iptal | MAGIC.bCastTime (0,1 sn birimi, potlarda 5 = 0,5 sn) | `[V]` birim `[A]` |
 | CLI-04 | Skill recast | `ReCastTime·100 ms` **gerçek zamanla** (saniye yuvarlaması olmadan); aynı tipten ID < 400000 skill'ler arası ≥ 1,0 sn | MEC-MAG-02, MEC-MAG-03 | `[D]` |
 | CLI-05 | Hareket hızı ve yavaşlatma | Temel koşu hızı istemci değerinden (ölçülecek); hız/yavaşlatma/stun/Wall of Iron buff'larının yüzdesi bot hareketine uygulanır; stun süresince hareket yok | MEC-BUF-06 | `[A]` |
-| CLI-06 | Pot kullanımı | Yalnızca envanterde en az bir adet bulunan pot (tüketilen potlarda sayaç düşer; MB-01 potlarında sayı azalmaz, K-5); **tüm HP potları ortak 2,0 sn, tüm MP potları ortak 2,0 sn** muhafazakâr cooldown; aynı saniyede tekrar yok | MB-01, MEC-POT-02/03; dönem oyuncu ifadesi "720'lik potu 2 sn'de çekiyoruz" `[S]` | `[Ö]` |
+| CLI-06 | Pot kullanımı | Yalnızca envanterde en az bir adet bulunan pot (tüketilen potlarda sayaç düşer; MB-01 potlarında sayı azalmaz, K-5); **HP ve MP potları için tek ortak 2,5 sn** muhafazakâr cooldown (F4-04: `BotCore::kPotCooldownMs = 2500`, `BotFairnessGuard`; ayrı HP/MP zamanlayıcısı ölçülene kadar ortak `[A]`, T-MECH-POT-03); aynı saniyede tekrar yok | MB-01, MEC-POT-02/03; §13.2 ölçümü (2504–2665 ms, HP→MP 2540 ms); dönem oyuncu ifadesi "720'lik potu 2 sn'de çekiyoruz" `[S]` | `[Ö]` |
 | CLI-07 | Alan skill'i hedef noktası | Hedef noktası çağırana `sRange` içinde | MEC-AOE-01 | `[Ö]` |
 | CLI-08 | Yürünebilirlik | Bot yalnızca SMD olay ızgarasında yürünebilir hücreler üzerinden, yükseklik farkı sınırına uyarak hareket eder; teleport yok | MEC-MOV-03 | `[Ö]` |
 | CLI-09 | Ayakta skill | `UseStanding=1` skill öncesi durma hareketi ve en az bir tick bekleme | MEC-MAG-07 | `[D]` |

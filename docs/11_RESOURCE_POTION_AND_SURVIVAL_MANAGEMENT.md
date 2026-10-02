@@ -37,9 +37,9 @@
 
 ### 3.1 Bot tarafı cooldown politikası (CLI-06)
 
-- **HP grubu:** Tüm HP pot kademeleri için ortak 2,0 sn (Store sürümünde 2,5 sn).
-- **MP grubu:** Tüm MP pot kademeleri için ortak 2,0 sn.
-- HP ve MP grupları birbirinden bağımsızdır (sunucu kuralı). İstemci ortak zamanlayıcı uyguluyorsa (T-MECH-POT-03), politika "HP ve MP arası en az 2,0 sn" olarak güncellenir.
+- **Uygulanan (F4-04, `BotCore/BotCombat.h` `kPotCooldownMs`):** HP ve MP potları için **tek ortak 2,5 sn** bekleme; pot ancak botun kendi çantasında ≥ 1 adet varken gönderilir (MB-01 potları dahil, K-5). Çalışma zamanında ardışık pot aralığı 2508–2528 ms, HP→MP geçişi 2508 ms ölçüldü `[V]` (bot tarafı); gerçek istemcide ortak mı ayrı mı olduğu `[A]` (T-MECH-POT-03).
+- **Sunucu kuralı (veri):** HP potları kademe başına 2,0 sn recast (Store sürümünde 2,5 sn), MP potları 2,0 sn; sunucu HP ve MP gruplarını birbirinden bağımsız tutar. Bot 2,5 sn'de kaldığı için bu kural hiç devreye girmez.
+- Ayrı HP/MP zamanlayıcısı T-MECH-POT-03 ile kanıtlanırsa politika "her grup için 2,5 sn"e gevşetilebilir (yeni karar gerektirir).
 - Aynı tick'te pot ve skill gönderimi arasında en az 200 ms (insan girişi temposu, CLI-11).
 
 ### 3.2 HP potu kararı

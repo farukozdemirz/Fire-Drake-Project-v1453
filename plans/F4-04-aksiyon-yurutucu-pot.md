@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `m_castEcho`/`m_castSelfId`, `m_cast*` zamanlayıcıları) — `KAPANDI`; F4-02 (`m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -318,4 +318,43 @@ git diff --check gece/2026-10-02...bot/F4-04
 - Kabul kriterleri K1–K12 durumu: K1 ✔, K2 ✔, K3 ✔ (26 test, iki yeni ad), K4 ✔, K5 ✔, K6 ✔, K7 ✔, K8 ✔, K9 ✔, K10 ✔, K11 ✔, K12 ✔. (K13 Claude doğrulamasında.)
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI.** İncelenen commit: `76053ef` (`bot/F4-04`, taban `gece/2026-10-02` @ `dbb8f18`; kod commit'i `b728b6b`). Otonom gece modu (`AUTO_LOOP=1`): birleştirme ve push yapılmadı, birleştirmeyi döngü betiği yapar. Çalışma ağacı temizdi.
+- Özet: 13/13 kriter ✔. Kod plan §5 ile birebir uyumlu; Release/Debug rc=0, değişen dört `.cpp` touch'lanıp yeniden derlendi (Release), derleyici uyarısı 0; `26 tests, 0 failed` (Release + Debug). Çalışma zamanı senaryoları S1–S7 gerçek sunucuda geçti; uygulayıcı raporundaki iddialar doğru çıktı.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `build.sh Release` rc=0; `ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `CombatTests.cpp` touch'lanıp yeniden derlendi, çıktıda `warning`/`error` satırı yok |
+| K2 Debug derleme | ✔ | `build.sh Debug` rc=0, `BotCoreTests.exe` üretildi |
+| K3 Testler | ✔ | `run-tests.sh Release`/`Debug`: `26 tests, 0 failed`; `Combat_PotCheck_Order`, `Combat_PotWait` mevcut ve geçiyor (24 eski test dahil) |
+| K4 `BotCombat.h` bağımsız | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; fark yalnızca ekleme (`BotCombat.h` +48) |
+| K5 Paket yolu | ✔ | `WIZ_MAGIC_PROCESS` paket oluşturma yalnızca `ActionExecutor.cpp:592` (`SubmitCast`) ve `:1005` (`SubmitPotion`); `BotSession.cpp:46` `OnPacket` okuma. Yasak çağrı grep'i: yalnızca `#include "../MagicInstance.h"` ve iki açıklama yorumu, **çağrı yok** |
+| K6 Guard atlanmıyor | ✔ | `TickPotion`: `stock < 1` → `RejectPotion` (`:1190`), `PotionWaitMs > 0` → `NOTHING`, `CheckPotion != POT_OK` → `RejectPotion` (`:1197`), sonra `SubmitPotion`; pot `HandlePacket` tek yerde (`:1013`). Çalışma zamanında da sınandı (S3: `ACTION_SUBMIT` yok) |
+| K7 Çanta okuması | ✔ | `CountInBag` `INVENTORY_INVENT`..`INVENTORY_INVENT + HAVE_MAX - 1` (14..41), yalnızca `GetItem`; `grep m_sItemArray GameServer/Bot/*.cpp` boş |
+| K8 `ENABLED=0` değişmez | ✔ | `BotManager.cpp` `grep '^-'`: yalnızca 3 bilinçli satır (`unknown command` metni, `BuildStatusLines` biçim ve argüman satırları); `Startup()`/`Tick()`/ini okuma ve `OnPacket()` değişmedi. Çalışma zamanında: `ENABLED=0` ile komut dosyası verildi → `Bot_*.log` +0 satır, `Logs/bots` oluşmadı, `GameServer.log` 32→32 |
+| K9 Dosya kapsamı | ✔ | `git diff --stat`: 8 dosya + plan; `proj-GameServer.vcxproj*`, `BotCore.vcxproj`, `BotCoreTests.vcxproj` farkı boş; `docs/`, `CLAUDE.md`, `AGENTS.md`, başka plan değişmedi |
+| K10 Kodlama / satır sonu | ✔ | 8 dosya `ASCII text, with CRLF` (depoda LF, çalışma ağacında CRLF; `git ls-files --eol` diğer dosyalarla aynı); `git diff --check` rc=0, boş |
+| K11 Yasaklı kalıplar | ✔ | `grep printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(` `ActionExecutor.*` boş |
+| K12 Gerilemesiz | ✔ | `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1; `EmitFairnessReject` `"Move"` (`:97`, `:190`), `"Attack"` (`:402`), `"Cast"` (`:560`), yeni `"Potion"` (`:977`); 24 eski test geçiyor; çalışma zamanı S7 (aşağıda) |
+| K13 Çalışma zamanı | ✔ | S1–S7, aşağıda |
+
+- Çalışma zamanı sınaması (Release, `ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`, `BotWP_K`/`BotMF_K`/`BotWP_E`, zone 71; ini'ye geçici `[BOT]` eklendi, eski `Logs/bots` `bots_old_f404`'e taşındı):
+  - **S1 tüketilen HP potu:** `pot BotWP_K 389015000 3` → `using 389015000 (3 use(s))`; üç `ACTION_SUBMIT` (`kind:"hp"`, `skill:490015`, `stock` 100/99/98) → `ACTION_RESULT` (`effected`, `op:3`, `stock_after` 99/98/97); aralıklar 2528 ve 2508 ms (≥ 2500, ≤ 2750); `FAIRNESS_REJECT` yok; `pot finished (effected) after 3 use(s), 3 ok`; `latency_us` 113–134; bot HP'si zaten doluydu (5650/5650) ve sunucu yine de `op:3` yayınladı: **`ExecuteType3` HP/MP dolu botta da paket yayınlıyor** (plan §8 `[A]` varsayımı doğrulandı); `list` sonuçta `pot=0`.
+  - **S2 MB-01 potları:** `389014000 ×3` → üç `effected`, `stock`/`stock_after` hep **1** (K-5: sayı azalmıyor), aralıklar 2507/2518 ms. `389020000 ×2` (`kind:"mp"`, `skill:490020`) → iki `effected`, `stock_after` 1, aralık 2515 ms. HP→MP geçişi (1,2 sn arayla verilen iki komut): 2508 ms (**ortak zamanlayıcı**), `FAIRNESS_REJECT` yok.
+  - **S3 çantada olmayan pot (CLI-06, AC-SUR-04):** `pot BotWP_K 389019000` (`UseItem 0`, çantada yok) → `using` (arma), ilk tick'te `pot stopped (no_stock)`; JSONL'de yalnızca `FAIRNESS_REJECT` (`"type":"Potion","rule":"CLI-06","reason":"no_stock","value":0.00,"limit":1.00`), **`ACTION_SUBMIT` yok**, oturum kopmadı.
+  - **S4 bekleme/etkileşim:** (a) iki `pot` komutu 1 sn arayla → ikinci pot ilkten 2512 ms sonra gitti, `FAIRNESS_REJECT` yok. (b) `pot BotMF_K 389015000 1` ardından `cast BotMF_K 110518 BotWP_E 1` → `CastStart` potun `ACTION_SUBMIT`'inden 1102 ms sonra (≥ 1000), cast `effected`, `srv_fail` yok. (c) `pot` + `attack BotWP_K BotWP_E 3` aynı dosyada → pot `effected`, saldırı `3 hit(s) sent, 3 ok`, `rate` reddi yok.
+  - **S5 reddedilen komutlar:** `pot BotWP_K 1` → `refused (bad_item)`; `379006000` (`Effect1 0`) → `refused (bad_item)`; `389059000` (`ReCastTime 150`), `310310010` (`ReCastTime 250`), `379105000` (`Moral 5`) → `refused (unsupported_item)`; `pot Ghost 389015000` → `unknown or not spawned bot '?'`; `... 0`, `... 21`, `... abc`, `pot`, `pot BotWP_K`, `pot BotWP_K 0` → kullanım satırı; `pot all off` → `not potting` ×3, `0 stopped, 3 not potting`; `pot BotWP_K off` boşta → `not potting`; **`off` ortada** (`... 5`, ~3,3 sn sonra `off`) → `stopped after 2 use(s)`, sonraki 7 sn'de yeni paket yok (JSONL satır sayısı 80, değişmedi). Despawn edilmiş botla → `not in game (phase despawned)`. **`RESPAWN_CYCLES=2` iken `cmd rejected` yeniden sınanmadı** (kod yolu bu planda değişmedi, `ExecuteCommand` reddi fiil dağıtımından önce; F4-03 ile aynı kapsam).
+  - **S6 ömür döngüsü:** seri sürerken (`... 5`, 2 pot sonrası) `despawn BotWP_K` → `despawned (... names cleared yes)`, `pool free 14/16`, sonrası yeni `ACTION_SUBMIT` yok; yeniden `spawn BotWP_K` → `pot=0`, ilk pot hemen gitti (ortak pot zamanı sıfırlandı), `stock` **90** (3+2+1+2+2 = 10 pot düştü, kayıt logout'ta DB'ye yazıldı) → `stock_after` 89.
+  - **S7 gerilemesiz:** `attack ... 3` → `3 hit(s) sent, 3 ok`; `cast BotMF_K 110518 BotWP_E 2` → `cast finished (effected) after 2 cycle(s), 2 ok, 4 packet(s) sent`; 30 m `move` → `arrived ... after 5 packets`; `PERF_SAMPLE` `tick_p95_us` 108/112/112 (≤ 1 ms), `skipped_ticks` 0; `TELEMETRY=summary` ile yeniden başlatıp `pot BotWP_K 389015000 2` → `pot finished (effected) after 2 use(s), 2 ok`, JSONL'de `ACTION_*` **0**; sunucu 3/3 UP, `GameServer.log` 32→32 (yeni hata yok).
+  - **Temizlik:** sunucular kapatıldı (`run-servers.sh stop`); `GameServer.ini` yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`, öncekiyle aynı; **not:** sunucu `[BOT]` yoksa kapanışta kendisi `[BOT] ENABLED=0` ekliyor, mevcut davranış, bu planın işi değil); `BotCommands.*` kalmadı; 12 bot satırı `sqlcmd -v Upgrade=7 -i db/002_bot_characters.sql` ile geri yüklendi (rc=0, `BotWP_K` çantası 100'e döndü; kişisel veri tablosu okunmadı); test artıkları depo dışında (`Logs\bots_old_f404\`, `Logs\bots_f404_run2\`).
+
+- Bulgular (önem sırasına göre; hiçbiri engel değil):
+  1. **[Not]** `GameServer/Bot/ActionExecutor.cpp:1063` `BeginPotion` içinde kullanılmayan `now` parametresi `(void)now;` ile bastırılmış (F4-02/F4-03 kalıbı; plan imzayı bu biçimde istiyor).
+  2. **[Not]** `GameServer/ChatHandler.cpp:1197-1198` `+bot` yardım metni `cast` ve `pot` fiillerini de listelemiyor (kapsam dışı, KI-012 kapsamı genişletildi).
+  3. **[Not]** Plan §7 S4(b) için komut dosyası yoklaması saniyelik: iki komutu 1 sn'den kısa arayla vermek ilkini ezer (ilk deneme 0,4 sn aralıkla ezildi, 1,05 sn aralıkla geçti). Bir ürün hatası değil; test notu olarak not düşüldü.
+  4. **[Not]** Hâlâ `[A]`: HP/MP ortak zamanlayıcı varsayımı (Q-06, T-MECH-POT-03). Bu plan ayrı zamanlayıcıyı ölçmez; ortak 2500 ms muhafazakâr taraftadır.
+- Uygulayıcı raporu doğrulandı: commit listesi, 8 dosya, derleme/test çıktıları ve grep sonuçları gerçekle uyuşuyor. Sorulan soru/sapma yok.
+- Kalan (insan testi, kriteri engellemez): T-ARCH-09 (`docs/STATUS.md` "Proje sahibi testleri"): gerçek istemcide pot efektleri.
 
