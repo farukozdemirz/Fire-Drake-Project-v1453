@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4; F7 priest/debuff için ön koşul) |
 | Branch | `bot/F4-52 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-03 (cast), F4-12 (gözlem tabloları) — `KAPANDI`; F4-50/F4-51 ile dosya çakışması yok (yalnızca `Perception.h` sonuna ekleme) |
@@ -94,13 +94,18 @@ grep -n "m_skillEvents" GameServer/Bot/BotSession.cpp GameServer/Bot/BotManager.
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (derleme Release/Debug rc=0, `96 tests, 0 failed`; çalışma zamanı K9 Claude'da)
+- Branch / commit'ler: `bot/F4-52` (taban `gece/2026-10-02`); commit'ler bu satır eklendiğinde atılacak: kod + rapor `[F4-52] ...`, ardından `Durum` commit'i.
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
-- Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `BotCore/Perception.h` (+137): dosya sonuna `SkillEvent`, `ParseSkillEvent` (tam 23 bayt, op 1..13), `kSkillEventRing = 64` ve kopyalanabilir `SkillEventRing` (`Add`/`Count`/`Total`/`At`/`FindLatest`/`CountIn`/`Clear`) eklendi; opcode sabitleri `shared/packets.h` include edilmeden `kMagicCasting/kMagicFlying/kMagicEffecting/kMagicOpMax` olarak yinelendi, kaynak yorumda. Mevcut hiçbir satır silinmedi.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+202): `AddSkillEvent` yardımcısı ve 4 yeni `TEST_CASE` (`Perception_ParseSkillEvent`, `_SkillRing_Basic`, `_SkillRing_Queries`, `_SkillRing_Copy`).
+  - `GameServer/Bot/BotSession.h` (+1): `BotCore::SkillEventRing m_skillEvents` `m_hp` satırının altına, `m_obsLock` altında.
+  - `GameServer/Bot/BotSession.cpp` (+16, mevcut blok dokunulmadı): `WIZ_MAGIC_PROCESS && pkt.size() >= 23` için ayrı yeni blok (kilit dışında ayrıştır, kilit altında `Add`); `ResetForRespawn` içinde `m_skillEvents.Clear()`.
+  - `GameServer/Bot/BotManager.cpp` (+43/−3): `CommandSnap` `[events]` biçimini kabul eder; halka kilit altında `eventCopy`'ye kopyalanır; argümansız `snap` sonuna `events total=<n>` satırı, `snap <bot> events` ile en yeni ≤ 10 olay + `events total=<n> in_ring=<n>` yazılır. Silinen 3 satır yalnızca eski kullanım-dizesi/copy-yorumu (cast yankısı bloğuna dokunulmadı).
+- Derleme sonucu: `./tools/build.sh Release` ve `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (yalnızca eski `UpgradeHandler.cpp` C4789). `./tools/run-tests.sh Release --no-build` ve `Debug --no-build`: `96 tests, 0 failed` (plan başında 92).
+- Kabul kriterleri öz-değerlendirme: K1 ✔ K2 ✔ K3 ✔ (96 = 92 + 4, dört yeni ad `[ OK ]`) K4 ✔ (Perception.h'te yalnızca yorumda `shared/packets.h` geçer, include yok; `check-perception-contract.py` R4 0) K5 ✔ K6 ✔ (cast echo bloğu birebir; `-` satırları yalnızca `CommandSnap` kullanım/copy yorumu) K7 ✔ (`m_skillEvents` yalnızca `m_obsLock` altında, ayrıştırma kilit dışında) K8 ✔ K9 Claude'da.
+- Plandan sapmalar ve gerekçeleri: Yok. Not: `CountIn` imzası plandaki gibi `(op, target, nowMs, windowMs)`; `FindLatest`'te joker için `kSkillOpAny = 0xFF` ve `kSkillIdAny = -1` sabitleri eklendi (plan `0xFF`/`-1` diyordu).
+- Açık sorular: Yok.
 
 ---
 
