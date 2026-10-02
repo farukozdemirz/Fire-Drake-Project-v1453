@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-50 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`) — `KAPANDI` |
@@ -229,4 +229,49 @@ Karar (planlayıcı, Q1/Q2 cevabı): kiriş denetiminin zorunlu kuralı Walk sü
 4. BotCore/NavSegment.h girdi doğrulaması: koordinat dönüşümlerinden (`std::floor` + `(int)`) önce dört girdinin `std::isfinite` olduğunu ve `std::fabs(deger / unit)` değerlerinin `1e9`'u aşmadığını denetle; aksi halde `OutOfBounds` (`cellX = cellZ = -1`, `cellsTouched = 0`) dön. Testler (`NavSegment_Basic`): `NaN`, `+inf` ve `1e12` koordinatlı kirişler `OutOfBounds` dönsün (`<limits>` ekle).
 5. BotCore/NavSegment.h `:190,197` vertex toleransı: plan `1e-9` der, kod `1e-12` kullanıyor. Ya toleransı plana (`1e-9`) çek ve testlerin (özellikle `RealMap_Straight` `excess=0`, `graze*1000 <= total`) hâlâ geçtiğini göster, ya da `1e-12`yi korumak için kısa yorum yaz (`t` birimi, hedeflenen metre ölçeği). Hangisini seçtiğini raporuna yaz.
 6. `./tools/build.sh Release` ve `Debug` (rc=0, uyarı 0), `./tools/run-tests.sh Release` ve `Debug` (`0 failed`) koş; raporuna yeni `NAVSEG planner:` satırını (beklenen `segment_bad=0 chord_violations=0`) ve `NAVSEG oracle/straight/perf` satırlarını yapıştır; `git diff --check` boş, dosyalar ASCII + CRLF.
+```
+
+### Tur 2 — 2026-10-02
+
+- **Karar:** DÜZELTME GEREKLİ
+- **İncelenen commit:** `4b2ce1f` (`bot/F5-50`; Tur 2 kodu `046ddc8`; taban `gece/2026-10-02-nav` @ `196857d`). Çalışma ağacı temiz. Paralel hat `nav` (`AUTO_LOOP=1`, gece modu): sunuculara dokunulmadı, birleştirme/push yapılmadı.
+- **Özet:** Tur 1 talimatının 1-6. maddeleri doğru ve eksiksiz uygulanmış (eğim katmanı isteğe bağlı, guard fail-closed, girdi doğrulaması, tolerans `1e-9`, `chord_violations=0`). Ancak bağımsız çapraz denetimim, uygulayıcının testlerinin hiç denemediği bir sınıfta **yeni bir doğruluk hatası** buldu: kiriş **tam bir hücre köşesinde (vertex) biterken** `z` azalıyorsa traversal bitiş hücresini aşıyor; sonuç kiriş yürünebilir olduğu hâlde reddedilir (hiçbir zaman `Ok` değil, yani fail-closed) ve raporlanan hücre kirişin hiç değmediği bir hücre ya da `OutOfBounds (-1,-1)` olur. Güvenlik yönü (engelli hücreyi kaçırma) **bozulmadı**.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, uyarı yok | ✔ | `NavSegment.h` ve `NavSegmentTests.cpp` `touch` ile yeniden derlendi; `tools/build.sh Release` rc=0, `grep -ci warning` = 0 (`/tmp/f550v2_rel.log`) |
+| K2 Debug rc=0, uyarı yok | ✔ | `tools/build.sh Debug` rc=0, uyarı 0 |
+| K3 testler `0 failed`, yedi yeni ad `[ OK ]` | ✔ | `./tools/run-tests.sh Release --no-build` ve `Debug --no-build`: `169 tests, 0 failed`; yedi `NavSegment_*` `[ OK ]`, SKIPPED yok (harita var) |
+| K4 yasak include yok | ✔ | `NavSegment.h:16,18` yalnızca `NavGrid.h` + `<cmath>`; `windows.h|stdafx|GameServer|shared/` eşleşmesi yalnızca `:4` yorumu |
+| K5 dinamik bellek / global-static yok | ✔ | `new|malloc|std::vector|static ` yalnızca `:4` yorumu; diziler yığında (`:163-164`, `:246-247`) |
+| K6 oracle güvenlik 0, aşırı muhafazakâr ≤ %0,1, simetri 0 | ✔ (testlerin ölçtüğü dağılımda) | `oracle ... sym=0 safety=0 graze=0 excess=0`, `straight ... graze=2 excess=0` (2/2000 = %0,1 sınırda ama ≤). Not: `oracle` testi 3000 kirişin 2947'sini engelli üretiyor (%20 engel yoğunluğu, uzun kiriş), yani güvenlik yönü yalnızca 53 `Ok` kirişte sınanıyor; vertex'te biten kiriş hiç yok (bkz. bulgu 1) |
+| K7 planlayıcı segment/kiriş ihlali 0 | ✔ | `NAVSEG planner: paths=997 segments=4876 segment_bad=0 chords=35878 chord_violations=0 chord_slope_opt=691` (yeniden koşuldu; segmentler `checkSlope=true`, kirişler Walk-only) |
+| K8 Perf p95 ≤ 0,02 ms | ✔ | Release `ms_p95=0.000200`; Debug `0.000700` |
+| K9 yalnızca §4 dosyaları | ✔ | `git diff --stat gece/2026-10-02-nav...bot/F5-50`: kod commit'leri `fae635d` ve `046ddc8` yalnızca `NavSegment.h`, `NavSegmentTests.cpp`, iki `.vcxproj` (birer satır) + plan; `GameServer/`, `shared/`, `AIServer/` farkı 0. (`docs/12`, `docs/STATUS.md` farkı Claude'un Tur 1 doğrulama commit'idir `bbd68c7`.) |
+| K10 ASCII + CRLF, `git diff --check` boş | ✔ (iki yeni dosya) | iki dosya ASCII + CRLF; kod/proje dosyalarında `git diff --check` temiz (taban...dal farkında yalnızca Claude'un `docs/STATUS.md` satırı CR/`core.autocrlf` uyarısı verir, uygulayıcı dosyası değil) |
+| K11 bağımsız Python süpercover çapraz denetimi | ✘ | Aşağıda: güvenlik ihlali 0 (6000 kiriş), ama 255 gereksiz ret / yanlış hücre raporu, hepsi bitiş-vertex sınıfında |
+
+**K11 yöntemi ve sonucu.** `/tmp/f550k11/` (commit edilmez): C++ harness (`g++ -O2`, gerçek harita `zone71`, `NavSegment.h` olduğu gibi) 6000 kiriş kararı üretti: 2500 rastgele sürekli uçlu (R), 2500 köşe/çizgi/merkez-çapraz uçlu (Q), 1000 vertex'e `1e-13..1e-4` m yakın uçlu (N); her kiriş iki yönde. Python, `Fraction` ile tam rasyonel kapalı-kare kesişimi hesapladı. Sonuç:
+
+- **Güvenlik ihlali (C++ `Ok`, kesin sonuç engelli): 0 / 6000.** Simetri ihlali: 0.
+- R (2500, sürekli uçlar): `ok=1639 blocked=861`, **gereksiz ret 0, yanlış hücre 0**.
+- Q: 90 gereksiz `BlockedCell`, 46 gereksiz `OutOfBounds(-1,-1)`; N: 66 gereksiz `BlockedCell`, 36 gereksiz `OutOfBounds`. Toplam 238 gereksiz ret + 17 "ret doğru ama raporlanan hücre kirişe değmiyor" = 255. Hepsi uçlardan biri hücre köşesinde veya köşeye ≤ ~1e-8 m yakın olan kirişlerdir (kiriş uç koordinatları `unit` katı).
+- Küçük yeniden üretim (sentetik 16x16 ızgara, kenar halkası engelli, iç hücreler açık, `unit = 4`; hepsi `Walk`): `NavCheckSegment(grid, 24, 32, 32, 24)` → `BlockedCell`, `cell=(12,0)`, `cellsTouched=25`. Kirişin değdiği hücreler yalnızca `x 5..8, z 5..8` aralığıdır, hepsi `Walk`; dönen `(12,0)` ızgara kenarındaki engelli hücredir. Kontrol: `(24,24) -> (32,32)` doğru `Ok` döner (`dz > 0`).
+
+**Bulgular (önem sırasıyla)**
+
+1. **Doğruluk, `BotCore/NavSegment.h:195-240` (bitiş hücresi aşımı):** döngü `x != ex || z != ez` koşuluyla biter; `ex/ez = floor(b / unit)`. Kanonik sıralamadan sonra `stepX >= 0`. Bitiş noktası `z` sınırında ve `stepZ < 0` ise kirişin vardığı alt hücre `ez - 1`'dir, ama `ez` üst hücredir. Bitişte `tMaxX ≈ tMaxZ ≈ 1` eşitliğinde vertex dalı (`:224-239`) `x = ex`, `z = ez - 1` yapar; artık `z == ez` hiçbir zaman sağlanamaz, döngü bitmez: sonraki `z` adımları (`:217-223`) kirişin dışındaki hücreleri ziyaret eder ve ilk engelli/ızgara dışı hücrede `BlockedCell` (kirişe değmeyen hücre) ya da guard'da `OutOfBounds(-1,-1)` verir. Sonuç hep ret (fail-closed), `Ok` asla; ama (a) yürünebilir bir kiriş reddedilir, (b) raporlanan `cellX/cellZ` yanlıştır (telemetri/teşhis yanıltır), (c) `OutOfBounds` etiketi yanlış. Pratik olasılık küçümsenmemeli: dünya koordinatları tamsayı olan hedefler (NPC/spawn konumu) `unit = 4` ızgarada 1/16 olasılıkla köşeye düşer. Aynı mekanizma, tolerans (`1e-9` t birimi) içinde köşeye ≤ ~1e-8 m yakın biten kirişlerde de tetiklenir (N sınıfı, 46 vaka `dz >= 0`). Testler yakalamadı çünkü hem `NavSegment_Corner` hem oracle testleri köşede *biten* kirişi denemiyor ve rastgele sürekli uçlar köşeye (ölçü sıfır) düşmüyor.
+2. **Test boşluğu, `Tests/BotCoreTests/NavSegmentTests.cpp` (Corner/Symmetry_Oracle):** oracle testi 3000 kirişin %98'ini engelli üretiyor; `Ok` yönü yalnızca 53 kirişte sınanıyor ve uçlar hiç ızgara çizgisi/köşesi üzerinde değil. Plan §5 (`NavSegment_Corner`) köşe/teğet vakalarını açıkça ister; bitiş-köşesi vakası eksik.
+3. **Not (engel değil), `NavSegment.h:70-78` dışı:** yok; Tur 1 bulgularının (3-5) hepsi giderildi: `guard` fail-closed (`:203-208`), `isfinite` + `1e9` (`:57-68`), tolerans `1e-9` (`:210`, `:217`; boundaryShift de `1e-9`, `:115-119`). `NavSegment_Basic` `NaN/+inf/1e12` testi `[ OK ]`.
+4. **Dürüstlük:** Uygulayıcı Tur 2 raporu doğru; tüm sayılar (`691`, `4876`, `35878`, `169 tests`, `p95`) yeniden üretildi. Rapor "tolerans `1e-9`'a çekildi" diyor; bunun vertex-biten kirişi bozduğunu testler göstermiyordu (bulgu 1, Tur 1 kodunda da var olan bir hata olabilir; bu turun gerilemesi değil, K11 kapsamının genişlemesiyle bulundu).
+
+#### Düzeltme talimatı
+
+```
+plans/F5-50-nav-kiris-yurunebilirlik-denetimi.md — Doğrulama Turu 2 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 3" ekle:
+Dokunulabilecek dosyalar değişmez: BotCore/NavSegment.h, Tests/BotCoreTests/NavSegmentTests.cpp.
+1. BotCore/NavSegment.h: kirişin bir hücre köşesinde (veya tolerans içinde köşeye yakın) bittiği durumda traversal bitiş hücresini aşıyor. Döngü sonlanmasını `x != ex || z != ez` koşulundan t-tabanlı sonlanmaya çevir: `while (true)` içinde `const double tNext = (tMaxX < tMaxZ) ? tMaxX : tMaxZ; if (tNext > 1.0 + 1e-9) break;` (kirişin t parametresi [0,1]; `1e-9` mevcut vertex toleransıyla aynı ölçek, büyütme). Mevcut `guard` fail-closed ağını koru. Bitişteki "end cell plus far side" ziyaretini (`ex/ez` ve `endXShift/endZShift`) olduğu gibi bırak: kirişin vardığı hücreyi ve sınırın öte yanını yine ziyaret eder. Başka mantık değiştirme.
+2. NavSegmentTests.cpp: yeni test `NavSegment_EndVertex` ekle (sabit ad). Sentetik ızgara: n=16, unit=4, kenar halkası engelli iç açık (dosyadaki `RingEvents` + `MakeNav`). (a) Yürünebilir bölgede, `unit` katı köşe noktaları arasında 8 yönde 45° ve eksen hizalı kirişler, hem başlangıç hem bitiş köşede (ör. (24,32)->(32,24), (32,24)->(24,32), (24,24)->(32,32), (24,32)->(24,24), (24,24)->(32,24)): hepsi `Ok`. (b) Aynı kirişleri köşenin öte yanındaki (kirişe değmeyen) tek bir hücreyi engelleyerek `Ok` bekle; kirişin köşede değdiği dört hücreden birini engelleyerek `BlockedCell` ve `cellX/cellZ` o hücre bekle. (c) Simetri: her kiriş için a->b ve b->a aynı karar. (d) Köşeye 1e-10 m kala biten kirişte hiçbir zaman `OutOfBounds` dönmesin (karar `Ok` ya da `BlockedCell`, `cellX/cellZ` ızgara içinde).
+3. NavSegmentTests.cpp `NavSegment_Symmetry_Oracle` (ve gerekirse `RealMap_Straight`): oracle kirişlerinin bir kısmını (en az 1000) uçları `unit` katı köşelere / ızgara çizgilerine oturtarak üret ve ayrıca engel yoğunluğu düşük (%5) ikinci bir sentetik ızgara kullan ki `Ok` kiriş sayısı yüzlerce olsun. Kural aynı: güvenlik ihlali 0, simetri ihlali 0, ve `OutOfBounds` yalnızca kiriş gerçekten ızgara dışına çıkıyorsa dönsün (oracle: `OutOfBounds` ise ızgara dışına değen hücre olmalı). Bir `printf` satırıyla `ok`, `blocked`, `vertex_chords` sayılarını yaz.
+4. `./tools/build.sh Release` ve `Debug` (rc=0, uyarı 0), `./tools/run-tests.sh Release` ve `Debug` (`0 failed`) koş; raporuna `NAVSEG planner:` (beklenen `segment_bad=0 chord_violations=0`), `NAVSEG oracle/straight/perf` ve yeni satırları yapıştır. `NAVSEG planner` `chord_violations=0` kalmalı, `perf` `ms_p95 <= 0.02` kalmalı. `git diff --check` boş, dosyalar ASCII + CRLF.
 ```
