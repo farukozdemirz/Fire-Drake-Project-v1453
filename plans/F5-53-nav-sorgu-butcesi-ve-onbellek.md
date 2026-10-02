@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-53 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-04 (`NavFollower`) — `KAPANDI` |
@@ -154,3 +154,49 @@ git diff --stat gece/2026-10-02-nav...bot/F5-53
 
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar:** DÜZELTME GEREKLİ
+- **İncelenen commit:** `a659e8a` (`bot/F5-53`, taban `gece/2026-10-02-nav`; tek commit). Paralel hat `nav`: sunuculara dokunulmadı.
+- **Doğrulama ortamı:** Release ve Debug derlemesi (`./tools/build.sh`), `./tools/run-tests.sh <cfg> --no-build`, `tools/nav-measure.sh budget-scheduled` (3 koşu), ayrıca depoya yazılmayan geçici deneyler (`/tmp`, host `g++`).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, uyarı yok | ✔ | rc=0; çıktıda `warning` 0 |
+| K2 Debug rc=0, uyarı yok | ✔ | rc=0; çıktıda `warning` 0 |
+| K3 `0 failed`, sekiz ad `[ OK ]` | ✔ (koşu) / içerik ✘ | Release ve Debug `191 tests, 0 failed`, sekiz ad `[ OK ]`. Ama `NavBudget_RealMap_Load` yapısal olarak hatalı (B1); `NavBudget_Deferred_Chase_Sim` yanlış metrik ölçüyor (B3) |
+| K4 başlık kuralları | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|new\|malloc` grep boş; `std::vector` yalnızca `NavPathCache::Entry::cells`; yalnızca `static constexpr` sabitler |
+| K5 AC-NAV-07 (B) eşikleri | ✘ | `realm` testinin (B) modunda **yalnızca bot 0 servis ediliyor** (B1): ölçüm geçersiz. Geçerli olan `nav-measure budget-scheduled` (3 koşu) eşikleri karşılıyor: p95 0,771-0,777 ms, p99 ≤ 1,301 ms, `longest_wait_ms=400`, `served=1920`; ancak bu araçta (A) karşılaştırma satırı yok (B5) ve MSVC Release değeri geçersiz testten geliyor |
+| K6 ilerleme garantisi ve `maxWaitMs` önceliği | ✘ | İlerleme garantisi ✔. Öncelik: testler geçiyor ama `NextBatch` rotasyonu önceliği ve FIFO'yu bozuyor (B2, kanıtlı deney) |
+| K7 kapsam, biçim, `git diff --check` | ✘ | Kapsam yalnızca §4 + planın kendi dosyası; `docs/`, `GameServer/`, `shared/` farkı 0; iki yeni dosya ASCII+CRLF; `nav_measure.cpp`'de mevcut bölümlere dokunulmamış (yalnızca kullanım/başlık satırları). ✘: `git diff --check` boş değil: `NavBudgetTests.cpp:967: new blank line at EOF` |
+| K7a kuyruklu takip (B) eşikleri, `budget-scheduled` | ✘ | (B) sayıları eşiği karşılıyor (`plan_wait_max=200`, `plan_wait_p95=0`, `without_plan_pct=0.1`, `dist_mean=10,99 ≤ 1,25 × 9,59`), ancak `follow_stale_ticks` yanlış sayılıyor (B3) ve kuyruklanma neredeyse hiç oluşmuyor (B3). Araç sayıları üretiyor ama karşılaştırma yok (B5) |
+| K7b oyun içi bütçe | — | F5-55'e bırakıldı (plan böyle istiyor); `docs/reports/degerlendirme-takip.md` `BEKLİYOR` kalır |
+| K8 `NavPathfinder` ölçüm notu | ✔ | Not raporda var; 513² × 16 B = 4,21 MB = 4,02 MiB aritmetiği tutarlı (alanlar `NavPath.h`'de `m_g/m_parent/m_seen/m_closed`; tek tek tür boyutları yeniden ölçülmedi) |
+
+**Bulgular (önem sırasıyla)**
+
+1. **B1 (yüksek) `Tests/BotCoreTests/NavBudgetTests.cpp:893` ile `:897`: `RealMap_Load` (B) modu yalnızca bot 0'ı servis ediyor; K5 kanıtı geçersiz.** `Request` her botun kendi `st[b].scheduler` örneğine yazılıyor, `NextBatch` ise `st[0].scheduler` üzerinde çalışıyor; `ReportCost/Cancel` de yine bot başına örnekte (`:927-928`). Geçici sayaçla ölçüldü: (A) her bot 600 sorgu, (B) `119 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0`. Bu yüzden `tick_p95=0.138`, `longest_wait=0` ve "p95 ≥ %30 düşük" kriteri sahte olarak geçiyor. (Chase testi `st[0].scheduler` ile doğru paylaşılan örneği kullanıyor, `:609-613`.) Ayrıca `BotState`'teki bot başına `NavQueryScheduler scheduler` üyesi bu hatanın kaynağı.
+2. **B2 (yüksek) `BotCore/NavBudget.h:83-97`: dönen ofset tüm sıralı listeyi döndürüyor; `maxWaitMs` önceliği ve FIFO bozuluyor.** Plan: ofset yalnızca eşit beklemede sırayı belirler. Gerçekte `rot = m_offset % count` ile sıralı listenin başı sona atılıyor. Deney (3 bot 1500 ms bekledi, 5 bot 100 ms; bütçe tek sorgu): `m_offset` 0, 1, 2 iken ilk seçilen aşmış bot, `m_offset` 3..7 iken **taze bot** seçiliyor (`PRIORITY VIOLATED`). Yük altında `maxWaitMs + 100 ms` sınırı korunmaz; mevcut testler yalnızca elverişli ofsetlerde geçiyor (`:212-232` yorumu "any of them may lead after rotation" sorunu saklıyor).
+3. **B3 (orta) `NavBudgetTests.cpp:690-697`, `:730`, `:778-779`: kabul ölçütleri yanlış/anlamsız ve erteleme neredeyse hiç sınanmıyor.**
+   - `follow_stale_ticks` yalnızca `Hold` dalında artıyor (`Hold` kararı + bayat plan). Planın ölçtüğü şey tersi: bayat planla `FollowPlan` ile sürmek. Bu ihlal hiç sayılmıyor; `0` değeri tesadüf.
+   - `holdDistMoved` konumu yalnızca `follow` dalı değiştirdiği için tanım gereği 0 (totoloji).
+   - `deferred_ticks=25` / `hold_ticks=21` (19200 bot-tick içinde): gerçek A* maliyeti (~0,1 ms) bütçeden çok küçük olduğundan kuyruklanma yok; "ertelenen botların bekleme/takip/yol kullanma davranışı" (proje sahibi kararı) fiilen sınanmıyor.
+4. **B4 (düşük) biçim ve ölü kod:** `NavBudgetTests.cpp:967` sonda fazladan boş satır (K7 ✘); `:570` `for (...)\t\t{` tek satırda (Allman değil); `:606-607` süslü parantezsiz iç içe `if`; `:863` kullanılmayan `from` değişkeni ve `(void)from`; `NavBudget.h` başlık yorumu `NextBatch`'in kuyruktan **çıkarmadığını** (çağıranın `Cancel` etmesi gerektiğini) söylemiyor.
+5. **B5 (düşük) `tools/nav-measure/nav_measure.cpp:550-615`: `budget-scheduled` yalnızca zamanlayıcılı modu ölçüyor;** plan "zamanlayıcısız ve zamanlayıcılı karşılaştırma" istiyor. Ayrıca raporda "3 koşu, en kötü p95" (plan §8) belirtilmemiş.
+
+**Notlar (engel değil):** `NextBatch`'te bütçeyi aşan bir sorgu atlanıp ardındaki ucuz sorgu seçiliyor (`continue`); plan "aşıncaya kadar seç" diyor. B2 düzeltilince öncelik sırası korunduğu için sorun olmaz; isterseniz `break` ile planın sözüne uyulabilir (testle). K8 not dışında Uygulayıcı Raporu'ndaki derleme ve test sayıları gerçekle uyuşuyor (191 tests, 0 failed, sekiz ad `[ OK ]`; `budget-scheduled` `served=1920`, `longest_wait_ms=400`: raporun "0 bekleyen" ifadesi `pending=0` için doğru).
+
+**Düzeltme talimatı:**
+
+```
+plans/F5-53-nav-sorgu-butcesi-ve-onbellek.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. BotCore/NavBudget.h NextBatch: dönen ofset tüm sıralı listeyi döndürmesin. Sıra anahtarı: (aşmış mı: önce aşmışlar, sonra bekleme süresi azalan, sonra eşitlikte (id - m_offset) mod kCapacity artan); listeyi `rot` kadar döndüren satırları (rot hesabı ve (rot + step) % count döngüsü) kaldır, adayları sıralı sırayla gez. m_offset her çağrıda +1 kalır. Eşit bekleyen botlar çağrılar arasında sırayla öne geçmeye devam eder.
+2. BotCore/NavBudget.h başlık yorumuna: NextBatch seçilenleri kuyruktan çıkarmaz, çağıran servis sonrası Cancel(botId) eder. NextBatch'te bütçe aşımında `continue` yerine `break` kullan (plan: "aşıncaya kadar seç"; ilerleme garantisi için ilk bot her zaman seçilir).
+3. Tests/BotCoreTests/NavBudgetTests.cpp, yeni test adı NavBudget_Scheduler_Priority (aynı dosyada): (a) 3 bot 1500 ms bekledi, 5 bot 100 ms; bütçe tam bir sorgu; m_offset'in 0..9 farklı değerinde (her denemede yeni zamanlayıcı kurup NextBatch'i boş ısınma çağrılarıyla ilerlet veya aynı zamanlayıcıda istekleri yeniden kurarak) ilk seçilen DAİMA aşmış botlardan biri; (b) bekleme süreleri farklı 6 bot için NextBatch çıktısı her ofsette en eskiden yeniye sıralı; (c) eşit bekleyen botlarda ardışık çağrıların ilk seçimi değişir (dönüş sürüyor). Eski NavBudget_Scheduler_Fairness içindeki "any of them may lead after rotation" gevşekliğini kaldır: t=1100 sonrası out[0] 5..39 aralığında EN ESKİ ISTEK sırasına göre beklenen id olsun (eşit zaman damgalarında ofsetin belirlediği id, deterministik).
+4. Tests/BotCoreTests/NavBudgetTests.cpp NavBudget_RealMap_Load: tek paylaşılan `NavQueryScheduler scheduler;` kullan (BotState içindeki bot başına scheduler üyesini ve st[b].scheduler / st[0].scheduler kullanımlarını kaldır; Request, NextBatch, ReportCost, Cancel, Pending hepsi aynı örnekte). Her mod için bot başına servis edilen sorgu sayısını say; testte REQUIRE/CHECK: (B) modunda her bot en az bir kez servis edilmiş, toplam servis sayısı (A) toplamının en az %90'ı ve uzun-bekleme ölçüsü gerçek istek-servis farkı. Satırlara `served_total` ve `served_min_per_bot` ekle. Planın istediği gibi (B) fazlı olsun: istek zamanını bot başına NavReplanPhaseMs(slot) ile kaydır (mevcut `planAtMs`'e göre koşul yerine fazlı zamanlama; mod (A) fazsız kalır). Eşikler değişmez: (B) p95 <= 2.0, p99 <= 4.5, en uzun bekleme <= 1100, (B) p95 <= 0.70 x (A) p95; her mod 3 kez koşulur ve ayrı satır olarak yazdırılır (en kötü p95 raporlanır).
+5. Tests/BotCoreTests/NavBudgetTests.cpp NavBudget_Deferred_Chase_Sim: (a) `follow_stale_ticks` her bot-tick için, bot plan izleyerek hareket ettiyse (FollowPlan veya ertelenmemiş) ve plan bayatsa (plan yaşı > planMaxAgeMs veya hedef kayması > driftMaxM) artsın; Hold dalında artmasın. Ayrıca `stale_hold_ticks` adlı ayrı bir bilgi sayacı ekle. (b) `holdDistMoved`: bot konumunu tick başında kaydet, Hold edilen botun tick sonundaki konumunu karşılaştır (iki ölçüm noktası arası), totoloji olmasın. (c) Gerçek kuyruklanma üreten ikinci bir (B2) koşu ekle: aynı simülasyon, ReportCost'a Update ölçümüne sentetik ek maliyet eklenerek veya bütçe düşürülerek (hangisi olursa, raporda belirt) deferred_ticks en az toplam bot-tick'in %5'i ve hold_ticks > 0 olacak şekilde; (B2) için de plan_wait_max <= 1100, plan_wait_p95 <= 800, without_plan_pct <= 3, follow_stale_ticks = 0 kontrol edilsin; (B2) satırı yazdırılsın. (B2) mevcut sistemde eşiği aşıyorsa sebebi raporla (kodu gevşetme).
+6. tools/nav-measure/nav_measure.cpp budget-scheduled: zamanlayıcısız (A: her istek anında) ve zamanlayıcılı (B) iki satır yazsın (`BUDGET_SCHED mode=A ...`, `mode=B ...`), aynı rastgele sorgu dizisiyle. Mevcut bölümlere dokunma.
+7. Biçim: NavBudgetTests.cpp sonundaki fazladan boş satırı sil (`git diff --check` boş olmalı); `for (int64_t t = 0; t < endMs; t += tickMs)` satırında `{` alt satıra, `if (...) if (...)` iç içe yapısını süslü parantezlerle ve Allman ile yaz; kullanılmayan `from` değişkenini ve `(void)from` satırını sil. Dosyalar ASCII + CRLF kalsın.
+8. Raporu güncelle: §7 komutlarını Release ve Debug için yeniden çalıştır; (A)/(B)/(B2) satırlarının tam çıktısını, bot başına servis sayılarını ve `tools/nav-measure.sh budget-scheduled` çıktısını (3 koşu) Tur 2'ye yaz. Uygulayıcı Raporu'nda "bot başına servis edilen sorgu" kontrolü olmadan geçen ölçümü kabul kanıtı sayma.
+```
