@@ -38,6 +38,8 @@ namespace BotCore
 		// older sample whose span is >= minSpanMs (> 0) and <= windowMs (docs/12 s13.2: last two
 		// observations at packet cadence, or going back to a long-enough span). A positive newest
 		// speed field clamps the magnitude to speedField / 10 * 1.1 m/s (direction preserved).
+		// A selected pair implying more than 10 m/s with an unknown speed field, or more than
+		// 30 m/s with a known one, reports no velocity (teleport jump guard).
 		void Velocity(int64_t nowMs, int windowMs, int minSpanMs, float & vx, float & vz) const;
 
 	private:
@@ -257,24 +259,6 @@ namespace BotCore
 		if (newest.speed == 0)
 			return;
 
-		// Teleport jump guard (F5-56): when two consecutive observations that are at least a
-		// normal span apart imply an impossible speed (> 30 m/s; respawn, summon, blink), the
-		// newest sample no longer pairs with the past. Report no velocity until a fresh
-		// observation re-establishes a plausible pair. The span gate keeps packet bunching
-		// (sub-minSpan gaps) out of this branch; it is handled by the normal selection below.
-		if (m_count >= 2)
-		{
-			const int64_t jspan = newest.t - At(1).t;
-			if (jspan >= static_cast<int64_t>(minSpanMs) && jspan > 0)
-			{
-				const float jdx = newest.x - At(1).x;
-				const float jdz = newest.z - At(1).z;
-				const float implied = std::sqrt(jdx * jdx + jdz * jdz) * 1000.0f / static_cast<float>(jspan);
-				if (implied > 30.0f)
-					return;
-			}
-		}
-
 		// Nearest older sample whose span from the newest is at least minSpanMs, staying within
 		// windowMs of the newest observation. At packet cadence (~1.5 s) the newest-to-previous
 		// span is already long enough; a short recent pair falls back to a longer span.
@@ -304,9 +288,17 @@ namespace BotCore
 		if (span <= 0)
 			return;
 
+		// Teleport jump guard (F5-56): the selected pair may not imply an impossible speed.
+		const float dx = newest.x - oldX;
+		const float dz = newest.z - oldZ;
+		const float implied = std::sqrt(dx * dx + dz * dz) * 1000.0f / static_cast<float>(span);
+		const float limit = newest.speed < 0 ? 10.0f : 30.0f;
+		if (implied > limit)
+			return;
+
 		const float inv = 1000.0f / static_cast<float>(span);
-		vx = (newest.x - oldX) * inv;
-		vz = (newest.z - oldZ) * inv;
+		vx = dx * inv;
+		vz = dz * inv;
 
 		// A positive speed field is a magnitude hint (WIZ_MOVE speed = m/s * 10): clamp a noisy
 		// position jump to speedField / 10 * 1.1 m/s, direction preserved.
