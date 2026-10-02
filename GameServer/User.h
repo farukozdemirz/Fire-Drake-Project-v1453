@@ -735,6 +735,7 @@ public:
 	COMMAND_HANDLER(HandleKnightsSummonCommand);
 	COMMAND_HANDLER(HandleWarResultCommand);
 	COMMAND_HANDLER(HandleResetPlayerRankingCommand);
+	COMMAND_HANDLER(HandleBotCommand);
 
 	void Regene(uint8 regene_type, uint32 magicid = 0);
 	void RequestUserIn(Packet & pkt);
