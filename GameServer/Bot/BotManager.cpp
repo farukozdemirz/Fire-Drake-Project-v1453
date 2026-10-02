@@ -622,10 +622,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandMove(args);
 	else if (_stricmp(verb.c_str(), "stop") == 0)
 		CommandStop(args);
+	else if (_stricmp(verb.c_str(), "attack") == 0)
+		CommandAttack(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -803,10 +805,17 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 		else
 			snprintf(pos, sizeof(pos), "-");
 
+		char hp[24];
+		if (s->m_pUser != nullptr)
+			snprintf(hp, sizeof(hp), "%d/%d", s->m_pUser->GetHealth(), s->m_pUser->GetMaxHealth());
+		else
+			snprintf(hp, sizeof(hp), "-");
+
 		snprintf(message, sizeof(message),
-			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u",
+			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d",
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount,
-			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load());
+			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load(),
+			hp, s->m_attackActive ? 1 : 0);
 		out.push_back(message);
 	}
 }
@@ -1157,6 +1166,171 @@ void BotManager::CommandStop(const std::string & args)
 	}
 }
 
+void BotManager::CommandAttack(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() == 2 && _stricmp(words[1].c_str(), "off") == 0)
+	{
+		if (_stricmp(words[0].c_str(), "all") == 0)
+		{
+			uint32 stopped = 0, notAttacking = 0;
+			for (size_t i = 0; i < m_sessions.size(); i++)
+			{
+				BotSession * s = m_sessions[i];
+				if (s->m_phase != BotSession::PHASE_IN_GAME)
+					continue;
+
+				char message[224];
+				if (s->m_attackActive)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd attack: %s stopped after %u hit(s) sent",
+						s->m_charName.c_str(), (unsigned)s->m_attackSent);
+					ActionExecutor::EndAttack(s);
+					stopped++;
+				}
+				else
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd attack: %s not attacking", s->m_charName.c_str());
+					notAttacking++;
+				}
+				WriteBotLog(message);
+			}
+
+			char summary[128];
+			snprintf(summary, sizeof(summary),
+				"BotManager: cmd attack all: %u stopped, %u not attacking",
+				(unsigned)stopped, (unsigned)notAttacking);
+			WriteBotLog(summary);
+			return;
+		}
+
+		BotSession * s = FindSession(words[0].c_str());
+		if (s == nullptr)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd attack: unknown or not spawned bot '%s'",
+				IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+			WriteBotLog(message);
+			return;
+		}
+
+		if (s->m_phase != BotSession::PHASE_IN_GAME)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd attack: %s not in game (phase %s)",
+				s->m_charName.c_str(), PhaseName(s->m_phase));
+			WriteBotLog(message);
+			return;
+		}
+
+		char message[224];
+		if (s->m_attackActive)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd attack: %s stopped after %u hit(s) sent",
+				s->m_charName.c_str(), (unsigned)s->m_attackSent);
+			ActionExecutor::EndAttack(s);
+		}
+		else
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd attack: %s not attacking", s->m_charName.c_str());
+		}
+		WriteBotLog(message);
+		return;
+	}
+
+	if (words.size() < 2 || words.size() > 3)
+	{
+		WriteBotLog("BotManager: cmd attack: usage: attack <bot> <target bot> [count] | attack <bot|all> off");
+		return;
+	}
+
+	const std::string & name = words[0];
+	const std::string & targetName = words[1];
+
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	BotSession * target = FindSession(targetName.c_str());
+	if (target == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: unknown or not spawned bot '%s'",
+			IsKnownBotName(targetName) ? targetName.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (target->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: target %s not in game (phase %s)",
+			target->m_charName.c_str(), PhaseName(target->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	if (target == s)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: %s refused (bad_target)", s->m_charName.c_str());
+		WriteBotLog(message);
+		return;
+	}
+
+	long count = 1;
+	if (words.size() == 3)
+	{
+		if (!ParseIntStrict(words[2], count) || count < 1 || count > 100)
+		{
+			WriteBotLog("BotManager: cmd attack: usage: attack <bot> <target bot> [count] | attack <bot|all> off");
+			return;
+		}
+	}
+
+	AttackOutcome outcome = ActionExecutor::BeginAttack(s, target->m_charName, (uint32)count, now);
+
+	char message[256];
+	if (outcome.kind == AttackOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd attack: %s attacking %s (%u hit(s))",
+			s->m_charName.c_str(), target->m_charName.c_str(), (unsigned)count);
+	WriteBotLog(message);
+}
+
 void BotManager::ParseSpawnList(const std::string & list)
 {
 	if (list.empty())
@@ -1406,6 +1580,54 @@ void BotManager::TickSessions()
 						WriteBotLog(message);
 					}
 				}
+
+				if (s->m_attackActive)
+				{
+					if (s->m_pUser->isDead())
+					{
+						ActionExecutor::EndAttack(s);
+						char message[192];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s attack stopped (dead)", s->m_charName.c_str());
+						WriteBotLog(message);
+					}
+					else
+					{
+						// Test driver: the target view comes straight from the target bot's session.
+						// The Perception slice (ADR-0017 Ek F4-02) replaces this source, not AttackTarget.
+						BotSession * t = FindSession(s->m_attackTargetName.c_str());
+						if (t == nullptr || t->m_phase != BotSession::PHASE_IN_GAME || t->m_pUser == nullptr)
+						{
+							ActionExecutor::EndAttack(s);
+							char message[192];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s attack stopped (target_lost)", s->m_charName.c_str());
+							WriteBotLog(message);
+						}
+						else
+						{
+							AttackTarget tv = { (int16)t->m_pUser->GetSocketID(), t->m_pUser->GetX(), t->m_pUser->GetZ() };
+							AttackOutcome attack = ActionExecutor::TickAttack(s, tv, now);
+							if (attack.kind == AttackOutcome::FINISHED)
+							{
+								char message[224];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s attack finished (%s) after %u hit(s) sent, %u ok",
+									s->m_charName.c_str(), attack.reason,
+									(unsigned)s->m_attackSent, (unsigned)s->m_attackHits);
+								WriteBotLog(message);
+							}
+							else if (attack.kind == AttackOutcome::REFUSED || attack.kind == AttackOutcome::FAILED)
+							{
+								char message[224];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s attack stopped (%s)",
+									s->m_charName.c_str(), attack.reason);
+								WriteBotLog(message);
+							}
+						}
+					}
+				}
 			}
 			break;
 
@@ -1476,6 +1698,7 @@ void BotManager::BeginDespawn(BotSession * s, std::chrono::steady_clock::time_po
 {
 	CUser * pUser = s->m_pUser;
 	ActionExecutor::AbandonMove(s);
+	ActionExecutor::EndAttack(s);
 	// Socket::Disconnect() does nothing without a socket, so run what a real disconnect runs:
 	// OnDisconnect() removes the account/character names, takes the bot out of its region
 	// and queues WIZ_LOGOUT (LogOut() sets m_deleted until the DB thread has saved the bot).
