@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-25` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `CancelCast`, `CAST_CASTING` hareketle iptal) — `KAPANDI` |
@@ -345,20 +345,51 @@ git diff --check gece/2026-10-02...bot/F4-25
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-25` @ `<sha>`
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02...bot/F4-25` @ `9ca912f` (kod commit'i `524aaf0`). Gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push yapılmadı. Çalışma ağacı temiz.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `BotCombat.h`, `ActionExecutor.cpp`, `ActionExecutor.h`, `BotSession.h`, `CombatTests.cpp` `touch` ile yeniden derlendi; `./tools/build.sh Release` rc=0, `warning`/`error` satırı yok |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, `warning`/`error` satırı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `99 tests, 0 failed`; çıktıda `[ OK ] Combat_FlyingCast_Rules`, `[ OK ] Combat_CastFly_Guard`, `[ OK ] Combat_CastLand_Guard` |
+| K4 | ✔ | `grep -n "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`:6-7`); diff'te `std::min`/`std::max` yok |
+| K5 | ✔ | `MAGIC_FLYING` yeni satırları yalnızca `ActionExecutor.cpp:590,639,641,939`; `.h`'de yok; `BotManager.cpp`/`BotSession.cpp` farkta yok |
+| K6 | ✔ | `ActionExecutor.cpp:933` `CheckCastFly`, `CAST_OK` değilse `:936` `RejectCast` ile dönüş, `SubmitCast(MAGIC_FLYING)` yalnızca `:939` (tek yer, `CheckCastFly`'den sonra); uçan seride EFFECTING doğrulaması `:973` `CheckCastLand` |
+| K7 | ✔ | `ActionExecutor.cpp:729` `flyingCast`, `:733` `(m->bFlyingEffect != 0 && !flyingCast)`; `bType[1] != 0`, `iUseItem != 0`, `sEtc != 0`, moral koşulları diff'te silinmemiş; `IsFlyingCast` `type0 == 3` ister (`BotCombat.h:266`, birim test) |
+| K8 | ✔ | `git diff ... ActionExecutor.cpp \| grep '^-'` 13 satır: `RejectCast`/`SubmitCast` imzaları, TOO_EARLY `limit`, `type` ataması, `bFlyingEffect` koşulu, `c.msp`, mevcut çağrı satırları, EFFECTING doğrulama seçimi, `CancelCast` ARMED yorumu/koşulu; `PlanStanding`, ARMED `CheckCastStart`/CASTING gönderimi, reuse zamanlayıcı satırları silinmemiş |
+| K9 | ✔ | `ActionExecutor.cpp:1048` `CAST_ARMED \|\| CAST_FLYING` → `EndCast` + `"dropped"`; CASTING yolu (`kCastCancelCode`) diff'te yok; çalışma zamanı S3-b |
+| K10 | ✔ | `BotManager.cpp`/`BotSession.cpp` farkta yok; yeni ini/komut/thread yok; `ENABLED=0` çalışma zamanında doğrulandı (S5) |
+| K11 | ✔ | `git diff --stat`: `BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.cpp`, `ActionExecutor.h`, `BotSession.h` + plan dosyası; vcxproj farkı yok; `GameServer/` altında `Bot/` dışı dosya yok |
+| K12 | ✔ | `file`: beş dosya `ASCII text, with CRLF line terminators` (taban sürümü ASCII); `git diff --check` boş |
+| K13 | ✔ | `ActionExecutor.h/.cpp` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` eşleşmesi yok |
+| K14 | ✔ | `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckCastCancel`/`CheckPotion` 1; `EmitFairnessReject` `"Move"`/`"Attack"`/`"Cast"`/`"CastCancel"`/`"Potion"` duruyor; 96 eski test geçiyor |
+| K15 | ✔ | `check-perception-contract.py` `RESULT: PASS`; yeni kod yalnızca `s->m_pUser` (diff'te yeni `m_pUser` satırı yok) |
+| K16 | ✔ (Static orb ve `no_mana` hariç) | S1-S5 çalışma zamanında geçti (aşağıda); Static orb `110751` bot karakterinde sunucu tarafından reddedildi (bulgu 2), `no_mana` üretilemedi |
+| Plan §5.1 madde 1 | ✘ | `CastStartCheck::msp` `uint32_t`'e genişletilmedi (bulgu 1) |
 
+- Çalışma zamanı (Release `9ca912f`, `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; `BotMF_K`, `BotWP_E`, `BotWP_K` zone 71; geçici `Scripts/f425_*.txt`; gözlem `Logs/Bot_2_10_2026.log` ve `Logs/bots/2026-10-02/live-230709.jsonl`):
+  - **S1 ✔:** `CastStart` (`casting`, `cast_ms 1580`) → `CastFly` (`since_casting_ms 1664`, `ok:true`, `reason:"flying"`, `op:2`) → `CastEffect` (`since_flying_ms 1110`, `effected`, `op:3`); log `cast finished (effected) after 1 cycle(s), 1 ok, 3 packet(s) sent`. **MP 6021 → 5971 (FLYING sonrası, +520 ms) → 5921 (EFFECTING sonrası): toplam 100 = 2 × 50.** MEC-MAG-12 `[D]` → `[V]` (docs/03 güncellendi). Hedef HP 4630 → 4437.
+  - **S2 ✔ (Static orb hariç):** `110515` ×3: `CastStart`/`CastFly`/`CastEffect` ×3 (9 paket), `since_flying_ms` 1103 / 1000 / 1097; EFFECTING → sonraki `CastStart` aralıkları 4381 ms ve 4307 ms (`ReCastTime 43` ⇒ ≥ 4300); `FAIRNESS_REJECT` yok. `110527` (Fire spear) aynı sıra, `effected`, MP 5881 → 5761 (≈ 160 + doğal yenilenme; tek bir döngüde net ölçüm S1'de). **`110751` (Static orb) iki denemede de `CastStart` `srv_fail` (`op:4`, `code:-100`)** — bulgu 2.
+  - **S3 ✔:** (a) CASTING'te `cast off` (+443 ms): `cancelled` (`op:4`, `code:-100`), `CastFly` yok, MP 6021 değişmedi. (b) FLYING'den ~350 ms sonra `cast off`: log `stopped after 2 packet(s) sent`; JSONL'de `CastFly` var, o döngüde `CastCancel` ve `CastEffect` **yok**; MP 5971 (yalnızca ilk yarı, −50). (c) CASTING'te `move` ile iptal (`CastCancel` `cause:"move"`), ardından tam uçan cast `effected`. (d) FLYING aşamasında `move`: seri bozulmadı, `CastEffect` `since_flying_ms 1102` ile gönderildi, log `finished (effected) after 1 cycle(s), 1 ok, 3 packet(s) sent`.
+  - **S4 ✔ (`no_mana` hariç):** `110533`, `110535`, `110574`, `110615` → `refused (unsupported_skill)`; `cast BotWP_K 110515` → `refused (bad_skill)`; `cast BotMF_K 110515 self` → `refused (bad_target)`; 95 m uzakta `cast` → `FAIRNESS_REJECT` (`type:"Cast"`, `rule:"MEC-MAG-11"`, `reason:"out_of_range"`, `value:107.92`, `limit:78.00`), `CastStart` gitmedi. `no_mana` (`2 × Msp` eşiği) gerçek sunucuda üretilemedi (MP düşürmek için yazma gerekir): sınanmadı, birim testle kapsandı.
+  - **S5 ✔:** `110518` ×3: `CastStart`/`CastEffect` ×3, `CastFly` **yok**, log `3 cycle(s), 3 ok, 6 packet(s) sent`; `110518 self` → `bad_target`; `move BotWP_K` 30 m, yarıda `stop` (`stopped at (1274.0, 876.8)`), geri `move` (`arrived`); `attack BotWP_K BotWP_E 3` 8,4 m'de `out_of_range` (menzil kuralı, bu planla ilgisiz), 1 m yakında `finished (hit) after 3 hit(s) sent, 3 ok`. `TELEMETRY=summary` (sunucu yeniden başlatıldı): uçan cast `finished (effected) ... 3 packet(s)`, JSONL'de `ACTION_*` 0, yalnızca 6 `PERF_SAMPLE`. `ENABLED=0`: `BotCommands.txt` 15 sn sonra yerinde, `Bot_*.log` 0 yeni satır, `Logs/bots/` dosya sayısı değişmedi. `tick_p95_us` en fazla 788 (≤ 1 ms). Üç sunucu `[UP]` (3/3), `GameServer.log` 32 satır, değişmedi. F4-52 olay halkası: `snap BotWP_K events` → `event ... op=2 skill=110515 caster=2984 target=2985` (FLYING) ve `op=1` (CASTING), `op=3` (EFFECTING).
+  - Temizlik: ini yedekten geri (md5 `265a8e1c35ea12df46f6d006fe894d9b` öncesi/sonrası), `Scripts/f425_*.txt` ve `BotCommands.*` silindi, sunucular `run-servers.sh stop` ile kapatıldı (0/3).
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **Plan maddesi yapılmamış ve rapor yanlış (`BotCore/BotCombat.h:160`, `GameServer/Bot/ActionExecutor.cpp:866-867`, `Tests/BotCoreTests/CombatTests.cpp:967`).** Plan §5.1 madde 1 `CastStartCheck::msp` alanını `uint32_t`'e genişletmeyi istiyor; kodda yalnızca yorum değişmiş, tip `uint16_t` kalmış. Uygulayıcı Raporu "`CastStartCheck::msp` `uint32_t`'e genişletildi" diyor: doğru değil. Sonuç: `ActionExecutor.cpp:866-867`'ye `(uint16_t)` daraltan dönüşümler eklenmiş; `2 × Msp` değeri 65535'i aşarsa sessizce sarar ve `no_mana` denetimi yanlış eşikle çalışır. Güncel veride etkisi yok (`MAGIC.Msp` en yüksek 1920), ama plan gereği ve rapor dürüstlüğü bunu düzeltmeyi gerektiriyor.
+  2. **Not (bu planın hatası değil; plan varsayımı yanlış): Static orb `110751` bot karakterinde atılamıyor.** Sunucu CASTING'i `-100` ile reddediyor. Fire ball/spear (ağaç 5) çalışıyor, Static orb (`Skill 1107`, ağaç 7, `SkillLevel 51`) çalışmıyor. Sunucu kuralı `MagicInstance.cpp:956-960`: `modulator = sSkill % 10` ise `sSkillLevel > m_bstrSkill[modulator]` ⇒ `fail_return` (`docs/03` I5 ile aynı). Çıkarım `[D]`: botun ağaç 7'de yeterli skill puanı yok (kişisel veri tabloları okunmadığı için doğrulanmadı). Bot `BeginCast` yalnızca sınıf ve seviye denetler, skill puanını bilmez ⇒ `srv_fail` ile seri düşer (güvenli, kapsam dışı). `docs/KNOWN_ISSUES.md` KI-016 olarak kaydedildi; plan §2 veri notu ve S2'deki Static orb beklentisi bu yüzden sınanamadı.
+  3. **Not:** `kFlightMinMs` bekleme ölçümü: uçan döngülerde `since_flying_ms` 1000..1110 ms; bu sabit alt sınırdır, mermi uçuş süresinin gerçek istemci ölçümü hâlâ yok (`T-CAST-FLY-01`).
+  4. **Not:** Düzeltme yalnızca tip genişletme ve dönüşüm kaldırma; davranış değişmediği için çalışma zamanı S1-S5 `9ca912f` üzerinde yapıldı ve yeni turda yeniden koşturulması gerekmez (derleme, 99 test, `git diff --check` yeterli).
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F4-25-aksiyon-yurutucu-ucan-skill.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. BotCore/BotCombat.h: CastStartCheck içindeki "uint16_t msp;" alanını "uint32_t msp;" yap (yorum satırı aynı kalsın: "// MAGIC.Msp, or CastManaNeed(...) for a flying cast"). Başka bir şeye dokunma.
+2. GameServer/Bot/ActionExecutor.cpp, TickCast içindeki "c.msp = ..." atamasından (yaklaşık satır 866-867) iki "(uint16_t)" dönüşümünü de kaldır: "c.msp = (flying && s->m_castPhase != BotSession::CAST_FLYING) ? BotCore::CastManaNeed(m->sMsp, true) : (uint32_t)m->sMsp;" (yalnızca ikinci kolda uint32'ye genişletici dönüşüm kalır).
+3. Tests/BotCoreTests/CombatTests.cpp, Combat_FlyingCast_Rules içinde "c.msp = (uint16_t)BotCore::CastManaNeed(50, true);" satırını "c.msp = BotCore::CastManaNeed(50, true);" yap. Aynı test fonksiyonunun sonuna iki CHECK_EQ ekle (test sayısı 99 kalır, yeni TEST_CASE açma): CastManaNeed(40000, true) == 80000 (int'e çevirerek karşılaştır) ve CastStartCheck c ile msp = BotCore::CastManaNeed(40000, true), mana = 79999 iken CheckCastStart(c) == CAST_REJECT_NO_MANA; mana = 80000 iken CAST_OK.
+4. BotCombat.h, ActionExecutor.cpp ve CombatTests.cpp dosyalarını touch edip `./tools/build.sh Release` ve `./tools/build.sh Debug` çalıştır (uyarı çıktısı boş olmalı), `./tools/run-tests.sh Release` ve `Debug` çalıştır (99 tests, 0 failed), `git diff --check` boş olmalı, `file` çıktısı ASCII + CRLF kalmalı.
+5. Uygulayıcı Raporu'na "Tur 2" ekle: Tur 1'deki "CastStartCheck::msp uint32_t'e genişletildi" cümlesinin o turda doğru olmadığını, şimdi yapıldığını açıkça yaz; derleme ve test çıktısının son satırlarını yapıştır. Planın Durum satırını UYGULANDI yap. Başka dosyaya dokunma.
 ```
