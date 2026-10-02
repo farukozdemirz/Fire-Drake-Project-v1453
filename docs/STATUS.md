@@ -294,3 +294,25 @@ Son gece koşusu: 2026-10-02 04:00–05:10 (16 iterasyon, F1-08..F2-02 KAPANDI),
 - `tools/build.sh` ve `tools/auto-loop.sh` git'te `100644` modunda (çalıştırılabilir değil). WSL/drvfs'te sorun çıkarmıyor; temiz bir klonda `bash tools/build.sh` gerekir. Küçük bir düzeltme planına veya proje sahibinin `git update-index --chmod=+x` commit'ine bırakıldı.
 - Depo dosyaları CRLF + tab. Bazı dosyalar ISO-8859 (Korece yorumlu) veya UTF-8 BOM'lu; kodlama korunmalı (`AGENTS.md` §3).
 - `.sh` dosyaları `.gitattributes` ile LF'e sabitlendi (`core.autocrlf=true` betikleri bozmasın diye).
+
+## Değerlendirme 2026-10-02 ve faz kabul takibi (arka plan değerlendirme ajanı; yalnızca ekleme)
+
+**Değerlendirme:** kullanıcının 12 maddelik dış değerlendirmesi güncel kod/doküman/ölçümle karşılaştırıldı: `docs/reports/degerlendirme-2026-10-02.md` (29 tespit, ölçümler, plan eşlemesi, açık kararlar). Dal `degerlendirme/2026-10-02` (taban `gece/2026-10-02` @ `3a6b408`); `gece/2026-10-02` ve `gece/2026-10-02-nav` çalışma ağaçlarına dokunulmadı. Özet: F4-18 paket ayrıştırma sorunu **zaten giderilmiş**; yeni doğrulanan işler: priest `pending_heals` işareti (doküman), mekanik doküman tutarsızlıkları (CLI-02/05/06/11, pot kapasitesi, respawn), algı eksikleri (düşman HP/ad/skill olayı/durum/hız), `ObsTable` tek yönlü görüş (KI-DEG-01), F5: kiriş denetimi icrada yok (KI-DEG-02), arena sınırı doğuş yolu `NodeLimit` (KI-DEG-03), hız kestirimi 1,5 sn'de 0 (KI-DEG-04), çoklu bot A* bütçesi, takılma tespiti tanımı; senaryo sıfırlama/kazanma kuralı/20 karakter (KI-DEG-05), öğrenme düzeyi, rol bilinçli metrikler, F11 taslağı.
+
+**Yeni planlar (HAZIR, `plans/README.md` "Değerlendirme planları"):** F4-50, F4-51, F4-52, F4-54; F5-50, F5-51, F5-52, F5-53, F5-54. TASLAK: F4-53, F5-55. Skill desteği için plan yazılmadı: ana hat ADR-0018 dilimleri (eşleme `docs/17` §2.1).
+
+**Yeni ADR'ler (arka plan ajanında Claude kararı, gözden geçirilmeli):** ADR-0030-DEG (öğrenme düzeyi: rol profili), ADR-0031-DEG (kazanma kuralı `killdiff_timed`), ADR-0032-DEG (senaryo başlangıç yerleşimi ve sıfırlama), ADR-0033-DEG (arena sınırı ve arena modunda geri çekilme).
+
+### Faz kabul takibi (bireysel planın KAPANDI olması ≠ fazın KABUL_EDILDI olması)
+
+Kaynak: bu dosyanın önceki bölümleri ve `docs/phase-reports/`; durum sütunları kayıtlara göredir, yeniden doğrulanmadı. Faz kabulü yalnızca proje sahibindedir.
+
+| Faz | Planlar | Çalışma zamanı kanıtı | Açık insan testleri / eksikler | Faz kabulü |
+|---|---|---|---|---|
+| F0 | F0-01, F0-02 KAPANDI | T-ENV-01/02 | — | KABUL_EDILDI (2026-10-02) |
+| F1 | F1-01..F1-10 KAPANDI | T-MECH-DMG-01..03 GEÇTİ, T-DATA-01 GEÇTİ | insan zamanlama oturumları (priest/mage CLI-03/04, Q-25), T-DATA-02/03, T-MECH-SKILL/BUF/POT, T-ENV-ARENA-01..04 | bekliyor (`docs/phase-reports/F1-taslak.md`) |
+| F2 | F2-01..F2-06 KAPANDI | T-ARCH-01..04 GEÇTİ (proje sahibi) | faz raporu taslağı güncellenmeli | bekliyor |
+| F3 | F3-01..F3-06 KAPANDI | birim testler, örnek maç | T-ARCH-05; `decisions`/16 bot tick maliyet ölçümü ertelendi | bekliyor |
+| F4 | F4-01..F4-23 KAPANDI (`gece/2026-10-02`) | her planda çalışma zamanı (Claude); T-ARCH-06..12 GEÇTİ | **ADR-0018 dilimleri açık** (aksiyon desteği); T-ARCH-13..17, T-REGENE-01, T-PARTY-01..03, T-PERC-01 bekliyor; değerlendirme planları F4-50..F4-54; KI-DEG-01 | **ilan edilmedi**; G4 kapısı (`docs/17` §5) |
+| F5 | F5-01..F5-07 KAPANDI (`gece/2026-10-02-nav`, yalnız `BotCore` saf mantık) | birim testler + gerçek harita **birim** testleri; sunucuya bağlı **yok** | sunucu entegrasyonu (F5-55), T-NAV-04/05/09, AC-NAV-03 çalışma zamanı; F5-50..F5-54; KI-DEG-02..04 | başlamadı (G5) |
+| F6..F10 | plan yok | — | `docs/17` §5 alt kapıları ve `docs/15` §4.9 oyun içi kabul testleri tanımlandı | — |

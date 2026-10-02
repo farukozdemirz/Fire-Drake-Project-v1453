@@ -215,6 +215,18 @@ T-PTY-01..09: [09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §14.
 | Party'nin dağılması ve toparlanması | T-PTY-06, T-PTY-07 |
 | Uzun süreli dayanıklılık ve çok botlu performans | T-PERF-01..06 |
 
+### 4.9 Oyun içi kabul testleri (G-IGT, değerlendirme 2026-10-02)
+
+Derleme ve birim testi bir davranışın oyunda çalıştığını göstermez. Aşağıdaki testler ilgili faz alt kapısının (`docs/17` §5) **zorunlu** kanıtıdır; kanıt türü = telemetri raporu (`tools/bot-telemetry-report.py`) + insan gözlemi/ekran kaydı.
+
+| Kimlik | Davranış | Senaryo (mevcut kimlikler) | Geçer ölçütü | Kanıt |
+|---|---|---|---|---|
+| T-IGT-WAR-01 | Warrior hedefe ulaşır ve sürdürülebilir baskı kurar | T-WAR-01..03 (hareketli hedef, 60 sn × 10 tekrar, solo) | MET-TGT-01 p50 ≤ 4 sn; MET-TGT-02 ≥ %70; MET-ACT-02 ≤ %1; MET-NAV-01 ≤ 2/bot-saat | telemetri + insan gözlemi |
+| T-IGT-PRI-01 | Priest heal, buff, cure, debuff önceliklerini doğru yönetir; iki priest çift heal yapmaz | T-PRI-01..07 birleşik (sabit hasar alan warrior, kök/Malice'li mage, düşman) | AC-PRI-01..06, AC-PRI-09; MET-HEAL-02/04/05, MET-BUFF-01/03, MET-CURE-01/02 | karar logu (`override=true` örnekleri) + insan |
+| T-IGT-MAG-01 | Mage, respawn olmuş **yaşayan** takım arkadaşını güvenle çeker (güvensiz summon yok) | T-MAG-05/06, EVAL-WIPE kısmı (20 tekrar) | MET-SUM-02 ≤ %10; SUM-01..03 koşulları sağlanmadan summon 0; AC-MAG-04/05 | insan + telemetri |
+| T-IGT-PTY-01 | Party ortak hedefi uygular; heal ile öldürülemeyen hedefte taktik değiştirir | T-PTY-02/03, EVAL-HEALSTALL | MET-TGT-03 ≥ %75, MET-TGT-04, AC-PTY-03, MET-STALL-01 | karar logu + insan |
+| T-IGT-SUR-01 | Düşük HP'de geri çekilir, uygun koşulda savaşa döner | T-SUR-01..04 | MET-SUR-01 ≥ %70, MET-SUR-03, MET-SUR-07, AC-SUR-01 | insan + telemetri |
+| T-IGT-EVAL-01 | Tekrarlanabilir 8v8 ve güçlü rakiplere karşı ölçülebilir PK kalitesi | EVAL-8v8-A/MIX (B grubu rakipler dahil) | AC-EVAL-01..03; başlangıç doğrulaması (§6a) %100; geçersiz maç ≤ %10 | otomatik rapor + insan formu |
 ## 5. Rakip profilleri ve baseline'lar
 
 | Kimlik | Tanım | Kullanım |
@@ -238,6 +250,36 @@ A grubu profiller eğitimde, B grubu yalnızca kilitli değerlendirmede kullanı
 4. Geçersiz maçlar ([16](16_TELEMETRY_DEBUGGING_AND_PERFORMANCE.md) §7) ayrı sayılır.
 5. Sonuç raporu `ScenarioRunner` tarafından üretilir ve [21](21_PROJECT_TRACKING_TEMPLATES_AND_DOC_RULES.md) §4.5 test kanıt kaydına eklenir.
 
+### 6a. Senaryo başlangıç sıfırlama sözleşmesi (`ScenarioReset`, ADR-0032-DEG)
+
+Bot durumunun bir kısmı DB'de kalıcıdır (bot çıkışında kayıt, AC-ARCH-05): HP/MP/NP, envanter, konum. Her maçın (her tekrarın) başında aşağıdakiler **açıkça** sıfırlanır ve doğrulanır:
+
+| Durum | Sıfırlama | Kim | Doğrulama |
+|---|---|---|---|
+| Konum | MATCH_START **öncesi kurulum yerleşimi** (başlangıç noktası arena merkezinden ±35 m). Maç içi kurtarma teleportu ayrıdır ve maçı geçersiz kılar (MET-NAV-05) | `ScenarioRunner` Prepare | tüm botlar başlangıç noktasından ≤ 3 m |
+| HP / MP / NP | HP = MaxHP, MP = MaxMP, NP ≥ 1000 (KI-013: NP 0 → `Regene` yok; her ölüm −50) | `ScenarioRunner` (yalnız bot satırlarına `UPDATE`, kişisel veri tablosu okunmadan) | `snap` ile `SelfState` |
+| Buff/debuff, DoT, cooldown, cast durumu | Çıkışta bellek içi durum biter; taze oturumda boş olduğu doğrulanır | Prepare doğrulaması | `buffTotal = 0`, `cooldownTotal = 0` |
+| Pot ve tüketilebilir eşyalar | STK-01: tüketilen potlar senaryo stokuna **doldurulur**, tüketilmeyen potlar 1 adet, taş/scroll senaryo listesi (envanter doldurma henüz yok, F8 planı) | `ScenarioRunner` (yalnız bot envanteri) | `hpPotStock`/`mpPotStock` = senaryo |
+| Party üyelikleri ve roller | Maç sonunda tüm botlar party'den çıkar; maç başında party **gerçek paketlerle** kurulur (betik/senaryo) ve doğrulanır | `ScenarioRunner` + betik | `TeamView` üye sayısı/lider = senaryo |
+| Hedef, rezervasyon, karar hafızası, `EnemyIntel`, durum makinesi | Her maçta yeni `BotAgent`; `TeamBlackboard.Clear()`; önceki maçtan hiçbir şey taşınmaz | Brain/`TeamBlackboard` | `MATCH_START` sonrası durum `PREPARE`, blackboard boş (assert) |
+| Politika ve rastgelelik | Politika sürümleri senaryo dosyasında sabit; `seed_bot = hash(seed_episode, bot_slot)` `MATCH_START` olayında yazılır | `ScenarioRunner` | `MATCH_START.policy`, `.seed` |
+| Çevre | Arena + 120 m çevresinde canavar/NPC yok (ARENA-03); tüm botlar despawn → spawn (taze oturum) | `ScenarioRunner` | `npcs` = 0 |
+
+**Başlangıç doğrulaması:** Prepare sonunda yukarıdaki koşullar denetlenir; biri sağlanmazsa maç **başlamaz**, `MATCH_START` yerine `SETUP_FAIL` (neden listesiyle) yazılır ve maç geçersiz sayılır (`docs/16` §7).
+
+**Karakter seti ve kapasite:** `db/002` 12 karakter üretir (6 profil × 2 ulus). C8-A ulus başına 8 karakter ister (2 W-P, 1 W-G, P-HD, P-HB, 2 M-F, 1 M-I → toplam 16); C8-B 3 W-P, C8-C 3 M-F ister. `MAX_BOTS = 16` yalnızca **eşzamanlı slot** kapasitesidir; 16 kullanılabilir karakter anlamına gelmez. F8 ön koşulu: ulus başına ≥ 10 karakter (3 W-P, 1 W-G, 1 P-HD, 1 P-HB, 3 M-F, 1 M-I → 20) ve `BOT_TABLE`'ın sabit 12 girişten DB/ini kaynaklı tabloya çevrilmesi. F7 küçük takım testleri (≤ C5) mevcut 12 karakterle çalışır. 32/64 bot performans testleri (T-PERF-02..04) için ayrı karakter kümesi veya aynı karakterlerin ardışık yeniden doğuşu tanımlanmalıdır.
+
+### 6b. Kazanma kuralı (ADR-0031-DEG)
+
+Süre dolması **kendiliğinden kazanma değildir.** `MATCH_END.result` ∈ `win_a` | `win_b` | `draw` | `invalid` (teknik sonlanma `completed`/`aborted` ayrı alandır). Senaryo `win_rule` anahtarıyla kuralı seçer:
+
+| `win_rule` | Kural | Kullanım |
+|---|---|---|
+| `killdiff_timed` (EVAL varsayılanı) | Süre (`duration_sec`; EVAL-8v8: 300 sn) **ilk hasardan** (`engage`) itibaren işler. Bitişte takım kill farkı: ≥ +2 galibiyet, ≤ −2 yenilgi, \|fark\| ≤ 1 berabere (0,5 sayılır). Erken bitiş: bir takımın tüm üyeleri aynı anda ölü (WIPE) → diğer takım galip; veya fark ≥ takım büyüklüğü | 2v2..8v8, EVAL-* |
+| `first_death` | İlk ölen tarafın rakibi kazanır | 1v1 |
+| `timed_score` | Yalnızca ölçüm (kazanan ilan edilmez): kill/death, hasar, heal metrikleri | Mekanik/davranış testleri (T-WAR/T-PRI...) |
+
+Kill sayımı yalnızca bot–bot PvP `DEATH` olaylarıdır (canavar/kule/bilinmeyen kaynak sayılmaz; `THIRD_PARTY` maçı geçersiz kılabilir). Süre boyunca hiç hasar olmazsa maç `invalid` (`NO_ENGAGE`). Tek başına "ilk takım tamamen ölür" kuralı seçilmedi: yeniden doğuş varken (≥ 3 sn) tüm takımın aynı anda ölü olması nadirdir ve ölçülemez sonuç üretir.
 ## 7. İnsan değerlendirmesi
 
 | Unsur | Tanım |
@@ -269,3 +311,4 @@ A grubu profiller eğitimde, B grubu yalnızca kilitli değerlendirmede kullanı
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §4.9 oyun içi kabul testleri (T-IGT-*), §6a senaryo başlangıç sıfırlama sözleşmesi ve karakter seti kapasitesi, §6b kazanma kuralı (ADR-0031-DEG) |

@@ -71,7 +71,7 @@ Her karar tick'inde (100 ms, [13](13_BOT_ARCHITECTURE_AND_DATA_MODEL.md)) en yü
 | Kural | Değer | Dayanak |
 |---|---|---|
 | Type1 skill | Sunucu saniyesi başına en fazla 1; skill recast'i gerçek ms ile | MEC-MAG-02/03, CLI-04 |
-| R | `max(silah gecikmesi / saldırı hızı çarpanı, 1,0 sn)` ve farklı sunucu saniyesi; skill gönderiminden sonra 0,3 sn R yok | CLI-01, CLI-02, MEC-R-07 |
+| R | `max(silah gecikmesi / saldırı hızı çarpanı, 1,0 sn)` ve farklı sunucu saniyesi; skill ile R arasında kilit yok (CLI-02 ölçüldü, `docs/03` §13.4) | CLI-01, CLI-02, MEC-R-07 |
 | Ayakta skill (Howling Sword) | Önce durma hareketi (`speed=0`), ≥ 1 tick sonra skill | CLI-09 |
 | Menzil | R: 15 + silah menzili; Type1: aynı + skill menzili | MEC-R-05 |
 

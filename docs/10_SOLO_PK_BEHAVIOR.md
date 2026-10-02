@@ -120,7 +120,7 @@ Oturum içi istatistikler (L0.5, öğrenme değil durum kestirimi):
 | Gözlem | Uyum |
 |---|---|
 | Rakip mage sürekli mesafe açıyor (kiting) | Warrior: leg cutting/Scream'i yaklaşma için sakla, sprint'i mesafe ≤ 25 m'de kullan |
-| Rakip sık HP potu içiyor (gözlenen pot olayları ≥ 1/3 sn) | Patlamayı pot cooldown'u ile senkronla (pot olayından hemen sonra 2 sn pencere) |
+| Rakip sık HP potu içiyor (gözlenen pot olayları ≥ 1/3 sn) | Patlamayı pot cooldown'u ile senkronla (pot olayından hemen sonra ~2,5 sn pencere: ölçülen ortak istemci pot aralığı, CLI-06; sunucu recast'i 2,0 sn) |
 | Rakip warrior kaçıyor ve geri dönüyor | Takip sınırını kısalt, rakibin tower halkasına yaklaşma |
 | Rakip heal'i cast ediyor (gözlenen CASTING) | Cast kesme girişimi (Scream/Shock Stun) |
 

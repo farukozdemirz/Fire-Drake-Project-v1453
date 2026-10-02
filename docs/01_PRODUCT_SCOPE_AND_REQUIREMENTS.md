@@ -26,6 +26,8 @@ Ronark Land içinde gerçek oyunculara ve diğer botlara karşı **solo veya par
 | Özel test sunucusu | Canlı/halka açık sunucu operasyonu |
 | Pot stoku senaryoda sabit | Zone dışına ikmal yolculuğu |
 
+> **Kapsam–hedef farkı (2026-10-02):** §1 hedefi "gerçek oyunculara ve diğer botlara karşı" PK'dır; bu tablo ise kontrollü arenayı (F0–F8) kapsar. Serbest Ronark davranışları (çatışma arama, arena dışı yeniden gruplanma ve savaşa dönüş, ≥ 24 sa çalışma, canlı insanlarla etkileşim) **F11** olarak `docs/17`'de taslaklanmıştır; A-03 (yalnızca özel sunucu, onaylı katılımcılar) nedeniyle yeni bir ADR olmadan başlamaz. Arena, hedefin ölçülebilir ilk adımıdır, hedefin kendisi değildir.
+
 ## 3. Kısıtlar
 
 | Kimlik | Kısıt |

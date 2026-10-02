@@ -101,3 +101,21 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
 Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTONOM_DONGU.md)
+
+## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
+
+Kaynak: `docs/reports/degerlendirme-2026-10-02.md`. Bu planlar F4/F5 döngülerinin kendi numaralarının **dışında** ayrılmış aralıklardadır (F4-50.., F5-50..); mevcut döngü işiyle çakışmaz. **Önerilen sıra:** F4: F4-50 → F4-51 → F4-52 → F4-54 (F4-53 TASLAK: ADR-0018 madde 4 sonrası); F5: F5-54 ve F5-52 (F5-09'dan **önce**: `docs/12` §13.3), F5-51, F5-50, F5-53, sonra F5-55 (TASLAK). Skill desteği (cast iptali, uçan, çift tipli, Type4, alan, cure/diriltme/summon/eşya, CLI-12, envanter doldurma) için bu aralıkta plan **yoktur**: ana hat ADR-0018 dilimleri (F4-24 ve sonrası) yürütür; eşleme `docs/17` §2.1.
+
+| Plan | Başlık | Faz | Durum | Branch |
+|---|---|---|---|---|
+| [F4-50](F4-50-algi-gozlem-meta-verisi.md) | `Perception` dilim 8 — gözlem meta verisi: oyuncu adı, konum yaşı/hız/kısa geçmiş, kaynak etiketi, tazelik sınıfı; sözleşme aracı R5 güncellemesi (`UnitView.name`) | F4 | HAZIR | `bot/F4-50` (taban: `gece/2026-10-02`) |
+| [F4-51](F4-51-algi-hedef-hp-tablosu.md) | `Perception` dilim 9 — düşman/hedef HP gözlem tablosu (`WIZ_TARGET_HP`), yaşıyla; R5 (`hp`) güncellemesi | F4 | HAZIR | `bot/F4-51` (taban: `gece/2026-10-02`) |
+| [F4-52](F4-52-algi-skill-olay-halkasi.md) | `Perception` dilim 10 — görülen skill olayları (`WIZ_MAGIC_PROCESS` bölge yayını) olay halkası | F4 | HAZIR | `bot/F4-52` (taban: `gece/2026-10-02`) |
+| [F4-53](F4-53-algi-gozlenen-durum-tablosu.md) | `Perception` dilim 11 — gözlenen buff/debuff/heal tablosu (skill olaylarından, tahmin sınıfı `E`) | F4 | TASLAK | `bot/F4-53` (taban: `gece/2026-10-02`) |
+| [F4-54](F4-54-algi-tek-yonlu-gorus-teshisi.md) | Gözlem tablosunda tek yönlü görüş (KI-DEG-01): sayaçlı teşhis ve kök neden düzeltmesi (iki turlu) | F4 | HAZIR | `bot/F4-54` (taban: `gece/2026-10-02`) |
+| [F5-50](F5-50-nav-kiris-yurunebilirlik-denetimi.md) | Kiriş (paket adımı) yürünebilirlik denetimi `BotCore/NavSegment.h` (CLI-08, muhafazakâr süpercover + eğim) | F5 | HAZIR | `bot/F5-50` (taban: `gece/2026-10-02-nav`) |
+| [F5-51](F5-51-nav-arena-siniri-ve-dogus-yolu.md) | Arena sınırı ve doğuş yolu: yasaklı bölgeden başlayan A* çöküşü (`NodeLimit`) | F5 | HAZIR | `bot/F5-51` (taban: `gece/2026-10-02-nav`) |
+| [F5-52](F5-52-nav-hedef-hiz-kestirimi-paket-sikligi.md) | Hareketli hedef hız kestirimi gerçek `WIZ_MOVE` sıklığıyla (1,5 sn) çalışsın | F5 | HAZIR | `bot/F5-52` (taban: `gece/2026-10-02-nav`) |
+| [F5-53](F5-53-nav-sorgu-butcesi-ve-onbellek.md) | Çoklu bot yol sorgusu: tick bütçesi, adil kuyruk, faz kaydırma, yol önbelleği `BotCore/NavBudget.h` | F5 | HAZIR | `bot/F5-53` (taban: `gece/2026-10-02-nav`) |
+| [F5-54](F5-54-nav-takilma-tespiti.md) | Takılma tespiti: niyet ilerlemesi ile paket gönderimi ayrı izlenir `BotCore/NavStuck.h` | F5 | HAZIR | `bot/F5-54` (taban: `gece/2026-10-02-nav`) |
+| [F5-55](F5-55-nav-sunucu-entegrasyonu-ve-gercek-harita.md) | Navigasyon sunucu entegrasyonu ve gerçek haritada doğrulama (`NavService`, kiriş guard'ı, `/bot goto`, T-NAV-04/05/09) | F5 | TASLAK | `bot/F5-55` (taban: `gece/2026-10-02-nav`; hat birleşmesi sonrası) |

@@ -40,7 +40,7 @@
 - **Uygulanan (F4-04, `BotCore/BotCombat.h` `kPotCooldownMs`):** HP ve MP potları için **tek ortak 2,5 sn** bekleme; pot ancak botun kendi çantasında ≥ 1 adet varken gönderilir (MB-01 potları dahil, K-5). Çalışma zamanında ardışık pot aralığı 2508–2528 ms, HP→MP geçişi 2508 ms ölçüldü `[V]` (bot tarafı); gerçek istemcide ortak mı ayrı mı olduğu `[A]` (T-MECH-POT-03).
 - **Sunucu kuralı (veri):** HP potları kademe başına 2,0 sn recast (Store sürümünde 2,5 sn), MP potları 2,0 sn; sunucu HP ve MP gruplarını birbirinden bağımsız tutar. Bot 2,5 sn'de kaldığı için bu kural hiç devreye girmez.
 - Ayrı HP/MP zamanlayıcısı T-MECH-POT-03 ile kanıtlanırsa politika "her grup için 2,5 sn"e gevşetilebilir (yeni karar gerektirir).
-- Aynı tick'te pot ve skill gönderimi arasında en az 200 ms (insan girişi temposu, CLI-11).
+- Aynı tick'te pot ve skill gönderimi arasında en az 200 ms: `[Ö]` tasarım hedefi, **guard'da uygulanmıyor** (ölçülen komşu aksiyon alt sınırı ~61 ms, pot+skill ayrıca ölçülmedi); uygulanırsa CLI-11 ile birlikte ölçüm gerektirir.
 
 ### 3.2 HP potu kararı
 
@@ -75,7 +75,7 @@ drink_mp ⇔ mp_ready ∧ ( mp < mp_need_soon  ∨  (maxmp − mp) ≥ 1920·P-P
 | P-POT-MP-DEFICIT-MIN | 0,95 (1920'lik pot ~1824 eksikte içilir) |
 | Rol MP rezervi | Warrior 700 (P-WAR-MP-RESERVE), Priest 1100 (P-PRI-MP-RESERVE), Mage 500 (P-MAG-MP-RESERVE) |
 
-Örnek: Priest maks MP ~5696. Eksik 1824'e ulaştığında (MP ≈ %68) pot içer. Yoğun heal döngüsünde 2 sn'de bir pot ile ~960 MP/sn yenilenir. Warrior Howling döngüsünde 400 MP/sn harcar; Carving'e geçiş MP'yi korur ([06](06_WARRIOR_BEHAVIOR.md) §6.2).
+Örnek: Priest maks MP ~5696. Eksik 1824'e ulaştığında (MP ≈ %68) pot içer. Yoğun heal döngüsünde ortak 2,5 sn pot aralığıyla en çok ~768 MP/sn yenilenir (1920/2,5; HP potu da aynı sayacı paylaşıyorsa daha az, CLI-06 `[A]` T-MECH-POT-03). Sunucu verisinin 2,0 sn recast'i (960 MP/sn) botun üst sınırı değildir. Warrior Howling döngüsünde 400 MP/sn harcar; Carving'e geçiş MP'yi korur ([06](06_WARRIOR_BEHAVIOR.md) §6.2).
 
 ### 3.4 HP ve MP aynı anda gerekirse
 
@@ -174,7 +174,7 @@ Metrikler: MET-POT-01..04, MET-SUR-01..06 ([16](16_TELEMETRY_DEBUGGING_AND_PERFO
 | AC-SUR-01 | MET-SUR-06 durum salınımı = 0 |
 | AC-SUR-02 | T-SUR-01: geri çekilme başarı oranı ≥ %70 (kaçış yolu varken) |
 | AC-SUR-03 | MET-POT-01 pot verimi ≥ %80 |
-| AC-SUR-04 | Envanterde bulunmayan pot kullanımı = 0 (CLI-06); 2 sn grup cooldown ihlali = 0 |
+| AC-SUR-04 | Envanterde bulunmayan pot kullanımı = 0 (CLI-06); ortak 2,5 sn pot aralığı (CLI-06) ve sunucu 2,0 sn recast ihlali = 0 |
 | AC-SUR-05 | T-SUR-04: geri çekilen party üyesinin takım merkezinden uzaklaşma oranı ≤ %10 |
 
 ## Değişiklik günlüğü
@@ -182,3 +182,4 @@ Metrikler: MET-POT-01..04, MET-SUR-01..06 ([16](16_TELEMETRY_DEBUGGING_AND_PERFO
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: pot kapasite hesabı ortak 2,5 sn aralığa çevrildi (768 MP/sn), AC-SUR-04 ve 200 ms notu hizalandı |

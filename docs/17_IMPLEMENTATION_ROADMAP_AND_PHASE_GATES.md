@@ -20,6 +20,7 @@ flowchart LR
   F7 --> F8[F8 Değerlendirme ve 8v8 / baseline-v1]
   F8 --> F9[F9 L1 öğrenme]
   F9 --> F10[F10 L2 bandit - opsiyonel]
+  F8 -.-> F11[F11 Serbest Ronark - taslak, ADR kapılı]
 ```
 
 | Faz | Ad | Temel sürüm (MVP) | Tahmini çaba* |
@@ -35,6 +36,7 @@ flowchart LR
 | F8 | Değerlendirme harness'i, 8v8, `baseline-v1` dondurma | Evet | M |
 | F9 | L1 offline parametre optimizasyonu | Hayır (sonraki) | M |
 | F10 | L2 contextual bandit | Hayır (opsiyonel) | M |
+| F11 | Serbest Ronark davranışları (taslak, ADR kapılı) | Hayır | L |
 
 \* S/M/L göreli büyüklüktür; takvim tahmini değildir.
 
@@ -198,6 +200,56 @@ Paralel yürütülebilir işler (kural 2'nin istisnası, [21](21_PROJECT_TRACKIN
 
 [14](14_LEARNING_AND_ADAPTATION.md) §12. Ön koşul F9 kabulü. Başlatma ADR gerektirir.
 
+### 2.1 Aksiyon desteği matrisi ve davranış zinciri (değerlendirme 2026-10-02, ADR-0018 ile eşlenmiş)
+
+Ana hat F4'ü [ADR-0018](adr/ADR-0018-f4-kapsam-genisletme-aksiyon-destegi.md) ile genişletti: aksiyon desteğinin tamamlanması F4'ün parçasıdır, dilimler **m.1..m.10** sırasıyla ana hat döngüsünce F4-24 ve sonrası olarak yazılır/uygulanır. Bu bölüm **plan kimliği ayırmaz**; davranışlardan geriye giderek hangi dilimin hangi davranış için ön koşul olduğunu eşler. Bugün `ActionExecutor` yalnızca tek hedefli, uçmayan, eşyasız Type1/Type3 skill'i kabul eder (`GameServer/Bot/ActionExecutor.cpp:721-729`; diğerleri `unsupported_skill`). Zincir: **davranış → gerekli skill → aksiyon desteği → algı ihtiyacı → oyun içi kabul testi** (`docs/15` §4.9).
+
+ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik durdurma · **m.2** uçan skill · **m.3** çift tipli Type3 (`bType[1] != 0`) · **m.4** Type4 buff/debuff · **m.5** alan skill (CLI-07) · **m.6** Type5+/summon/eşya tüketen skill'ler için ilk dilimler · **m.7** CLI-12 · **m.8** envanter doldurma/yeniden stoklama · **m.9** T-MECH-SKILL botla koşusu · **m.10** algı eksikleri (başkalarının oturma bayrağı, `PARTY_LEVELCHANGE`/`STATUSCHANGE`).
+
+| Davranış | Gerekli skill (`docs/05`) | Bugün | ADR-0018 dilimi (en geç faz) | Algı ihtiyacı | Oyun içi kabul |
+|---|---|---|---|---|---|
+| Warrior baskı | Type1 (Carving, sword dancing...), R | ✔ | — | konum ✔; düşman HP: F4-51 | T-IGT-WAR-01 |
+| Warrior sprint, Outrage/Frenzy (Type4 self), restoration/Regeneration (Type3 HoT self) | Type4 self, Type3 self | ✘ (`bType[0]=4` reddedilir) | **m.4** (F6'dan önce) | self buff listesi ✔ (F4-17) | T-IGT-WAR-01, T-SUR-01 |
+| Warrior kontrol (Scream, Shock Stun) | Type1 + stun; Stone of Warrior (`iUseItem`) | ✘ (`iUseItem != 0`) | **m.6** (F7 healer geçişinden önce) | düşman durumu: F4-53 | T-IGT-PTY-01 |
+| W-G peel: descent (Type8 warp), Binding/provoke (Type7, MB-10) | Type8 warp 25, Type7 | ✘ | **ADR-0018'e eklenmeli** (Type8 warp/descent; Type7 opsiyonel, Q-22) | party konumları ✔ | T-WAR-06, AC-WAR-04/06 |
+| Priest tek hedef heal | Type3 dost tek | ✔ (`MORAL_FRIEND_WITHME`, ad ile) | — | party HP ✔ (F4-18) | T-IGT-PRI-01 |
+| Priest grup heal (112557/112560, party hedefi r=30) | Type3 party/alan | ✘ | **m.5** (party hedefi çözümü açıkça yazılmalı, aşağıda) | party konumları ✔ | T-PRI-03 |
+| Priest buff (AC/HP/direnç) | Type4 dost | ✘ | **m.4** (F7'den önce) | dost buff gözlemi: F4-52/53 | T-PRI-04 |
+| Priest cure | Type5 (REMOVE_TYPE4/disease) | ✘ | **m.6** (F7'den önce) | dost debuff gözlemi: F4-53 | T-PRI-05 |
+| Priest diriltme | Type5 + Stone of Life (`iUseItem`) | ✘ | **m.6 + m.8** (taş stoğu) | ceset (`WIZ_DEAD` ✔), kendi taş stoğu | T-PRI-08 |
+| Priest debuff + hedef çağrısı | Type4 düşman (Malice/Parasite) | ✘ | **m.4** (F7'den önce) | debuff başarısı: F4-52; düşman durumu: F4-53; düşman adı: F4-50 | T-PRI-06 |
+| Priest'e baskı: cast kesme/geri çekilme | cast iptali | ✘ | **m.1** | düşman konum+hız: F4-50 | T-PRI-07 |
+| Mage tek hedef, uçmayan, tek tipli Type3 | Type3 düşman (Ignition) | ✔ | — | düşman HP: F4-51 | T-MAG-01 |
+| Mage uçan büyü (Fire ball, Ice arrow...) | Type3 uçan | ✘ (`bFlyingEffect != 0`) | **m.2** (F6'dan önce) | düşman konum+hız: F4-50 | T-MAG-01/02 |
+| Mage çift tipli Type3 (buz büyüleri, Prismatic) | Type3 `bType[1] != 0` | ✘ | **m.3** (F6'dan önce) | — | T-MAG-02 |
+| Mage alan büyü (Fire burst, Supernova, ice storm) | Type3 alan, hedef noktası | ✘ | **m.5** (CLI-07; F6'dan önce) | düşman kümesi: F4-50 | T-MAG-02 |
+| Mage summon (Type8 friend) + Gate | Type8 | ✘ | **m.6** (summon açıkça listelenmeli: **ADR-0018'e eklenmeli**; F7'den önce) | yaşayan/yeniden doğmuş üye (`WIZ_USER_INOUT` respawn ✔ F4-12, party ✔) | T-IGT-MAG-01 |
+| Pot ve envanter (pot/taş/scroll doldurma) | `UsePotion` | ✔ kullanım; doldurma ✘ | **m.8** | self stok ✔ | T-POT-01..03, `ScenarioReset` |
+| Beceri doğrulaması (T-MECH-SKILL) | tüm çekirdek | — | **m.9** | — | T-MECH-SKILL-* |
+
+**ADR-0018'e eklenmesi önerilenler** (ADR değiştirilmedi; ana hat çalışıyor):
+
+1. **m.6 belirsiz:** "ilk dilim(ler)" Type5 cure, diriltme (Stone of Life), summon (Type8 + güvenlik koşulları), Type8 warp/descent/Gate ve `UseItem` tüketimini (sınıf taşları `BeforeAction`, Stone of Warrior/Priest) ayrı dilimlere bölmeli ve **F7'den önce** tamamlamalı.
+2. **m.5:** party hedefli skill'ler (group heal/group buff: `bMoral` party türleri) için hedef çözümü (party üyeleri algıdan, ad/kimlik seçimi) alan skill'lerinden ayrı ve açık yazılmalı.
+3. **Type7** (Binding/provoke, MB-10, Q-22): W-G peel için gerekip gerekmediği kararı (opsiyonel).
+4. **m.2 ile m.5** ilişkisi: mage'in ana alan skill'leri (110533 Fire burst) hem uçan hem alandır; FLYING fazı (`docs/03` §13.2: CASTING → FLYING → EFFECTING, ~1 sn uçuş) iki dilimde tutarlı kurulmalı.
+5. **m.8:** pot yanında taş/scroll doldurma ve `ScenarioReset` (`docs/15` §6a) ile ortak sözleşme (başlangıç doğrulaması).
+6. **m.10 algı eksikleri** yalnızca oturma bayrağı ve seviye/sınıf değişimi değildir; bu değerlendirme F4-50 (ad, konum yaşı, hız, geçmiş), F4-51 (düşman HP tablosu), F4-52 (skill olay halkası), F4-53 (gözlenen durum, TASLAK) ve F4-54 (tek yönlü görüş teşhisi, KI-DEG-01) planlarını ayrıca yazdı: ADR-0018 m.10 bunlarla eşlenmeli.
+7. **Kabul bağlantısı:** her dilimin oyun içi kabulü (`docs/15` §4.9 T-IGT-*) ve faz kapısı (G4, bu belge §5) açıkça bağlanmalı.
+
+### F11 — Serbest Ronark davranışları (TASLAK, ADR kapılı)
+
+| Alan | İçerik |
+|---|---|
+| Amaç | Proje hedefinin tamamı (`docs/01` §1): Ronark Land'de kontrolsüz ortamda, insan oyunculara ve diğer botlara karşı solo/party PK. Kontrollü arena (F0–F8) bu hedefin ölçülebilir ilk adımıdır |
+| Kapsam | (1) ROAM ve çatışma arama (ilgi bölgesi, arama rotaları `P-SOLO-ROAM-ROUTE`); (2) çatışmaya girme/girmeme kararı ve üçüncü taraf; (3) arena **dışında** yeniden gruplanma ve savaşa dönüş (dağılmış party, canavar/guard tower); (4) ≥ 24 saat çalışma: kendini kurtarma (takılma, stok, NP 0 / KI-013, ölüm döngüsü), ikmal yok → STK-04; (5) canlı insanlara etki: sıralama/NP/ödül (K-9), chat sınırı, `+bot pause`; (6) insan+bot karma party |
+| Kapsam dışı | Diğer zone'lar, savaş etkinlikleri, rogue/archer (`docs/01` §2): ayrıca ADR |
+| Ön koşullar | F8 kabulü (`baseline-v1`), F9 sonucu (iyileşme var/yok), **yeni ADR: A-03 kapsam kararı** (hangi insanlar, hangi gözetim/geri alma), Q-14 sonrası AIServer ilişkisi, canavar/guard tower etkileşimi |
+| Testler (öneri) | T-FREE-01 çatışma arama süresi, T-FREE-02 sayısal dezavantajda kaçış, T-FREE-03 ≥ 24 sa dayanıklılık, T-FREE-04 insan değerlendirmesi (kör test), T-FREE-05 üçüncü taraf/canavar |
+| Kabul | AC-FREE-01..05 (F11 planlanırken yazılır); insan oyuncu rahatsızlık/şikâyet göstergesi; sistem kapalıyken sıfır etki (AC-ARCH-02) |
+| Riskler | R-08, A-03, canlı oyuncu güvenliği, R-11 |
+| Geri alma | `/bot disable`, bayrak, F8 baseline'a dönüş |
+| Durum | **TASLAK:** ADR olmadan plan yazılmaz |
 ## 3. Temel sürüm ve sonraki geliştirmeler
 
 | Temel sürüm (F0–F8) | Sonraki (kapsam büyümesi ADR ile) |
@@ -207,6 +259,7 @@ Paralel yürütülebilir işler (kural 2'nin istisnası, [21](21_PROJECT_TRACKIN
 | S0–S2 referans ekipman | Set item'ları, transform, ileri profiller (Etc 510–523 skill'leri, Q-04 sonrası) |
 | L0 baseline | L1 (F9), L2 (F10), L3 araştırma |
 | Pot ikmali yok (stok senaryoda) | Zone dışına ikmal yolculuğu |
+| Arena içi regroup, geri çekilme, savaşa dönüş (F7) | Serbest dolaşma, çatışma arama, ≥ 24 sa çalışma (F11, ADR kapılı) |
 
 ## 4. Faz kapısı denetim listesi (her faz için)
 
@@ -218,9 +271,29 @@ Paralel yürütülebilir işler (kural 2'nin istisnası, [21](21_PROJECT_TRACKIN
 - [ ] [20](20_REQUIREMENTS_TRACEABILITY_MATRIX.md) güncellendi
 - [ ] Geri alma yolu test edildi (bayrakla kapatma)
 - [ ] Faz sonuç raporu yazıldı ve onaylandı
+- [ ] İlgili davranış **oyun içinde** çalıştı ve kanıtı var (§5 G-IGT, `docs/15` §4.9); yalnızca derleme/birim testi yeterli değildir
+- [ ] Bireysel planların `KAPANDI` olması ile fazın `KABUL_EDILDI` olması ayrı izlenir (`docs/STATUS.md` "Faz kabul takibi")
 
+## 5. Oyun içi kabul kapıları (G-IGT, değerlendirme 2026-10-02)
+
+Önerilen ilerleyiş (faz sırası değişmez; F6 ve F7 alt kapılara bölünür). Bir alt kapı, listelenen planlar `KAPANDI` **ve** oyun içi kabul testi geçmeden `KABUL_EDILDI` olmaz. Faz kapısı denetim listesi (§4) her alt kapıya uygulanır.
+
+| Kapı | Kapsam | Planlar / ön koşul | Oyun içi kabul (`docs/15` §4.9) | Yöntem sınırı |
+|---|---|---|---|---|
+| G4 F4 paket ve algı doğruluğu | Aksiyon + algı + betikli testler | F4-01..F4-23 KAPANDI; **ADR-0018 dilimleri m.1..m.10** (F4-24 ve sonrası, ana hat); F4-50..F4-54 (bu değerlendirme); F4-18 zaten kapandı | betikli koşuda MET-ACT-02 ≤ %1, fairness ihlali 0; `/bot snap` düşman HP/ad/olay/durum alanları sunucu `list` ile çapraz; `ObsTable` simetrisi (F4-54) | Çalışma zamanı doğrulamasını Claude yapar |
+| G5 F5 gerçek harita | Navigasyon `BotCore` + sunucu entegrasyonu | F5-01..F5-07, F5-08..F5-10, F5-50..F5-55 | T-NAV-04/05/09, AC-NAV-01..07 çalışma zamanında; engelli hücreye giren hareket 0 | F5 yalnız `BotCore` olarak kapanamaz (docs/12 §13.6) |
+| G6a Warrior | Warrior solo (sprint/Type4 self dahil) | F5 kabulü; ADR-0018 m.4 | T-IGT-WAR-01 | solo, arena A |
+| G6b Priest tek | Priest kendine/tek müttefike heal, pot | G6a veya paralel | T-PRI-01/02/07 | solo + 1 müttefik |
+| G6c Mage saldırı | Mage tek hedef + uçan/çift tipli/alan | ADR-0018 m.2, m.3, m.5 | T-MAG-01..04 | summon yok |
+| G7a Priest destek | Buff, cure, debuff, diriltme, iki priest | ADR-0018 m.4, m.6, m.8; F4-52/53 | T-IGT-PRI-01, T-PRI-03..06/08 | küçük takım |
+| G7b Mage summon | Güvenli summon akışı | ADR-0018 m.6 (summon dilimi), G6c | T-IGT-MAG-01 | küçük takım |
+| G7c Takım | Ortak hedef, debuff çağrısı, healer'a geçiş, regroup/geri çekilme | G7a, G7b | T-IGT-PTY-01, T-IGT-SUR-01, T-PTY-* | 2v2..5v5 |
+| G8 8v8 ve baseline | Sıfırlanabilir, tekrarlanabilir değerlendirme | `db/003` (20 karakter), `ScenarioReset` (`docs/15` §6a), `win_rule` (§6b), `evalset-v1` | T-IGT-EVAL-01, AC-EVAL-01..03 | MVP sonu |
+| G9 öğrenme | L1 | G8 | AC-LRN-01..08 | "iyileşme yok" geçerli |
+| G11 serbest Ronark | F11 | G8, ADR | T-FREE-* | taslak |
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §2.1 aksiyon desteği matrisi ve zincir, F11 taslağı, §3 satırı, §4 oyun içi kanıt maddesi, §5 oyun içi kabul kapıları (G4..G11) |
