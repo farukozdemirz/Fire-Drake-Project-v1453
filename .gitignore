@@ -6,3 +6,7 @@ build*/
 
 *.sdf
 *.user
+
+# Python bytecode (tools import docs/appendix/tools modules)
+__pycache__/
+*.pyc
