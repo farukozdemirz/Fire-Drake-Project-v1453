@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-04` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`), F5-03 (`BotCore/NavSmooth.h`): üçü `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `08ffbc3`) |
@@ -288,13 +288,27 @@ git diff --stat gece/2026-10-02-nav...bot/F5-04
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-04` (taban `gece/2026-10-02-nav`); `8b796bf` — `[F5-04] Hareketli hedef ve yeniden planlama (BotCore/NavTrack.h) ve NavTrack testleri`; bu rapor ve `Durum` satırı ayrı commit.
+- Değişen dosyalar ve neden:
+  - `BotCore/NavTrack.h` (yeni, 414 satır): `NavTargetTracker` (16 örnekli sabit halka, hız penceresi/bayat örnek kuralları), `NavPredictLead`, `NavRingCells` (etkin yarıçap `hi = max(ringMaxM, 0.5·unit·√2)`, `lo` kıskacı, `NavOctile` sırası, beraberlik `x`→`z`, `ceil(hi/unit)+1` pencere), `NavFollowParams`/`NavFollowStatus`/`NavReplanReason`/`NavFollowPlan`/`NavFollower` (`First`/`Moved`/`Interval` kararı, en çok 4 öngörü geri çekilmesi, en çok `ringMaxTries` aday denemesi, `InvalidStart`'ta döngü durur; başarısız plan da `plannedAtMs`/hedef konumunu günceller). Saf başlık; `<algorithm> <cmath> <cstddef> <cstdint> <vector>` ve `"NavSmooth.h"` dışında bağımlılık yok.
+  - `Tests/BotCoreTests/NavTrackTests.cpp` (yeni, 1020 satır): §5.2'deki on test; kendi yardımcı kopyaları (`CellIndex`, `Cell`, `RingEvents`, `WallColumn`, `MakeNav`, `HeightZeros`, `SegmentsClear`, `Dist`, `PercentileDouble`, `Observe5`); gerçek harita yükleme + `SKIPPED` kalıbı; `near64` perf kümesi ve `std::chrono::steady_clock` ölçümü.
+  - `BotCore/BotCore.vcxproj`, `Tests/BotCoreTests/BotCoreTests.vcxproj` (değişen): yalnızca birer `ClInclude`/`ClCompile` satırı; BOM ve CRLF korundu.
+  - `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavSmooth.h` değişmedi; yeni dosya/ini yok.
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `BotCoreTests.cpp`/`NavTrack*` için yeni uyarı yok (değişen iki dosya `touch`'lanıp yeniden derlendi, çıktıda `warning` yok); son satır `BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe`.
+  - `./tools/run-tests.sh Debug` rc=0; `98 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme (hepsi karşılandı):
+  - K1 ✔ Release rc=0, yeni uyarı 0. K2 ✔ `--list` on `NavTrack_*` adını içeriyor (toplam 98).
+  - K3 ✔ `./tools/run-tests.sh Release --no-build` rc=0, `98 tests, 0 failed`, `SKIPPED` yok; `NAVTRACK real exact: waypoints=14 length=630.319; mage: goal=(196,271) d=44.72 waypoints=13 length=587.021`; iki `NAVTRACK chase …`; iki `NAVTRACK perf set=…`.
+  - K4 ✔ `zone71.navgrid` geçici taşınınca `NavTrack_` rc=0; `NavTrack_RealMap`/`NavTrack_Perf` `SKIPPED`, diğer sekiz `[ OK ]`; dosya geri kondu (md5 aynı boyut 1 579 030).
+  - K5 ✔ Debug derleme dahil rc=0, `98 tests, 0 failed`.
+  - K6 ✔ `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400 final_dist=3.7`; `ring=30-45 replans=29 planned=29 dist_min=35.8 dist_max=43.0`; `Follower_Triggers`/`Follower_Prediction` (geri çekilme `(19,20)`, `leadSec=0.375`)/`Follower_Ring`/`Follower_Failures` (`NoGoal`, `PathFailed tries=3`, `InvalidStart`) Release ve Debug'da `[ OK ]`.
+  - K7 ✔ Release perf: `set=exact planned=997 tries_mean=1.00 ms_p50=0.082 ms_p95=0.546 ms_p99=0.976`; `set=mage planned=998 tries_mean=1.01 ms_p50=0.070 ms_p95=0.597 ms_p99=1.083`; `planned ≥ 950`, `ms_p95 ≤ 2.000`. Ölçüm makinesi: Ryzen 7 7800X3D, `nproc=16`, Release.
+  - K8 ✔ Saflık grep'i boş; `git diff --stat` yalnızca dört dosya (plan dosyası tabanda commit'li olduğu için diff'te görünmez): `BotCore/BotCore.vcxproj` +1, `BotCore/NavTrack.h` +414, `Tests/BotCoreTests/BotCoreTests.vcxproj` +1, `Tests/BotCoreTests/NavTrackTests.cpp` +1020.
+  - K9 ✔ `Nav_` 10/10; `NavPath_` 9/9 (`near64 found=997`, `ms_p95=0.551 ≤ 2.000`); `NavSmooth_` 8/8 (`near64 ms_p95=0.033 ≤ 0.500`).
+- Plandan sapmalar ve gerekçeleri: Yok. Sayılar plan aralığında (`exact waypoints=14` prototip 13'e karşı, kabul ≤ 25; `mage length=587.021` prototip 584.828, kural yalnızca `≤ exact−20` ve `d∈[30,45]`; `perf planned` %99.7/%99.8). `build/nav/zone71.navgrid` zaten vardı; `nav-export.py` çalıştırılmadı.
+- Açık sorular: Yok.
 
 ---
 
