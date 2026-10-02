@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-13` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`, `OnPacket()` algı bloğu, `m_obsLock`) — `KAPANDI` (merge `dcd8f80`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -291,17 +291,21 @@ git diff --check gece/2026-10-02...bot/F4-13
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-13` — `<kısa-sha> [F4-13] …`
+- Branch / commit'ler: `bot/F4-13` — `989999e [F4-13] Perception dilim 2: bolge degisiminde WIZ_REQ_USERIN (TickUserIn, CLI-19)` (+ bu rapor/`Durum` commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
-  ```
-  …
-  ```
-- Test sonucu (`tools/run-tests.sh Release` / `Debug`): …
-- Kabul kriterleri öz-değerlendirme: K1 … K14 (K15 Claude).
-- Plandan sapmalar: …
-- Açık sorular: …
+  - `BotCore/Perception.h`: `PendingIds` (bekleyen kimlik listesi), `kObsPendingMax`/`kUserInMaxIds`/`kUserInMinGapMs`, `UserInCheck`/`UserInVerdict`/`CheckUserIn` (CLI-19) eklendi (dosya sonuna, `ObsTable`'dan sonra; yeni include yok).
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: dosya-yerel `MakeUnit` yardımcısı + üç `TEST_CASE` (`Perception_PendingIds_Set`, `Perception_PendingIds_PeekRemove`, `Perception_CheckUserIn`).
+  - `GameServer/Bot/BotSession.h`: `m_obsPending` (kilit altında), `m_userInHasLast`/`m_userInLast`/`m_userInRequests`/`m_userInUnits` (IOCP), `m_userInEcho` (atomik); `PeekUserInBatch`/`DropUserInBatch` bildirimleri; `m_obsUnresolved` yorumu güncellendi.
+  - `GameServer/Bot/BotSession.cpp`: başlatıcı listesi, `ResetForRespawn()`, `OnPacket()` `WIZ_REGIONCHANGE`/`WIZ_REQ_USERIN` dallarına ekleme, iki yardımcı fonksiyon.
+  - `GameServer/Bot/ActionExecutor.h`: `UserInOutcome` + `TickUserIn` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `TickUserIn` (dosya sonuna; guard CLI-19, tek `WIZ_REQ_USERIN`, sonuç `m_userInEcho` yankısından, CLI-11'e sayılmaz).
+  - `GameServer/Bot/BotManager.cpp`: `TickSessions()` canlı dalında `TickUserIn` çağrısı + günlük; `CommandSee` bekleyen sayaç ve açıklama satırı.
+- Derleme sonucu (`tools/build.sh Release` son satır): `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. Değişen beş dosyada uyarı yok; yalnızca eski `GameServerDlg.cpp` (C4834, 2× C4267) ve `UpgradeHandler.cpp` (2× C4789) uyarıları var. `Debug` de rc=0.
+- Test sonucu (`tools/run-tests.sh Release` / `Debug`): her ikisinde `55 tests, 0 failed`; üç yeni test adı çıktıda.
+- Kabul kriterleri öz-değerlendirme: K1 ✔ K2 ✔ K3 ✔ K4 ✔ K5 ✔ K6 ✔ K7 ✔ K8 ✔ K9 ✔ K10 ✔ K11 ✔ K12 ✔ K13 ✔ K14 ✔ (K15 Claude).
+- Plandan sapmalar: yok. `PendingIds::Peek` plandaki "bilinen ve kendini düşür" cümlesine ve `Perception_PendingIds_PeekRemove` beklentisine göre bilinen/kendini listeden kalıcı düşürür, kopyalanan uygun kimlikleri bırakır (`cap` uygulanırken silmez); `Count()` bu budanmış hâli verir.
+- Açık sorular: yok.
+
 
 ---
 
