@@ -210,7 +210,7 @@ git diff --stat gece/2026-10-02...bot/F3-06
 - Durum: UYGULANDI
 - Branch / commit'ler: `bot/F3-06` (taban: `gece/2026-10-02`) — `f4d0163 [F3-06] Telemetri analiz aracı (JSONL -> Markdown/JSON rapor)`; bu rapor ayrı bir commit'te (`[F3-06] Uygulayıcı raporu: UYGULANDI`).
 - Değişen dosyalar ve neden:
-  - `tools/bot-telemetry-report.py` (yeni, ~660 satır): JSONL telemetri dosyalarını/klasörlerini okuyup Markdown (varsayılan) veya `--json` rapor üreten; `--selftest` yerleşik sınamalı; yalnızca Python stdlib. Sunucu koduna dokunulmadı.
+  - `tools/bot-telemetry-report.py` (yeni, 839 satır): JSONL telemetri dosyalarını/klasörlerini okuyup Markdown (varsayılan) veya `--json` rapor üreten; `--selftest` yerleşik sınamalı; yalnızca Python stdlib. Sunucu koduna dokunulmadı.
   - `plans/F3-06-telemetri-analiz-araci.md`: `Durum` satırı (`HAZIR` → `UYGULANIYOR` → `UYGULANDI`) ve bu rapor.
 - Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
