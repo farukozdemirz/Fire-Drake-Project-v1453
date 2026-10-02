@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-57 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`), **F5-54** (`NavPacketCadenceParams()` ve `NavGuardBlockDetector`) — `KAPANDI` olmalı |
@@ -102,13 +102,31 @@ git diff --stat gece/2026-10-02-nav...bot/F5-57
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-57` (taban: `gece/2026-10-02-nav`, `9272ed6`). `2d6e0cb` (NavStuck.h), `5ae06c3` (birim testleri), `8574d30` (nav-measure).
 - Değişen dosyalar ve neden:
+  - `BotCore/NavStuck.h`: sona `NavRoutePoint`/`NavRouteProgressM`, `NavProgressVerdict`/`NavProgressParams`, `NavProgressAssessor` eklendi (yalnızca `+` satırları, 264). F5-09/F5-54 API'lerine dokunulmadı.
+  - `Tests/BotCoreTests/NavStuckTests.cpp`: sona 8 yeni vaka (`NavProgress_*`) ve yardımcılar (yalnızca `+` satırları, 433). `<limits>`/`<random>` include eklendi.
+  - `tools/nav-measure/nav_measure.cpp`: `progress` bölümü (`RunProgress`/`Progress`) ve bölüm kaydı; iki mevcut satır (usage + section listesi) yeni bölüm adıyla güncellendi.
 - Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `Debug` rc=0. Değişen dosyalarda yeni uyarı yok (yalnızca eski `UpgradeHandler.cpp` C4789 Debug'da).
+  - `./tools/run-tests.sh Release`: `217 tests, 0 failed`, sekiz `NavProgress_*` adı `[ OK ]`.
+  - `./tools/run-tests.sh Debug`: `217 tests, 0 failed`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1-K2 ✔: Release ve Debug rc=0, değişen dosyalarda uyarı yok.
+  - K3 ✔: `217 tests, 0 failed` her iki yapılandırmada; 8 yeni test adı göründü; F5-09/F5-54 testleri değişmeden geçti.
+  - K4 ✔: `NavProgress_NormalWalk_NoAlarm` üç tick modelinde 3 senaryo × 600 sn → `stalled=0`, `false_alarms=0`, `monitor_episodes=0`. Örnek satır (walk45 model=2): `ticks=6383 stalled=0 awaiting=16 progressing=6367 false_alarms=0 monitor_episodes=0`.
+  - K5 ✔: `Stalled` yalnızca pencere dolduğunda (≥ `periods` paket, ≥ 3200 ms); `AwaitingPacket`/`BlockedByGuard`/`Idle` iken `Stalled` yok; U-dönüşü vakası `Progressing` ve aynı paketler F5-09 `NoProgress` veriyor (fark `CHECK` ile sabitlendi); duvar boyunca geri-ileri `Stalled`.
+  - K6 ✔: `NavStuck.h`'te `windows.h|stdafx|GameServer|shared/` yok; yeni kodda dinamik bellek/global yok; `NavStuck.h` ve `NavStuckTests.cpp` diff'i yalnızca `+`.
+  - K7 ✔: `git diff --stat gece/2026-10-02-nav...bot/F5-57` yalnızca §4 dosyaları; `GameServer/`, `shared/`, `docs/`, `.vcxproj` farkı 0; ASCII + CRLF; `git diff --check` boş.
+  - K8 (Claude): `tools/nav-measure.sh stuck` ve `progress` güncel kodda koşuldu; `stuck` aynı (F5-09 varsayılanı gecikmeli modelde `false_episodes=6`), `progress` tablosunda `F5-09_default=6`, `cadence_3200=0`, `assessor=0`. Gerçek takılma tespiti: F5-09 1500 ms, F5-54 3200 ms, assessor 3100 ms.
+  - K9: kapsam dışı (oyun içi kanıt F5-55).
 - Plandan sapmalar ve gerekçeleri:
+  - **`AwaitingPacket` tanımı:** Plan §3(4) lafzı ("son paketten `periodMs+toleranceMs` dolmadı **ve** pencerede henüz `periods` paket yok → `AwaitingPacket`") normal yürüyüşte `AwaitingPacket`'i baskın yapıyordu; bu, bütünleşme sözleşmesiyle (only `Progressing`/`Stalled` → `moving=true`) çelişir ve monitor'ün penceresini her tick sıfırlar, gerçek takılmayı hiç tespit edemez. Bu yüzden `AwaitingPacket` yalnızca "hiç paket yok" veya "son paket `periodMs+toleranceMs`'i aştı" (gecikme) durumuna daraltıldı; paketleri zamanında gelen bot `Progressing` sayılır. Bu, K4'ün "Progressing baskın" ve K5'in "Stalled yalnızca pencere dolunca" ölçütleriyle uyumludur. Plan metni buna göre revize edilmeli.
+  - Her iki test/tool simülasyonunda `std::normal_distribution(mean, 0.0)` MSVC Debug'da sonsuz döngüye giriyordu; jitter 0 iken dağıtım atlanacak şekilde guard eklendi (test doğruluğu etkilenmedi, Debug koşusu düzeldi).
 - Açık sorular:
+  - `NotifyReplan` çağrılmazsa (`m_hasProgressBase=false`) değerlendirici Öklid yer değiştirmeye düşer; plan §8 bunu "yol yoksa F5-09 detektörü kullanılır" diye tarif ediyor. Çağıranın (F5-55) her yeni rotada `NotifyReplan` çağırması gerektiği açık; bu sözleşme plan/`docs/12` §13.3'e eklenmeli mi?
+  - Plan §3(2) `periodMs=1550` `[A]`; gerçek paket periyodu `kMovePeriodMs=1500`. Marj (50 ms) F5-54'teki 3200 ms penceresiyle tutarlı ama T-NAV-04 sonrası gözden geçirilmeli.
 
 ---
 
