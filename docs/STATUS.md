@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 2026-10-02; F1-01..F1-09 KAPANDI, F1-10 DOĞRULANDI (`gece/2026-10-02`'ye birleştirme döngüde); `war-r`, `war-skill`, `pot` zamanlama ölçümleri `docs/03` §13.2'de)
+F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILDI (DeepSeek'in işleri bitti; F0 KABUL_EDILDI 2026-10-02; F1-01..F1-10 KAPANDI, F1-08..F1-10 `gece/2026-10-02`'de; kalan: insan istemcisi testleri, faz raporu taslağı `docs/phase-reports/F1-taslak.md`, kabul bekliyor). Gece modunda F2'ye geçildi: aktif plan F2-01 (HAZIR).
 
 ## Faz tablosu
 
@@ -27,8 +27,8 @@ F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILIYOR (F0 KABUL_EDILDI 20
 | 2026-10-02 | F1-03 | DOĞRULANDI (Tur 1) | 6/6 kriter ✔; betikler geçici kopya tabloda çalıştırıldı: uygula → tekrar uygula (idempotent) → geri al, `MAGIC_BAK_etc` ile satır satır aynı; elle değiştirilmiş satıra dokunulmuyor. Gerçek `MAGIC` değişmedi |
 | 2026-10-02 | F1-02 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔; Tur 1 bulgusu (iptal sonrası bayat CASTING) kapandı, ek kenar vakaları bağımsız doğrulandı. `prepare`/`finish` çalışma zamanı doğrulaması ilk gerçek oturumda |
 | F0 Ortam | KABUL_EDILDI | `docs/phase-reports/F0.md` (2026-10-02) | `22786e2` |
-| F1 Veri ve mekanik doğrulama | GELIŞTIRILIYOR | — | — |
-| F2 Bot oturumu | PLANLANDI | — | — |
+| F1 Veri ve mekanik doğrulama | GELIŞTIRILDI (kabul bekliyor, insan testleri açık) | `docs/phase-reports/F1-taslak.md` (taslak) | — |
+| F2 Bot oturumu | GELIŞTIRILIYOR (gece modu; F1 kabulü beklenmeden başlandı) | — | — |
 | F3 Telemetri ve test altyapısı | PLANLANDI | — | — |
 | F4 Aksiyon ve adalet | PLANLANDI | — | — |
 | F5 Navigasyon | PLANLANDI | — | — |
@@ -55,7 +55,8 @@ Liste: `plans/README.md`.
 | F1-07 Büyü ve heal modeli | KAPANDI | `bot/F1-07` (taban: `main`); `plans/F1-07-buyu-ve-heal-modeli.md`; DeepSeek `tools/spell-model.py` yazar, DB'ye yazılmaz |
 | F1-08 Arena A veri doğrulaması | KAPANDI | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; Tur 2'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); `main`'e birleştirme proje sahibinde |
 | F1-09 Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`) | KAPANDI | `bot/F1-09` @ `3406555` (taban: `gece/2026-10-02`); `plans/F1-09-sunucu-hasar-kaydi.md`; Tur 1'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); kanca yalnızca `--damage-trace` ile derlenir; log özet betiği F1-10'da; çalışma zamanı ölçümü insan oturumunda (T-MECH-DMG) |
-| F1-10 Hasar logu özet betiği (`tools/damage-trace-summary.py`) | DOĞRULANDI | `bot/F1-10` @ `b93309d` (taban: `gece/2026-10-02`); `plans/F1-10-hasar-logu-ozet-betigi.md` (Tur 2'de doğrulandı; birleştirmeyi döngü yapar); DeepSeek yalnızca betik yazar (log + `stat-model`/`spell-model` çıktısını ± %15 karşılaştırır); F1'in DeepSeek'e düşen son işi |
+| F1-10 Hasar logu özet betiği (`tools/damage-trace-summary.py`) | KAPANDI | `bot/F1-10` @ `b93309d` (taban: `gece/2026-10-02`); `plans/F1-10-hasar-logu-ozet-betigi.md` (Tur 2'de doğrulandı; `gece/2026-10-02`'ye birleşti, 2026-10-02, gece modu, merge `9148336`); DeepSeek yalnızca betik yazar (log + `stat-model`/`spell-model` çıktısını ± %15 karşılaştırır); F1'in DeepSeek'e düşen son işi |
+| F2-01 Bot alıcısı (`m_botSink`) ve ayrılmış slot havuzu | HAZIR | `bot/F2-01` (taban: `gece/2026-10-02`); `plans/F2-01-bot-alicisi-ve-slot-havuzu.md`; S1+S2: `KOSocketMgr` rezerve havuz, `CUser::Send` geçersiz kılma, `BotManager::Startup` + öz-sınama; `[BOT] ENABLED=0` varsayılan (davranış değişmez); çalışma zamanı doğrulaması Claude'da (`GameServer.ini` ile) |
 
 ## Son doğrulamalar
 
@@ -99,10 +100,14 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 | T-MECH-DMG-01..03 | İki istemciyle (Karus bot vs El Morad bot) birbirine R, Type1 skill ve büyü; sunucu hasar kaydı (F1-09 doğrulandı; ölçüm için `./tools/build.sh Release --damage-trace` ile derlenen GameServer gerekir, çıktı `Logs/DamageTrace_*.log`, 20 sütun: plan F1-09 §5.4) ile modelin karşılaştırılması; analiz: `python3 tools/damage-trace-summary.py Logs/DamageTrace_*.log --stat-model <stat.txt> --spell-model <spell.txt>` (F1-10; model çıktıları `tools/stat-model.py > stat.txt`, `tools/spell-model.py > spell.txt`) | ör. `BotAccWPK` vs `BotAccWGE`; `BotAccMFK` vs `BotAccWPE` | `tools/stat-model.py` / `tools/spell-model.py` ± %15 |
 | T-ENV-ARENA-01 | Arena A'da (1274, 890) 30 dk bekleyip canavar/NPC geçiyor mu gözle | herhangi bir bot hesabı | 120 m içinde varlık 0 |
 | T-ENV-ARENA-03 | El Morad karakteriyle Karus kapısı önüne git, tower saldırı mesafesini gözle | `BotAccWPE` | tower 20–30 m'de saldırır |
+| T-ENV-ARENA-02, T-ENV-ARENA-04 | Arena koordinatlarının oyunda doğrulanması (yürüme, yükseklik, engeller); iki ulusun respawn noktasından arenaya yürüme süresi | herhangi bir bot hesabı (GM ile) | `docs/15` §2.4 / T-ENV-ARENA-02, -04: koordinat/süre kaydı; F1-08 hesabı: Karus→A 259,8 m, El Morad→A 678,1 m |
+| T-MECH-SKILL-W/P/M, T-MECH-BUF-01..08, T-POT-01..03 / T-MECH-POT-03..05 | Çekirdek skill başına MP/recast/menzil/etki/fail sebebi; buff çakışmaları ve debuff'ın buff'ı silmesi; pot hareketi durdurur mu (Q-06) | bot hesapları (profil başına) | `docs/05` tablosuyla uyum; `docs/11` §8 |
+| T-DATA-01 (M-I), T-DATA-02, T-DATA-03 | M-I girişinin teyidi; referans ekipmanın istemcide kuşanılabilirliği; maks HP/MP/saldırı oyunda | `BotAccMIK` ve diğer 11 bot hesabı | `docs/04` §7 |
+| `war-move` (Q-02), ikinci priest/mage oturumu | Temiz koşu/yürüyüş hız ölçümü; `pri-cast`/`mag-cast` tekrarı | `tools/trace-session.sh` (`docs/15` §4.2.1) | `docs/03` §13.2'deki `[A]`'ların kalkması |
 
 ## Sıradaki adımlar
 
-1. F1-08 ve F1-09 `gece/2026-10-02`'ye birleşti; F1-10 (log özet betiği) DOĞRULANDI (Tur 2; gece modunda `gece/2026-10-02`'ye birleştirmeyi döngü yapar), ardından F1 faz raporu taslağı yazılır ve gece modunda F2 (veya `AUTO_TARGET_PHASE`'e kadar sonraki faz) planlanır. `main`'e birleştirme ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). F1-09 (sunucu hasar kaydı) DOĞRULANDI (`gece/2026-10-02`'ye birleştirmeyi döngü yapar), ardından F1-10 (log özet/karşılaştırma betiği, `tools/damage-trace-summary.py`) ve F1 faz raporu taslağı; F1'in DeepSeek'in yapabileceği işleri bununla biter, kalanlar insan testi (T-MECH-*, T-ENV-ARENA-*), gece modunda F2'ye geçilir. Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları. Paralel: Claude F1 faz sonuç raporu taslağı ve F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci); proje sahibi bot girişi denemesi: T-DATA-01 girişi 5/6 bot için tamam (model = oyun, `docs/04` §3.4), kalan M-I girişinin teyidi, sonra T-MECH-DMG ölçümü.
+1. **Gece modu (2026-10-02):** F1'in DeepSeek işleri bitti; F1 faz raporu taslağı `docs/phase-reports/F1-taslak.md` yazıldı (çıkış kararı kısmi: insan testleri açık, aşağıdaki bekleyen testler). F2 başladı: F2-01 (HAZIR) → sıradaki F2 planları: F2-02 bot spawn/despawn (S3–S5 giriş/çıkış taklidi, `/bot spawn` minimum), F2-03 `Update()` ve zaman aşımı muafiyeti, F2-04 sabit IP/ranking (S7, K-9). `gece/2026-10-02`'nin `main`'e birleştirilmesi ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları; `docs/13` §4.1'e F2-01 sonrası ini anahtarları (`[BOT] ENABLED`, `MAX_BOTS`).
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.

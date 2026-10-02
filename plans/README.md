@@ -60,7 +60,8 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F1-07](F1-07-buyu-ve-heal-modeli.md) | Büyü hasarı ve heal modeli (`tools/spell-model.py`, mage/priest Type3) | F1 | KAPANDI (2026-10-02, `main` @ `d66935d`) | `bot/F1-07` (taban: `main`) |
 | [F1-08](F1-08-arena-a-veri-dogrulamasi.md) | Arena A veri doğrulaması (`tools/arena-report.py`: spawn/tower payı, başlangıç ekseni, yürüme süresi, zone 71 zamanlayıcıları) | F1 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F1-08` (taban: `main`) |
 | [F1-09](F1-09-sunucu-hasar-kaydi.md) | Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`, derleme bayrağıyla kapalı; T-MECH-DMG ölçüm altyapısı) | F1 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F1-09` (taban: `gece/2026-10-02`) |
-| [F1-10](F1-10-hasar-logu-ozet-betigi.md) | Hasar logu özet ve model karşılaştırma betiği (`tools/damage-trace-summary.py`, ± %15 hükmü, T-MECH-DMG analizi) | F1 | DOĞRULANDI | `bot/F1-10` (taban: `gece/2026-10-02`) |
+| [F1-10](F1-10-hasar-logu-ozet-betigi.md) | Hasar logu özet ve model karşılaştırma betiği (`tools/damage-trace-summary.py`, ± %15 hükmü, T-MECH-DMG analizi) | F1 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F1-10` (taban: `gece/2026-10-02`) |
+| [F2-01](F2-01-bot-alicisi-ve-slot-havuzu.md) | Bot alıcısı (`m_botSink`) ve ayrılmış oturum slot havuzu (S1+S2; `[BOT] ENABLED=0` varsayılan; öz-sınama) | F2 | HAZIR | `bot/F2-01` (taban: `gece/2026-10-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
