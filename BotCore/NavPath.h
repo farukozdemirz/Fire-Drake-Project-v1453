@@ -3,10 +3,12 @@
 // Grid A* path finding (F5-02; docs/12 s4.1, ADR-0006) on top of the F5-01 navigation grid.
 // Pure logic: the standard library only, no server header, no global/static state. The grid
 // edge rule (walkability, slope, no corner cutting) is never re-implemented here: neighbour
-// decisions come from NavGrid::EdgeOpen only. Costs are horizontal distance in metres; danger
-// and clearance weights belong to F5-06.
+// decisions come from NavGrid::EdgeOpen only. Without a cost field the cost is the horizontal
+// distance in metres; with a NavCostField (F5-06) each step is weighted by cell penalties and a
+// forbidden zone cannot be entered.
 
 #include "NavGrid.h"
+#include "NavDanger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -30,7 +32,7 @@ namespace BotCore
 		NoPath,         // the reachable region was exhausted without meeting the goal
 		NodeLimit,      // maxNodes closed nodes without meeting the goal: "unknown", not "unreachable"
 		InvalidStart,   // start out of bounds / not Walk (also before NavGrid::Build)
-		InvalidGoal     // goal out of bounds / not Walk
+		InvalidGoal     // goal out of bounds / not Walk, or (cost field only) forbidden while the start is not
 	};
 
 	struct NavSearchParams
@@ -43,7 +45,8 @@ namespace BotCore
 	{
 		NavPathStatus status = NavPathStatus::NoPath;
 		std::vector<NavCell> cells;   // start..goal inclusive; empty unless Found
-		float cost = 0.0f;            // metres (sum of step lengths); 0 unless Found
+		float cost = 0.0f;            // weighted step cost (geometric without a cost field); 0 unless Found
+		float length = 0.0f;          // metres (geometric length of the route); 0 unless Found; equals cost without a field
 		int expanded = 0;             // closed nodes, set for every status that ran a search
 	};
 
@@ -65,13 +68,16 @@ namespace BotCore
 		// NOT thread-safe: one instance per thread/context. Deterministic: same grid, params and
 		// query give the same result, also after other queries ran on the same instance.
 		// `grid` is never modified. `out` is fully overwritten.
-		void Find(const NavGrid & grid, NavCell start, NavCell goal, const NavSearchParams & params, NavPathResult & out)
+		void Find(const NavGrid & grid, NavCell start, NavCell goal, const NavSearchParams & params,
+			NavPathResult & out, const NavCostField * field = nullptr)
 		{
 			out.status = NavPathStatus::NoPath;
 			out.cells.clear();
 			out.cost = 0.0f;
+			out.length = 0.0f;
 			out.expanded = 0;
 
+			const bool weighted = field != nullptr;
 			const int n = grid.Size();
 			const size_t cells = (size_t)n * (size_t)n;
 			if (n != m_n || cells != m_poolCells)
@@ -86,12 +92,21 @@ namespace BotCore
 				m_generation = 1;
 			}
 
+			const NavCostLayer * zones = nullptr;
+			if (weighted && field->layer != nullptr && field->layer->Size() == n)
+				zones = field->layer;
+
 			if (!grid.Walk(start.x, start.z))
 			{
 				out.status = NavPathStatus::InvalidStart;
 				return;
 			}
 			if (!grid.Walk(goal.x, goal.z))
+			{
+				out.status = NavPathStatus::InvalidGoal;
+				return;
+			}
+			if (weighted && zones != nullptr && zones->Forbidden(goal.x, goal.z) && !zones->Forbidden(start.x, start.z))
 			{
 				out.status = NavPathStatus::InvalidGoal;
 				return;
@@ -146,12 +161,21 @@ namespace BotCore
 					out.expanded = expanded;
 					out.cost = m_g[(size_t)goalIdx];
 					Reconstruct(startIdx, goalIdx, n, out.cells);
+					out.length = 0.0f;
+					for (size_t i = 0; i + 1 < out.cells.size(); ++i)
+					{
+						const int sdx = out.cells[i + 1].x - out.cells[i].x;
+						const int sdz = out.cells[i + 1].z - out.cells[i].z;
+						out.length += (sdx != 0 && sdz != 0) ? (unit * std::sqrt(2.0f)) : unit;
+					}
 					return;
 				}
 
 				const int cx = top.idx / n;
 				const int cz = top.idx % n;
 				const float gcur = m_g[(size_t)top.idx];
+				const float penCur = weighted ? NavCellPenalty(grid, zones, field->params, cx, cz) : 0.0f;
+				const bool curForbidden = weighted && zones != nullptr && zones->Forbidden(cx, cz);
 				for (int k = 0; k < 8; ++k)
 				{
 					const int dx = dxs[k];
@@ -164,7 +188,22 @@ namespace BotCore
 						continue;
 
 					const float step = (dx != 0 && dz != 0) ? (unit * std::sqrt(2.0f)) : unit;
-					const float ng = gcur + step;
+
+					float ng;
+					if (!weighted)
+					{
+						ng = gcur + step;
+					}
+					else
+					{
+						const int nx = cx + dx;
+						const int nz = cz + dz;
+						if (zones != nullptr && !curForbidden && zones->Forbidden(nx, nz))
+							continue;   // may not ENTER a forbidden cell from outside
+						const float penNb = NavCellPenalty(grid, zones, field->params, nx, nz);
+						ng = gcur + step * (1.0f + 0.5f * (penCur + penNb));
+					}
+
 					if (m_seen[(size_t)nidx] != m_generation || ng < m_g[(size_t)nidx])
 					{
 						m_seen[(size_t)nidx] = m_generation;
