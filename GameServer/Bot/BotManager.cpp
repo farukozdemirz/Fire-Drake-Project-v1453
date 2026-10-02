@@ -2297,11 +2297,29 @@ void BotManager::CommandSee(const std::string & args)
 	BotCore::ObsTable copy;
 	uint32 unresolved = 0;
 	uint32 pending = 0;
+	uint32 inoutIn = 0, inoutOut = 0, inoutParseFail = 0;
+	uint32 reqUserInRecv = 0, reqUserInUnits = 0, reqUserInParseStop = 0;
+	uint32 regionRecv = 0, regionIdsLast = 0, regionDroppedTotal = 0, moveUnknown = 0;
+	uint16 droppedIds[8];
+	int droppedCount = 0;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		copy = s->m_obs;
 		unresolved = s->m_obsUnresolved.load();
 		pending = (uint32)s->m_obsPending.Count();
+		inoutIn = s->m_inoutIn.load();
+		inoutOut = s->m_inoutOut.load();
+		inoutParseFail = s->m_inoutParseFail.load();
+		reqUserInRecv = s->m_reqUserInRecv.load();
+		reqUserInUnits = s->m_reqUserInUnits.load();
+		reqUserInParseStop = s->m_reqUserInParseStop.load();
+		regionRecv = s->m_regionRecv.load();
+		regionIdsLast = s->m_regionIdsLast.load();
+		regionDroppedTotal = s->m_regionDroppedTotal.load();
+		moveUnknown = s->m_moveUnknown.load();
+		droppedCount = s->m_regionDroppedLastCount;
+		for (int i = 0; i < droppedCount && i < 8; i++)
+			droppedIds[i] = s->m_regionDroppedLastIds[i];
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2337,6 +2355,23 @@ void BotManager::CommandSee(const std::string & args)
 		"BotManager: cmd see:   (unresolved counts the last region id list incl. the bot itself; userin requests %u, units received %u, pending %u)",
 		(unsigned)s->m_userInRequests, (unsigned)s->m_userInUnits, (unsigned)pending);
 	WriteBotLog(note);
+	char diag[320];
+	snprintf(diag, sizeof(diag),
+		"BotManager: cmd see:   diag: inout in %u out %u fail %u | userin recv %u units %u stop %u sent %u | region recv %u ids %u dropped %u | move_unknown %u",
+		(unsigned)inoutIn, (unsigned)inoutOut, (unsigned)inoutParseFail,
+		(unsigned)reqUserInRecv, (unsigned)reqUserInUnits, (unsigned)reqUserInParseStop,
+		(unsigned)s->m_userInRequests, (unsigned)regionRecv, (unsigned)regionIdsLast,
+		(unsigned)regionDroppedTotal, (unsigned)moveUnknown);
+	WriteBotLog(diag);
+	if (droppedCount > 0)
+	{
+		char diagIds[256];
+		int len = snprintf(diagIds, sizeof(diagIds),
+			"BotManager: cmd see:   diag: last region dropped ids (%d):", droppedCount);
+		for (int i = 0; i < droppedCount && i < 8 && len > 0 && (size_t)len < sizeof(diagIds); i++)
+			len += snprintf(diagIds + len, sizeof(diagIds) - (size_t)len, " %u", (unsigned)droppedIds[i]);
+		WriteBotLog(diagIds);
+	}
 
 	for (int i = 0; i < copy.Count(); i++)
 	{

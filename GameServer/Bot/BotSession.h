@@ -177,4 +177,19 @@ public:
 	std::atomic<uint64> m_userInEcho;                      // written by OnPacket(): valid bit (63) | number of units parsed from the last WIZ_REQ_USERIN reply
 	std::atomic<uint32> m_npcUnresolved;                   // written by OnPacket(): ids of the last WIZ_NPC_REGION that were not in m_npcs
 	std::atomic<uint64> m_npcInEcho;                       // written by OnPacket(): valid bit (63) | number of NPCs parsed from the last WIZ_REQ_NPCIN reply
+
+	// Diagnostic counters for the one-way view investigation (plan F4-54, KI-DEG-01). They are written by
+	// OnPacket() only (any thread) and read by CommandSee on the IOCP thread; no behavior depends on them.
+	std::atomic<uint32> m_inoutIn;                         // WIZ_USER_INOUT entries parsed as present (in)
+	std::atomic<uint32> m_inoutOut;                        // WIZ_USER_INOUT entries parsed as gone (out)
+	std::atomic<uint32> m_inoutParseFail;                  // WIZ_USER_INOUT packets the parser rejected
+	std::atomic<uint32> m_reqUserInRecv;                   // WIZ_REQ_USERIN replies received
+	std::atomic<uint32> m_reqUserInUnits;                  // units parsed from all WIZ_REQ_USERIN replies
+	std::atomic<uint32> m_reqUserInParseStop;              // WIZ_REQ_USERIN replies whose declared count exceeded the parsed units
+	std::atomic<uint32> m_regionRecv;                      // WIZ_REGIONCHANGE packets received
+	std::atomic<uint32> m_regionIdsLast;                   // ids in the last WIZ_REGIONCHANGE list
+	std::atomic<uint32> m_regionDroppedTotal;              // units dropped by Retain across all WIZ_REGIONCHANGE packets
+	std::atomic<uint32> m_moveUnknown;                     // WIZ_MOVE for an id the table did not know
+	uint16 m_regionDroppedLastIds[8];                      // guarded by m_obsLock: ids dropped by the last Retain, at most 8
+	int m_regionDroppedLastCount;                          // guarded by m_obsLock: valid entries in m_regionDroppedLastIds
 };
