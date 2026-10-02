@@ -24,7 +24,7 @@ Priest'in görevi takımın **hayatta kalma kapasitesini** ve **buff/debuff duru
 | Girdi | Kaynak | Not |
 |---|---|---|
 | Party üyelerinin kesin HP/MP'si ve maks değerleri | `PARTY_HPCHANGE` (MEC-PTY-04) | Gözlem sözleşmesine uygun |
-| Üye başına gelen hasar hızı (son 2 sn ve 5 sn) | HP değişim akışından türetilir | `incoming_2s`, `incoming_5s` |
+| Üye başına gelen hasar hızı (son 2 sn ve 5 sn) | **Net** HP değişiminden, bilinen heal'ler ayrıştırılarak türetilir (§5.1) | `incoming_2s`, `incoming_5s` |
 | Üyelere yakın düşmanlar (sınıf, mesafe) | Bölge paketleri | Tehdit tahmini |
 | Üyeler üzerindeki buff/debuff'lar ve tahmini bitiş zamanı | Kendi cast'leri + gözlenen skill olayları (bölge yayını) | Süre = olay zamanı + skill süresi |
 | Kendi MP, recast'ler, sunucu saniyesi, envanter (taş, pot) | Kendi durumu | |
@@ -67,12 +67,17 @@ Priest'in görevi takımın **hayatta kalma kapasitesini** ve **buff/debuff duru
 ### 5.1 Tahmin
 
 ```
-hp_pred(u) = u.hp − P_PRI_PREHEAL_K · incoming_rate(u) · P_PRI_HORIZON − pending_heals(u)
+hp_pred(u) = clamp( u.hp − P_PRI_PREHEAL_K · incoming_est(u) · P_PRI_HORIZON + pending_heals(u),  0,  u.maxhp )
 deficit(u) = u.maxhp − hp_pred(u)
 ratio(u)   = hp_pred(u) / u.maxhp
 ```
 
-`pending_heals(u)`, diğer priest'in rezervasyonlarından gelen beklenen heal toplamıdır (§6).
+`pending_heals(u)` bekleyen heal'dir ve **eklenir** (eski sürümde çıkarılıyordu: bekleyen heal hedefi daha çok yardıma muhtaç gösterir, ikinci priest aynı hedefe heal yığardı). Kurallar:
+
+1. `pending_heals(u)`, ufuk (`P_PRI_HORIZON`) içinde hedefe **ulaşacak ve henüz uygulanmamış** dost heal toplamıdır: kendi başlattığı cast dahil, tüm `bekliyor` durumundaki `heal` rezervasyonları (§6, `docs/09` §4.3). İptal, hedefin ölmesi, menzil dışına çıkma, sahibin ölmesi ve tamamlanma durumlarında kayıt silinir; silinen kayıt `pending_heals`'a girmez.
+2. Tahmin `u.maxhp` ile **üstten**, 0 ile alttan sınırlanır (overheal tahmin edilen HP'yi artırmaz).
+3. `incoming_est` HP farkından doğrudan alınmaz: `PARTY_HPCHANGE` **net** HP taşır (aynı pencerede hasar ve heal birlikte olabilir). `incoming_est(u) = max(0, −ΔHP_pencere + uygulanmış_bilinen_heal_pencere) / pencere`; uygulanmış bilinen heal = pencerede gözlenen/yapılan dost heal EFFECTING'leri ve HoT tikleri. Bilinmeyen heal (insan müttefik, gözlenmemiş HoT) HP artışı olarak görünür ve `incoming_est`'i hafife alır `[A]`: T-PRI-02 ve T-PRI-03 ile ölçülür. Pencereler 2 sn ve 5 sn ayrı hesaplanır.
+4. `ratio_after_pending` (§6) = `hp_pred / u.maxhp` (bekleyen heal dahil).
 
 ### 5.2 Skill seçimi (tek hedef)
 
@@ -101,7 +106,7 @@ Party'de en fazla iki priest vardır. Önerilen eşleşme P-HD + P-HB.
 
 | Konu | Kural |
 |---|---|
-| Heal rezervasyonu | Priest heal'e karar verdiğinde `TeamBlackboard`'a `{hedef, skill, beklenen miktar, bitiş = şimdi + cast + 0,3 sn}` yazar. Diğer priest aynı hedefe yalnızca `ratio_after_pending < EMERG` ise heal atar. |
+| Heal rezervasyonu | Priest heal'e karar verdiğinde `TeamBlackboard`'a `{hedef, skill, beklenen miktar, bitiş = şimdi + cast + 0,3 sn}` yazar. Diğer priest aynı hedefe yalnızca `ratio_after_pending < EMERG` ise heal atar (`ratio_after_pending` = §5.1 `hp_pred/maxhp`, bekleyen heal **dahil**; kayıt yaşam döngüsü `docs/09` §4.3). |
 | Çift heal metriği | MET-HEAL-04 ≤ %5 hedefi |
 | Görev paylaşımı | P-HB: buff kapsaması birincil, heal ikincil. P-HD: debuff/çağrı ve diriltme birincil, heal ikincil. **Acil heal her ikisinin de birinci önceliğidir.** |
 | Hedef dağıtımı | Her üye için "birincil healer" atanır: üyeye en yakın ve MP'si yüksek priest. Birincil healer'ın bir rezervasyonu varken diğeri ikinci acil durumu alır. |
@@ -273,6 +278,7 @@ on_tick(p):
 | AC-PRI-06 | MET-DEBUFF-04 yanlış çağrı = 0; MET-CHAT-01 limit ihlali = 0 |
 | AC-PRI-07 | MET-HEAL-03 kurtarılan kritik durum sayısı baseline'dan düşük değil (öğrenme sonrası) |
 | AC-PRI-08 | Güvensiz diriltme (diriltme sonrası 5 sn içinde ölüm) ≤ %10 |
+| AC-PRI-09 | Rezervasyon işareti ve temizliği (birim testi + T-PRI-03): bekleyen heal `hp_pred`'i **artırır** ve `maxhp`'yi aşmaz; iptal/hedef ölümü/menzil dışı/sahip ölümü/tamamlanma sonrası `pending_heals` 0; aynı hedefe aynı anda ikinci priest heal'i yalnızca `ratio_after_pending < EMERG` iken; MET-HEAL-04 ≤ %5 |
 
 ## 17. Bağımlılıklar ve açık sorular
 
@@ -285,3 +291,4 @@ on_tick(p):
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §5.1 `pending_heals` işareti düzeltildi (`+`, `maxhp` ile sınırlı), `incoming_est` net HP değişiminden ayrıştırıldı, AC-PRI-09 |

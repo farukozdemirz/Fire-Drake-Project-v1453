@@ -164,8 +164,38 @@ struct Action { ActionType type; uint32 skillId; int16 targetId; float x, z; std
 struct ActionResult { uint64 decisionId; bool ok; int16 failCode; std::string reason; uint64 latencyMs; };
 ```
 
-> **Uygulama notu (F4-16, ADR-0017 Eki F4-16):** `PerceptionSnapshot` `BotCore/Perception.h`'de kısmen uygulandı: `SelfState` (HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor), düşman/müttefik oyuncu listeleri (`UnitView`, HP/MP/ad yok, en çok 32, yakından uzağa) ve NPC listesi (`NpcView`) `BuildSnapshot` ile kurulur; `/bot snap <bot>` ile sınanır. `nav` (`NavView`) henüz yoktur (F5). **F4-18 (DOĞRULANDI, ADR-0017 Eki F4-18):** `team` (`TeamView`) uygulandı: bot alıcısına gelen `WIZ_PARTY` paketlerinden (`PARTY_INSERT` üye kaydı, `PARTY_HPCHANGE`, `PARTY_REMOVE`, `PARTY_DELETE`) kurulan `TeamTable` + `BuildTeam` (üye başına ad/sınıf/seviye/HP/MP, lider, ölü, görüşte mi, `ageMs`); `PerceptionSnapshot.team` `BuildSnapshot` tarafından değil `BuildTeam` ile doldurulur; `/bot snap` `team`/`member` satırları yazar; seviye/sınıf değişimi izlenmez. **F4-17 (HAZIR, ADR-0017 Eki F4-17):** `SelfState`'e botun kendi HP/MP pot stoku, ortak pot süresi, cast boşluğu, skill başına kalan yeniden-kullanım süresi ve Type4 buff listesi eklenir (`/bot snap` ile sınanır); tip kapısı kalan süresi ve pot dışı stok yoktur. **F4-18 (HAZIR, ADR-0017 Eki F4-18):** `team` (`TeamView`) yalnızca bot alıcısına gelen `WIZ_PARTY` paketlerinden kurulan takım tablosundan doldurulur (üye başına HP/MP, sınıf, seviye, lider, ölü, görüşte mi; konum yalnızca görüş alanındaysa); seviye/sınıf değişimi ve `nav` (`NavView`) henüz yoktur.
+> **Uygulama notu (F4-16, ADR-0017 Eki F4-16):** `PerceptionSnapshot` `BotCore/Perception.h`'de kısmen uygulandı: `SelfState` (HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor), düşman/müttefik oyuncu listeleri (`UnitView`, HP/MP/ad yok, en çok 32, yakından uzağa) ve NPC listesi (`NpcView`) `BuildSnapshot` ile kurulur; `/bot snap <bot>` ile sınanır. `nav` (`NavView`) henüz yoktur (F5). **F4-18 (DOĞRULANDI, ADR-0017 Eki F4-18):** `team` (`TeamView`) uygulandı: bot alıcısına gelen `WIZ_PARTY` paketlerinden (`PARTY_INSERT` üye kaydı, `PARTY_HPCHANGE`, `PARTY_REMOVE`, `PARTY_DELETE`) kurulan `TeamTable` + `BuildTeam` (üye başına ad/sınıf/seviye/HP/MP, lider, ölü, görüşte mi, `ageMs`); `PerceptionSnapshot.team` `BuildSnapshot` tarafından değil `BuildTeam` ile doldurulur; `/bot snap` `team`/`member` satırları yazar; seviye/sınıf değişimi izlenmez. **F4-17 (KAPANDI, ADR-0017 Eki F4-17):** `SelfState`'e botun kendi HP/MP pot stoku, ortak pot süresi, cast boşluğu, skill başına kalan yeniden-kullanım süresi ve Type4 buff listesi eklenir (`/bot snap` ile sınanır); tip kapısı kalan süresi ve pot dışı stok yoktur.
 
+### 5.2a Gözlem kaynak sınıfları, tazelik ve görünürlük (değerlendirme 2026-10-02)
+
+`PerceptionSnapshot` (§5.2) bugün konum/sınıf/seviye/ölü bilgisini taşır; düşman HP'si, adı, skill olayları, durum etkileri ve zaman içi değişim (hız, hasar/heal hızı) karar katmanına henüz taşınmıyor (planlar F4-50..F4-53, `docs/reports/degerlendirme-2026-10-02.md` DEG-08). Aşağıdaki sözleşme bu alanların nasıl etiketleneceğini belirler.
+
+**Kaynak sınıfları** (her gözlem kaydı `src` ve `t_obs` taşır):
+
+| Sınıf | Tanım | Örnek | Karar katmanı |
+|---|---|---|---|
+| `O` doğrudan gözlem | Botun kendi alıcısına gelen paketlerden | `WIZ_USER_INOUT`/`WIZ_MOVE` (konum, ad, sınıf), `WIZ_TARGET_HP` cevabı, `PARTY_HPCHANGE`, kendi `CUser` durumu | Kullanır |
+| `P` takımdan alınan | Başka bir üyenin `O` gözlemi, `TeamBlackboard` üzerinden `P-TEAM-COMMS-DELAY` (300 ms) gecikmeli; kaynak üye ve gözlem zamanı saklanır | ortak hedefin başka üyece yoklanmış HP'si | Kullanır; yaş = `t_obs` + gecikme |
+| `E` tahmin | `O`/`P` gözlemlerinden türetilen: hız, ölü-hesap (dead reckoning) konumu, buff bitiş zamanı, `incoming_est` | gözlenen buff'ın tahmini bitişi | Kullanır, **tahmin etiketiyle**; hata payı kaydedilir |
+| `G` gerçek sunucu bilgisi | Sunucu nesnesinden okunan, botun bilemeyeceği gerçek durum | düşman MP'si/cooldown'ı/envanteri, `CUser` üzerinden düşman HP'si, `/bot list` değerleri | **Kullanamaz.** Yalnızca değerlendirme/test/teşhis kodu; telemetri `truth_*` öneki ile yazar ve karar logunun `obs` bloğuna girmez; karar kodundan erişim AC-LRN-03 statik denetimiyle engellenir |
+
+**Görünürlük, tazelik ve görüş hattı üç ayrı kavramdır:**
+
+- `in_region`: birim botun 3×3 bölge tablosunda (USER_INOUT/REGIONCHANGE ile yönetilen). Bu bir **bilgi alanı** kanıtıdır, görüş hattı kanıtı **değildir**: duvar arkasındaki birim `in_region = true` olabilir (`docs/03` §16).
+- `pos_age_ms`: konumun son güncellenme yaşı (son `WIZ_MOVE`/IN/respawn paketi). Son paketi `speed = 0` olan durağan birimin `pos_age`'i büyür ama konumu **geçerlidir**; `UnitObs.lastSeenMs` yalnızca "son paketin zamanı"dır (görülme değil).
+- `los`: `unknown | clear | blocked`; yalnızca `los_grid` testi (`docs/12` §5) ile; varsayılan `unknown`; `in_region` hiçbir zaman `clear`'a dönüştürülmez.
+
+**Geçerlilik süreleri** `[A]` (T-PERC-01 ile ölçülür):
+
+| Birim durumu | Süre | Anlam |
+|---|---|---|
+| Hareketli (son paket `speed > 0`) | `pos_age ≤ 3,1 sn` (2 paket periyodu) | taze |
+| Hareketli | 3,1–6 sn | bayat: yalnızca `E` (ölü-hesap) kestirimiyle kullan |
+| Hareketli | > 6 sn | kayıp aday; `TARGET_LOST_VIS` sayacı çalışır |
+| Durağan (son paket `speed = 0`) | sınırsız | geçerli; yalnızca `OUT`/bölge değişimiyle düşer |
+| `in_region = false` | — | görünmez: hedef olamaz; son konum 5 sn "hayalet" tehdit bölgesi olarak tutulur, hedef olarak değil |
+
+`TARGET_LOST_VIS` (`docs/09` §5.4) = hedef `in_region = false` **veya** "kayıp aday" ≥ 3 sn. Gizli/görünmez oyuncu (`invisibility ≠ 0`) hedeflenmez; süzme karar katmanının işidir (ADR-0017 Eki F4-16).
 ### 5.3 Rol profili
 
 | Alan | Örnek |
@@ -230,6 +260,7 @@ stateDiagram-v2
 - **CASTING/EFFECTING:** `CastStart` sonra `notBeforeMs = now + castTime` ile `CastEffect`. Arada iptal koşulları (SK-02) her tick kontrol edilir.
 - **Sonuç eşleme:** Sunucudan dönen `WIZ_MAGIC_PROCESS` (EFFECTING/FAIL) veya `WIZ_ATTACK` sonucu, `decisionId` ile eşlenir. 1500 ms içinde sonuç gelmezse `TIMEOUT`.
 - **Sunucu saniyesi:** `UNIXTIME` okunarak "aynı saniye" kapıları önceden kontrol edilir (MEC-MAG-10).
+- **Aksiyon desteği kapsamı (2026-10-02):** `CastStart`/`CastEffect` bugün yalnızca tek hedefli, uçmayan, eşyasız Type1/Type3 skill'i kabul eder (`ActionExecutor.cpp:721-729`; diğerleri `unsupported_skill`). Buff/debuff (Type4), cure/diriltme (Type5), uçan/alan, eşya gerektiren skill ve summon (Type8) için hangi fazda hangi planın destek vereceği ve zincir (davranış → skill → aksiyon → algı → oyun içi kabul) `docs/17` §2.1'dedir.
 
 ## 9. Parametre kayıt defteri
 
@@ -310,3 +341,4 @@ Mevcut dosyalarda beklenen küçük değişiklikler: [`shared/SocketDefines.h`](
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §5.2a gözlem kaynak sınıfları (O/P/E/G), tazelik/görünürlük/LoS ayrımı ve geçerlilik süreleri; §8 aksiyon desteği notu; §5.2 notundaki F4-17/F4-18 "HAZIR" kalıntısı temizlendi |
