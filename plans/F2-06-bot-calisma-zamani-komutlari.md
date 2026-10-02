@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03 (`KAPANDI`: spawn, `BotSession`), F2-04 (`KAPANDI`: `BeginDespawn`), F2-05 (`KAPANDI`: `ResetForRespawn`) |
@@ -286,20 +286,45 @@ file GameServer/Bot/* GameServer/ChatHandler.cpp GameServer/GameServerDlg.h
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F2-06` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F2-06` @ `9ca42d2` (uygulama `f6d5c55`, rapor `9ca42d2`); çalışma ağacı temiz; otonom gece modu (`AUTO_LOOP=1`), birleştirme/push yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `BotManager.cpp`, `ChatHandler.cpp`, `GameServerDlg.cpp` touch'lanıp `./tools/build.sh Release` rc=0 (tam kod üretimi, 13205 işlev). Uyarılar yalnızca eski satırlar: `GameServerDlg.cpp(816/1143/1802)` C4834/C4267 ve `UpgradeHandler.cpp(634/862)` C4789; `Bot\` ve `ChatHandler.cpp`'de uyarı yok; `GameServerDlg.cpp` farkı yalnızca `.h`'de tek satır |
+| K2 | ✔ | Aynı üç dosya touch'lanıp `./tools/build.sh Debug` rc=0; `BotManager`/`ChatHandler` uyarısı yok, `GameServerDlg.cpp` yalnızca eski 1143/1802 |
+| K3 | ✔ | `git diff --numstat gece/2026-10-02...bot/F2-06`: `BotManager.cpp` 350/0, `BotManager.h` 18/0, `ChatHandler.cpp` 33/0, `GameServerDlg.h` 1/0, plan 25/8; başka dosya yok, merge commit yok. `ChatHandler.cpp` blob'u BOM ile başlıyor (`efbb bf`); çalışma ağacında 1197 satırın tamamı CRLF (depo `core.autocrlf=true`, blob LF) |
+| K4 | ✔ | `grep -n`: `EnqueueCommand` çağrısı yalnızca `ChatHandler.cpp:1173`; `ProcessCommands` yalnızca `BotManager.cpp:372` (`Tick()`); `PollCommandFile` `:385` (`ProcessCommands`); `ExecuteCommand` `:394` ve `:430` (`ProcessCommands`/`PollCommandFile`); `CommandSpawn/Despawn/List` `:473-477` (`ExecuteCommand`); `FindSession` `:524`, `:601`. Konsol thread'inden `EnqueueCommand` ve `isEnabled()` dışında `BotManager` üyesi çağrılmıyor. Çalışma zamanı: `tick OK on IOCP thread`, komutlar sorunsuz |
+| K5 | ✔ | `m_commandLock` yalnızca `:310` (`EnqueueCommand`) ve `:389` (`ProcessCommands` içinde `lines.swap(m_commandQueue)` bloğu); blok `:390` kapanır, `ExecuteCommand` döngüsü `:393-394` kilit dışında |
+| K6 | ✔ | `ProcessCommands` `:382-383` `now - m_firstTickTime < SPAWN_START_DELAY_MS` ise `return` (`PollCommandFile` öncesi); `PollCommandFile` `:399-401` `COMMAND_POLL_MS` sınırı; sıra `remove(CLAIMED)` → `rename` (başarısızsa sessiz `return`) → `fopen` → okuma → `fclose` → `remove(CLAIMED)` (`:404-435`). Çalışma zamanı: komut dosyası ilk tick'ten ~11 sn sonra (≥5 sn) alındı |
+| K7 | ✔ | `ExecuteCommand` `:462-466` `m_respawnCycles != 0` → `cmd rejected`; `CommandSpawn` `:526-531` yalnızca `PHASE_DESPAWNED`'i `ResetForRespawn`, diğer fazlar `ignored (phase ...)`; `CommandDespawn` yalnızca `PHASE_IN_GAME`'i `BeginDespawn`. Çalışma zamanı: `ignored (phase in_game)`, `ignored (phase despawned)`, senaryo 4 reddetme |
+| K8 | ✔ | `grep -n "cmd \|command file"`: tüm metinler §5.5-§5.7 ile birebir (`:411, :441, :447, :459, :464, :481, :501, :518, :530, :537, :545, :552, :560, :588, :605, :617, :633, :647`). `BotManager.cpp`'deki `printf` yalnızca eski `:47` (`fprintf` log) ve `:260`; `ChatHandler.cpp` işleyicisinde üç `printf` |
+| K9 | ✔ | `git diff` yalnızca eklemeler (silinen satır 0) ve `Tick()`'te tek `ProcessCommands();` satırı; `ParseSpawnList`/`TickSessions`/`PollDespawn`/`StartSession`/`FailSession`/`BeginDespawn`/`Startup`/`BotSession.*` gövdelerinde satır yok |
+| K10 | ✔ | `EnqueueCommand` `:307-308` `!m_enabled` → `false`; `ENABLED=0`'da zamanlayıcı kurulmaz (`Tick`/`ProcessCommands` çalışmaz); `/bot` işleyicisi `isEnabled()` yoksa yalnızca `printf`. Çalışma zamanı senaryo 6: `ENABLED=0` + `BotCommands.txt` → 30 sn sonra dosya yerinde (21 bayt), bot logunda yeni satır 0 |
+| K11 | ✔ | `file`: `Bot/*` beşi "ASCII text, with CRLF"; `ChatHandler.cpp` "UTF-8 (with BOM) ... CRLF"; `GameServerDlg.h` "UTF-8 ... CRLF"; eklenen 402 satırda boşluk girintisi 0, Allman, yorumlar İngilizce |
+| K12 | ✔ | `git status --short` boş (derleme ve çalışma zamanı testlerinden sonra da); uygulayıcı sunucu çalıştırmadı (doğrulama öncesi 0/3 `[DOWN]`); `BotCommands.txt` ve `.processing` depoda/çalışma dizininde yok, ini md5 `d1646328...` aynı |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Çalışma zamanı doğrulaması (Release, `GameServer.ini`'ye `[BOT]` eklendi, her senaryodan sonra yedekten geri yüklendi; dosyalar CRLF ile atomik `mv` yazıldı; sunucular kapatıldı, 0/3 UP):
+  1. **Komut dosyası, spawn/list** (`MAX_BOTS=16`, `DESPAWN_AFTER_SEC=0`): `spawn BotWP_K,botmf_k` + `spawn Foo` + `list` → `BotWP_K queued`, `BotMF_K queued`, `2 queued, 0 ignored`, `unknown bot name 'Foo' ignored`, `list: 2 session(s), pool free 16/16` (ikisi `queued`), `command file: 3 command(s) executed`; iki `in game` (slot 2984/2985), `spawn complete: 2/2 in game, 0 failed`; sonraki `list` → `pool free 14/16`, `in_game` + slotlar. Dosya ve `.processing` kayboldu.
+  2. **despawn:** `despawn BotWP_K` → `despawning` + `despawned (logout save 108 ms, ..., names cleared yes)`; `despawn all` → `1 despawning, 1 not in game`, ikinci `despawned`; tekrar `despawn all` → `0 despawning, 2 not in game`; `list` → `pool free 16/16`, iki `despawned despawns=1`.
+  3. **Yeniden spawn:** `spawn BotWP_K` → `queued again` → `in game` (slot 2984 yeniden); ardından `spawn BotWP_K` → `ignored (phase in_game)`; `despawn Foo` → `ignored (no such session)`; `despawn BotMF_K` → `ignored (phase despawned)`; `spawn BotMF_K, BotWP_E` → `queued again` + `queued` (boşluklu liste), `list` → `pool free 13/16`.
+  4. **Reddetme** (`SPAWN_ON_START=BotWP_K, DESPAWN_AFTER_SEC=2, RESPAWN_CYCLES=2`): `spawn BotMF_K` ve `list` → `cmd rejected (RESPAWN_CYCLES is active)`; BotMF_K spawn olmadı; döngü `respawn cycles done: 3 spawns, 3 despawns, 0 failed, 0 stuck, 0 names left, pool free 16/16` ile bitti.
+  5. **Gerilemesiz (F2-05):** 4 bot, `DESPAWN_AFTER_SEC=2, RESPAWN_CYCLES=4`, dosya yok → 20 `in game`, `spawn complete: 4/4`, `despawn complete: 4/4 released ... pool free 16/16`, `respawn cycles done: 20 spawns, 20 despawns, 0 failed, 0 stuck, 0 names left, pool free 16/16, elapsed 24 s`; `cmd`/`command file` satırı 0.
+  6. **`ENABLED=0`:** dosya 30 sn sonra yerinde, bot logunda yeni satır 0.
+  7. **Kenar durumlar** (senaryo 1-3 oturumunda): `# yorum` ve boş satır atlanır; `foo bar` → `unknown command 'foo'`; argümansız `spawn`/`despawn` → `no names given`; `SPAWN`/`LIST extra` büyük-küçük harf ve fazla argümanla çalışır; 70 satırlık dosya → 64 `cmd 'list'`, `more than 64 lines, rest ignored`, `64 command(s) executed`.
+  8. **Sağlık:** sunucu 3/3 UP, `GameServer.log` 32 → 32 satır (yeni hata yok), `FAILED`/`TIMEOUT`/`stuck` satırı yok (yalnızca `0 failed` özeti). Konsol `/bot` yolu otomatikleştirilemez: T-ARCH-04 (`docs/STATUS.md` "Proje sahibi testleri") insan testi olarak bekliyor; kriteri engellemez.
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not (düşük): `PollCommandFile` `fgets` tamponu 256 bayt (`BotManager.cpp:419-420`). 255 karakterden uzun bir satır parçalanır, ikinci parça ayrı komut olur (çalışma zamanında 300 karakterlik `spawn xxx...` → `unknown bot name` + ikinci parça için `unknown command`). Zararsız (yalnızca log), geçerli komutlar 255 karakterden kısadır; plan satırın en fazla 255 olduğunu varsayıyor. Düzeltme gerekmez.
+  2. Not: `rename` yazan süreç dosyayı açıkken de başarılı oluyor (drvfs/NTFS bu ortamda paylaşım engeli koymuyor; deney: dosya açık tutulurken alındı ve içerik tam okundu). Yarım yazılmış dosya riski, yazan tarafın dosyayı tek seferde yazmasıyla (atomik `mv`) giderilir; otomasyon için öneri: önce geçici ada yazıp `mv` etmek. ADR-0015/§8 ile uyumlu, kod değişikliği gerekmez.
+  3. Not: `CommandSpawn` havuz boyutunu denetlemez (plan böyle istiyor); en çok 12 sabit ad olduğundan `MAX_BOTS < 12` ile fazla oturum `StartSession` içinde `FailSession` ile düşer (mevcut davranış).
+  4. Not: `spawn complete` özeti süreç başına bir kez; komutla gelen botlar için tekrar yazılmaz (plan §3 kabul edilen davranış); senaryo 1'de özet `2/2` olarak doğru çıktı.
+  5. Not: Uygulayıcı raporu dürüst: commit listesi, dosya satır sayıları, satır numaraları (K4/K5/K6/K7/K8) ve derleme iddiaları gerçekle uyuşuyor; plandan sapma yok. Raporun "ChatHandler.cpp:1173" iddiası doğru.
+  6. Not: Koşular bot kayıtlarını DB'de logout kaydıyla günceller (gerçek oyuncuyla aynı yol); USERDATA okunmadı (gizlilik kuralı).
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
 
 ```
-…
+(yok)
 ```
