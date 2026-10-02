@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-08` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-07 (`OnPacket()` ekleme kalıbı, `Regene` iskeleti) — `KAPANDI`; F4-06 (`RegionDelta` görüş denetimi, `TargetHpTarget` test sürücüsü kalıbı) — `KAPANDI`; F4-05 (`m_stateEcho` kullanımı) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -376,6 +376,21 @@ git diff --check gece/2026-10-02...bot/F4-08
   - `pinvite` hedefi bot oturumu bulunamazsa plan beklenen `unknown or not spawned bot '<ad|?>'` biçimi kullanıldı; hedefin kendi oturumu `s` ile aynıysa `RequestPartyInvite` içindeki `bad_target` reddi uygulanır (komut katmanı ayrıca engellemez).
 - Açık sorular:
   - Yok (bloke eden). Not: `Send()`'in `WIZ_PARTY`/`WIZ_STATE_CHANGE` cevaplarını bot alıcısına ilettiği varsayımı `[A]`; çalışma zamanında Claude teyit edecek (plan §8-c). İnsan testleri T-ARCH-13 ve T-PARTY-01 bekliyor.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-08` (taban: `gece/2026-10-02`); düzeltme commit'i bu turda (yalnızca `GameServer/Bot/ActionExecutor.cpp`, 1 satır).
+- Değişen dosyalar ve nedenleri:
+  - `GameServer/Bot/ActionExecutor.cpp` (`RequestPartyInvite`, `ACTION_SUBMIT` alanları, Doğrulama Turu 1 bulgu 1): `"mode":` alan adı `"invite_mode":` yapıldı; değerler (`"create"`/`"insert"`) ve tek satır dışındaki hiçbir kod değişmedi. Böylece telemetri satırının ortak `mode` alanı (`Telemetry.cpp`, `"live"`) ile yinelenen anahtar çakışması bitti.
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `ActionExecutor.cpp` yeniden derlendi, **uyarı yok**.
+  - `./tools/build.sh Debug` rc=0; `ActionExecutor.cpp` yeniden derlendi, **uyarı yok**.
+  - Kalan uyarılar eski satırlarda (`GameServerDlg.cpp:816/1143/1802`).
+  - `./tools/run-tests.sh Release`: `36 tests, 0 failed` (rc=0); `Debug`: `36 tests, 0 failed` (rc=0).
+  - `grep -n '"mode"' GameServer/Bot/ActionExecutor.cpp` → çıktı boş (rc=1).
+- Plandan sapmalar: Yok; düzeltme talimatı birebir uygulandı. Başka dosyaya dokunulmadı (`docs/**`, `BotCombat.h`, testler, `GameServer/**` diğer dosyaları dahil); sunucu çalıştırılmadı.
+- Açık sorular: Yok.
 
 ---
 
