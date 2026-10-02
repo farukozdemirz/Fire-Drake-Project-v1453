@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 
@@ -453,6 +454,12 @@ void BotManager::EmitPerfSample(std::chrono::steady_clock::time_point now)
 		(unsigned)st.queueLen, (unsigned long long)st.written,
 		(unsigned long long)st.droppedSoft, (unsigned long long)st.droppedHard);
 
+	m_matchPerfSamples++;
+	if (p95 > m_matchP95MaxUs)
+		m_matchP95MaxUs = p95;
+	if (maxUs > m_matchTickMaxUs)
+		m_matchTickMaxUs = maxUs;
+
 	Telemetry::Instance().Emit(TEL_SUMMARY, "PERF_SAMPLE", -1, nullptr, fields, true);
 
 	m_tickUs.clear();
@@ -561,10 +568,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandDespawn(args);
 	else if (_stricmp(verb.c_str(), "list") == 0)
 		CommandList();
+	else if (_stricmp(verb.c_str(), "match") == 0)
+		CommandMatch(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -734,6 +743,167 @@ void BotManager::CommandList()
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount);
 		WriteBotLog(message);
 	}
+}
+
+void BotManager::CommandMatch(const std::string & args)
+{
+	std::vector<std::string> words;
+	{
+		size_t pos = 0;
+		while (pos < args.size())
+		{
+			size_t start = args.find_first_not_of(" \t\r\n", pos);
+			if (start == std::string::npos)
+				break;
+			size_t end = args.find_first_of(" \t\r\n", start);
+			words.push_back(args.substr(start,
+				end == std::string::npos ? std::string::npos : end - start));
+			pos = end == std::string::npos ? args.size() : end + 1;
+		}
+	}
+
+	if (words.empty())
+	{
+		WriteBotLog("BotManager: cmd match: usage: match start <scenario> [seed] | match end [result]");
+		return;
+	}
+
+	const std::string & sub = words[0];
+
+	if (_stricmp(sub.c_str(), "start") == 0)
+	{
+		if (words.size() < 2)
+		{
+			WriteBotLog("BotManager: cmd match start: no scenario given");
+			return;
+		}
+
+		if (words.size() > 3)
+		{
+			WriteBotLog("BotManager: cmd match start: too many arguments");
+			return;
+		}
+
+		const std::string & scenario = words[1];
+		uint32 seed = 0;
+
+		if (words.size() == 3)
+		{
+			const std::string & seedText = words[2];
+			bool digits = !seedText.empty() && seedText.size() <= 10;
+			for (size_t i = 0; digits && i < seedText.size(); i++)
+			{
+				if (seedText[i] < '0' || seedText[i] > '9')
+					digits = false;
+			}
+
+			if (!digits)
+			{
+				char message[224];
+				snprintf(message, sizeof(message),
+					"BotManager: cmd match start: bad seed '%s'", seedText.c_str());
+				WriteBotLog(message);
+				return;
+			}
+
+			unsigned long long value = strtoull(seedText.c_str(), NULL, 10);
+			if (value > 4294967295ULL)
+			{
+				char message[224];
+				snprintf(message, sizeof(message),
+					"BotManager: cmd match start: bad seed '%s'", seedText.c_str());
+				WriteBotLog(message);
+				return;
+			}
+			seed = (uint32)value;
+		}
+
+		std::string composition = "\"composition\":[";
+		uint32 inGame = 0;
+		bool first = true;
+		for (size_t i = 0; i < m_sessions.size(); i++)
+		{
+			if (m_sessions[i]->m_phase != BotSession::PHASE_IN_GAME)
+				continue;
+
+			if (!first)
+				composition += ",";
+			first = false;
+			composition += "\"";
+			composition += Telemetry::EscapeJson(m_sessions[i]->m_charName);
+			composition += "\"";
+			inGame++;
+		}
+		composition += "],\"in_game\":";
+		composition += std::to_string(inGame);
+
+		std::string id, error;
+		if (Telemetry::Instance().BeginMatch(scenario, seed, composition, id, error))
+		{
+			m_matchPerfSamples = 0;
+			m_matchP95MaxUs = 0;
+			m_matchTickMaxUs = 0;
+
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd match start: %s started (%u bot(s) in game)",
+				id.c_str(), (unsigned)inGame);
+			WriteBotLog(message);
+		}
+		else
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd match start: refused (%s)", error.c_str());
+			WriteBotLog(message);
+		}
+		return;
+	}
+
+	if (_stricmp(sub.c_str(), "end") == 0)
+	{
+		if (words.size() > 2)
+		{
+			WriteBotLog("BotManager: cmd match end: too many arguments");
+			return;
+		}
+
+		std::string result = words.size() == 2 ? words[1] : "completed";
+
+		uint32 inGame = 0;
+		for (size_t i = 0; i < m_sessions.size(); i++)
+		{
+			if (m_sessions[i]->m_phase == BotSession::PHASE_IN_GAME)
+				inGame++;
+		}
+
+		char extra[192];
+		snprintf(extra, sizeof(extra),
+			"\"in_game\":%u,\"perf_samples\":%u,\"tick_p95_max_us\":%u,\"tick_max_us\":%u",
+			(unsigned)inGame, (unsigned)m_matchPerfSamples,
+			(unsigned)m_matchP95MaxUs, (unsigned)m_matchTickMaxUs);
+
+		std::string id, error;
+		long long durationMs = 0;
+		if (Telemetry::Instance().EndMatch(result, extra, id, durationMs, error))
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd match end: %s ended (result %s, %lld ms)",
+				id.c_str(), result.c_str(), durationMs);
+			WriteBotLog(message);
+		}
+		else
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd match end: refused (%s)", error.c_str());
+			WriteBotLog(message);
+		}
+		return;
+	}
+
+	WriteBotLog("BotManager: cmd match: usage: match start <scenario> [seed] | match end [result]");
 }
 
 void BotManager::ParseSpawnList(const std::string & list)
