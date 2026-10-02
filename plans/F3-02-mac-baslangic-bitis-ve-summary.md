@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-01 (`KAPANDI`: `Telemetry` kuyruğu/yazıcı, `PERF_SAMPLE`), F2-06 (`KAPANDI`: komut çekirdeği, ADR-0015) |
@@ -269,13 +269,42 @@ file GameServer/Bot/*
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (derleme Release/Debug rc=0; çalışma zamanı doğrulaması Claude'da, plan §7 sonu).
+- Branch / commit'ler: `bot/F3-02` (taban: `gece/2026-10-02`). Tek commit: `b9b9be3` `[F3-02] Maç bağlamı: MATCH_START/END, match dosyası, summary.json ve /bot match` (+ bu plan dosyasındaki `Durum`/rapor değişikliği aynı commit'te).
 - Değişen dosyalar ve neden:
+  - `GameServer/Bot/Telemetry.h`: `#include <map>`; `TelemetryControl` enum'u ve `TelemetryEvent::ctl`; public `BeginMatch`/`EndMatch`/`IsMatchActive`/`EscapeJson`; özel `EmitControl`/`EndMatchLocked`/`AppendLine`/`FlushBuffer`/`OpenMatchFile`/`CloseMatch` ve maç durum üyeleri (plan §5.2).
+  - `GameServer/Bot/Telemetry.cpp`: statik `IsSafeToken`/`FormatUtc`/`FileExists`; maç API'leri ve denetim olayı; `Stop()` açık maçı `aborted` kapatır ve yazıcı sonrası `m_matchFile`'ı kapatır; `WriteBatch` hedef değişiminde boşaltan döngüye çevrildi; `AppendLine`/`FlushBuffer`/`OpenMatchFile`/`CloseMatch` (plan §5.3).
+  - `GameServer/Bot/BotManager.h`: `CommandMatch` bildirimi; maç perf sayaç üyeleri (plan §5.4).
+  - `GameServer/Bot/BotManager.cpp`: `<cstdlib>` (strtoull); `EmitPerfSample()` maç sayaçları; `ExecuteCommand`'a `match` dalı ve bilinmeyen komut metni; `CommandMatch` (plan §5.5).
 - Derleme sonucu (`tools/build.sh Release` son satırlar):
+  ```
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  ```
+  `RC=0`. Uyarı yok; çıktıda görünen tek uyarılar eski satırlardan (`GameServerDlg.cpp` 816/1143/1802, `UpgradeHandler.cpp` 634/862 C4789); `Telemetry.cpp`/`BotManager.cpp` için uyarı yok. `./tools/build.sh Debug` de `RC=0`, yalnızca `GameServerDlg.cpp` C4267 (1143, 1802).
 - Kabul kriterleri öz-değerlendirme (K1..K12):
+  - K1: ✔ Release rc=0; `Bot\` yeni kodunda uyarı yok.
+  - K2: ✔ Debug rc=0.
+  - K3: ✔ `git diff --stat gece/2026-10-02...bot/F3-02` yalnızca §4'teki 4 dosyayı + planı içerir; `.vcxproj`/`.filters` yok. `BotManager.cpp`'deki tek `-` satırı, izinli bilinmeyen-komut metni değişikliğidir:
+    ```
+    -			"BotManager: cmd unknown command '%s' (spawn, despawn, list)", verb.c_str());
+    ```
+    Diğer tüm `-` satırları `Telemetry.cpp`'nin eski `WriteBatch` gövdesindendir.
+  - K4: ✔ `m_matchLock` yalnızca `Stop()` (189), `BeginMatch` (301), `EndMatch` (395), `IsMatchActive` (461); kilit sırası `m_matchLock`→`m_lock` (355, 420) (ters yok). `m_matchFile`/`m_curMatch*`/`m_matchLines`/`m_matchCounts` yalnızca writer yolu (`WriteBatch` 510-530, `AppendLine` 537, `OpenMatchFile` 592-604, `CloseMatch` 622-679) ve `Stop()` (209-212, yazıcı birleştikten sonra). `Emit()` gövdesi F3-01 ile aynı.
+  - K5: ✔ `m_lock` yalnızca: `Emit` 244 (sınır + push_back), `GetStats` 263, `EmitControl` 293 (push_back), `BeginMatch` 355 ve `EndMatchLocked` 420 (sayaç okuma), `WriterLoop` 481 (swap+reserve), `FlushBuffer` 573 (`m_written +=`). Kilit altında `fwrite`/`snprintf`/`Emit`/`fopen` yok.
+  - K6: ✔ `EmitControl` `SOFT_LIMIT`/`HARD_LIMIT` denetimi içermez; `Emit()` değişmedi.
+  - K7: ✔ `AppendLine` `m_curMatchId` boşken `"match":"-"` yazar; format dizesi F3-01 ile aynı (`head` tamponu 96→160 büyütüldü, çıktı değişmez); `"mode":"live"` sabit; denetim olaylarında `name` yazılmaz.
+  - K8: ✔ `IsSafeToken` (`[A-Za-z0-9_.-]`, 1..32, `.` ile başlamaz) hem `scenario` hem `result` için; dosya yolu yalnızca doğrulanmış `id`'den; `seed` yalnızca ≤10 hane rakam ve `strtoull` ile `0..4294967295`, dışı `bad seed` ile reddedilir.
+  - K9: ✔ `Stop()` açık maçı `EndMatchLocked("aborted", ...)` ile kapatır ve `Telemetry: match <id> aborted at shutdown` loglar; `Start()` `TELEMETRY=off` iken erken döner; `BeginMatch` `m_running==false` iken `telemetry is off` döner.
+  - K10: ✔ `CloseMatch` tek satır JSON'u sırayla `match, mode, file, start{}, end{}, lines, events{}` olarak yazar (`\n` ile biter).
+  - K11: ✔ `file GameServer/Bot/*` hepsi "ASCII text, with CRLF line terminators"; girinti tab, Allman, yorumlar İngilizce. Yeni kodda `printf` yok; tümü `snprintf`, `fprintf` yalnızca `WriteTelemetryLog`/`WriteBotLog`. Not: `BotManager.cpp:263`'teki mevcut `printf` (F2-01'den, havuz kurulum hatası) değişmedi.
+  - K12: ✔ `git status --short` boş; sunucu çalıştırılmadı, `GameServer.ini` ve DB değiştirilmedi.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `#include <map>` `<cstdio>`'dan sonra (yani `<mutex>`'ten önce) eklendi; alfabetik sıra korunmak istendi (plan "(<mutex>'ten sonra)" diyordu). Davranış etkisi yok.
+  - `BotManager.cpp`'ye `<cstdlib>` eklendi (`strtoull` bildirimi). Plan dosya listesinde olduğu için kapsam içi; plan adımlarında açıkça sayılmamıştı.
+  - `AppendLine`'daki `head` tamponu 96 yerine 160 yapıldı: maç kimliği (≤54) + `t` + `bot` ile en kötü durumda 96'yı aşabilir; kısmi JSON'u önlemek için genişletildi.
+- Açık sorular: yok.
 
 ---
 
