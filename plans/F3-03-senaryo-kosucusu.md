@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 3 "Senaryo dosyaları" ve Kapsam'daki "maç başlat/bitir") |
 | Branch | `bot/F3-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-02 (`KAPANDI`: `match start\|end`, `Telemetry::BeginMatch/EndMatch/IsMatchActive`), F2-06 (`KAPANDI`: komut çekirdeği, ADR-0015), F2-03/F2-04 (`KAPANDI`: spawn/despawn) |

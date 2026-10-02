@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "ScenarioRunner.h"
 
 class CUser;
 class Thread;
@@ -41,11 +42,13 @@ public:
 	bool EnqueueCommand(const std::string & line);
 
 private:
+	friend class ScenarioRunner;
+
 	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
 		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false),
 		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false),
-		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0) {}
+		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0), m_scenario(*this) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
@@ -62,6 +65,7 @@ private:
 	void CommandList();
 	void CommandMatch(const std::string & args);
 	BotSession * FindSession(const char * charName);
+	static bool IsKnownBotName(const std::string & name);   // BOT_TABLE lookup, case-insensitive
 
 	// Spawn list from [BOT] SPAWN_ON_START (parsed in Startup(); sessions are never freed).
 	void ParseSpawnList(const std::string & list);
@@ -105,4 +109,6 @@ private:
 	uint32 m_matchPerfSamples = 0;   // IOCP thread only: PERF_SAMPLEs emitted since the last "match start"
 	uint32 m_matchP95MaxUs = 0;      // IOCP thread only: highest tick_p95_us among them
 	uint32 m_matchTickMaxUs = 0;     // IOCP thread only: highest tick_max_us among them
+
+	ScenarioRunner m_scenario;   // IOCP thread only
 };

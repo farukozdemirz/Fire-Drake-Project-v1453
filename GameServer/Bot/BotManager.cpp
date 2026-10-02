@@ -3,6 +3,7 @@
 #include "IBotSink.h"
 #include "BotSession.h"
 #include "Telemetry.h"
+#include "ScenarioRunner.h"
 #include "../../shared/Ini.h"
 
 #include <algorithm>
@@ -381,6 +382,7 @@ void BotManager::Tick()
 
 	ProcessCommands();
 	TickSessions();
+	m_scenario.Tick(std::chrono::steady_clock::now());
 
 	if (Telemetry::Instance().IsEnabled(TEL_SUMMARY))
 		RecordTick(tickStart);
@@ -570,10 +572,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandList();
 	else if (_stricmp(verb.c_str(), "match") == 0)
 		CommandMatch(args);
+	else if (_stricmp(verb.c_str(), "scenario") == 0)
+		m_scenario.Command(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -587,6 +591,11 @@ BotSession * BotManager::FindSession(const char * charName)
 	}
 
 	return nullptr;
+}
+
+bool BotManager::IsKnownBotName(const std::string & name)
+{
+	return FindBotEntry(name.c_str()) != nullptr;
 }
 
 void BotManager::CommandSpawn(const std::string & args)

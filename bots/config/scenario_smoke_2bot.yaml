@@ -1,0 +1,8 @@
+# Smoke scenario: two idle bots, two seeds, 12 s per match.
+# Copy to <server dir>/Scenarios/smoke.yaml, then: /bot scenario run smoke
+scenario_id: smoke
+zone: 71
+bots: [BotWP_K, BotWP_E]
+seeds: [7, 8]
+repeat: 1
+duration_sec: 12
