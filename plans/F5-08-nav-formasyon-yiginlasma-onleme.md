@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-08` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`), F5-03 (`BotCore/NavSmooth.h`: `NavLineClear`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `08ffbc3`); F5-04 (`BotCore/NavTrack.h`: `NavRingCells`, yalnızca testte); bu planın testleri 122 testin üstüne eklenir |
@@ -284,13 +284,29 @@ git diff --stat gece/2026-10-02-nav...bot/F5-08
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-08` (taban: `gece/2026-10-02-nav`); uygulama commit'i `22f3932` `[F5-08] Formasyon ve yığılma önleme: NavFormation.h + birim testleri`; bu rapor/`Durum: UYGULANDI` commit'i rapor sonrası.
+- Değişen dosyalar ve nedenleri (yalnızca plan §4'teki dört dosya + kendi plan dosyası):
+  - `BotCore/NavFormation.h` (yeni, 344 satır): `kNavSurroundSlots`, `NavFormPoint`, `NavSurroundDir`, `NavSurroundPoint`, `NavSurroundUsable`, `NavAssignSurroundSlots`, `NavSeparationParams`, `NavSeparationVector`, `NavApplySeparation`, `NavPickSpaced`, `NavCountStackedPairs`. Başlık-yalnızca, saf (`NavSmooth.h` + `<cmath> <cstddef> <vector>`), global/değişebilir durum yok.
+  - `Tests/BotCoreTests/NavFormationTests.cpp` (yeni, 966 satır): yedi test (`NavForm_Slots`, `_Assign`, `_Assign_Matches_Reference`, `_Separation`, `_PickSpaced`, `_Settle_Flat`, `_Settle_RealMap`), bağımsız sıralama-tabanlı referans ve test-içi `SettleSim`.
+  - `BotCore/BotCore.vcxproj`: yalnızca `<ClInclude Include="NavFormation.h" />` (BOM/CRLF korundu).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: yalnızca `<ClCompile Include="NavFormationTests.cpp" />` (BOM/CRLF korundu).
+- Derleme sonucu (`tools/build.sh Release`, `NavFormation*` `touch` sonrası, son satırlar):
+  ```
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ```
+  (rc=0; `NavFormation` geçen `warning` satırı yok; ardından `./tools/run-tests.sh Debug` rc=0, uyarı 0.)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; `NavFormation.h`/`NavFormationTests.cpp` `touch`'lanıp yeniden derlendi, `NavFormation` geçen `warning` satırı yok (tam çıktıda uyarı 0).
+  - K2 ✔ `--list` 129 satır; yedi `NavForm_*` adı var.
+  - K3 ✔ Release `129 tests, 0 failed`, SKIPPED yok; `NAVFORM random assign: trials=300 mismatches=0 avg_assigned=4.863`, `NAVFORM settle flat: assigned=8 settle_tick=43 max_stacked_1m=0 final_min_pair=1.9134`, `NAVFORM real: walk=88508 usable8=72459 usable7=11568 usable6=4137 usable5=344 usable_lt5=0 assign_violations=0; settle assigned=6 settle_tick=26 max_stacked_1m=0 final_min_pair=1.5000 unassigned=2`.
+  - K4 ✔ `build/nav/zone71.navgrid` geçici taşındı: `NavForm_` rc=0, `NavForm_Settle_RealMap` `SKIPPED` yazdı, diğer altı test geçti; dosya geri kondu.
+  - K5 ✔ `./tools/run-tests.sh Debug` rc=0, `129 tests, 0 failed`, uyarı 0.
+  - K6 ✔ §2 Tablo 1–5 değerleri Release ve Debug'da birebir `[ OK ]`; rastgele atama 300 sorgu `mismatches=0`; gerçek harita sayıları ve `final_min_pair` 1,4990–1,5010 aralığında (1,9134 / 1,5000).
+  - K7 ✔ `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavFormation.h` boş; `git diff --stat gece/2026-10-02-nav...bot/F5-08` yalnızca `BotCore/BotCore.vcxproj`, `BotCore/NavFormation.h`, `Tests/BotCoreTests/BotCoreTests.vcxproj`, `Tests/BotCoreTests/NavFormationTests.cpp` ve kendi plan dosyasını gösteriyor.
+  - K8 ✔ `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10, `NavReach_` 8, `NavDanger_` 8, `NavRetreat_` 8 test rc=0, hepsi `[ OK ]`; `NAVPATH T-NAV-03 set=near64 found=997 expanded_p50=306 expanded_p95=2431`, `NAVDANGER real: elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232`, `NAVREACH real: components=143 largest=88279 pockets=229`, `NAVRETREAT real: … cand=2799 …` aynı.
+- Plandan sapmalar ve gerekçeleri: Yok. Uygulama birebir plan §5.1–§5.3'ü izler; test edilen tüm sayısal beklentiler (Tablo 1–5, `avg_assigned`, `settle_tick`, dağılım) prototiple aynı çıktı.
+- Açık sorular: Yok. (Not: F5-08 sonrası sıradaki F5-09 takılma tespiti/aşamalı kurtarma ve F5-10 LoS; bağlama planında `NavFollower`'a yuva hedefi, ikinci halka ve MET-NAV-06 süre kuralı karar katmanının işi.)
 
 ---
 
