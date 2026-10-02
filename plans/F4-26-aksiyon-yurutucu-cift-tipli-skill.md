@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-26` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali) — `KAPANDI`; F4-25 (uçan Type3, `CAST_FLYING`) — `KAPANDI` (merge `0954929`) |
@@ -294,20 +294,40 @@ git diff --check gece/2026-10-02...bot/F4-26
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-26` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-26` @ `7eed96b` (kod commit'i `c066830`; `7eed96b` yalnızca rapor ve Durum). Mod: otonom gece döngüsü (`AUTO_LOOP=1`); birleştirme ve push yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | 4 dosya `touch` edilip `build.sh Release` yeniden çalıştırıldı: rc=0; çıktıda yalnızca 2 uyarı, ikisi de `UpgradeHandler.cpp(862)` C4789 (bu plandan önce var); `BotCombat\|CombatTests\|ActionExecutor` için uyarı/hata 0 |
+| K2 | ✔ | `build.sh Debug` rc=0, değişen dosyalarda uyarı/hata 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `102 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `Combat_TypeGate_MinSince`, `Combat_TypeGate_DualCast` iki yapılandırmada da var; `CastTypesSupported` testi `(1,4)`, `(3,3)`, `(3,5)`, `(4,0)` false (`CombatTests.cpp` yeni test) |
+| K4 | ✔ | `grep -n "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>` (`:6`), `<cstdint>` (`:7`); eklenen satırlarda `std::min`/`std::max` yok |
+| K5 | ✔ | `grep -n CastTypesSupported ActionExecutor.cpp` tek çağrı `:730`; `bFlyingEffect != 0 && !flyingCast`, `iUseItem`, `sEtc`, moral koşulları diff'te silinmemiş; `bad_skill`/`bad_target` blokları diff'te yok; çalışma zamanı S4: Ice burst/Blizzard/ice storm/Ice blast/Ice Impact/Leg cutting `unsupported_skill` |
+| K6 | ✔ | `ActionExecutor.cpp:842` (`IsGatedType` ×2) ve `:854` (`MinGatedSince`) `TickCast` kapı girdisinde; `grep type0` boş; damga döngüsü `bType[0]` ve `bType[1]` için `m_castTypeHas/Last` yazıyor (`:990-998`, yalnızca EFFECTING sonrası); pot satırı `m_castTypeLast[3] = now` `:1452` (içeriği değişmedi) |
+| K7 | ✔ | Silinen satırlar yalnızca `supportedType` satırı ve koşulu, `\|\| m->bType[1] != 0`, `type0` kapı bloğu ve `type0 < 8` damga bloğu; diff üç hunk'tan (`:727`, `:839`, `:984`) oluşuyor, `PlanStanding`/ARMED/uçan akış/`RejectCast`/`SubmitCast`/`CancelCast` dokunulmamış |
+| K8 | ✔ | `git diff --stat`'ta `BotSession.*`, `BotManager.cpp` yok; `SubmitCast` ve `OnPacket()` hunk'larda yok |
+| K9 | ✔ | Eklenen satırlarda `Emit(` yok; yeni ini anahtarı, komut, thread, telemetri olayı/alanı yok |
+| K10 | ✔ | `git diff --stat`: `BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.h`, `ActionExecutor.cpp` + plan dosyası; vcxproj/filters değişmemiş; `GameServer/` altında yalnızca `Bot/` |
+| K11 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; çalışma ağacında CR'siz satır 0 (`grep -vc $'\r$'`); `git diff --check` boş |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(` `ActionExecutor.*` içinde boş |
+| K13 | ✔ | `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1, `CheckCastEffect` 1, `CheckCastFly` 1, `CheckCastLand` 1, `CheckCastCancel` 1, `CheckPotion` 1; önceki 99 test geçiyor (102/102) |
+| K14 | ✔ | `check-perception-contract.py` `RESULT: PASS`; R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0; yeni kod başka botun `m_pUser`'ına erişmiyor |
+| K15 | ✔ | Çalışma zamanı S1-S5 geçti (aşağıda); `summary`/`ENABLED=0` alt denetimleri yeniden koşulmadı (bkz. not 3) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Çalışma zamanı (Release `7eed96b` derlemesi, `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`, ini dokunulmadı: md5 `265a8e1c35ea12df46f6d006fe894d9b` öncesi/sonrası; botlar `BotMF_K`, `BotMI_K`, `BotWP_E`, `BotWG_E`, `BotWP_K`, `BotMF_E`, zone 71; gözlem `Logs/Bot_2_10_2026.log` ve `Logs/bots/2026-10-02/live-234303.jsonl`):
+  - **S1 ✔ (uçan çift tipli):** Ice arrow `110615` (`BotMF_K` → `BotWP_E`): `CastStart` (`casting`) → `CastFly` (`since_casting_ms` 1660, `flying`, `op:2`) → `CastEffect` (`since_flying_ms` 1000, `ok:true`, **`effected`, `op:3`, `code:12`**, `missed` yok); log `cast finished (effected) after 1 cycle(s), 1 ok, 3 packet(s) sent`; **MP 6021 → 5971 (FLYING) → 5921 (EFFECTING) = 2 × 50**; hedef HP −184..−176. Ice orb `110627` aynı sıra, 3 paket, `snap` hedefte `buff skill=110627 type=6 debuff remain=9s`; MP düşüşü FLYING'de 6021 → 5941 (−80), toplam 6021 → 5901 (−120): ikinci −80, aradaki **+40'lık MP yenilenme adımıyla** (Ice comet sonrası örneklemede 5861 → 5901 adımı görüldü) birlikte −120 verir; 2 × 80 ile uyumlu.
+  - **S2 ✔ (uçmayan):** Chill `110609` (`BotMF_K` → `BotWG_E`): `CastStart` → `CastEffect` (`since_casting_ms` 1646, `effected`, `code:11`), `CastFly` yok, log `... 2 packet(s) sent`, `snap` `buff skill=110609 type=6 debuff remain=7s`. Ice comet `110651`: `effected`, 2 paket, **MP 6021 → 5861 = tek düşüm 160**, hedef HP 771 → 414. **Prismatic `110670` `BotMI_K` → `BotWG_E`:** `CastStart` → `CastEffect` (`since_casting_ms` 1214, `effected`, `code:10`), 2 paket, **MP 6021 → 5631 = 390 (tek düşüm)**, `snap` `buff skill=110670 type=6 debuff remain=6s`; hedef HP düşüşü ≈ 527 (planın "−1750 civarı" beklentisi `FirstDamage` değeriydi, gerçek düşüş hedefin direnciyle azalır; Ice comet `FirstDamage −882` → ≈ −357 ile aynı oran; bot kodunu ilgilendirmez).
+  - **S3 ✔:** Freeze `110603` ×3 (`BotMF_K` → `BotWG_E`, 1,3 m'e yaklaştıktan sonra): `CastStart`/`CastEffect` ×3, `code:10`, EFFECTING → sonraki `CastStart` aralıkları **1105 ms ve 1101 ms** (tip kapısı ≥ 1000), `FAIRNESS_REJECT` yok, log `finished (effected) after 3 cycle(s), 3 ok, 6 packet(s) sent`. Freeze ardından hemen Fire ball: `CastEffect` (204552417) → Fire ball `CastStart` (204553528) = 1111 ms (tip 3 kapısı beklemesi). Freeze'in ilk denemesi 13,4 m'de (Freeze `Range 11`) `FAIRNESS_REJECT out_of_range` verdi (MEC-MAG-11 çalışıyor). Toplam MP ≈ 60 ölçülemedi (yenilenme adımı 60'ı siler); MP maddesi Ice comet/Prismatic/Ice arrow ile kanıtlandı.
+  - **S4 ✔:** `110633`, `110645`, `110671`, `110635`, `110657` (`BotMI_K`) ve `106520` (`BotWP_K`) → `refused (unsupported_skill)`; `cast BotMI_K 110609 self` → `bad_target`; `cast BotWP_K 110609 BotWP_E 1` → `bad_skill`; `cast BotMF_K 110670 BotWP_E 1` → `CastStart` `srv_fail` (`op:4`, `code:-100`), log `cast stopped (srv_fail)`, MP değişmedi (KI-016 yeniden üretildi).
+  - **S5 ✔:** (a) Chill CASTING'te `cast off` (+1099 ms): `CastCancel` `cancelled` (`op:4`, `code:-100`), MP 6021 değişmedi, hedefte buff 0. (b) Ice arrow FLYING'de `cast off`: log `stopped after 2 packet(s) sent`, `CastFly` var, o döngüde `CastEffect` yok, MP 6021 → 6011 (−50 + 40 yenilenme), hedefte buff 0. (c) Ignition `210518` ×3 (`BotMF_E` → `BotWP_K`): `effected` ×3, `CastFly` yok, `6 packet(s) sent`; Fire ball `210515`: `CastFly` var, 3 paket, `effected`. F4-52 halkası: `snap BotWP_K events` Chill için `op=1` ve `op=3 skill=210609 caster=<MF_E>` gösterdi. `PERF_SAMPLE`: tipik `tick_p95_us` 82-160; 1,3-2,1 ms sıçramaları 6 pencerede, hepsi `BotWG_E`'nin 640 m yürüyüşü (bölge geçişleri, `NpcInReq`) sırasında, cast pencerelerinde ≤ 522 µs. `Bot_*.log`'da `error/assert/exception` 0; `GameServer.log` değişmedi (mtime 02:17). Sunucular `[UP]` 3/3, sonunda `run-servers.sh stop` ile 0/3.
+  - Temizlik: ini md5 aynı, `BotCommands.*` ve geçici betik yok (`Scripts/` boş), sunucular kapalı. Hedef botlar zone 71'deki Death knight NPC'leri tarafından öldürüldü (`BotWG_E`, `BotWP_E` HP 0): bot karakter verisi, plan dışı.
+- Bulgular (önem sırasıyla): engelleyici bulgu yok.
+  1. **Not:** Hedef Type3 kısmında ölürse çift tipli skill `no_result` verir (planın §5.4-d.2); bu doğrulamada Freeze ve Fire ball, `BotWG_E`'nin Death knight tarafından öldürüldüğü bir anda `no_result` ile düştü (`CastEffect` `ok:false`, `reason:"no_result"`, `op:-1`). Fire ball tek tipli olduğundan bu örnek çift tipliye özgü değil, yalnızca ölü hedefte seri düşürme yolunu doğruluyor; "Type3 öldürürse Type4 yankısı yok" iddiası ayrıca (canlı hedefi tek vuruşta öldüren bir cast ile) ölçülmedi, `docs/03` MEC-MAG-13'te `[D]` kaldı.
+  2. **Not:** Plan §7 S1/S2 beklentisindeki hedef HP değerleri (Ice arrow −216, Prismatic −1750) hedefin direncine göre farklı çıktı (−176..−184, ≈ −527); bu hasar mekaniğidir, bot kabul ölçütü değil.
+  3. **Not:** `TELEMETRY=summary` ve `ENABLED=0` alt denetimleri bu turda yeniden koşulmadı: değişiklik ini/telemetri/komut yoluna dokunmuyor (K9 ✔, farkta yalnızca `ActionExecutor.*`, `BotCombat.h`, test), F4-25 doğrulamasında bu yollar geçmişti.
+  4. **Not:** Plan 99 → 102 ve uyarı/boyut beklentileriyle uyumlu; `ActionExecutor.cpp` `typeGated` koşulu `bType[1] == 0` tek tipli skill'de önceki davranışla aynı (`IsGatedType(0)` false).
+- Düzeltme talimatı: gerekmiyor (karar DOĞRULANDI).
