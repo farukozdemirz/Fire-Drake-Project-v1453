@@ -11,7 +11,7 @@
 | ADR | Karar | Gerekçe |
 |---|---|---|
 | ADR-0001 | Botlar GameServer içinde **oyuncu varlığı** (`CUser`) olarak, ayrılmış oturum slotlarında, soketsiz çalışır | Gerçek oyuncu kuralları, görünüm, party/chat ([02](02_REPOSITORY_ANALYSIS_AND_INTEGRATION_MAP.md) §10) |
-| ADR-0005 | v1'de bot tick'i ve aksiyonları **IOCP worker thread'inde** çalışır; periyodik tetik bir zamanlayıcıdan özel IOCP olayıyla gelir | Paket handler'larıyla seri yürütme; yarış koşullarından kaçınma |
+| ADR-0005 (KABUL, [adr](adr/ADR-0005-bot-tick-thread-modeli.md); F2-02'de uygulanır) | v1'de bot tick'i ve aksiyonları **IOCP worker thread'inde** çalışır; periyodik tetik bir zamanlayıcıdan özel IOCP olayıyla gelir | Paket handler'larıyla seri yürütme; yarış koşullarından kaçınma |
 | — | Bot aksiyonları gerçek paket olarak `CUser::HandlePacket`'e verilir | Ortak mekaniği yeniden uygulamama (02 §11.1) |
 | — | Bot sistemi varsayılan **kapalı**, test modu ayrı bayrak | Canlı sunucuda kazara etkinleşmeyi önleme |
 

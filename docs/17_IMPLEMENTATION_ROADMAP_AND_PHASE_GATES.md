@@ -117,7 +117,7 @@ Paralel yürütülebilir işler (kural 2'nin istisnası, [21](21_PROJECT_TRACKIN
 | Alan | İçerik |
 |---|---|
 | Amaç | Botların tüm temel aksiyonları **gerçek handler'lar üzerinden** ve CLI sınırları içinde yapabilmesi |
-| Kapsam | `BOT_TICK` IOCP olayı (ADR-0005); `ActionExecutor` (Move, Stop, Attack, CastStart/Effect, UsePotion, Sit, Regene, Party, Chat, TargetHpReq); sonuç eşleme; `BotFairnessGuard` (CLI-01..12); `Perception` (gözlem sözleşmesi); betikli "test botu" ile T-MECH-SKILL'in bot tarafından yeniden çalıştırılması |
+| Kapsam | `BOT_TICK` IOCP olayı (ADR-0005; **F2-02'de eklendi**, burada yalnızca kullanılır); `ActionExecutor` (Move, Stop, Attack, CastStart/Effect, UsePotion, Sit, Regene, Party, Chat, TargetHpReq); sonuç eşleme; `BotFairnessGuard` (CLI-01..12); `Perception` (gözlem sözleşmesi); betikli "test botu" ile T-MECH-SKILL'in bot tarafından yeniden çalıştırılması |
 | Kapsam dışı | Akıllı karar (betikli test dizileri) |
 | Ön koşullar | F1 (CLI tablosu), F3 |
 | Modüller | [`shared/SocketDefines.h`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/shared/SocketDefines.h), [`shared/SocketMgr.cpp`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/shared/SocketMgr.cpp), `GameServer/Bot/*` |

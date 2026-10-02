@@ -1,6 +1,6 @@
 # Bot Projesi — Güncel Durum
 
-Son güncelleme: 2026-10-02 · Güncelleyen: Claude
+Son güncelleme: 2026-10-02 · Güncelleyen: Claude (F2-02 planı yazıldı)
 Sunucu commit: `0f52027` (upstream ile aynı) · Bot kodu: henüz yok · Doküman paketi: v1.0
 Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `MAGIC_BAK_etc` yedeği var)
 
@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILDI (DeepSeek'in işleri bitti; F0 KABUL_EDILDI 2026-10-02; F1-01..F1-10 KAPANDI, F1-08..F1-10 `gece/2026-10-02`'de; kalan: insan istemcisi testleri, faz raporu taslağı `docs/phase-reports/F1-taslak.md`, kabul bekliyor). Gece modunda F2'ye geçildi: F2-01 DOĞRULANDI (birleştirme döngüde).
+F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILDI (DeepSeek'in işleri bitti; F0 KABUL_EDILDI 2026-10-02; F1-01..F1-10 KAPANDI, F1-08..F1-10 `gece/2026-10-02`'de; kalan: insan istemcisi testleri, faz raporu taslağı `docs/phase-reports/F1-taslak.md`, kabul bekliyor). Gece modunda F2'ye geçildi: F2-01 KAPANDI; F2-02 (tick altyapısı) HAZIR.
 
 ## Faz tablosu
 
@@ -56,7 +56,8 @@ Liste: `plans/README.md`.
 | F1-08 Arena A veri doğrulaması | KAPANDI | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; Tur 2'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); `main`'e birleştirme proje sahibinde |
 | F1-09 Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`) | KAPANDI | `bot/F1-09` @ `3406555` (taban: `gece/2026-10-02`); `plans/F1-09-sunucu-hasar-kaydi.md`; Tur 1'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); kanca yalnızca `--damage-trace` ile derlenir; log özet betiği F1-10'da; çalışma zamanı ölçümü insan oturumunda (T-MECH-DMG) |
 | F1-10 Hasar logu özet betiği (`tools/damage-trace-summary.py`) | KAPANDI | `bot/F1-10` @ `b93309d` (taban: `gece/2026-10-02`); `plans/F1-10-hasar-logu-ozet-betigi.md` (Tur 2'de doğrulandı; `gece/2026-10-02`'ye birleşti, 2026-10-02, gece modu, merge `9148336`); DeepSeek yalnızca betik yazar (log + `stat-model`/`spell-model` çıktısını ± %15 karşılaştırır); F1'in DeepSeek'e düşen son işi |
-| F2-01 Bot alıcısı (`m_botSink`) ve ayrılmış slot havuzu | DOĞRULANDI | `bot/F2-01` (taban: `gece/2026-10-02`); `plans/F2-01-bot-alicisi-ve-slot-havuzu.md`; S1+S2: `KOSocketMgr` rezerve havuz, `CUser::Send` geçersiz kılma, `BotManager::Startup` + öz-sınama; `[BOT] ENABLED=0` varsayılan (davranış değişmez); çalışma zamanı doğrulaması yapıldı (`ENABLED=1`: `reserved 16 sessions (ids 2984-2999), pool self-test OK`; `ENABLED=0`: log yok); `bot/F2-01` @ `7703426` gece döngüsü tarafından `gece/2026-10-02`'ye birleştirilecek |
+| F2-01 Bot alıcısı (`m_botSink`) ve ayrılmış slot havuzu | KAPANDI | `bot/F2-01` (taban: `gece/2026-10-02`); `plans/F2-01-bot-alicisi-ve-slot-havuzu.md`; S1+S2: `KOSocketMgr` rezerve havuz, `CUser::Send` geçersiz kılma, `BotManager::Startup` + öz-sınama; `[BOT] ENABLED=0` varsayılan (davranış değişmez); çalışma zamanı doğrulaması yapıldı (`ENABLED=1`: `reserved 16 sessions (ids 2984-2999), pool self-test OK`; `ENABLED=0`: log yok); `bot/F2-01` @ `7703426` `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu, merge `e7f8119`); `main`'e birleştirme proje sahibinde |
+| F2-02 `BOT_TICK` IOCP olayı ve bot zamanlayıcı thread'i | HAZIR | `bot/F2-02` (taban: `gece/2026-10-02`); `plans/F2-02-bot-tick-iocp-olayi.md`; ADR-0005 (otonom döngüde Claude kararı): `SOCKET_IO_EVENT_BOT_TICK`, `SocketMgr::PostBotTick` (tek uçuşta), `BotManager` zamanlayıcı thread'i ve boş `Tick()` + öz-sınama logu; `ENABLED=0` iken thread/kanca yok; çalışma zamanı doğrulaması Claude'da |
 
 ## Son doğrulamalar
 
@@ -83,7 +84,9 @@ K-1..K-10, 2026-10-01 (`docs/18` §1, `docs/adr/`). Önerilenden farklı seçile
 - K-9: botlar sıralama/ödül/duyurulara tamamen dahil.
 - K-10: PR #10 alınmaz.
 
-Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
+- ADR-0005 (bot tick'i IOCP thread'inde, `BOT_TICK` olayı), 2026-10-02, gece modu: **otonom döngüde Claude kararı — gözden geçirilmeli** (`docs/adr/ADR-0005-bot-tick-thread-modeli.md`; öneri `docs/13` §3.1 aynen).
+
+Açık teknik kararlar: ADR-0006..0008, ilgili fazda verilecek.
 
 ## Blokajlar
 
@@ -109,7 +112,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. **Gece modu (2026-10-02):** F1'in DeepSeek işleri bitti; F1 faz raporu taslağı `docs/phase-reports/F1-taslak.md` yazıldı (çıkış kararı kısmi: insan testleri açık, aşağıdaki bekleyen testler). F2 başladı: F2-01 (DOĞRULANDI) → sıradaki F2 planları: F2-02 bot spawn/despawn (S3–S5 giriş/çıkış taklidi, `/bot spawn` minimum), F2-03 `Update()` ve zaman aşımı muafiyeti, F2-04 sabit IP/ranking (S7, K-9). `gece/2026-10-02`'nin `main`'e birleştirilmesi ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları; `docs/13` §4.1'e F2-01 sonrası ini anahtarları (`[BOT] ENABLED`, `MAX_BOTS`).
+1. **Gece modu (2026-10-02):** F1'in DeepSeek işleri bitti; F1 faz raporu taslağı `docs/phase-reports/F1-taslak.md` yazıldı (çıkış kararı kısmi: insan testleri açık, aşağıdaki bekleyen testler). F2 başladı: F2-01 (KAPANDI), F2-02 (HAZIR, tick altyapısı) → sıradaki F2 planları: F2-03 bot girişi/spawn (S3: hesap/karakter ataması, `WIZ_SEL_CHAR` → `GameStart(1/2)` taklidi, tick durum makinesi, `[BOT] SPAWN_ON_START`), F2-04 bot çıkışı/despawn (S4, slotu DB kaydı bittikten sonra iade) + `Update()` ve zaman aşımı muafiyeti (S5, S8), F2-05 sabit IP (S7) ve 1000 spawn/despawn dayanıklılığı. `gece/2026-10-02`'nin `main`'e birleştirilmesi ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları; `docs/13` §4.1'e F2-01/F2-02 sonrası ini anahtarları (`[BOT] ENABLED`, `MAX_BOTS`, `TICK_MS`).
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.

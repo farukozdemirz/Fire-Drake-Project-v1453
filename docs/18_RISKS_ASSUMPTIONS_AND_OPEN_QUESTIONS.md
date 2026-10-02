@@ -22,7 +22,7 @@ Aşağıdaki kararlar proje sahibiyle tek tek görüşülerek verildi. Her biri 
 | K-9 | Ranking, ödül ve ölüm duyuruları | **Botlar tamamen normal oyuncu gibi dahil**: NP, altın aktarımı, sıralama, ödül dağıtımı ve zone duyuruları değiştirilmez | [ADR-0012](adr/ADR-0012-ranking-odul-duyuru.md) | 02 S7, 13 §12, 15 ARENA-06, 17 F2, 01 REQ-NEW-14 |
 | K-10 | Upstream PR #10 | **Hiç alınmaz** (küçük `break;` düzeltmesi dahil) | [ADR-0013](adr/ADR-0013-upstream-pr10.md) | 17 F0 |
 
-Henüz açık olan teknik kararlar faz içinde verilecektir: ADR-0005 (thread modeli; öneri 13 §3), ADR-0006 (navigasyon verisi/navmesh), ADR-0007 (telemetri biçimi), ADR-0008 (L1 yöntemi).
+ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kararıyla kabul edildi ([adr](adr/ADR-0005-bot-tick-thread-modeli.md); gözden geçirilmeli). Henüz açık olan teknik kararlar faz içinde verilecektir: ADR-0006 (navigasyon verisi/navmesh), ADR-0007 (telemetri biçimi), ADR-0008 (L1 yöntemi).
 
 ## 2. Varsayımlar
 
