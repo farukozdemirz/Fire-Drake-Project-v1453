@@ -173,3 +173,17 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** `decisions` seviyesinde `ACTION_SUBMIT`/`ACTION_RESULT` (`"type":"UserInReq"`, `count`, `received`, `latency_us`), nadir `FAIRNESS_REJECT` (`CLI-19`/`bad_count`). `/bot see` açıklama satırı `userin requests / units received / pending` sayaçlarını verir. `TELEMETRY=summary` iken olay yazılmaz, istek yine çalışır.
 7. **Kapsam sınırı:** NPC/canavar (`WIZ_REQ_NPCIN`), pazarcılar, `PerceptionSnapshot`, bayatlama, tabloyu kullanan karar/guard yok. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 8. **Dilim sırası:** F4-13 bölge değişimi isteği; sonraki: NPC/canavar gözlemi, `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`), betikli test dizileri.
+
+## Ek (F4-14): `Perception` dilim 3 — görüş alanındaki NPC/canavar/kule tablosu (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-14-algi-npc-canavar-tablosu.md`
+
+1. **Neden:** arena A'nın sonucunu NPC'ler belirler (guard tower menzili 35 m, ulus askeri NPC'leri, `docs/03` §12.3). Gerçek istemci bunları `WIZ_REQ_NPCIN`, `WIZ_NPC_INOUT`, `WIZ_NPC_MOVE`, `WIZ_NPC_REGION`, `WIZ_DEAD` paketlerinden öğrenir; bot da aynı paketlerden öğrenir (`docs/14` §5.2). Sunucunun NPC dizileri, bölge dizileri veya `CNpc` nesneleri **okunmaz** (statik AC-LRN-03 denetimi, F4-12 K5 kalıbı genişletildi).
+2. **Paket düzeni farkları (oyuncu paketlerinden):** `WIZ_NPC_INOUT` tipi **tek bayt** (oyuncuda `u16`), `WIZ_REQ_NPCIN` kayıtlarında **işaret baytı yok** (oyuncuda `u8 0`), `WIZ_NPC_MOVE` yankı baytı taşımaz (10 bayt). Ölen NPC için `WIZ_NPC_INOUT` OUT gelmez, yalnızca `WIZ_DEAD`; yeniden doğuşta IN gelir (aynı kimlik, taze kayıt `dead`'i temizler). Ayrıştırıcılar bu farkları ayrı ayrı birim testle kilitler.
+3. **Ayrı tablo, aynı kilit:** `NpcTable` (kapasite 128, ad tamponu 32 bayt: en uzun NPC adı 30) `ObsTable`'dan ayrı bir `BotCore` sınıfıdır (`ObsTable` değişmez; ortak şablon yapmak ileride sadeleştirme işi). `BotSession` her iki tablo için tek `m_obsLock` kullanır (ikinci mutex kilit sırası riski yaratırdı). `ParseNpcInfo` ad tamponunu tamamen sıfırlar (F4-12 doğrulama bulgusu 1).
+4. **Bot istek göndermez:** bölge değişiminde bilinmeyen NPC kimlikleri `WIZ_NPC_REGION`'dan yalnızca sayılır (`m_npcUnresolved`). `WIZ_REQ_NPCIN` isteği (CLI-20, F4-13 `PendingIds`/`CheckUserIn` kalıbı) **F4-15**'e ertelendi; gerekçe: bu dilim yalnızca okuma/gözlem, F4-15 ise `ActionExecutor` + guard (ayrı doğrulama yüzeyi). Sonuç: yeni bölgeye yürüyen botun tablosu `WIZ_NPC_INOUT`/`WIZ_NPC_MOVE` gelene kadar eksik kalır (bilinen sınır).
+5. **Sınıflama yok:** canavarın ulusu 0 gelir; tower/askeri NPC ayrımı `type`/`protoId` ile karar katmanında yapılır. Tablo yalnızca paketle gelen olguları tutar (HP, saldırı hedefi, kapı olayları `WIZ_OBJECT_EVENT` dahil değil).
+6. **Komut:** `/bot npcs <bot>` (`see` ile aynı çekirdek: konsol, `BotCommands.txt`, `+bot`); `see` çıktısı değişmez. Telemetri olayı yok.
+7. **Kapsam sınırı:** HP/cast gözlemi, `PerceptionSnapshot`, tabloyu kullanan karar/guard, pazarcılar yok. Her dilim `ENABLED=0` iken davranışı değiştirmez.
+8. **Dilim sırası:** F4-14 NPC gözlemi; sonraki: F4-15 bölge değişiminde `WIZ_REQ_NPCIN` isteği (CLI-20), `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`, tower mesafesi), betikli test dizileri.
+

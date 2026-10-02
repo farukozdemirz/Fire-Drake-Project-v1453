@@ -506,6 +506,7 @@ Bu tablo [14](14_LEARNING_AND_ADAPTATION.md) §5.2'deki gözlem sözleşmesinin 
 | Party üyelerinin HP ve MP'si | `PARTY_HPCHANGE` | Evet | `[D]` |
 | Skill cast ve etki olayları (kim, kime, hangi skill) | `WIZ_MAGIC_PROCESS` bölge yayını ([`GameServer/MagicInstance.cpp:758-772`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/GameServer/MagicInstance.cpp#L758-L772)) | Evet; düşman üzerindeki buff/debuff'lar **görülen olaylardan** takip edilir | `[D]` |
 | Ölüm | `WIZ_DEAD` bölge yayını | Evet | `[D]` |
+| Görüş alanındaki NPC/canavar/kule/kapı: prototip kimliği, tip, ad, ulus (canavarda 0), seviye, konum, kapı durumu; hareket; ölüm | Toplu kayıt `WIZ_REQ_NPCIN` (spawn'da ve istemci isteğiyle; cevaptaki sayı **istenen** sayıdır), `WIZ_NPC_INOUT` (tip tek bayt), `WIZ_NPC_MOVE`, bölge değişiminde kimlik listesi `WIZ_NPC_REGION`, `WIZ_DEAD` (NPC için çıkış paketi gelmez, yeniden doğuşta `WIZ_NPC_INOUT` IN gelir) (`GameServer/Npc.cpp:73-155`, `GameServer/GameServerDlg.cpp:1478-1614`) | Evet; NPC HP'si yalnızca seçili hedef için `WIZ_TARGET_HP` ile (bu satır kapsamı dışı) | `[D]` |
 | Düşmanın MP'si, cooldown'ları, envanteri, pot stoku | Gönderilmez | **Hayır** | `[D]` |
 | Görüş alanı dışındaki birimler | Gönderilmez | **Hayır** | `[D]` |
 | Hedeflenmemiş/hasar verilmemiş düşmanın HP'si | Gönderilmez (seçim yapılmadıkça) | Hayır | `[D]` |
