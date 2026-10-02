@@ -4,6 +4,7 @@
 #include <chrono>
 #include <string>
 #include "IBotSink.h"
+#include "../../BotCore/BotCombat.h"
 
 class CUser;
 
@@ -59,7 +60,17 @@ public:
 	uint32 m_actionSeq;                                    // IOCP thread only: per-spawn counter used as decision_id
 	uint32 m_movePackets;                                  // IOCP thread only: WIZ_MOVE packets sent in the current walk
 
+	bool m_attackActive;                                   // IOCP thread only: an attack series is in progress
+	std::string m_attackTargetName;                        // IOCP thread only: character name of the target bot
+	uint32 m_attackLeft;                                   // IOCP thread only: hits still to send in this series
+	bool m_attackHasLast;                                  // IOCP thread only: m_attackLastSent is valid for this series
+	std::chrono::steady_clock::time_point m_attackLastSent;// IOCP thread only: when the last WIZ_ATTACK went out
+	uint32 m_attackSent;                                   // IOCP thread only: WIZ_ATTACK packets sent in this series
+	uint32 m_attackHits;                                   // IOCP thread only: of those, results hit/killed
+	BotCore::ActionRateWindow m_actionWindow;              // IOCP thread only: CLI-11 window (non-move actions)
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
+	std::atomic<uint64> m_attackEcho;                      // written by OnPacket() (same thread as HandlePacket for own hits)
 };
