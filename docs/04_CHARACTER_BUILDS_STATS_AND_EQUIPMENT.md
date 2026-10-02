@@ -112,7 +112,7 @@ R vuruşu, hedef profil başına isabette ortalama hasar (oyuncuya, `/2` ve sila
 | meteor Fall (600, 1,3 / 18,3 sn) | 821 | 666 | 810 | 844 |
 | Supernova (400, 1,5 / 15,3 sn; ek DoT 10 × 32) | 723 + 320 | 590 | 714 | 743 + 330 |
 
-M-I (CHA 200, Prismatic buz, 390 MP): → W-P 650, → M-F 540. Maks HP'ye göre (S1): M-F ~1541 → incineration ile 2 cast, W-P 5650 → 6 cast. Heal (stat ölçeği yok, `sFirstDamage` olduğu gibi): Complete healing 10 000 (960 MP, recast 5,4 sn, MP başına 10,4), Group complete healing 10 000 (r=30, 1920 MP), Superior restore HoT 2490 (15 tick × 166). Priest P-HD/P-HB'nin Type3 saldırı büyüsü yoktur; hasarları R iledir. Tam tablolar: `python3 tools/spell-model.py`. Çalışma zamanı ölçümü (T-MECH-DMG-03, ± %15) yapılana kadar etiketler `[V]` olmaz.
+M-I (CHA 200, Prismatic buz, 390 MP): → W-P 650, → M-F 540. Maks HP'ye göre (S1): M-F ~1541 → incineration ile 2 cast, W-P 5650 → 6 cast. Heal (stat ölçeği yok, `sFirstDamage` olduğu gibi): Complete healing 10 000 (960 MP, recast 5,4 sn, MP başına 10,4), Group complete healing 10 000 (r=30, 1920 MP), Superior restore HoT 2490 (15 tick × 166). Priest P-HD/P-HB'nin Type3 saldırı büyüsü yoktur; hasarları R iledir. Tam tablolar: `python3 tools/spell-model.py`. **Çalışma zamanı ölçümü (T-MECH-DMG-03, 2026-10-02) `[V]`** (ateş skill'leri, hedef W-P, `/bot cast`): Burn M-F 183,2 / M-I 161,8 (model 186,8 / 160,5), Pillar of fire M-F 526,8 / M-I 442,2 (model 545,5 / 450,9), incineration M-F 898,0 (model 952,6); sapma ≤ %5,7, hepsi ± %15 içinde. M-F/M-I oranı (CHA ölçeği) ölçülen 1,13–1,19, model 1,16–1,21. Ölçülmedi: buz skill'leri (Prismatic dahil) ve uçan skill'ler; bot `cast` dilimi bunları atamıyor, bu kısımlar `[V]` olmaz.
 
 Yorum:
 
