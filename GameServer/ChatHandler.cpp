@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "DBAgent.h"
 #include "../shared/DateTime.h"
+#include "Bot/BotManager.h"
 
 using std::string;
 
@@ -41,6 +42,7 @@ void CGameServerDlg::InitServerCommands()
 		{ "count",				&CGameServerDlg::HandleCountCommand,			"Get online user count." },
 		{ "permitconnect",		&CGameServerDlg::HandlePermitConnectCommand,	"Player unban" },
 		{ "warresult",			&CGameServerDlg::HandleWarResultCommand,		"Set result for War" },
+		{ "bot",				&CGameServerDlg::HandleBotCommand,				"Bot test commands. Arguments: spawn <name>[,<name>...] | despawn <name>|all | list" },
 	};
 
 	init_command_table(CGameServerDlg, commandTable, s_commandTable);
@@ -1142,6 +1144,37 @@ COMMAND_HANDLER(CGameServerDlg::HandleCountCommand)
 	}
 
 	printf("Online User Count : %d\n",count);
+	return true;
+}
+
+COMMAND_HANDLER(CGameServerDlg::HandleBotCommand)
+{
+	// Runs on the console thread: only queues the command; BotManager runs it on the IOCP thread.
+	if (!BotManager::Instance().isEnabled())
+	{
+		printf("Bot system is disabled ([BOT] ENABLED=0 in GameServer.ini)\n");
+		return true;
+	}
+
+	if (vargs.empty())
+	{
+		printf("Using Sample : /bot spawn BotWP_K,BotMF_K | /bot despawn all | /bot list\n");
+		return true;
+	}
+
+	std::string line;
+	for (const std::string & word : vargs)
+	{
+		if (!line.empty())
+			line += " ";
+		line += word;
+	}
+
+	if (BotManager::Instance().EnqueueCommand(line))
+		printf("Bot command queued; result in Logs/Bot_*.log\n");
+	else
+		printf("Bot command rejected (queue full)\n");
+
 	return true;
 }
 
