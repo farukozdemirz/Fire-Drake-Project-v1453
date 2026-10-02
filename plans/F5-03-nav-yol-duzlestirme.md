@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-03` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`) ve F5-02 (`BotCore/NavPath.h`): ikisi `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`) |
@@ -216,16 +216,41 @@ git diff --stat gece/2026-10-02-nav...bot/F5-03
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-03` — `<kısa-sha> [F5-03] …`
+- Branch / commit'ler: `bot/F5-03` (taban: `gece/2026-10-02-nav`, `4ca3ac8`) — `c18a6ba [F5-03] Yol düzleştirme (BotCore/NavSmooth.h) ve NavSmooth testleri` + rapor commit'i
 - Değişen dosyalar ve neden:
-  - `…`
+  - `BotCore/NavSmooth.h` (yeni): `NavLineClear` (kanonik yönlü tamsayı Bresenham, her adım `EdgeOpen`), `NavSmoothParams` (`maxLookahead = 64`), `NavSmoothResult`, `NavSmoothPath` (açgözlü en uzak görünür ara nokta).
+  - `Tests/BotCoreTests/NavSmoothTests.cpp` (yeni): §5.2'deki sekiz test (birim + gerçek harita + süre), yerel yardımcılar `CellIndex`/`Cell`/`RingEvents`/`MakeNav`/`IsSubsequence`/`SegmentsClear`/`Euclid`/`PercentileDouble`; `NavPathTests.cpp` kalıpları kopyalandı.
+  - `BotCore/BotCore.vcxproj`: `NavSmooth.h` `ClInclude` satırı (`NavPath.h`'den sonra).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: `NavSmoothTests.cpp` `ClCompile` satırı (`NavPathTests.cpp`'den sonra).
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+  BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+  NavGridTests.cpp
+  NavPathTests.cpp
+  NavSmoothTests.cpp
+  Kod Üretiliyor...
+  BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  (Release rc=0; `NavSmooth` geçen `warning` satırı yok; toplam uyarı 0. Debug derlemesi de rc=0.)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, yeni uyarı yok (tüm çıktıda 0 `warning`).
+  - K2 ✔ `--list` sekiz `NavSmooth_*` adını içeriyor (toplam 88 ad).
+  - K3 ✔ `88 tests, 0 failed`; `SKIPPED` yok; `NAVSMOOTH arena A->B: cells=150 waypoints=14 length=630.319 cost=660.617` ve `NAVSMOOTH perf set=near64 paths=997 …` var.
+  - K4 ✔ harita geçici taşınınca `NavSmooth_` rc=0; iki gerçek harita testi `SKIPPED`, diğer altı geçti; dosya geri kondu.
+  - K5 ✔ `./tools/run-tests.sh Debug` rc=0, `88 tests, 0 failed`.
+  - K6 ✔ `NAVSMOOTH random: paths=240 cells=3681 waypoints=1286 clear_pairs=108` (`p>0`, `c>0`).
+  - K7 ✔ `NAVSMOOTH perf set=near64 paths=997 cells_mean=51.5 waypoints_mean=5.9 length_ratio_mean=0.959 ms_p50=0.006 ms_p95=0.032 ms_p99=0.060` (`paths=997 ≥ 950`, `waypoints_mean < cells_mean`, oran 0.959, `ms_p95=0.032 ≤ 0.500`); `nproc=16`, AMD Ryzen 7 7800X3D.
+  - K8 ✔ saflık grep'i boş (rc=1); `git diff --stat gece/2026-10-02-nav...bot/F5-03` yalnızca dört dosya (791 ekleme).
+  - K9 ✔ `Nav_` 10/10, `NavPath_` 9/9; `NAVPATH T-NAV-03 set=near64 found=997 ms_p95=0.548 ≤ 2.000`.
+- Plandan sapmalar ve gerekçeleri:
+  - Gerçek harita arena A→B düzleştirmesi prototipten biraz farklı çıktı: **14 ara nokta / 630,319 m** (prototip 13 / 635,787; C++ A*'ın eşit-maliyetli beraberlik sırası farklı bir 150 hücreli yol seçiyor). Kural sayıya uydurulmadı; plan aralıkları (≤ 25 ara nokta, 570,4..661,1 m) karşılanıyor, sapma değil.
+  - `NavSmooth_Invariants_Random`'da çift tohumu plandaki `Rng(6000 + k)` ve mülkiyet tohumu `Rng(7000 + k)`; perf kümesi `Rng(20261002)` — planla aynı.
+- Açık sorular: yok. (Paralel hat: sunuculara/DB'ye dokunulmadı; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h` değişmedi.)
 
 ---
 
