@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-05 (duruş dilimi, `OnPacket()` ekleme kalıbı, `SetStance` iskeleti) — `KAPANDI`; F4-02 (`AttackTarget` kalıbı, `m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -337,10 +337,41 @@ git diff --check gece/2026-10-02...bot/F4-06
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar:
-- İncelenen:
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F4-06` @ `c95ca66` (uygulama commit'i `76433ab`; taban `gece/2026-10-02` @ `612462e`; gece modu, `AUTO_LOOP=1`: birleştirme/push döngü betiğinde, bu oturumda yapılmadı). Çalışma ağacı temizdi.
 - Kriter sonuçları:
-- Bulgular:
-- Düzeltme talimatı:
+
+| # | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `tools/build.sh Release` rc=0; `BotCombat.h`, `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp` touch'lanıp yeniden derlendi, `warning`/`error` çıktısı boş |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, uyarı çıktısı boş |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug` rc=0, `31 tests, 0 failed`; üç yeni test adı çıktıda `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`:6-7`); `std::min/max` yok |
+| K5 | ✔ | `WIZ_TARGET_HP` yalnızca `ActionExecutor.cpp:1506` (paket) ve `BotSession.cpp:73,77` (`OnPacket`); `SendTargetHP\|m_targetID\|GetTargetID` `GameServer/Bot/` içinde boş |
+| K6 | ✔ | `ActionExecutor.cpp:1488` `CheckTargetHp`, `:1489-1490` `!= TARGETHP_OK` → `RejectTargetHp` erken dönüş; hedef HP `HandlePacket` yalnızca `:1513`. Çalışma zamanı: `out_of_view`/`poll` reddinde JSONL'de `ACTION_SUBMIT` yok |
+| K7 | ✔ | `m_sHp\|m_iMaxHp\|GetUserPtr\|GetHealth\|GetMaxHealth` `ActionExecutor.cpp`'de boş; `hp`/`maxHp` `m_targetHpValues`'tan (`:1531-1534`). Çalışma zamanı: cevaptaki HP `list` `hp=` ile aynı (5650/5650; saldırı sonrası 5266/5650) |
+| K8 | ✔ | `git diff gece/2026-10-02...bot/F4-06 -- BotSession.cpp \| grep '^-'`: yalnızca başlatıcı satırı (`m_castSelfId(-1), m_castEcho(0), m_stateEcho(0)`); `OnPacket()` mevcut blokları değişmedi, yeni blok yalnızca ekleme |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı; `Startup/Tick/TickSessions/BuildStatusLines` farkta yok. `ENABLED=0` çalışma zamanında: `BotCommands.txt` tüketilmedi, `Bot_*.log` satır sayısı değişmedi (7266 → 7266), yeni JSONL yok |
+| K10 | ✔ | `diff --stat`: yalnızca §4'teki 8 dosya + plan; dört `.vcxproj`/`.filters` farkı boş; `GameServer/` içinde `Bot/` dışında değişiklik yok |
+| K11 | ✔ | `file`: sekiz dosyanın tümü `ASCII text, with CRLF line terminators`; `git diff --check` boş (rc=0) |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(` `ActionExecutor.*`'de boş |
+| K13 | ✔ | `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1, `CheckPotion` 1, `CheckStance` 1; `EmitFairnessReject` tipleri `Move/Attack/Cast/Potion/State` + yeni `TargetHp`; önceki 28 test geçiyor |
+| K14 | ✔ | Çalışma zamanı §7 senaryoları 1–7 aşağıda |
+
+- **Çalışma zamanı (K14, Release, `TELEMETRY=decisions`, zone 71; `BotWP_K`/`BotWP_E`/`BotMF_K`, hepsi (1274,890) = bölge 26,18):**
+  1. Mutlu yol: `target BotWP_K BotWP_E` → `observed BotWP_E hp 5650/5650`; `ACTION_SUBMIT` (`TargetHpReq`, `target:2985`, `echo:1`) → `ACTION_RESULT` (`ok:true`, `observed`, `latency_us:9`, `hp:5650`, `max_hp:5650`); `FAIRNESS_REJECT` yok. **`[A]`(a) doğrulandı:** sunucunun cevabı botun alıcısına geliyor.
+  2. `poll`/seçim: aynı komut 1,09 sn sonra → `refused (poll)`, `FAIRNESS_REJECT` `CLI-10 poll value:1090 limit:2000`, JSONL'de `ACTION_SUBMIT` yok; 2,2 sn sonra `observed` `echo:0`; `target BotWP_K BotMF_K` hemen → `observed` `echo:1` (hp 1541/1541).
+  3. Görüş: `BotWP_E` (1380,890) = bölge 28, `BotWP_K` bölge 26 → `refused (out_of_view)`, `FAIRNESS_REJECT` `CLI-10 out_of_view value:2 limit:1`, `ACTION_SUBMIT` yok. Komşu bölge: `BotWP_E` yürürken (1329,1, bölge 27, delta 1) → `observed`. Bölge sınırının tam üstü (47,9/48,0) yalnızca birim testinde.
+  4. `target BotWP_K BotWP_K` → `refused (bad_target)`, JSONL'de olay yok. Ölü hedef: `attack BotWP_K BotWP_E 60` ile `BotWP_E` öldürüldü (`killed` 41 vuruş, 39 ok) → `target` → `failed (no_result)`, `ACTION_RESULT` `ok:false` `reason:"no_result"`, `latency_us:3`. Ölü bot isteyen: `target BotWP_E BotWP_K` → `refused (dead)`.
+  5. Ömür: `sit BotWP_K` (`sit=1`) iken `target BotWP_K BotMF_K` → `observed`; `despawn BotWP_E` sonrası → `target BotWP_E not in game (phase despawned)` ve istekçi olarak `BotWP_E not in game (phase despawned)`; `despawn BotWP_K` + `spawn BotWP_K` sonrası ilk `target` → `observed`, `decision_id:1`, `echo:1`. Not: respawn sonrası ilk istek ≥ 9 sn sonra verildiği için `m_hpReqHasLast` sıfırlamasının zamanlayıcı düzeyinde etkisi çalışma zamanında ayrıca ayırt edilemedi; `ResetForRespawn()` kod okumasıyla doğrulandı (`BotSession.cpp:127-130`).
+  6. Reddedilen komutlar: `target Ghost BotWP_E`, `target BotWP_K Ghost` → `unknown or not spawned bot '?'`; argümansız, `target BotWP_K`, `target BotWP_K BotWP_E x` → kullanım satırı (tek satır); `RESPAWN_CYCLES=2` → `cmd rejected (RESPAWN_CYCLES is active)`.
+  7. Gerilemesiz: `attack BotWP_K BotWP_E 3` → `finished (hit) after 3 hit(s) sent, 3 ok` ve ardından `target` → `observed` `hp 5266/5650` (saldırı sırasındaki `WIZ_TARGET_HP` bildirimleri sonucu bozmadı); `sit`/`stand` çalışıyor; `cast BotMF_K 110518 BotWP_E 2` → `finished (effected) after 2 cycle(s), 2 ok`; `pot BotWP_K 389015000 2` → `effected`, 2 ok; 30 m `move` çalışıyor; `PERF_SAMPLE` `tick_p95_us` 94–138 (≤ 1 ms); `GameServer.log`'a yeni hata yok (son değişiklik 02:17, oturumdan önce). `TELEMETRY=summary`: `target` çalışıyor (`observed`, ikinci komut `refused (poll)`), JSONL'de `ACTION_*`/`FAIRNESS_REJECT` 0. `ENABLED=0`: yukarıda K9.
+- Bulgular (önem sırasına göre; hiçbiri engel değil):
+  1. **Not (plan metni tutarsızlığı, sapma 1 kabul):** `BotCombat.h:351-359` `RegionIndex` `coord > 65535` iken `coord = 65535.0f` yapıp böler; plan §5.2 gövdesi `65535` dönerdi ama planın kendi testi `65535 / 48` bekliyordu. Uygulayıcının çözümü testle ve sunucunun `(uint16)` cast'iyle uyumlu.
+  2. **Not (sapma 2 kabul):** `kViewDistance` yorumundaki `shared/` dizgisi K4 grep'ine takıldığı için `server VIEW_DISTANCE (globals.h)` yazılmış; anlam korunuyor.
+  3. **Not (davranış, hata değil):** `BotCommands`'la öldürülen bot, DB'ye `Hp=0` ile kaydedilip yeniden `spawn` edilince ölü (`hp=0/5650`) açılıyor ve `cast`/`attack` `no_result` veriyor; ölüm/`Regene` yönetimi F4-07'nin işi (F4-02 planı da bunu kapsam dışı bırakmıştı). Doğrulamada `BotWP_E` satırı hedefli `UPDATE` ile geri yazıldı.
+  4. **Not (üslup):** `poll` reddi de `decision_id` tüketiyor (önceki dilimlerdeki guard reddiyle aynı).
+- Temizlik: ini yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`, önce/sonra aynı), `BotCommands.txt` kaldırıldı, `Logs\bots` → `Logs\bots_old_f406`, sunucular kapatıldı (`run-servers.sh stop`, `0/3 hazır`); üç bot satırı (`BotWP_K`, `BotWP_E`, `BotMF_K`) hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000` geri yazıldı (3 satır; kişisel veri tablosu okunmadı).
+- Düzeltme talimatı: Yok.
