@@ -23,3 +23,13 @@ Bu işler **F4'ün parçası** sayılır (aksiyon yürütme = "botların temel a
 - F4 kabulü bu dilimlerin KAPANDI olmasına ve faz taslağının (§3) güncellenmesine bağlanır.
 - Hangi skill tipinin hangi davranış fazında zorunlu olduğu zinciri (davranış → skill → aksiyon desteği → algı → oyun içi kabul) `docs/` değerlendirme çalışmasında ayrıca işlenir; çakışırsa bu ADR'nin sırası kalır, kapsam daraltılabilir ama genişletilmez.
 - Faz kabulü (`KABUL_EDILDI`) yine yalnızca proje sahibinindir.
+
+## Ek 1 (2026-10-02, değerlendirme ajanı önerisi; Claude kabulü, proje sahibi gözden geçirecek)
+Değerlendirme (`docs/reports/degerlendirme-2026-10-02.md`, §6) ADR'nin belirsiz bıraktığı noktaları şöyle netleştirir; dilimler `plan-olustur` tarafından bu sırayla, her seferinde tek dilim olarak yazılır:
+1. **Madde 6 bölünür:** (a) Type5 cure; (b) diriltme (Stone of Life); (c) summon (Type8) ve güvenlik kapıları (hedef yaşıyor mu, güvenli mi); (d) Type8 warp/descent/Gate; (e) eşya tüketen skill'ler (`UseItem`: sınıf taşları, Stone of Warrior/Priest). Hepsi **F7'den (priest/mage davranışı) önce** bitmelidir.
+2. **Madde 5 (alan skill'leri):** party hedefli skill'ler (grup heal/buff) için hedef çözümü (kimi etkiler, menzil) ayrı dilimdir.
+3. **Type7** (Binding/provoke, Q-22): bu ADR'de karar verilmez; ayrı kısa karar planı (kullanıp kullanmayacağımız ve nasıl ölçüleceği).
+4. **Tutarlılık:** madde 2 (uçan) ve madde 5 (alan) mage için `FLYING` fazıyla birlikte ele alınır (uçan alan büyüleri: ör. Fire burst); iki dilim birbirinin kabulünü kırmaz.
+5. **Madde 8 (envanter doldurma)** yalnızca pot değil taş/scroll doldurmayı da kapsar ve `ScenarioReset` ile ortak sözleşme olarak tanımlanır (`docs/15` §6a).
+6. **Madde 10 (algı eksikleri)** yalnızca oturma/seviye değildir: değerlendirme düzeltme planları `F4-50..54` ile eşlenir (gözlem meta verisi, düşman HP tablosu, skill olay halkası, tek yönlü görüş teşhisi, gözlenen durum).
+7. **Kabul:** her dilimin oyun içi kabulü `docs/17` G4 kapısına ve `docs/reports/degerlendirme-takip.md` tablosundaki "oyun içinde doğrulandı" sütununa bağlanır; birim testi veya doküman güncellemesi dilimi "doğrulandı" yapmaz.
