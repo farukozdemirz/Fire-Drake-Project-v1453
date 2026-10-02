@@ -314,14 +314,14 @@ namespace BotCore
 		return CAST_OK;
 	}
 
-	// --- dual-typed cast (ADR-0017 Ek F4-26) ---
+	// --- dual-typed cast (ADR-0017 Ek F4-26) and single Type4 cast (ADR-0017 Ek F4-28) ---
 
-	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13): a single type 1 or 3, or the pair Type3 + Type4 (the server
-	// runs Type3 first and Type4 second on the same target). Every other pair stays unsupported.
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15): a single type 1, 3 or 4, or the pair
+	// Type3 + Type4 (the server runs Type3 first and Type4 second on the same target). Every other pair stays unsupported.
 	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
 	{
 		if (type1 == 0)
-			return type0 == 1 || type0 == 3;
+			return type0 == 1 || type0 == 3 || type0 == 4;
 
 		return type0 == 3 && type1 == 4;
 	}
