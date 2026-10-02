@@ -78,6 +78,7 @@
     <ClInclude Include="NavTrack.h" />
     <ClInclude Include="NavReach.h" />
     <ClInclude Include="NavRetreat.h" />
+    <ClInclude Include="NavFormation.h" />
     <ClInclude Include="Perception.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
