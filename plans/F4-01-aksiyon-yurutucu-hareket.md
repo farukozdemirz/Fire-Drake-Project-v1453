@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03/F2-04 (bot oturumu), F2-06 + F3-04 (komut çekirdeği), F3-01 (telemetri), F3-05 (`BotCore` + test çatısı) — hepsi `KAPANDI` |
@@ -298,20 +298,74 @@ file BotCore/BotMotion.h Tests/BotCoreTests/MotionTests.cpp GameServer/Bot/Actio
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-01` — `<kısa-sha> [F4-01] …`
+- Branch / commit'ler: `bot/F4-01` (taban `gece/2026-10-02`)
+  - `17017c2` [F4-01] BotMotion saf hareket mantigi ve BotFairnessGuard + birim testleri
+  - `e5a835a` [F4-01] ActionExecutor hareket/stop ve BotSession yuruyus durumu
+  - `3ae7887` [F4-01] BotManager move/stop komutlari, tick ilerletme ve list durum alanlari
+  - (bu rapor + `Durum` satırı ayrı commit)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotMotion.h` (yeni): saf hız/adım/durum mantığı; `SpeedFieldToMps`, `MaxStepMeters`,
+    `ServerSpeedLimit`, `StepToward`, `CheckMoveStep`; yalnızca `<algorithm>/<cmath>/<cstdint>`.
+  - `Tests/BotCoreTests/MotionTests.cpp` (yeni): 6 `Motion_*` test durumu (MiniTest deseni).
+  - `BotCore/BotCore.vcxproj`, `Tests/BotCoreTests/BotCoreTests.vcxproj`: yeni dosya satırları.
+  - `GameServer/Bot/ActionExecutor.h/.cpp` (yeni): `BeginMove`/`TickMove`/`StopMove`/`AbandonMove`;
+    `WIZ_MOVE` paketi `CUser::HandlePacket()` ile; guard paketten önce; `ACTION_*`/`FAIRNESS_REJECT`.
+  - `GameServer/Bot/BotSession.h/.cpp`: yürüyüş durumu üyeleri + kurucu/`ResetForRespawn` sıfırlama.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandMove`/`CommandStop`, fiil dağıtımı, `TickSessions`
+    `PHASE_IN_GAME` ilerletme, `BeginDespawn` temizliği, `BuildStatusLines` ek alanları.
+  - `GameServer/proj-GameServer.vcxproj`, `.filters`: `ActionExecutor` satırları.
+  - `plans/F4-01-aksiyon-yurutucu-hareket.md`: `Durum` + bu rapor.
+- Derleme sonucu (`tools/build.sh Release`, rc=0; son satırlar):
   ```
-  …
+  proj-GameServer.vcxproj -> build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Test sonucu (`tools/run-tests.sh Release` son satırlar):
+  `tools/build.sh Debug` rc=0 (son satır: `proj-GameServer.vcxproj -> ...\x86-Debug\Server\GameServer.exe`).
+  `ActionExecutor|BotMotion|BotSession|BotManager` üzerinde `warning|error` çıktısı yok; kalan
+  uyarılar yalnızca eski `User.cpp` C4834 satırları (2748/2763).
+- Test sonucu (`tools/run-tests.sh Release` ve `Debug`, ikisi de rc=0; son satırlar):
   ```
-  …
+  [ OK ] Motion_SpeedUnits
+  [ OK ] Motion_ServerSpeedLimit
+  [ OK ] Motion_StepToward
+  [ OK ] Motion_Guard_SpeedField
+  [ OK ] Motion_Guard_StepBound
+  [ OK ] Motion_Guard_StopPacket
+  ... (6 Rng testi)
+  12 tests, 0 failed
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; `BotMotion.h`/`ActionExecutor.cpp` için uyarı yok (grep boş).
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `run-tests.sh` Release/Debug rc=0; 6 `Motion_*` dahil `12 tests, 0 failed` (F3-05'teki 6'nın üzerinde).
+  - K4 ✔ `grep "windows.h|stdafx|GameServer|shared/" BotCore/BotMotion.h` boş; include yalnızca `<algorithm>/<cmath>/<cstdint>`.
+  - K5 ✔ `WIZ_MOVE` yalnızca `ActionExecutor.cpp` (paket) + `BotManager.cpp` (`m_opcodeCount`/`BuildStatusLines`);
+    `MoveProcess|SetPosition|m_curx|m_curz` bot kodunda yok.
+  - K6 ✔ `ActionExecutor.cpp`: `CheckMoveStep` `HandlePacket`'tan önce; `MOVE_OK` dışında erken dönüş (`SubmitMove`).
+  - K7 ✔ `git diff ... BotManager.cpp | grep '^-'` yalnızca `unknown command` mesajı ve `BuildStatusLines`
+    biçim satırı (2 satır). `Startup()`/`Tick()` akışı ve ini okuma değişmedi.
+  - K8 ✔ `git diff --stat` yalnızca §4 dosyaları (12) + plan dosyası.
+  - K9 ✔ Yeni dosyalar ASCII+CRLF; `vcxproj`/`.filters` BOM (`efbbbf`) ve CRLF korundu; tüm değişen dosyalarda LF==CRLF.
+  - K10 ✔ `ActionExecutor.*` içinde `printf|Sleep|lock_guard|mutex|CreateThread|rand(` yok.
+  - K11 ⏳ Claude `/plan-dogrula` çalışma zamanı sınaması (bu rapor kapsamı dışı; sunucu çalıştırılmadı).
+- Plandan sapmalar ve gerekçeleri:
+  - `BeginMove` hız denetimi hem açık `speedField < 1` hem de `CheckMoveStep(..., stepMeters=0)` ile yapıldı
+    (plan ikisini de istiyor); `speedField = 1..limit` aşağısı da reddedilir.
+  - `FAIRNESS_REJECT` için `decision_id` `++m_actionSeq` ile verildi (plan N der ama artışı belirtmiyor;
+    reddedilen aksiyona da kimlik vermek tutarlı seçildi). `ACTION_SUBMIT`/`ACTION_RESULT` yazılmaz.
+  - `ActionExecutor` telemetri JSON'u `snprintf` yerine `std::ostringstream` ile kuruldu: K10'un düz
+    `printf` grep'i `snprintf`'i de yakalayacağı için (davranış/alan biçimi aynı, `%.1f`/`%.2f` eşdeğeri).
+  - `BuildStatusLines` tamponu 192 bırakıldı (plan "gerekirse büyüt"); yeni satır ~90 karakter, kesilme yok,
+    böylece K7'de fazladan `-` satırı oluşmadı.
+  - `CommandStop`'ta bilinmeyen ad için de `?'` güvenlik kuralı uygulandı (plan yalnızca `CommandMove`'da
+    istemişti; tutarlılık için).
+  - `stop all` özet metni planda verilmemişti: `BotManager: cmd stop all: N stopped, M not moving`.
+  - Log/rapor satırları mevcut `BotManager: cmd ...` ön ekiyle yazıldı (plan kısaltmalı yazmıştı).
+- Açık sorular:
+  - `moverx`, botun **aldığı** `WIZ_MOVE` sayısıdır; bölge yayınının diğer botun alıcısına ulaştığı
+    Claude'un çalışma zamanı sınamasında (`BotMF_K` satırı `moverx > 0`) teyit edilmeli.
+  - `move` düz çizgi ve `y` sabit (arazi yüksekliği/CLI-08 ızgarası F5); test noktaları düz/boş seçilmeli.
 
 ---
 
