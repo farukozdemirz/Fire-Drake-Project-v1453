@@ -253,6 +253,7 @@ Proje sahibi acil ayrıldı; testler dönünce yapılacak, gece döngüsü o sı
 | T-CAST-FLY-01 (c) (F4-25) | GEÇTİ (görsel): Fire ball `110515` `BotMI_K` → `BotPHD_E` uçarak hedefe gitti ve hasar verdi; (a)(b) paket ölçümü yapılmadı | proje sahibi gözlemi |
 | T-ENV-ARENA-03/-04, `war-move` sprint | GEÇTİ: Karus respawn → arena 69,8 sn (323 m), El Morad 165,1 sn (731 m); Karus kulesi 26 m'de öldürdü; yürüyüş 4,49–4,54 m/s, sprint 6,80 m/s | `docs/15` §2.4.1, `docs/03` CLI-05 |
 | T-PARTY-01 (G1) | **ÖLÇÜLEMEDİ**: `GameServer/PacketTrace.cpp:24-32` yalnızca MOVE/ROTATE/ATTACK/MAGIC_PROCESS/TARGET_HP/STATE_CHANGE/SPEEDHACK_CHECK kaydediyor; `WIZ_PARTY`, `WIZ_REGENE`, `WIZ_REGIONCHANGE`, `WIZ_REQ_USERIN`, `WIZ_REQ_NPCIN`, `WIZ_CHAT` kaydedilmiyor. Test tarifleri izleyicinin bunları yakaladığını varsayıyordu. Çözüm: izleyici genişletme dilimi (ADR-0018 Ek 2) | `plans/_logs/trace/party01.log` |
+| T-ENV-ARENA-01 (otomatik) | GEÇTİ: `Scripts/arena-npcs.txt` ile 3 × 10 dk, 33 tarama, `BotWP_K` arena A'da hepsinde **0 NPC/canavar** | `Logs/Bot_3_10_2026.log`, `docs/15` §2.4.1 |
 
 ## Proje sahibi testleri (bekleyen)
 
@@ -261,7 +262,6 @@ Proje sahibi acil ayrıldı; testler dönünce yapılacak, gece döngüsü o sı
 | Test | Ne yapılacak | Hesap / komut | Beklenen |
 |---|---|---|---|
 | T-MECH-DMG (kalan, isteğe bağlı) | T-MECH-DMG-01 (R, Type1), -02, -03 (ateş büyüleri) GEÇTİ (yukarıdaki sonuçlar tablosu). Kalan: buz/uçan skill'ler, Prismatic, DoT toplamı, heal; bot `cast` dilimi bunları atamıyor (bulgu: yeni skill kapsamı dilimi gerekir), bu yüzden iki gerçek istemciyle (`--damage-trace` derlemesi; analiz `tools/damage-trace-summary.py`) | iki insan istemcisi (ör. `BotAccMFK` vs `BotAccWPE`, heal için `BotAccPHDK`/`BotAccPHBK`) | her grup `tools/stat-model.py` / `tools/spell-model.py` ± %15 |
-| T-ENV-ARENA-01 (otomatik 10 dk × 3 tur `Scripts/arena-npcs.txt`; ilk tur 0 NPC, 2026-10-03; insan gözlemi isteğe bağlı) | Arena A'da (1274, 890) 30 dk bekleyip canavar/NPC geçiyor mu gözle | herhangi bir bot hesabı | 120 m içinde varlık 0 |
 | T-ENV-ARENA-02 (T-ENV-ARENA-04 2026-10-03 GEÇTİ, `docs/15` §2.4.1) | Arena koordinatlarının oyunda doğrulanması (yürüme, yükseklik, engeller); iki ulusun respawn noktasından arenaya yürüme süresi | herhangi bir bot hesabı (GM ile) | `docs/15` §2.4 / T-ENV-ARENA-02, -04: koordinat/süre kaydı; F1-08 hesabı: Karus→A 259,8 m, El Morad→A 678,1 m |
 | T-MECH-SKILL-W/P/M, T-MECH-BUF-01..08, T-POT-01..03 / T-MECH-POT-03..05 | Çekirdek skill başına MP/recast/menzil/etki/fail sebebi; buff çakışmaları ve debuff'ın buff'ı silmesi; pot hareketi durdurur mu (Q-06) | bot hesapları (profil başına) | `docs/05` tablosuyla uyum; `docs/11` §8 |
 | T-DATA-02, T-DATA-03 | Referans ekipmanın istemcide kuşanılabilirliği; maks HP/MP/saldırı oyunda | 11 bot hesabı | `docs/04` §7 |
