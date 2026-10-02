@@ -583,8 +583,8 @@ static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict
 // Builds one WIZ_MAGIC_PROCESS packet, runs it through CUser::HandlePacket() and maps the result the server
 // published back (via BotSession::m_castEcho). 'type' is the telemetry action name.
 static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32 skillId,
-	const CastTarget & target, const int16 sData[3], uint32 cycle, uint32 sinceCastingMs, int32 sinceFlyingMs,
-	uint32 castMs, uint64 nowMs, std::chrono::steady_clock::time_point now)
+	const CastTarget & target, bool area, const int16 sData[3], uint32 cycle, uint32 sinceCastingMs,
+	int32 sinceFlyingMs, uint32 castMs, uint64 nowMs, std::chrono::steady_clock::time_point now)
 {
 	const char * type = (opcode == MAGIC_CASTING) ? "CastStart"
 		: (opcode == MAGIC_FLYING) ? "CastFly" : "CastEffect";
@@ -612,6 +612,7 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 		<< int16(0) << int16(0) << int16(0);
 
 	s->m_castEcho = 0;
+	s->m_castEchoVictims = 0;
 
 	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 	user->HandlePacket(pkt);
@@ -622,6 +623,7 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 	s->m_actionWindow.Record(nowMs);
 
 	uint64 echo = s->m_castEcho.load();
+	uint32 victims = s->m_castEchoVictims.load();
 	int op = -1;
 	int code = 0;
 	bool ok = false;
@@ -659,8 +661,10 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 			+ ",\"ok\":" + (ok ? "true" : "false")
 			+ ",\"reason\":\"" + reason + "\""
 			+ ",\"op\":" + std::to_string(op)
-			+ ",\"code\":" + std::to_string(code)
-			+ ",\"latency_us\":" + std::to_string(latencyUs);
+			+ ",\"code\":" + std::to_string(code);
+		if (area && opcode == MAGIC_EFFECTING)
+			fields += ",\"victims\":" + std::to_string(victims);
+		fields += ",\"latency_us\":" + std::to_string(latencyUs);
 		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
 			s->m_charName.c_str(), fields, false);
 	}
@@ -730,8 +734,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
-		|| (m->bMoral != MORAL_SELF && m->bMoral != MORAL_FRIEND_WITHME
-			&& m->bMoral != MORAL_ENEMY && m->bMoral != MORAL_ALL))
+		|| !BotCore::CastMoralSupported(m->bMoral, m->bFlyingEffect))
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "unsupported_skill";
@@ -807,6 +810,11 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 	}
 
 	bool flying = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
+
+	// ADR-0017 Ek F4-29: an area skill (MAGIC.Moral 10) always sends target id -1 and the aim point in sData[0..2].
+	bool area = BotCore::IsAreaMoral(m->bMoral);
+	CastTarget sent = target;
+	sent.id = BotCore::CastTargetIdField(area, target.id);
 
 	// CLI-09: a UseStanding skill needs a stop packet and at least one tick before the cast starts. Only the ARMED
 	// phase is held; the next Tick() re-evaluates (the guard below still rejects "not_standing" as a safety net).
@@ -888,9 +896,9 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 	c.actionsInWindow = inWindow;
 
 	int16 sData[3];
-	sData[0] = target.isSelf ? 0 : int16(target.x);
-	sData[1] = target.isSelf ? 0 : int16(target.y);
-	sData[2] = target.isSelf ? 0 : int16(target.z);
+	sData[0] = BotCore::CastCoordField(area, target.isSelf, target.x);
+	sData[1] = BotCore::CastCoordField(area, target.isSelf, target.y);
+	sData[2] = BotCore::CastCoordField(area, target.isSelf, target.z);
 
 	if (s->m_castPhase == BotSession::CAST_ARMED)
 	{
@@ -906,13 +914,13 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 
 		if (m->bCastTime > 0)
 		{
-			CastOutcome cast = SubmitCast(s, user, MAGIC_CASTING, s->m_castSkillId, target, sData,
+			CastOutcome cast = SubmitCast(s, user, MAGIC_CASTING, s->m_castSkillId, sent, area, sData,
 				s->m_castCycle, 0, -1, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
 			if (cast.reason != nullptr && std::strcmp(cast.reason, "casting") == 0)
 			{
 				s->m_castPhase = BotSession::CAST_CASTING;
 				s->m_castCastingAt = now;
-				s->m_castTargetId = target.id;
+				s->m_castTargetId = sent.id;
 				return cast;
 			}
 
@@ -948,13 +956,13 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 			return RejectCast(s, user, flyVerdict, c, sinceCastingMs, m->bCastTime, inWindow,
 				BotCore::CastDurationMs(m->bCastTime));
 
-		CastOutcome fly = SubmitCast(s, user, MAGIC_FLYING, s->m_castSkillId, target, sData,
+		CastOutcome fly = SubmitCast(s, user, MAGIC_FLYING, s->m_castSkillId, sent, area, sData,
 			s->m_castCycle, sinceCastingMs, -1, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
 		if (fly.reason != nullptr && std::strcmp(fly.reason, "flying") == 0)
 		{
 			s->m_castPhase = BotSession::CAST_FLYING;
 			s->m_castFlyingAt = now;
-			s->m_castTargetId = target.id;   // also for CastTime == 0 (no CASTING went out)
+			s->m_castTargetId = sent.id;     // also for CastTime == 0 (no CASTING went out)
 			return fly;                      // SENT "flying"
 		}
 
@@ -989,7 +997,7 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 			? RejectCast(s, user, effectVerdict, c, sinceFlyingMs, m->bCastTime, inWindow, BotCore::kFlightMinMs)
 			: RejectCast(s, user, effectVerdict, c, sinceCastingMs, m->bCastTime, inWindow, BotCore::CastDurationMs(m->bCastTime));
 
-	CastOutcome effect = SubmitCast(s, user, MAGIC_EFFECTING, s->m_castSkillId, target, sData,
+	CastOutcome effect = SubmitCast(s, user, MAGIC_EFFECTING, s->m_castSkillId, sent, area, sData,
 		s->m_castCycle, sinceCastingMs, flying ? (int32)sinceFlyingMs : -1,
 		BotCore::CastDurationMs(m->bCastTime), nowMs, now);
 	const char * reason = effect.reason;

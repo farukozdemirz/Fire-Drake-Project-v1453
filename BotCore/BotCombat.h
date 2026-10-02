@@ -326,6 +326,40 @@ namespace BotCore
 		return type0 == 3 && type1 == 4;
 	}
 
+	// --- area cast (ADR-0017 Ek F4-29, docs/03 MEC-MAG-16, CLI-07) ---
+
+	// MAGIC.Moral 10 = AREA_ENEMY (MagicInstance.h). The server wants target id -1 for every area moral (10..13) and reads
+	// the aim point from sData[0] (x) and sData[2] (z); the bot only opens Moral 10 so far.
+	constexpr uint8_t kMoralAreaEnemy = 10;
+
+	inline bool IsAreaMoral(uint8_t moral)
+	{
+		return moral == kMoralAreaEnemy;
+	}
+
+	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 7 enemy, 8 all (F4-03) and 10 area-enemy (F4-29). A flying area
+	// skill (FlyingEffect != 0: Fire burst, Ice burst, Thunder burst) stays unsupported until its own slice.
+	inline bool CastMoralSupported(uint8_t moral, uint16_t flyingEffect)
+	{
+		if (moral == 1 || moral == 2 || moral == 7 || moral == 8)
+			return true;
+
+		return IsAreaMoral(moral) && flyingEffect == 0;
+	}
+
+	// WIZ_MAGIC_PROCESS 'target' field: an area cast always carries -1, every other cast the target's id.
+	inline int16_t CastTargetIdField(bool area, int16_t targetId)
+	{
+		return area ? int16_t(-1) : targetId;
+	}
+
+	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast always sends the aim
+	// point, also for "self" (the caster's own position is the aim point then).
+	inline int16_t CastCoordField(bool area, bool isSelf, float metres)
+	{
+		return (isSelf && !area) ? int16_t(0) : int16_t(metres);
+	}
+
 	// A skill type that takes part in the same-type gate (MEC-MAG-03: types 1..7).
 	inline bool IsGatedType(uint8_t type)
 	{
