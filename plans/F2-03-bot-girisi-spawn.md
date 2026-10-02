@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`: slot havuzu, `m_botSink`, `CUser::Send` geçersiz kılma), F2-02 (`KAPANDI`: `BotManager::Tick()` IOCP thread'inde); F1-04 (`KAPANDI`: 12 bot hesabı/karakteri DB'de, `db/002`) |

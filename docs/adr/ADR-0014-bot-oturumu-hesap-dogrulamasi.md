@@ -11,7 +11,7 @@ Bot girişinde:
 - Hesap doğrulaması (`AccountLogin`) **yapılmaz**: `BotManager`, bot hesap adını `CUser::m_strAccountID`'ye doğrudan yazar ve `AddAccountName` ile hesap haritasına ekler. Yalnızca `db/002` betiğinin yazdığı 12 sabit bot hesabı/karakteri (`BotManager` içindeki sabit tablo) spawn edilebilir; ini'den gelen rastgele ad kabul edilmez.
 - `SET_LOGIN_INFO` **atlanır**: `CUser::SelectCharacter` içinde `m_botSink != nullptr` ise `SetLogInInfoToDB` çağrılmaz. Bot oturumu `CURRENTUSER`/`TB_USER`'a hiç yazmaz.
 - Karakter yükleme (`LOAD_USER_DATA`, ambar, premium, kayıtlı büyü) gerçek oyuncuyla aynı kodla çalışır.
-- Çıkışta `AccountLogout` çağrısının bot için ne yapacağı F2-04'te kararlaştırılır (`ACCOUNT_LOGOUT` yan etkisi önce okunacak).
+- Çıkışta `AccountLogout` **atlanır** (F2-04 eki, 2026-10-02, otonom döngüde Claude kararı — gözden geçirilmeli): `ACCOUNT_LOGOUT` yordamı yalnızca `DELETE FROM CURRENTUSER WHERE strAccountID = @strAccountID` çalıştırır (`OBJECT_DEFINITION` ile okundu, tablo satırı okunmadı). Botların `CURRENTUSER`'da satırı olmadığından çağrı etkisizdir; ama "botlar bu tablolara hiç dokunmaz" ilkesine uymak için `CUser::ReqUserLogOut`'ta (`DatabaseThread.cpp:457`) koşul `m_bLogout != 2 && m_botSink == nullptr` olur. Karakter/ambar/kayıtlı büyü kaydı (`UpdateUser`, `UpdateWarehouseData`, `UpdateSavedMagic`) gerçek oyuncuyla aynı çalışır.
 
 ## Değerlendirilen alternatifler
 | Alternatif | Artılar | Eksiler | Neden seçilmedi |
