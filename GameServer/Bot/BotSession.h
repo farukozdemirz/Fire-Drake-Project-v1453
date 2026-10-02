@@ -19,7 +19,10 @@ public:
 		PHASE_WAIT_SELECT,  // WIZ_SEL_CHAR request queued, waiting for the DB thread's reply
 		PHASE_WAIT_LOADED,  // GameStart(1) done, waiting to send GameStart(2)
 		PHASE_IN_GAME,
-		PHASE_FAILED
+		PHASE_FAILED,
+		PHASE_DESPAWN_WAIT,   // OnDisconnect() called, waiting for the DB thread to finish the logout save
+		PHASE_DESPAWNED,      // slot returned to the pool, m_pUser == nullptr
+		PHASE_DESPAWN_STUCK   // logout save not confirmed in time; slot deliberately kept
 	};
 
 	enum SelectResult { SELECT_PENDING = 0, SELECT_OK = 1, SELECT_FAILED = 2 };
@@ -37,6 +40,11 @@ public:
 	std::chrono::steady_clock::time_point m_phaseStart;    // IOCP thread only
 	bool m_selectSeen;                                     // IOCP thread only
 	std::chrono::steady_clock::time_point m_selectSeenAt;  // IOCP thread only
+	std::chrono::steady_clock::time_point m_inGameSince;   // IOCP thread only
+	std::chrono::steady_clock::time_point m_lastUpdate;    // IOCP thread only
+	std::chrono::steady_clock::time_point m_despawnStart;  // IOCP thread only
+	uint32 m_updateCount;                                  // IOCP thread only
+	uint16 m_slotId;                                       // IOCP thread only, kept for log lines after m_pUser is cleared
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;

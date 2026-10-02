@@ -15,6 +15,8 @@ static const uint32 SPAWN_START_DELAY_MS = 5000;
 static const uint32 SELECT_SETTLE_MS = 1000;
 static const uint32 LOADED_DELAY_MS = 200;
 static const uint32 PHASE_TIMEOUT_MS = 15000;
+static const uint32 UPDATE_PERIOD_MS = 1000;
+static const uint32 DESPAWN_TIMEOUT_MS = 30000;
 
 BotManager & BotManager::Instance()
 {
@@ -73,6 +75,13 @@ bool BotManager::Startup()
 
 	std::string spawnList;
 	ini.GetString("BOT", "SPAWN_ON_START", "", spawnList);
+
+	int despawnSec = ini.GetInt("BOT", "DESPAWN_AFTER_SEC", 0);
+	if (despawnSec < 0)
+		despawnSec = 0;
+	else if (despawnSec > 86400)
+		despawnSec = 86400;
+	m_despawnAfterMs = (uint32)despawnSec * 1000;
 
 	auto & mgr = g_pMain->m_socketMgr;
 	std::lock_guard<std::recursive_mutex> lock(mgr.GetLock());
@@ -369,12 +378,19 @@ void BotManager::ParseSpawnList(const std::string & list)
 		snprintf(message, sizeof(message), "BotManager: spawn list: %u bot(s) queued (%s)",
 			(unsigned)m_sessions.size(), names.c_str());
 		WriteBotLog(message);
+
+		if (m_despawnAfterMs != 0)
+		{
+			snprintf(message, sizeof(message), "BotManager: despawn after %u s (DESPAWN_AFTER_SEC)",
+				(unsigned)(m_despawnAfterMs / 1000));
+			WriteBotLog(message);
+		}
 	}
 }
 
 void BotManager::TickSessions()
 {
-	if (m_sessions.empty() || m_spawnSummaryDone)
+	if (m_sessions.empty())
 		return;
 
 	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
@@ -382,7 +398,7 @@ void BotManager::TickSessions()
 		return;
 
 	bool startedThisTick = false;
-	uint32 okCount = 0, failCount = 0;
+	size_t inGameCount = 0, waitCount = 0, releasedCount = 0, stuckCount = 0;
 
 	for (size_t i = 0; i < m_sessions.size(); i++)
 	{
@@ -438,6 +454,10 @@ void BotManager::TickSessions()
 				if (s->m_pUser->isInGame())
 				{
 					s->m_phase = BotSession::PHASE_IN_GAME;
+					s->m_inGameSince = now;
+					s->m_lastUpdate = now;
+					s->m_slotId = s->m_pUser->GetSocketID();
+					m_spawnOk++;
 
 					char message[256];
 					snprintf(message, sizeof(message),
@@ -455,26 +475,123 @@ void BotManager::TickSessions()
 			}
 			break;
 
+		case BotSession::PHASE_IN_GAME:
+			if (m_despawnAfterMs != 0
+				&& now - s->m_inGameSince >= std::chrono::milliseconds(m_despawnAfterMs))
+			{
+				BeginDespawn(s, now);
+			}
+			else if (now - s->m_lastUpdate >= std::chrono::milliseconds(UPDATE_PERIOD_MS))
+			{
+				// S8: timed effects/saves; runs on the IOCP thread, never on the 30 s timer thread.
+				s->m_lastUpdate = now;
+				s->m_updateCount++;
+				s->m_pUser->Update();
+			}
+			break;
+
+		case BotSession::PHASE_DESPAWN_WAIT:
+			PollDespawn(s, now);
+			break;
+
 		default:
 			break;
 		}
 
 		if (s->m_phase == BotSession::PHASE_IN_GAME)
-			okCount++;
-		else if (s->m_phase == BotSession::PHASE_FAILED)
-			failCount++;
+			inGameCount++;
+		else if (s->m_phase == BotSession::PHASE_DESPAWN_WAIT)
+			waitCount++;
+		else if (s->m_phase == BotSession::PHASE_DESPAWNED)
+			releasedCount++;
+		else if (s->m_phase == BotSession::PHASE_DESPAWN_STUCK)
+			stuckCount++;
 	}
 
-	if (okCount + failCount == m_sessions.size())
+	if (!m_spawnSummaryDone && m_spawnOk + m_spawnFailed == m_sessions.size())
 	{
 		m_spawnSummaryDone = true;
 
 		char message[200];
 		snprintf(message, sizeof(message),
 			"BotManager: spawn complete: %u/%u in game, %u failed",
-			(unsigned)okCount, (unsigned)m_sessions.size(), (unsigned)failCount);
+			(unsigned)m_spawnOk, (unsigned)m_sessions.size(), (unsigned)m_spawnFailed);
 		WriteBotLog(message);
 	}
+
+	if (m_despawnAfterMs != 0 && m_spawnSummaryDone && !m_despawnSummaryDone
+		&& inGameCount == 0 && waitCount == 0)
+	{
+		m_despawnSummaryDone = true;
+		size_t poolFree;
+		{
+			std::lock_guard<std::recursive_mutex> lock(g_pMain->m_socketMgr.GetLock());
+			poolFree = g_pMain->m_socketMgr.GetReservedSessionMap().size();
+		}
+
+		char message[288];
+		snprintf(message, sizeof(message),
+			"BotManager: despawn complete: %u/%u released, %u stuck, %u never spawned, pool free %u/%u",
+			(unsigned)releasedCount, (unsigned)m_sessions.size(), (unsigned)stuckCount,
+			(unsigned)m_spawnFailed, (unsigned)poolFree, (unsigned)m_poolSize);
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::BeginDespawn(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	CUser * pUser = s->m_pUser;
+	// Socket::Disconnect() does nothing without a socket, so run what a real disconnect runs:
+	// OnDisconnect() removes the account/character names, takes the bot out of its region
+	// and queues WIZ_LOGOUT (LogOut() sets m_deleted until the DB thread has saved the bot).
+	pUser->OnDisconnect();
+	s->m_phase = BotSession::PHASE_DESPAWN_WAIT;
+	s->m_despawnStart = now;
+
+	char message[224];
+	snprintf(message, sizeof(message),
+		"BotManager: bot %s despawning (slot %u)",
+		s->m_charName.c_str(), (unsigned)s->m_slotId);
+	WriteBotLog(message);
+}
+
+void BotManager::PollDespawn(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	CUser * pUser = s->m_pUser;
+	long long waited = std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_despawnStart).count();
+
+	// m_deleted is cleared by the DB thread as ReqUserLogOut()'s last statement; the IOCP
+	// thread reads it without a lock (same as real player sessions).
+	if (pUser->IsDeleted())
+	{
+		if (waited > DESPAWN_TIMEOUT_MS)
+		{
+			// Releasing now could hand the slot to a new spawn while the DB thread still uses it.
+			s->m_phase = BotSession::PHASE_DESPAWN_STUCK;
+
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: bot %s despawn TIMEOUT after %lld ms (slot %u kept)",
+				s->m_charName.c_str(), waited, (unsigned)s->m_slotId);
+			WriteBotLog(message);
+		}
+		return;
+	}
+
+	bool namesCleared = g_pMain->GetUserPtr(s->m_charName, TYPE_CHARACTER) == nullptr
+		&& g_pMain->GetUserPtr(s->m_accountName, TYPE_ACCOUNT) == nullptr;
+	ReleaseSlot(pUser);
+	s->m_pUser = nullptr;
+	s->m_phase = BotSession::PHASE_DESPAWNED;
+
+	char message[288];
+	snprintf(message, sizeof(message),
+		"BotManager: bot %s despawned (slot %u, logout save %lld ms, updates %u, packets %u, names cleared %s)",
+		s->m_charName.c_str(), (unsigned)s->m_slotId, waited,
+		(unsigned)s->m_updateCount, (unsigned)s->m_packetTotal.load(),
+		namesCleared ? "yes" : "no");
+	WriteBotLog(message);
 }
 
 void BotManager::StartSession(BotSession * s)
@@ -526,6 +643,7 @@ void BotManager::FailSession(BotSession * s, const char * reason)
 	// The slot is deliberately not released and the session is not deleted: the DB thread
 	// may still be running this session's CUser. Cleanup is F2-04's job.
 	s->m_phase = BotSession::PHASE_FAILED;
+	m_spawnFailed++;
 
 	char message[200];
 	snprintf(message, sizeof(message),

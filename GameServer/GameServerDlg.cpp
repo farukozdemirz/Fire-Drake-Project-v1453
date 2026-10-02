@@ -743,6 +743,10 @@ uint32 CGameServerDlg::Timer_UpdateSessions(void * lpParam)
 		{
 			CUser * pUser = TO_USER(itr->second);
 
+			// Bot sessions have no socket to time out; BotManager::TickSessions() updates them on the IOCP thread.
+			if (pUser->m_botSink != nullptr)
+				continue;
+
 #ifndef DEBUG // ignore timeouts in debug builds, as we'll probably be pausing it with the debugger.
 			uint32 timeout = KOSOCKET_TIMEOUT;
 
