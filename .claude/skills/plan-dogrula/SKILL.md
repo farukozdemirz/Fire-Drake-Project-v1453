@@ -16,9 +16,10 @@ Sen denetçisin. Amaç kodu "onaylamak" değil, planın gerçekten ve kurallara 
 1. Plan dosyasını tamamen oku: kabul kriterleri, dokunulabilecek dosyalar, kapsam dışı, Uygulayıcı Raporu'nun son turu.
 2. Planın durumu `UYGULANDI` değilse dur ve kullanıcıya bildir.
 3. Branch ve farkları çıkar:
-   - `git log --oneline main..bot/<FAZ>-<NN>`
-   - `git diff --stat main...bot/<FAZ>-<NN>`
-   - `git diff main...bot/<FAZ>-<NN>`
+   - Taban: planın Branch alanındaki `(taban: X)` (yoksa `main`; gece modunda genellikle `$AUTO_INTEGRATION_BRANCH`). Aşağıda `<taban>` bu daldır.
+   - `git log --oneline <taban>..bot/<FAZ>-<NN>`
+   - `git diff --stat <taban>...bot/<FAZ>-<NN>`
+   - `git diff <taban>...bot/<FAZ>-<NN>`
    - Branch yoksa veya commit yoksa bu bir bulgudur.
 4. Çalışma ağacında commit edilmemiş değişiklik var mı bak (`git status`). Commit edilmemiş iş doğrulanmaz.
 
@@ -86,6 +87,7 @@ Planın `Durum` satırını kararla güncelle. **Kodu kendin düzeltme.** Uygula
 
 6. **Commit:** Plan dosyası, `plans/README.md`, `docs/STATUS.md` (ve değiştirdiysen `docs/KNOWN_ISSUES.md`, ilgili doküman) değişikliklerini **plan branch'ine** commit et: mesaj `[<FAZ>-<NN>] Doğrulama raporu: <karar>`. Yalnızca bu dosyaları `git add` ile ekle (`git add -A`/`.` yok). Commit edilmemiş rapor, sıradaki planın dalı açılırken kaybolur/çakışır.
 7. **Otonom mod:** `echo "${AUTO_LOOP:-0}"` `1` ise kullanıcıya soru sorulamaz. Karar `DÜZELTME GEREKLİ` ise düzeltme talimatını mutlaka plan dosyasındaki "Düzeltme talimatı" bloğuna **kod çitiyle** yaz (döngü oradan okur). `REDDEDİLDİ` kararını yalnızca gerçekten baştan yapılması gerekiyorsa ver; belirsizlikte `DÜZELTME GEREKLİ` tercih et. `plans/.aktif-plan`'a dokunma.
+8. **Gece modu** (`AUTO_INTEGRATION_BRANCH` dolu): birleştirmeyi döngü betiği yapar; sen **birleştirme ve push yapma**. Derlemeden önce sunucular açıksa kapat (`tools/run-servers.sh status` → `[UP]` varsa `tools/run-servers.sh stop`; açık exe bağlayıcıyı kilitler). Çalışma zamanı testi için sunucu açtıysan bitince kapat. **İstemci (GUI) gerektiren kontroller** bu modda yapılmaz: plan bunları kapsam dışı/insan testi olarak listelemişse karar vermeyi engellemez; `docs/STATUS.md` **`## Proje sahibi testleri (bekleyen)`** bölümüne ekle. Planın kendi kabul kriteri insan testi gerektiriyorsa bunu `DÜZELTME GEREKLİ` sebebi sayma; kriteri "sabah testine ertelendi" diye işaretle ve diğer kriterlere göre karar ver. Doğrulama bitince `git switch $AUTO_INTEGRATION_BRANCH` ile entegrasyon dalına dön ve çalışma ağacını temiz bırak.
 
 ## 6. Kullanıcıya özet
 

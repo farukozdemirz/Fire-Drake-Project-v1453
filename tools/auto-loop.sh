@@ -1,73 +1,106 @@
 #!/usr/bin/env bash
-# Otonom planla -> uygula -> dogrula dongusu. Tasarim: plans/OTONOM_DONGU.md
+# Otonom planla -> uygula -> dogrula dongusu (gece modu dahil). Tasarim: plans/OTONOM_DONGU.md
 #
 # GUVENLIK: Varsayilan olarak hicbir sey CALISTIRMAZ; yalnizca ne yapacagini
 # yazip cikar (dry-run). Gercekten calismasi icin --run ZORUNLUDUR.
 #
 # Kullanim:
-#   ./tools/auto-loop.sh            # dry-run: ayarlari ve on kontrolleri yazar, cikar
-#   ./tools/auto-loop.sh --run      # calistirir (arka plan: nohup ... &)
+#   ./tools/auto-loop.sh                                     # dry-run
+#   ./tools/auto-loop.sh --run                               # klasik mod (faz sinirinda durur, merge yok)
+#   ./tools/auto-loop.sh --run --branch gece/2026-10-02 --target F5
+#        # gece modu: dogrulanan plan dallari entegrasyon dalina (--branch) otomatik
+#        # birlestirilir, faz sinirlari --target fazina kadar asilir, takilmalarda
+#        # Claude "kurtarma" adimiyla karar verir. main'e dokunulmaz, push yapilmaz.
 #
-# Durdurma: calisirken  touch plans/.auto-loop-stop  (sonraki iterasyon basinda kontrol edilir)
+# Durdurma: calisirken  touch plans/.auto-loop-stop  (sonraki adim basinda kontrol edilir)
+# Durum:    cat plans/_logs/auto-loop.state ; tail -f plans/_logs/auto-loop.log
 
-set -euo pipefail
+set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# --- Ayarlar (plans/OTONOM_DONGU.md SS7) ---------------------------------
+# --- Ayarlar --------------------------------------------------------------
 OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/deepseek-v4.1-flash}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-opus}"
-MAX_CORRECTION_TURNS="${MAX_CORRECTION_TURNS:-3}"
-MAX_ITERATIONS="${MAX_ITERATIONS:-5}"
-MAX_WALLCLOCK_HOURS="${MAX_WALLCLOCK_HOURS:-8}"
-OPENCODE_TIMEOUT_SEC="${OPENCODE_TIMEOUT_SEC:-3600}"
-CLAUDE_TIMEOUT_SEC="${CLAUDE_TIMEOUT_SEC:-2400}"
-CLAUDE_MAX_BUDGET_USD="${CLAUDE_MAX_BUDGET_USD:-10}"
+MAX_CORRECTION_TURNS="${MAX_CORRECTION_TURNS:-4}"
+MAX_ITERATIONS="${MAX_ITERATIONS:-400}"
+MAX_WALLCLOCK_HOURS="${MAX_WALLCLOCK_HOURS:-9}"
+OPENCODE_TIMEOUT_SEC="${OPENCODE_TIMEOUT_SEC:-7200}"
+CLAUDE_TIMEOUT_SEC="${CLAUDE_TIMEOUT_SEC:-3600}"
+CLAUDE_MAX_BUDGET_USD="${CLAUDE_MAX_BUDGET_USD:-40}"
+MAX_RECOVERIES_PER_PLAN="${MAX_RECOVERIES_PER_PLAN:-2}"
+MAX_TRANSIENT_RETRIES="${MAX_TRANSIENT_RETRIES:-3}"
+TRANSIENT_SLEEP_SEC="${TRANSIENT_SLEEP_SEC:-300}"
+
+INTEGRATION_BRANCH=""
+TARGET_PHASE=""
 
 ACTIVE_PLAN_FILE="plans/.aktif-plan"
 STOP_FILE="plans/.auto-loop-stop"
+DONE_FILE="plans/.auto-loop-done"
 LOG_DIR="plans/_logs"
 MAIN_LOG="$LOG_DIR/auto-loop.log"
+STATE_FILE="$LOG_DIR/auto-loop.state"
 STATUS_FILE="docs/STATUS.md"
 
-# Claude'a her cagrida verilen sabit yasaklar (opencode.json deny listesiyle ayni).
+# Claude'a her cagrida verilen sabit yasaklar (birlestirmeyi yalnizca bu betik yapar).
 DENY_TOOLS=("Bash(git push*)" "Bash(git merge*)" "Bash(git rebase*)" "Bash(git reset --hard*)" "Bash(git clean*)" "Bash(rm -rf*)")
 
 RUN=false
-for a in "$@"; do
-	case "$a" in
+while [ $# -gt 0 ]; do
+	case "$1" in
 	--run) RUN=true ;;
+	--branch) INTEGRATION_BRANCH="${2:-}"; shift ;;
+	--target) TARGET_PHASE="${2:-}"; shift ;;
 	-h | --help)
-		sed -n '2,12p' "$0"
+		sed -n '2,17p' "$0"
 		exit 0
 		;;
+	*) echo "Bilinmeyen arguman: $1" >&2; exit 2 ;;
 	esac
+	shift
 done
 
-# Skill'ler bu degiskene bakarak insansiz modu bilir (kullaniciya soru sormaz).
+NIGHT=false
+[ -n "$INTEGRATION_BRANCH" ] && NIGHT=true
+
+# Skill'ler bu degiskenlere bakarak insansiz/gece modunu bilir.
 export AUTO_LOOP=1
+export AUTO_INTEGRATION_BRANCH="$INTEGRATION_BRANCH"
+export AUTO_TARGET_PHASE="$TARGET_PHASE"
 
 log() {
 	mkdir -p "$LOG_DIR"
 	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$MAIN_LOG"
 }
 
+state() { # tek satirlik canli durum
+	mkdir -p "$LOG_DIR"
+	printf '%s | iter=%s | plan=%s | %s\n' "$(date '+%H:%M:%S')" "${ITER:-0}" "${PLAN_PATH:-?}" "$*" >"$STATE_FILE"
+}
+
 append_blocker() {
 	local reason="$1"
-	local row="| $(date '+%Y-%m-%d %H:%M') | otonom döngü durdu | auto-loop.sh | $reason |"
 	log "BLOKER: $reason"
-	if $RUN && [ -f "$STATUS_FILE" ]; then
-		awk -v row="$row" '
-			{print}
-			/^## Blokajlar$/ {found=1}
-			found && /^\|---/ && !inserted {print row; inserted=1; found=0}
-		' "$STATUS_FILE" >"$STATUS_FILE.tmp" && mv "$STATUS_FILE.tmp" "$STATUS_FILE"
-	fi
+	$RUN || return 0
+	[ -f "$STATUS_FILE" ] || return 0
+	local row="| $(date '+%Y-%m-%d %H:%M') otonom döngü | $reason | Claude (sabah) | \`plans/_logs/auto-loop.log\` |"
+	awk -v row="$row" '
+		{print}
+		/^## Blokajlar/ {found=1}
+		found && /^\|---/ && !inserted {print row; inserted=1; found=0}
+	' "$STATUS_FILE" >"$STATUS_FILE.tmp" && mv "$STATUS_FILE.tmp" "$STATUS_FILE"
+	git add "$STATUS_FILE" >/dev/null 2>&1 && git commit -q -m "otonom döngü: blokaj kaydı" >/dev/null 2>&1 || true
 }
 
 plan_durum() {
+	[ -f "$1" ] || { echo "YOK"; return; }
 	grep -m1 -E '^\| Durum \|' "$1" | sed -E 's/^\| Durum \| *([^|]*) *\|.*/\1/' | xargs
+}
+
+plan_branch() { # plan dosyasindaki bot/<FAZ>-<NN> dal adi
+	grep -m1 -E '^\| Branch \|' "$1" | grep -oE 'bot/[A-Za-z0-9._-]+' | head -1
 }
 
 stop_requested() { [ -f "$STOP_FILE" ]; }
@@ -82,53 +115,120 @@ extract_correction() {
 	' "$1"
 }
 
-run_claude() {
-	# $1 = prompt, $2 = log dosyasi
-	timeout "$CLAUDE_TIMEOUT_SEC" claude -p "$1" \
-		--permission-mode bypassPermissions \
-		--disallowedTools "${DENY_TOOLS[@]}" \
-		--output-format json \
-		--model "$CLAUDE_MODEL" \
-		--max-budget-usd "$CLAUDE_MAX_BUDGET_USD" \
-		--no-session-persistence </dev/null >"$2" 2>&1
+# Sunucular build/bin altindaki exe'leri kilitler; her adimdan once kapat.
+ensure_servers_stopped() {
+	local out
+	out="$("$ROOT/tools/run-servers.sh" status 2>/dev/null || true)"
+	if printf '%s' "$out" | grep -q '^\[UP\]'; then
+		log "  sunucular acik; kapatiliyor (tools/run-servers.sh stop)"
+		"$ROOT/tools/run-servers.sh" stop >>"$MAIN_LOG" 2>&1 || log "  UYARI: sunucular kapatilamadi (istemci bagli olabilir); derleme kilitlenebilir."
+	fi
+}
+
+# Calisma agaci kirliyse kaybetmeden kenara koyar (sabah incelenebilir).
+ensure_clean() {
+	local dirty
+	dirty="$(git status --porcelain 2>/dev/null | grep -v '^?? start.md$' || true)"
+	if [ -n "$dirty" ]; then
+		log "  calisma agaci kirli; git stash ile kenara aliniyor:"
+		printf '%s\n' "$dirty" | sed 's/^/      /' | tee -a "$MAIN_LOG" >/dev/null
+		git stash push -u -m "auto-loop $(date '+%Y-%m-%d %H:%M:%S') artiklari (${PLAN_PATH:-?})" >>"$MAIN_LOG" 2>&1 || true
+	fi
+}
+
+switch_to() { # $1 = dal
+	ensure_clean
+	[ "$(git branch --show-current)" = "$1" ] && return 0
+	git switch "$1" >>"$MAIN_LOG" 2>&1
+}
+
+# Gecici API hatalarinda (rate limit, overload) bekleyip yeniden dener.
+run_claude() { # $1 = prompt, $2 = log dosyasi
+	local attempt=1 rc start dur
+	while true; do
+		start=$(date +%s)
+		timeout -k 60 "$CLAUDE_TIMEOUT_SEC" claude -p "$1" \
+			--permission-mode bypassPermissions \
+			--disallowedTools "${DENY_TOOLS[@]}" \
+			--output-format json \
+			--model "$CLAUDE_MODEL" \
+			--max-budget-usd "$CLAUDE_MAX_BUDGET_USD" \
+			--no-session-persistence </dev/null >"$2" 2>&1
+		rc=$?
+		dur=$(($(date +%s) - start))
+		if [ $rc -eq 0 ]; then return 0; fi
+		if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
+			log "  claude zaman asimina ugradi (${CLAUDE_TIMEOUT_SEC}s)."
+			return $rc
+		fi
+		if [ $attempt -lt "$MAX_TRANSIENT_RETRIES" ] && { [ $dur -lt 120 ] || grep -qiE 'rate.?limit|overloaded|529|ECONN|timeout|usage limit' "$2"; }; then
+			log "  claude cikis kodu $rc (${dur}s); gecici hata sayilip ${TRANSIENT_SLEEP_SEC}s sonra yeniden denenecek ($attempt/$MAX_TRANSIENT_RETRIES)."
+			attempt=$((attempt + 1))
+			sleep "$TRANSIENT_SLEEP_SEC"
+			continue
+		fi
+		return $rc
+	done
+}
+
+run_opencode() { # $1 = prompt, $2 = log dosyasi
+	local attempt=1 rc start dur
+	while true; do
+		start=$(date +%s)
+		timeout -k 60 "$OPENCODE_TIMEOUT_SEC" opencode run --auto --agent build -m "$OPENCODE_MODEL" "$1" </dev/null >"$2" 2>&1
+		rc=$?
+		dur=$(($(date +%s) - start))
+		if [ $rc -eq 0 ]; then return 0; fi
+		if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
+			log "  opencode zaman asimina ugradi (${OPENCODE_TIMEOUT_SEC}s)."
+			return $rc
+		fi
+		if [ $attempt -lt "$MAX_TRANSIENT_RETRIES" ] && [ $dur -lt 120 ]; then
+			log "  opencode cikis kodu $rc (${dur}s); ${TRANSIENT_SLEEP_SEC}s sonra yeniden denenecek ($attempt/$MAX_TRANSIENT_RETRIES)."
+			attempt=$((attempt + 1))
+			sleep "$TRANSIENT_SLEEP_SEC"
+			continue
+		fi
+		return $rc
+	done
 }
 
 # --- On kontroller --------------------------------------------------------
 PRE_OK=true
-pre() { # $1=mesaj
-	echo "ON KONTROL HATASI: $1" >&2
-	PRE_OK=false
-}
+pre() { echo "ON KONTROL HATASI: $1" >&2; PRE_OK=false; }
 
 command -v opencode >/dev/null || pre "opencode komutu yok"
 command -v claude >/dev/null || pre "claude komutu yok"
-for f in AGENTS.md CLAUDE.md opencode.json plans/_SABLON.md docs/STATUS.md .claude/skills/plan-olustur/SKILL.md .claude/skills/plan-dogrula/SKILL.md; do
+command -v timeout >/dev/null || pre "timeout komutu yok"
+for f in AGENTS.md CLAUDE.md opencode.json plans/_SABLON.md docs/STATUS.md .claude/skills/plan-olustur/SKILL.md .claude/skills/plan-dogrula/SKILL.md tools/run-servers.sh; do
 	[ -f "$f" ] || pre "$f yok"
 done
-# Altyapi dosyalari commit'li olmali; aksi halde DeepSeek'in dali bunlari commit'e katabilir
-# veya sonraki dallar bunlari gormez.
-for f in AGENTS.md CLAUDE.md opencode.json docs/STATUS.md plans/README.md; do
+for f in AGENTS.md CLAUDE.md opencode.json docs/STATUS.md plans/README.md tools/auto-loop.sh; do
 	git ls-files --error-unmatch "$f" >/dev/null 2>&1 || pre "$f git'te takipli degil (once commit'leyin)"
 done
 if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^?? start.md$' || true)" ]; then
 	pre "calisma agaci temiz degil (git status). Once commit'leyin veya stash edin."
 fi
+if $NIGHT; then
+	git rev-parse --verify --quiet "$INTEGRATION_BRANCH" >/dev/null || pre "entegrasyon dali '$INTEGRATION_BRANCH' yok (git branch $INTEGRATION_BRANCH main ile olusturun)"
+	case "$INTEGRATION_BRANCH" in main | master) pre "entegrasyon dali main olamaz (gece modu main'e dokunmaz)" ;; esac
+	[ -n "$TARGET_PHASE" ] || pre "gece modunda --target (or. F5) zorunlu"
+fi
 
 if ! $RUN; then
 	cat <<EOF
-=== DRY-RUN (gerçekten çalıştırmak için: $0 --run) ===
-Dal: $(git branch --show-current)
-Aktif plan işaretçisi: $ACTIVE_PLAN_FILE $( [ -f "$ACTIVE_PLAN_FILE" ] && echo "(var: $(cat "$ACTIVE_PLAN_FILE"))" || echo "(yok: ilk adımda claude /plan-olustur çağrılacak)" )
+=== DRY-RUN (gerçekten çalıştırmak için --run) ===
+Mod: $($NIGHT && echo "GECE (entegrasyon dalı: $INTEGRATION_BRANCH, hedef faz: $TARGET_PHASE)" || echo "klasik (faz sınırında durur, merge yok)")
+Şu anki dal: $(git branch --show-current)
+Aktif plan: $( [ -f "$ACTIVE_PLAN_FILE" ] && echo "$(cat "$ACTIVE_PLAN_FILE") ($(plan_durum "$(cat "$ACTIVE_PLAN_FILE")"))" || echo "(yok: ilk adımda /plan-olustur)")
 Ayarlar:
-  OPENCODE_MODEL=$OPENCODE_MODEL
-  CLAUDE_MODEL=$CLAUDE_MODEL
+  OPENCODE_MODEL=$OPENCODE_MODEL  CLAUDE_MODEL=$CLAUDE_MODEL
   MAX_CORRECTION_TURNS=$MAX_CORRECTION_TURNS  MAX_ITERATIONS=$MAX_ITERATIONS  MAX_WALLCLOCK_HOURS=$MAX_WALLCLOCK_HOURS
   OPENCODE_TIMEOUT_SEC=$OPENCODE_TIMEOUT_SEC  CLAUDE_TIMEOUT_SEC=$CLAUDE_TIMEOUT_SEC  CLAUDE_MAX_BUDGET_USD=$CLAUDE_MAX_BUDGET_USD
-Kalıcı yasaklar (opencode.json deny + claude --disallowedTools):
-  ${DENY_TOOLS[*]}
-Faz sınırında döngü her zaman durur (plan-olustur skill'i karar verir).
+  MAX_RECOVERIES_PER_PLAN=$MAX_RECOVERIES_PER_PLAN  MAX_TRANSIENT_RETRIES=$MAX_TRANSIENT_RETRIES (bekleme ${TRANSIENT_SLEEP_SEC}s)
+Claude yasakları: ${DENY_TOOLS[*]}
 EOF
-	if $PRE_OK; then echo "ÖN KONTROLLER: hepsi tamam."; else echo "ÖN KONTROLLER: BAŞARISIZ (yukarıya bakın) — --run reddedilir."; fi
+	if $PRE_OK; then echo "ÖN KONTROLLER: hepsi tamam."; else echo "ÖN KONTROLLER: BAŞARISIZ — --run reddedilir."; fi
 	echo "Hiçbir komut çalıştırılmadı."
 	exit 0
 fi
@@ -136,130 +236,209 @@ fi
 $PRE_OK || exit 2
 
 mkdir -p "$LOG_DIR"
+rm -f "$DONE_FILE"
 START_TS=$(date +%s)
 ITER=0
-CORRECTION_TURNS=0
-NO_PROGRESS=0
+PLAN_PATH=""
+declare -A CORR=() RECOV=() IMPL_TRIES=() VERIFY_TRIES=()
+FINALIZED=false
 
-log "=== auto-loop.sh basladi (RUN=true, model: $OPENCODE_MODEL / $CLAUDE_MODEL) ==="
+finalize() {
+	$FINALIZED && return
+	FINALIZED=true
+	$NIGHT || return 0
+	log "=== Kapanis: sabah raporu yaziliyor ==="
+	state "kapanis raporu"
+	switch_to "$INTEGRATION_BRANCH" || true
+	local rlog="$LOG_DIR/final-report-$(date +%s).log"
+	run_claude "Otonom gece döngüsü bitti (neden: ${1:-bilinmiyor}). Entegrasyon dalı: $INTEGRATION_BRANCH (taban: main). Görev: docs/reports/gece-$(date +%Y-%m-%d).md dosyasını yaz (Türkçe, proje sahibi için sabah raporu): (1) bu gece hangi planlar yazıldı/uygulandı/doğrulandı/iptal edildi (git log main..$INTEGRATION_BRANCH ve plans/README.md'den), (2) hangi fazlar nerede kaldı, faz sonuç raporu taslakları, (3) Claude'un otonom verdiği kararlar (ADR'ler), (4) docs/STATUS.md 'Proje sahibi testleri (bekleyen)' listesi: sabah yapılacak istemci testleri adım adım, (5) blokajlar ve takılmalar (plans/_logs/auto-loop.log), (6) geri alma: main'e hiç dokunulmadı; her şey $INTEGRATION_BRANCH dalında; birleştirme komutu. Dosyayı ve STATUS güncellemesini $INTEGRATION_BRANCH dalına commit et. Başka dosya değiştirme, push/merge yapma." "$rlog" || log "  kapanis raporu yazilamadi (log: $rlog)"
+	ensure_clean
+	state "bitti: ${1:-?}"
+	log "=== auto-loop.sh bitti ==="
+}
+trap 'finalize "beklenmeyen cikis"' EXIT
 
-next_plan() {
-	# DOGRULANDI sonrasi (veya ilk acilista) siradaki plani yazdirir.
-	local before after slog
-	before="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
-	slog="$LOG_DIR/next-plan-iter$ITER-$(date +%s).log"
-	log "  -> claude -p /plan-olustur (log: $slog)"
-	run_claude "/plan-olustur" "$slog" || log "  claude (plan-olustur) sifir olmayan cikis kodu dondurdu."
-	after="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
-	if [ -z "$after" ] || [ "$after" = "$before" ]; then
+stop_loop() { # $1 = neden
+	log "DUR: $1"
+	finalize "$1"
+	exit 0
+}
+
+# Claude'a takilmayi cozdurur. 0 = devam edilebilir, 1 = tukendi.
+recover() { # $1 = neden
+	local key="${PLAN_PATH:-none}" rlog
+	RECOV[$key]=$(( ${RECOV[$key]:-0} + 1 ))
+	if [ "${RECOV[$key]}" -gt "$MAX_RECOVERIES_PER_PLAN" ]; then
+		append_blocker "'$PLAN_PATH' için kurtarma hakkı bitti ($MAX_RECOVERIES_PER_PLAN). Son neden: $1"
+		return 1
+	fi
+	rlog="$LOG_DIR/recover-$(basename "${PLAN_PATH:-none}" .md)-$(date +%s).log"
+	log "  -> KURTARMA (${RECOV[$key]}/$MAX_RECOVERIES_PER_PLAN): $1 (log: $rlog)"
+	state "kurtarma: $1"
+	ensure_servers_stopped
+	run_claude "OTONOM DÖNGÜ KURTARMA ADIMI. Sen bu projede planlayıcı ve denetçisin (CLAUDE.md); proje sahibi uyuyor, karar yetkisi sende, soru sorma. Döngü şu planda takıldı: ${PLAN_PATH:-yok}. Durum: $(plan_durum "${PLAN_PATH:-/dev/null}"). Neden: $1. Son adım logları plans/_logs/ altında (en yenileri), ana log plans/_logs/auto-loop.log. Entegrasyon dalı: ${INTEGRATION_BRANCH:-yok}, hedef faz: ${TARGET_PHASE:-yok}. Görevin: durumu incele ve döngünün ilerleyebilmesi için TEK bir çözüm uygula: (a) plan yanlış/eksik/çok büyükse planı düzelt veya küçült ve Durum'u HAZIR yap (gerekirse plan dalını git switch ile bırak, kodu düzeltme); (b) DeepSeek'in yapması gereken net bir iş varsa plan dosyasının sonuna yeni bir 'Düzeltme talimatı' kod bloğu yaz ve Durum'u DÜZELTME GEREKLİ yap; (c) plan bu gece yapılamayacaksa (istemci/insan gerektiriyor, tasarım hatalı) Durum'u İPTAL yap, nedenini planın sonuna ve docs/STATUS.md'ye yaz, insan gerektiren kısmı STATUS 'Proje sahibi testleri (bekleyen)' bölümüne ekle; (d) BLOKE sorusu varsa cevabını sen ver (gerekirse ADR, başlığına '(otonom döngüde Claude kararı — gözden geçirilmeli)'), cevabı plana yaz ve Durum'u HAZIR veya DÜZELTME GEREKLİ yap. Değişikliklerini ilgili dala commit et (plan dosyası değişiyorsa planın yazıldığı dal: ${INTEGRATION_BRANCH:-mevcut dal}; düzeltme talimatı ise plan dalı). Çalışma ağacını temiz bırak. push/merge/rebase/reset yapma." "$rlog" || log "  kurtarma claude cagrisi sifir olmayan kodla bitti."
+	return 0
+}
+
+next_plan() { # 0 = yeni plan hazir, 1 = yazilmadi, 2 = hedef tamam
+	local before after slog try
+	for try in 1 2; do
+		before="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
+		$NIGHT && { switch_to "$INTEGRATION_BRANCH" || { append_blocker "entegrasyon dalina gecilemedi"; return 1; }; }
+		ensure_servers_stopped
+		slog="$LOG_DIR/next-plan-iter$ITER-$(date +%s).log"
+		state "plan yaziliyor (/plan-olustur, deneme $try)"
+		log "  -> claude -p /plan-olustur (deneme $try, log: $slog)"
+		if [ "$try" -eq 1 ]; then
+			run_claude "/plan-olustur" "$slog" || log "  claude (plan-olustur) sifir olmayan cikis kodu."
+		else
+			run_claude "/plan-olustur — ÖNCEKİ ÇAĞRI PLAN YAZMADI. Önce plans/_logs/ altındaki en yeni next-plan logunu ve docs/STATUS.md'yi incele. Hedef faza (${TARGET_PHASE:-yok}) kadar DeepSeek'in yapabileceği iş kaldıysa sıradaki planı yaz (gerekirse fazı geç, insan testlerini STATUS 'Proje sahibi testleri (bekleyen)' listesine ekle). Gerçekten hiçbir iş kalmadıysa plans/.auto-loop-done dosyasına tek satır neden yaz." "$slog" || log "  claude (plan-olustur, deneme 2) sifir olmayan cikis kodu."
+		fi
+		[ -f "$DONE_FILE" ] && return 2
+		after="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
+		if [ -n "$after" ] && [ "$after" != "$before" ] && [ -f "$after" ]; then
+			return 0
+		fi
+		log "  /plan-olustur yeni aktif plan uretmedi (deneme $try)."
+	done
+	return 1
+}
+
+merge_into_integration() { # $1 = plan yolu; 0 = tamam
+	local br
+	br="$(plan_branch "$1")"
+	if [ -z "$br" ] || ! git rev-parse --verify --quiet "$br" >/dev/null; then
+		log "  plan dali bulunamadi ('$br'); birlestirme atlandi."
+		return 0
+	fi
+	if git merge-base --is-ancestor "$br" "$INTEGRATION_BRANCH"; then
+		return 0
+	fi
+	switch_to "$INTEGRATION_BRANCH" || return 1
+	log "  -> git merge --no-ff $br -> $INTEGRATION_BRANCH"
+	if ! git merge --no-ff "$br" -m "Merge $br ($INTEGRATION_BRANCH, otonom gece döngüsü)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" >>"$MAIN_LOG" 2>&1; then
+		git merge --abort >>"$MAIN_LOG" 2>&1 || true
 		return 1
 	fi
 	return 0
 }
 
+log "=== auto-loop.sh basladi (mod: $($NIGHT && echo "gece, dal=$INTEGRATION_BRANCH, hedef=$TARGET_PHASE" || echo klasik), model: $OPENCODE_MODEL / $CLAUDE_MODEL) ==="
+ensure_servers_stopped
+
 while true; do
-	if stop_requested; then
-		log "DUR: $STOP_FILE bulundu, temiz cikis."
-		rm -f "$STOP_FILE"
-		exit 0
-	fi
-
-	if [ $(($(date +%s) - START_TS)) -ge $((MAX_WALLCLOCK_HOURS * 3600)) ]; then
-		append_blocker "STOP-05: MAX_WALLCLOCK_HOURS ($MAX_WALLCLOCK_HOURS) asildi."
-		exit 0
-	fi
-
+	stop_requested && { rm -f "$STOP_FILE"; stop_loop "$STOP_FILE bulundu (elle durdurma)"; }
+	[ $(($(date +%s) - START_TS)) -ge $((MAX_WALLCLOCK_HOURS * 3600)) ] && stop_loop "MAX_WALLCLOCK_HOURS ($MAX_WALLCLOCK_HOURS) doldu"
 	ITER=$((ITER + 1))
-	if [ "$ITER" -gt "$MAX_ITERATIONS" ]; then
-		append_blocker "STOP-06: MAX_ITERATIONS ($MAX_ITERATIONS) asildi. Devam icin yeniden baslatin."
-		exit 0
-	fi
+	[ "$ITER" -gt "$MAX_ITERATIONS" ] && stop_loop "MAX_ITERATIONS ($MAX_ITERATIONS) doldu"
 
-	# Aktif plan yoksa: ilk plani yazdir (bootstrap).
-	if [ ! -f "$ACTIVE_PLAN_FILE" ]; then
-		if ! next_plan; then
-			append_blocker "Bootstrap: /plan-olustur aktif plan uretmedi (faz sinirı, TASLAK veya hata). Bkz. $LOG_DIR"
-			exit 0
-		fi
-		continue
-	fi
-
-	PLAN_PATH=$(cat "$ACTIVE_PLAN_FILE")
-	if [ ! -f "$PLAN_PATH" ]; then
-		append_blocker "$ACTIVE_PLAN_FILE '$PLAN_PATH' gosteriyor ama dosya yok."
-		exit 0
-	fi
-
-	DURUM=$(plan_durum "$PLAN_PATH")
-	log "Iterasyon $ITER - plan: $PLAN_PATH - durum: $DURUM"
-	PLAN_BASE="$(basename "$PLAN_PATH" .md)"
+	PLAN_PATH="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
+	DURUM="$(plan_durum "${PLAN_PATH:-/nonexistent}")"
+	[ -z "$PLAN_PATH" ] && DURUM="YOK"
+	log "Iterasyon $ITER - plan: ${PLAN_PATH:-yok} - durum: $DURUM"
+	PLAN_BASE="$(basename "${PLAN_PATH:-none}" .md)"
 	STEP_LOG="$LOG_DIR/$PLAN_BASE-iter$ITER-$(date +%s).log"
+	state "durum $DURUM"
 
 	case "$DURUM" in
+	YOK | DOĞRULANDI | KAPANDI* | İPTAL*)
+		if [ "$DURUM" = "DOĞRULANDI" ]; then
+			if $NIGHT; then
+				if ! merge_into_integration "$PLAN_PATH"; then
+					append_blocker "'$PLAN_PATH' entegrasyon dalına birleşirken çakıştı (merge --abort yapıldı)."
+					stop_loop "birlestirme cakismasi"
+				fi
+			else
+				stop_loop "'$PLAN_PATH' DOĞRULANDI (klasik mod: birleştirme proje sahibinde)"
+			fi
+		fi
+		next_plan
+		case $? in
+		0) continue ;;
+		2) stop_loop "hedef tamamlandı: $(cat "$DONE_FILE" 2>/dev/null)" ;;
+		*)
+			$NIGHT || stop_loop "/plan-olustur plan yazmadi (faz siniri olabilir)"
+			append_blocker "/plan-olustur iki denemede de plan yazmadı."
+			stop_loop "plan yazilamadi"
+			;;
+		esac
+		;;
 	HAZIR | "DÜZELTME GEREKLİ")
+		BR="$(plan_branch "$PLAN_PATH")"
 		if [ "$DURUM" = "HAZIR" ]; then
-			CORRECTION_TURNS=0
-			PROMPT="$PLAN_PATH planını AGENTS.md kurallarına göre uygula."
+			IMPL_TRIES[$PLAN_PATH]=$(( ${IMPL_TRIES[$PLAN_PATH]:-0} + 1 ))
+			if [ "${IMPL_TRIES[$PLAN_PATH]}" -gt 2 ]; then
+				recover "DeepSeek planı iki kez denedi ama Durum HAZIR'da kaldı" || stop_loop "kurtarma tukendi"
+				IMPL_TRIES[$PLAN_PATH]=0
+				continue
+			fi
+			if [ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null; then
+				switch_to "$BR"
+				PROMPT="$PLAN_PATH planını AGENTS.md kurallarına göre uygula. Plan dalı ($BR) zaten var ve şu an onun üzerindesin: yeni dal açma, kaldığı yerden devam et."
+			else
+				$NIGHT && switch_to "$INTEGRATION_BRANCH"
+				PROMPT="$PLAN_PATH planını AGENTS.md kurallarına göre uygula."
+			fi
 		else
-			CORRECTION_TURNS=$((CORRECTION_TURNS + 1))
-			if [ "$CORRECTION_TURNS" -gt "$MAX_CORRECTION_TURNS" ]; then
-				append_blocker "STOP-01: '$PLAN_PATH' $MAX_CORRECTION_TURNS duzeltme turunu asti, hala DOGRULANDI degil."
-				exit 0
+			CORR[$PLAN_PATH]=$(( ${CORR[$PLAN_PATH]:-0} + 1 ))
+			if [ "${CORR[$PLAN_PATH]}" -gt "$MAX_CORRECTION_TURNS" ]; then
+				recover "$MAX_CORRECTION_TURNS düzeltme turundan sonra hâlâ DOĞRULANDI değil; planı küçült, iptal et veya son bir net talimat yaz" || stop_loop "kurtarma tukendi"
+				CORR[$PLAN_PATH]=0
+				continue
 			fi
 			PROMPT="$(extract_correction "$PLAN_PATH")"
 			if [ -z "$PROMPT" ]; then
-				append_blocker "STOP-02: '$PLAN_PATH' DÜZELTME GEREKLİ ama düzeltme talimatı bloğu bulunamadı."
-				exit 0
+				recover "DÜZELTME GEREKLİ ama 'Düzeltme talimatı' kod bloğu bulunamadı" || stop_loop "kurtarma tukendi"
+				continue
 			fi
+			[ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null && switch_to "$BR"
 		fi
-		log "  -> opencode run --auto (log: $STEP_LOG)"
-		timeout "$OPENCODE_TIMEOUT_SEC" opencode run --auto --agent build -m "$OPENCODE_MODEL" "$PROMPT" </dev/null >"$STEP_LOG" 2>&1 ||
-			log "  opencode run sifir olmayan cikis kodu dondurdu; Durum kontrol ediliyor."
-		NEW_DURUM=$(plan_durum "$PLAN_PATH")
-		if [ "$NEW_DURUM" = "$DURUM" ]; then
-			NO_PROGRESS=$((NO_PROGRESS + 1))
-			if [ "$NO_PROGRESS" -ge 2 ]; then
-				append_blocker "STOP-02: opencode art arda 2 kez '$PLAN_PATH' Durum'unu degistirmedi ($DURUM). Log: $STEP_LOG"
-				exit 0
-			fi
-			log "  Durum degismedi ($DURUM); bir kez daha denenecek."
-			[ "$DURUM" = "DÜZELTME GEREKLİ" ] && CORRECTION_TURNS=$((CORRECTION_TURNS - 1))
-		else
-			NO_PROGRESS=0
-		fi
-		;;
-	UYGULANDI)
-		log "  -> claude -p /plan-dogrula (log: $STEP_LOG)"
-		run_claude "/plan-dogrula $PLAN_PATH" "$STEP_LOG" || log "  claude (dogrulama) sifir olmayan cikis kodu dondurdu; Durum kontrol ediliyor."
-		NEW_DURUM=$(plan_durum "$PLAN_PATH")
-		if [ "$NEW_DURUM" = "$DURUM" ]; then
-			NO_PROGRESS=$((NO_PROGRESS + 1))
-			if [ "$NO_PROGRESS" -ge 2 ]; then
-				append_blocker "STOP-02: /plan-dogrula art arda 2 kez '$PLAN_PATH' Durum'unu degistirmedi. Log: $STEP_LOG"
-				exit 0
-			fi
-		else
-			NO_PROGRESS=0
-		fi
-		;;
-	DOĞRULANDI)
-		CORRECTION_TURNS=0
-		if ! next_plan; then
-			append_blocker "'$PLAN_PATH' DOĞRULANDI; sıradaki plan yazılmadı (büyük olasılıkla faz sınırı: docs/STATUS.md 'faz onayı bekliyor' ve docs/phase-reports/ taslağına bakın)."
-			exit 0
+		ensure_servers_stopped
+		state "DeepSeek uyguluyor ($DURUM)"
+		log "  -> opencode run (log: $STEP_LOG)"
+		run_opencode "$PROMPT" "$STEP_LOG" || log "  opencode sifir olmayan cikis kodu; Durum kontrol ediliyor."
+		NEW_DURUM="$(plan_durum "$PLAN_PATH")"
+		log "  opencode sonrasi durum: $NEW_DURUM"
+		if [ "$NEW_DURUM" = "$DURUM" ] && [ "$DURUM" = "DÜZELTME GEREKLİ" ]; then
+			recover "DeepSeek düzeltme turunu bitirdi ama Durum hâlâ DÜZELTME GEREKLİ (rapor/durum güncellenmemiş)" || stop_loop "kurtarma tukendi"
 		fi
 		;;
 	UYGULANIYOR*)
-		append_blocker "STOP-02: '$PLAN_PATH' UYGULANIYOR/BLOKE durumunda kaldi (opencode Durum'u guncellemeden bitmis olabilir)."
-		exit 0
+		if printf '%s' "$DURUM" | grep -q BLOKE; then
+			recover "DeepSeek planı BLOKE olarak işaretledi (soru/engel plan raporunda)" || stop_loop "kurtarma tukendi"
+		else
+			IMPL_TRIES[$PLAN_PATH]=$(( ${IMPL_TRIES[$PLAN_PATH]:-0} + 1 ))
+			if [ "${IMPL_TRIES[$PLAN_PATH]}" -gt 2 ]; then
+				recover "plan UYGULANIYOR'da kaldı (DeepSeek bitirmeden çıktı)" || stop_loop "kurtarma tukendi"
+				IMPL_TRIES[$PLAN_PATH]=0
+				continue
+			fi
+			BR="$(plan_branch "$PLAN_PATH")"
+			[ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null && switch_to "$BR"
+			ensure_servers_stopped
+			state "DeepSeek devam ediyor"
+			log "  -> opencode run (devam, log: $STEP_LOG)"
+			run_opencode "$PLAN_PATH planının uygulaması yarım kalmış (Durum: UYGULANIYOR). Plan dalındasın; AGENTS.md kurallarına göre eksik adımları tamamla, derle, Uygulayıcı Raporu'nu yaz, commit et ve Durum'u UYGULANDI yap." "$STEP_LOG" || true
+		fi
 		;;
-	REDDEDİLDİ)
-		append_blocker "STOP-03: '$PLAN_PATH' REDDEDİLDİ."
-		exit 0
+	UYGULANDI)
+		VERIFY_TRIES[$PLAN_PATH]=$(( ${VERIFY_TRIES[$PLAN_PATH]:-0} + 1 ))
+		if [ "${VERIFY_TRIES[$PLAN_PATH]}" -gt 2 ]; then
+			recover "/plan-dogrula iki kez çalıştı ama Durum UYGULANDI'da kaldı" || stop_loop "kurtarma tukendi"
+			VERIFY_TRIES[$PLAN_PATH]=0
+			continue
+		fi
+		ensure_servers_stopped
+		state "Claude dogruluyor"
+		log "  -> claude -p /plan-dogrula (log: $STEP_LOG)"
+		run_claude "/plan-dogrula $PLAN_PATH" "$STEP_LOG" || log "  claude (dogrulama) sifir olmayan cikis kodu; Durum kontrol ediliyor."
+		ensure_servers_stopped
+		log "  dogrulama sonrasi durum: $(plan_durum "$PLAN_PATH")"
 		;;
-	*)
-		append_blocker "Bilinmeyen plan durumu '$DURUM' ($PLAN_PATH). Elle kontrol gerekir."
-		exit 0
+	TASLAK | REDDEDİLDİ | *)
+		recover "plan durumu '$DURUM' (TASLAK/REDDEDİLDİ/bilinmeyen): planı tamamla, değiştir veya iptal et" || stop_loop "kurtarma tukendi"
 		;;
 	esac
 done

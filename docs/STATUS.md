@@ -82,6 +82,17 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 |---|---|---|---|
 | (açık blokaj yok) | | | T-ENV-01 kalanı kapandı, 2026-10-02 |
 
+## Proje sahibi testleri (bekleyen)
+
+İstemci (GUI) gerektiren, otonom döngünün yapamadığı testler. Gece döngüsü yeni maddeler ekler; sabah topluca yapılır.
+
+| Test | Ne yapılacak | Hesap / komut | Beklenen |
+|---|---|---|---|
+| T-DATA-01 (M-I) | `BotAccMIK` ile gir, karakter penceresini oku | `BotAccMIK` (şifre ilk girişte belirlenir) | HP 2228, MP 6021, AC 612, saldırı 57, can/mana dolu |
+| T-MECH-DMG-01..03 | İki istemciyle (Karus bot vs El Morad bot) birbirine R, Type1 skill ve büyü; sunucu hasar kaydı (F1-09 sonrası) ile modelin karşılaştırılması | ör. `BotAccWPK` vs `BotAccWGE`; `BotAccMFK` vs `BotAccWPE` | `tools/stat-model.py` / `tools/spell-model.py` ± %15 |
+| T-ENV-ARENA-01 | Arena A'da (1274, 890) 30 dk bekleyip canavar/NPC geçiyor mu gözle | herhangi bir bot hesabı | 120 m içinde varlık 0 |
+| T-ENV-ARENA-03 | El Morad karakteriyle Karus kapısı önüne git, tower saldırı mesafesini gözle | `BotAccWPE` | tower 20–30 m'de saldırır |
+
 ## Sıradaki adımlar
 
 1. Proje sahibi: F1-08 DeepSeek'te; bitince `/plan-dogrula`. T-DATA-01 giriş doğrulaması 5/6 bot için tamam (model = oyun, `docs/04` §3.4). Sıradaki: M-I girişinin teyidi, F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci), F1 faz sonuç raporu taslağı.

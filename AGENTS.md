@@ -64,6 +64,8 @@ Proje: Knight Online v1453 sunucu emülatörü (C++17, MSVC v143, Win32) üzerin
 
 - Derleme WSL'den Windows MSBuild (VS 2022, v143) ile yapılır. Çıktı: `build/bin/x86-Release/Server/`.
 - Sunucuyu çalıştırmak ve oyuna girmek yalnızca plan isterse yapılır. Veritabanına bağlanmak serbesttir (kural 2.7). Çalışma ortamı `/mnt/c/dev/fdp/` altındadır.
+- **Derlemeden önce sunucuları kapat:** `./tools/run-servers.sh status` çıktısında `[UP]` varsa `./tools/run-servers.sh stop` çalıştır (açık `GameServer.exe` dosyayı kilitler, bağlayıcı `LNK1104` verir). Plan sunucuyu çalıştırmayı istiyorsa iş bitince yine `./tools/run-servers.sh stop`.
+- **Dal tabanı:** Planın Branch alanındaki `(taban: X)` dalından aç (`git switch -c bot/<FAZ>-<NN> X`). Gece modunda taban bir entegrasyon dalıdır (ör. `gece/2026-10-02`), `main` değil. Plan dalı zaten varsa yeni dal açma, `git switch bot/<FAZ>-<NN>` ile devam et.
 - Derleme hatasız bitmeden `UYGULANDI` yazma.
 
 ## 5. Bitirirken

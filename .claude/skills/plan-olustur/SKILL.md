@@ -18,6 +18,18 @@ Görev: `$1` için (boşsa `docs/STATUS.md`'deki "Sıradaki adımlar"dan ilk uyg
 - **Faz sınırı:** Önceki planlar bu fazın **tüm** işlerini bitirdiyse (`docs/17` §2'deki faz kapsamı ve çıkış koşulları karşılandıysa) veya sıradaki iş **başka bir fazın** işiyse: yeni plan **yazma**. `docs/templates/PHASE_REPORT.md`'den faz sonuç raporu taslağını `docs/phase-reports/<FAZ>-taslak.md` olarak yaz, `docs/STATUS.md` "Blokajlar"a `faz onayı bekliyor: <FAZ>` satırı ekle, `plans/.aktif-plan`'a **dokunma** ve dur. (Döngü bunu "plan yazılmadı" olarak görüp durur.)
 - **Elle yapılması gereken bir iş kaldıysa** (ör. insan istemcisiyle oyuna giriş) bunu planın "Kapsam dışı" ve `docs/STATUS.md` "Blokajlar" bölümüne yaz; planı yalnızca DeepSeek'in yapabileceği kısımla sınırla.
 
+### 0.1 Gece modu (`AUTO_INTEGRATION_BRANCH` dolu)
+
+`echo "$AUTO_INTEGRATION_BRANCH $AUTO_TARGET_PHASE"` çalıştır. `AUTO_INTEGRATION_BRANCH` doluysa (ör. `gece/2026-10-02`) döngü **gece modunda**: doğrulanan plan dalları bu entegrasyon dalına **döngü betiği tarafından** birleştirilir; `main`'e dokunulmaz. Bu modda yukarıdaki kuralların şu farklarla uygulanır (bunlar önceliklidir):
+
+- **Dal:** Plan bu dala commit edilir (`git branch --show-current` bu dal değilse önce `git switch $AUTO_INTEGRATION_BRANCH`). Planın Branch alanı: `bot/<FAZ>-<NN> (taban: $AUTO_INTEGRATION_BRANCH)`. Zincirleme taban kuralı (§4) uygulanmaz.
+- **Önce kayıtları düzelt:** Entegrasyon dalına birleşmiş (`git merge-base --is-ancestor bot/<X> $AUTO_INTEGRATION_BRANCH`) ama `DOĞRULANDI` görünen planların Durum satırını, `plans/README.md` satırını ve `docs/STATUS.md` plan satırını `KAPANDI (<tarih>, $AUTO_INTEGRATION_BRANCH)` yap; bu değişiklikleri yeni planla aynı commit'e kat.
+- **Faz sınırı durdurmaz** (`AUTO_TARGET_PHASE`, ör. `F5`): Bir fazın DeepSeek'in yapabileceği işleri bittiyse (kalanlar yalnızca istemci/insan testi gerektiriyorsa) o faz için `docs/templates/PHASE_REPORT.md`'den `docs/phase-reports/<FAZ>-taslak.md` yaz (yoksa), insan testlerini `docs/STATUS.md` **`## Proje sahibi testleri (bekleyen)`** bölümüne (yoksa oluştur; her madde: test kimliği, ne yapılacak, hangi bot hesabı/komut, beklenen sonuç) ekle ve **bir sonraki fazın ilk planını yaz**. Faz kabulü (`KABUL_EDILDI`) beklenmez; STATUS'a "kabul bekliyor, sonraki faza geçildi (gece modu)" not et. `docs/17`'deki ön koşul "önceki faz kabulü" bu modda yalnızca kodu/veriyi gerçekten gereken teslimatlar için aranır.
+- **Hedef faz bitti:** `AUTO_TARGET_PHASE` fazının DeepSeek'in yapabileceği işleri de bittiyse plan **yazma**; o fazın rapor taslağını yaz, `plans/.auto-loop-done` dosyasına tek satır neden yaz (`printf '%s' "F5 tamamlandı: ..." > plans/.auto-loop-done`) ve kayıtları commit et.
+- **İstemci/GUI gerektiren iş planlanmaz.** Sunucu tarafında çalıştırılabilen testler (sunucuyu `tools/run-servers.sh start` ile açmak, botları sunucu içinde spawn etmek, log/DB/paket izleyici ile ölçmek) plana konabilir; plan sonunda sunucuları kapatmayı (`tools/run-servers.sh stop`) şart koş. İnsan istemcisi gerektiren doğrulamalar "Proje sahibi testleri (bekleyen)" listesine gider; plan bunları beklemeden yalnızca kod/derleme/otomatik test ile tamamlanabilir olmalı.
+- **Plan boyutu:** Gece planları küçük tutulur (≤ ~6 dosya, tek bir net yetenek); her plan sonunda proje derlenir ve bot sistemi kapalıyken (varsayılan) sunucu davranışı değişmez. Büyük işler birden çok sıralı plana bölünür (her seferinde yalnızca sıradakini yaz).
+- **Karar yetkisi sende:** Tasarım kararlarını (ADR-0005..0008 dahil) önerilen seçenekle sen ver; ADR başlığına `(otonom döngüde Claude kararı — gözden geçirilmeli)` ekle.
+
 `AUTO_LOOP` 1 değilse kullanıcı karşındadır: kararları ona **tek tek ve sade dille** sor (bölüm 5.3).
 
 ## 1. Durumu öğren

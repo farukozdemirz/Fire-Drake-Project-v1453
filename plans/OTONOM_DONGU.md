@@ -13,6 +13,23 @@ Bu doküman, `plans/README.md`'deki manuel akışın (Claude plan yazar → sen 
 
 ---
 
+## 0. Gece modu (2026-10-02, proje sahibi isteği)
+
+`./tools/auto-loop.sh --run --branch gece/<tarih> --target F5`: proje sahibi uyurken döngü planla → uygula → doğrula adımlarını sırayla sürdürür.
+
+| Değişiklik | Gece modunda |
+|---|---|
+| Birleştirme | Doğrulanan plan dalı (`bot/<ID>`) **entegrasyon dalına** (`--branch`) döngü betiği tarafından `--no-ff` birleştirilir. `main`'e dokunulmaz, push yapılmaz. Sabah sorun varsa entegrasyon dalı atılır. |
+| Plan tabanı | Yeni planlar entegrasyon dalından açılır (`(taban: gece/<tarih>)`). |
+| Faz sınırı | Durdurmaz: faz raporu taslağı yazılır, insan testleri STATUS "Proje sahibi testleri (bekleyen)" listesine eklenir, sonraki fazın planı yazılır. Hedef faz (`--target`) bitince `plans/.auto-loop-done` yazılır ve döngü durur. Faz `KABUL_EDILDI` yine yalnızca proje sahibinde. |
+| Karar | Claude verir (ADR başlığında "otonom döngüde Claude kararı — gözden geçirilmeli"). |
+| Takılma | Durum değişmezse, BLOKE olursa, düzeltme turu 4'ü aşarsa veya plan yazılmazsa döngü durmak yerine Claude'a **kurtarma adımı** yaptırır (planı düzelt/küçült, net düzeltme talimatı yaz, BLOKE sorusunu cevapla veya planı İPTAL edip sıradakine geç). Plan başına en fazla 2 kurtarma; sonra döngü durur. |
+| Geçici hata | Claude/opencode hızlı başarısız olursa (rate limit vb.) 5 dk bekleyip 3 kez dener; adım zaman aşımları Claude 60 dk, opencode 120 dk. |
+| Sunucular | Her adımdan önce açık sunucular kapatılır (açık exe derlemeyi kilitler). |
+| Kirli çalışma ağacı | Kaybedilmez: `git stash` ile kenara alınır (mesajında plan adı ve saat). |
+| Bitiş | Hedef tamam, süre (9 saat) dolması, `touch plans/.auto-loop-stop` veya kurtarmanın tükenmesi. Her bitişte Claude `docs/reports/gece-<tarih>.md` sabah raporunu yazar. |
+| İzleme | `cat plans/_logs/auto-loop.state` (tek satır canlı durum), `tail -f plans/_logs/auto-loop.log`. |
+
 ## 1. Amaç ve sınırlar
 
 Amaç: proje sahibi bilgisayar başında değilken, planlar sırayla DeepSeek tarafından uygulanıp Claude tarafından doğrulanmaya devam etsin; sorun varsa düzeltme turu otomatik başlasın; plan doğrulanınca sıradaki plan otomatik yazılıp devam etsin.

@@ -33,7 +33,7 @@ Akışın ayrıntısı: `plans/README.md`.
 ## Yapmadıkların (proje sahibi açıkça istemedikçe)
 
 - `GameServer/`, `AIServer/`, `shared/` altında üretim kodu yazmak. Uygulama DeepSeek'in işidir. İstisnalar: araç betikleri (`tools/`) ve doğrulama için geçici denemeler; denemeler commit edilmez.
-- Faz durumunu `KABUL_EDILDI` yapmak (kullanıcı onayıyla). **İstisna (kalıcı izin, 2026-10-02):** etkileşimli `/plan-dogrula` bir planı `DOĞRULANDI` ilan ettiğinde, plan branch'ini `main`'e `--no-ff` birleştirip `origin main`'e push'lamak için ayrıca sorma; planı `KAPANDI` yap. Bu izin otonom döngüde (`AUTO_LOOP=1`) geçerli değildir (döngü push/merge yapmaz). `--force` push ve `main` dışına push hâlâ yasak.
+- Faz durumunu `KABUL_EDILDI` yapmak (kullanıcı onayıyla). **İstisna (kalıcı izin, 2026-10-02):** etkileşimli `/plan-dogrula` bir planı `DOĞRULANDI` ilan ettiğinde, plan branch'ini `main`'e `--no-ff` birleştirip `origin main`'e push'lamak için ayrıca sorma; planı `KAPANDI` yap. Bu izin otonom döngüde (`AUTO_LOOP=1`) geçerli değildir: döngüde push yok; gece modunda (`AUTO_INTEGRATION_BRANCH`) birleştirmeyi yalnızca döngü betiği entegrasyon dalına yapar, sen yapmazsın (`plans/OTONOM_DONGU.md` §0). `--force` push ve `main` dışına push hâlâ yasak.
 - Diğer her `git push` ve birleştirme (doğrulanmamış branch, belgeler, vb.) kullanıcı onayıyla yapılır.
 - Çalıştırmadığın testi "geçti" diye yazmak. Doğrulamadığın değeri kesin bilgi gibi sunmak.
 
