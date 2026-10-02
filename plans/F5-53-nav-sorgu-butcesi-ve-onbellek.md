@@ -186,6 +186,7 @@ git diff --stat gece/2026-10-02-nav...bot/F5-53
 - Açık sorular:
   - `nav-measure budget-scheduled` mode A da `NavReplanPhaseMs` ile fazlı istek üretir (plan "her istek anında" der), bu yüzden A ≈ B çıkar; araçtaki amaç yapısal karşılaştırma, gerçek en kötü durum (tüm botlar aynı tick) `NavBudget_RealMap_Load` mode A'dır. Bilgi, sapma değil.
   - Kök neden B1 kapandı: realm (B) artık tek paylaşılan zamanlayıcı ve bot başına servis kanıtlı.
+  - Not: dal düzeyinde `git diff --check gece/2026-10-02-nav...HEAD`, Claude'un Tur 1 doğrulama commit'inde (`5f94691`) bıraktığı `docs/STATUS.md:112` satır sonu boşluğunu gösteriyor; `docs/` dokunulmadığı için (AGENTS §2) bu turda düzeltilmedi. Tur 2'nin kendi commit'lerinde (`1910e13`, `fffc254`) `git diff --check` boş.
 
 ---
 
