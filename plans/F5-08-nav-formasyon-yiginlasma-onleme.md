@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-08` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`), F5-03 (`BotCore/NavSmooth.h`: `NavLineClear`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `08ffbc3`); F5-04 (`BotCore/NavTrack.h`: `NavRingCells`, yalnızca testte); bu planın testleri 122 testin üstüne eklenir |
@@ -312,4 +312,27 @@ git diff --stat gece/2026-10-02-nav...bot/F5-08
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-—
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI** (9/9 kriter ✔; paralel hat `nav`, otonom mod: birleştirmeyi döngü betiği yapar, bu oturumda birleştirme/push yok, sunucuya dokunulmadı).
+- İncelenen commit: `384b3a6` (`bot/F5-08`; uygulama `22f3932`, rapor `384b3a6`). Taban `gece/2026-10-02-nav`; çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme, yeni uyarı yok | ✔ | `NavFormation.h` + `NavFormationTests.cpp` `touch` sonrası `./tools/build.sh Release` rc=0; çıktıda `warning` sayısı 0, `NavFormation` geçen uyarı satırı yok |
+| K2 yedi test adı | ✔ | `--list` 129 satır; `NavForm_Slots`, `_Assign`, `_Assign_Matches_Reference`, `_Separation`, `_PickSpaced`, `_Settle_Flat`, `_Settle_RealMap` |
+| K3 tam paket | ✔ | `run-tests.sh Release --no-build` rc=0, `129 tests, 0 failed`, `SKIPPED` yok; `NAVFORM random assign: trials=300 mismatches=0 avg_assigned=4.863`; `NAVFORM settle flat: assigned=8 settle_tick=43 max_stacked_1m=0 final_min_pair=1.9134`; `NAVFORM real: walk=88508 usable8=72459 usable7=11568 usable6=4137 usable5=344 usable_lt5=0 assign_violations=0; settle assigned=6 settle_tick=26 max_stacked_1m=0 final_min_pair=1.5000 unassigned=2` |
+| K4 harita yokken | ✔ | `zone71.navgrid` geçici taşındı: `NavForm_` rc=0, `7 tests, 0 failed`, `NavForm_Settle_RealMap` `SKIPPED` yazdı; dosya geri konuldu (`ls build/nav` doğrulandı) |
+| K5 Debug | ✔ | `./tools/run-tests.sh Debug` rc=0, `129 tests, 0 failed`, uyarı 0; `NAVFORM` satırları Release ile aynı |
+| K6 davranış sayıları | ✔ | Tablo 1–5 testleri Release ve Debug'da `[ OK ]`; sayılar yukarıdaki satırlarla plandakiyle birebir (`final_min_pair` 1,9134 / 1,5000 sınırlar içinde) |
+| K7 saflık/kapsam | ✔ | `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavFormation.h` boş; `git diff --stat gece/2026-10-02-nav...bot/F5-08` yalnızca `BotCore/BotCore.vcxproj` (+1), `BotCore/NavFormation.h` (344), `Tests/BotCoreTests/BotCoreTests.vcxproj` (+1), `Tests/BotCoreTests/NavFormationTests.cpp` (966) ve kendi plan dosyası |
+| K8 eski testler | ✔ | `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10, `NavReach_` 8, `NavDanger_` 8, `NavRetreat_` 8: hepsi rc=0 ve `[ OK ]`; `near64 found=997 expanded_p50=306 expanded_p95=2431`, `elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232`, `components=143 largest=88279 pockets=229`, `NAVRETREAT real: … cand=2799 …` aynı |
+
+Diğer denetimler: yeni iki dosya ASCII + CRLF (LF-only satır 0, ASCII dışı 0, boşlukla girinti 0); iki `.vcxproj` değişikliği yalnızca birer satır, BOM + CRLF korunmuş; `build/` izlenmiyor; `rand()` yok; başlık `NavSmooth.h` + `<cmath> <cstddef> <vector>` dışında bağımlılık almıyor, değişebilir global/`static` durum yok (yalnızca işlev içi `static constexpr` yön tabloları, planın izin verdiği biçim), `#pragma` yalnızca `once`; diğer `Nav*.h`, `GameServer/`, `AIServer/`, `shared/`, `docs/` değişmemiş; commit başlıkları `[F5-08] …` biçiminde. Kod `NavFormation.h` §5.1 yorumlarıyla satır satır uyuşuyor: yapışkan geçiş + açgözlü (strict `<`, üye sonra yuva sırası), ayrışmada eşik `d2 >= minDist²` itmez, çakışıkta `(self + j) % 8` yönü ve işaret, 1,0 m kırpma, `NavApplySeparation` tam/x/z sırası, `NavPickSpaced` sınır dahil ve `c == 0 ||` ile ilk adayın başlangıç değeri, `NavCountStackedPairs` negatif eşikte açık 0. Testler tautolojik değil: `RefAssign` üretimle kod paylaşmayan sıralama tabanlı referans (kendi yön tablosu, `std::sort` ile `(d2, üye, yuva)`), 300 sorguda uyuşma + `min(üye, kullanılabilir)` + yuva benzersizliği; `SettleSim` testin içinde; belirlenim testi iki çağrıyı bit düzeyinde karşılaştırıyor.
+
+Bulgular (önem sırasıyla; hiçbiri engel değil):
+
+1. (not) `BotCore/NavFormation.h:20-24`: `struct NavFormPoint { … };       // world metres` kapanış satırında artık yorum, plan şablonundan birebir taşınmış; ayrışık hizalı. Okunurluğu etkilemez, ilerideki dokunuşta yorum alanın yanına alınabilir.
+2. (not) C tarzı `(int)` dönüşümleri (`NavFormation.h:135`, `:195`, `:312`, `:316`) plan §5.1 kural 5 "MSVC Level 4 uyarıları `static_cast` ile çözülür" ifadesinden biraz ayrışıyor; ancak komşu başlıklar da aynı stili kullanıyor (`NavRetreat.h` 6 yerde) ve Level 4'te uyarı çıkmıyor (K1). Sorun değil.
+
+Düzeltme talimatı: yok (`DOĞRULANDI`).
