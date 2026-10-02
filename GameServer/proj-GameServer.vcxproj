@@ -195,6 +195,7 @@
     <ClCompile Include="Bot\BotSession.cpp" />
     <ClCompile Include="Bot\Telemetry.cpp" />
     <ClCompile Include="Bot\ScenarioRunner.cpp" />
+    <ClCompile Include="Bot\ScriptRunner.cpp" />
     <ClCompile Include="QuestHandler.cpp" />
     <ClCompile Include="Region.cpp" />
     <ClCompile Include="RentalHandler.cpp" />
@@ -291,6 +292,7 @@
     <ClInclude Include="Bot\BotSession.h" />
     <ClInclude Include="Bot\Telemetry.h" />
     <ClInclude Include="Bot\ScenarioRunner.h" />
+    <ClInclude Include="Bot\ScriptRunner.h" />
     <ClInclude Include="Region.h" />
     <ClInclude Include="StdAfx.h" />
     <ClInclude Include="Unit.h" />
