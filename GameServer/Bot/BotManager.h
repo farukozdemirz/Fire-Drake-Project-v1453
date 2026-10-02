@@ -39,7 +39,8 @@ private:
 	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
 		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false),
-		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false) {}
+		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false),
+		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
@@ -59,6 +60,10 @@ private:
 	uint32 m_spawnOk;            // IOCP thread only: sessions that reached PHASE_IN_GAME
 	uint32 m_spawnFailed;        // IOCP thread only: sessions that went through FailSession()
 	bool m_despawnSummaryDone;   // IOCP thread only
+
+	uint32 m_respawnCycles;      // [BOT] RESPAWN_CYCLES: extra spawns per bot after the first (0 = none)
+	uint32 m_despawnOk;          // IOCP thread only: despawns that returned their slot
+	uint32 m_namesLeft;          // IOCP thread only: despawns whose account/character name was still registered
 
 	bool m_enabled;
 	uint16 m_poolSize;
