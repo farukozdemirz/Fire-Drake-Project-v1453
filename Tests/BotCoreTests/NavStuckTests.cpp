@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <limits>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -1619,4 +1621,435 @@ TEST_CASE("NavGuardBlock_Determinism")
 	a.Reset();
 	CHECK(!a.Blocked(5000));
 	CHECK(!a.Blocked(1000));
+}
+
+// ---------------------------------------------------------------------------
+// F5-57: intent + real route progress together (NavProgressAssessor)
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	using BotCore::NavRoutePoint;
+	using BotCore::NavRouteProgressM;
+	using BotCore::NavProgressVerdict;
+	using BotCore::NavProgressParams;
+	using BotCore::NavProgressAssessor;
+
+	const char * VerdictName(NavProgressVerdict v)
+	{
+		switch (v)
+		{
+		case NavProgressVerdict::Idle: return "Idle";
+		case NavProgressVerdict::Progressing: return "Progressing";
+		case NavProgressVerdict::AwaitingPacket: return "AwaitingPacket";
+		case NavProgressVerdict::Stalled: return "Stalled";
+		case NavProgressVerdict::BlockedByGuard: return "BlockedByGuard";
+		}
+		return "?";
+	}
+
+	struct CadenceAus
+	{
+		long ticks = 0;
+		long stalled = 0;
+		long awaiting = 0;
+		long progressing = 0;
+		long blocked = 0;
+		long stalledEpisodes = 0;
+		int64_t firstStallMs = -1;
+		int stuckEpisodes = 0;
+	};
+
+	// Tick delay model: mean + jitter (normal), lateProb chance of an extra 250 ms, min 20 ms.
+	int64_t NextTick(const std::mt19937 & rngState, double mean, double jitter, double lateProb)
+	{
+		std::mt19937 rng(rngState);
+		std::uniform_real_distribution<double> ud(0.0, 1.0);
+		double dt = mean;
+		if (jitter > 0.0)
+		{
+			std::normal_distribution<double> nd(0.0, jitter);
+			dt += nd(rng);
+		}
+		if (ud(rng) < lateProb)
+			dt += 250.0;
+		if (dt < 20.0)
+			dt = 20.0;
+		return (int64_t)dt;
+	}
+
+	// Route-aware robot walk simulation. The bot intends to move the whole time along the route
+	// at speedMps; the server position (and the route progress) only jumps at packet instants
+	// (>= kMovePeriodMs, +250 ms with probability lateProb). Assess() is called every tick.
+	// When useMonitor is set, the same verdict drives NavStuckMonitor::Update (integration
+	// contract: moving = Progressing || Stalled).
+	CadenceAus RunProgressWalk(const NavGrid & grid, const std::vector<NavRoutePoint> & route,
+		float totalLen, float speedMps, int64_t durationMs, int tickModel, bool useMonitor, uint32_t seed)
+	{
+		CadenceAus out;
+		double mean = 100.0, jitter = 0.0, late = 0.0;
+		if (tickModel == 1) { mean = 100.0; jitter = 10.0; }
+		else if (tickModel == 2) { mean = 110.8; jitter = 20.0; late = 0.03; }
+
+		std::mt19937 rngSeed(seed);
+		NavProgressAssessor assessor;
+		assessor.SetIntent(true, 0);
+		assessor.NotifyReplan(0, 0.0f);
+		NavProgressParams pp;
+		NavStuckMonitor monitor;
+		NavStuckParams sp = BotCore::NavPacketCadenceParams();
+
+		float pos = 0.0f;              // along-route position of the served packet
+		int64_t nextPacket = (int64_t)BotCore::kMovePeriodMs;
+		bool inStall = false;
+
+		for (int64_t t = 0; t <= durationMs; t += NextTick(rngSeed, mean, jitter, late))
+		{
+			if (t >= nextPacket)
+			{
+				const float stepM = speedMps * (float)BotCore::kMovePeriodMs / 1000.0f;
+				pos += stepM;
+				if (pos > totalLen)
+					pos = totalLen;
+
+				// Position at `pos` along the route.
+				float x = route[0].x;
+				float z = route[0].z;
+				float cum = 0.0f;
+				for (size_t i = 0; i + 1 < route.size(); ++i)
+				{
+					const float dx = route[i + 1].x - route[i].x;
+					const float dz = route[i + 1].z - route[i].z;
+					const float seg = std::sqrt(dx * dx + dz * dz);
+					if (cum + seg >= pos)
+					{
+						const float u = (seg > 0.0f) ? (pos - cum) / seg : 0.0f;
+						x = route[i].x + u * dx;
+						z = route[i].z + u * dz;
+						break;
+					}
+					cum += seg;
+				}
+
+				assessor.OnPacketSent(t, x, z, pos, totalLen - pos);
+				nextPacket = t + (int64_t)BotCore::kMovePeriodMs;
+			}
+
+			const NavProgressVerdict v = assessor.Assess(t, pp);
+			++out.ticks;
+			if (v == NavProgressVerdict::Stalled)
+			{
+				++out.stalled;
+				if (!inStall)
+					++out.stalledEpisodes;
+				inStall = true;
+				if (out.firstStallMs < 0)
+					out.firstStallMs = t;
+			}
+			else
+			{
+				inStall = false;
+				if (v == NavProgressVerdict::AwaitingPacket)
+					++out.awaiting;
+				else if (v == NavProgressVerdict::Progressing)
+					++out.progressing;
+				else if (v == NavProgressVerdict::BlockedByGuard)
+					++out.blocked;
+			}
+
+			if (useMonitor)
+			{
+				const bool moving = (v == NavProgressVerdict::Progressing || v == NavProgressVerdict::Stalled);
+				monitor.Update(grid, t, 0.0f, pos, moving, sp);
+			}
+		}
+		out.stuckEpisodes = useMonitor ? monitor.Episodes() : (int)out.stalledEpisodes;
+		return out;
+	}
+}
+
+TEST_CASE("NavProgress_RouteProgress")
+{
+	const NavRoutePoint straight[3] = { { 0.0f, 0.0f }, { 10.0f, 0.0f }, { 20.0f, 0.0f } };
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, 5.0f, 0.0f) - 5.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, 20.0f, 0.0f) - 20.0f) <= 1e-4f);
+	// Off-route: projects to the nearest point on the polyline.
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, 5.0f, 3.0f) - 5.0f) <= 1e-4f);
+	// Before the first point clamps to 0.
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, -4.0f, 0.0f) - 0.0f) <= 1e-4f);
+	// Beyond the last point clamps to the total length.
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, 100.0f, 0.0f) - 20.0f) <= 1e-4f);
+
+	// L-shaped polyline: (0,0)->(10,0)->(10,10); cumulative 10 and 20.
+	const NavRoutePoint lshape[3] = { { 0.0f, 0.0f }, { 10.0f, 0.0f }, { 10.0f, 10.0f } };
+	CHECK(std::fabs(NavRouteProgressM(lshape, 3, 10.0f, 5.0f) - 15.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(lshape, 3, 10.0f, -3.0f) - 10.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(lshape, 3, 10.0f, 100.0f) - 20.0f) <= 1e-4f);
+	// Waypoint corner is at the cumulative 10 m.
+	CHECK(std::fabs(NavRouteProgressM(lshape, 3, 10.0f, 0.0f) - 10.0f) <= 1e-4f);
+
+	// Degenerate inputs.
+	CHECK(std::fabs(NavRouteProgressM(straight, 1, 5.0f, 0.0f) - 0.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(straight, 0, 5.0f, 0.0f) - 0.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(nullptr, 3, 5.0f, 0.0f) - 0.0f) <= 1e-4f);
+	const float nan = std::nanf("");
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, nan, 0.0f) - 0.0f) <= 1e-4f);
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, 5.0f, nan) - 0.0f) <= 1e-4f);
+	const float inf = std::numeric_limits<float>::infinity();
+	CHECK(std::fabs(NavRouteProgressM(straight, 3, inf, 0.0f) - 0.0f) <= 1e-4f);
+}
+
+TEST_CASE("NavProgress_NormalWalk_NoAlarm")
+{
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+	const std::vector<NavRoutePoint> route = { { 1000.0f, 900.0f }, { 1000.0f, 5000.0f } };
+	const float len = 4100.0f;
+
+	struct Scenario { const char * name; float speed; };
+	const Scenario scenarios[3] = {
+		{ "walk45", 4.5f },
+		{ "sprint67", 6.7f },
+		{ "corner45", 4.5f },
+	};
+
+	for (int i = 0; i < 3; ++i)
+	{
+		for (int model = 0; model < 3; ++model)
+		{
+			const CadenceAus r = RunProgressWalk(grid, route, len, scenarios[i].speed, 600000, model,
+				true, 20261003u);
+			std::printf("NAVPROGRESS normal %s model=%d ticks=%ld stalled=%ld awaiting=%ld progressing=%ld false_alarms=%ld monitor_episodes=%d\n",
+				scenarios[i].name, model, r.ticks, r.stalled, r.awaiting, r.progressing, r.stalledEpisodes,
+				r.stuckEpisodes);
+			CHECK_EQ(r.stalled, 0);
+			CHECK_EQ(r.stalledEpisodes, 0);
+			CHECK_EQ(r.stuckEpisodes, 0);
+			CHECK(r.progressing > r.awaiting);
+		}
+	}
+
+	// A single late packet: AwaitingPacket once the expected period is exceeded, never Stalled.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		const NavProgressParams pp;
+		CHECK(a.Assess(1500 + 1649, pp) == NavProgressVerdict::Progressing);
+		CHECK(a.Assess(1500 + 1651, pp) == NavProgressVerdict::AwaitingPacket);
+		CHECK(a.Assess(1500 + 2600, pp) == NavProgressVerdict::AwaitingPacket);
+	}
+}
+
+TEST_CASE("NavProgress_Stalled")
+{
+	// The same packet position is repeated: no Stalled before the 2-period window elapses.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		const NavProgressParams pp;
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		CHECK(a.Assess(1500, pp) == NavProgressVerdict::Progressing);
+		CHECK(a.Assess(3000, pp) == NavProgressVerdict::Progressing);   // still on cadence
+		a.OnPacketSent(3000, 0.0f, 0.0f, 0.0f, 100.0f);
+		// Window spans 1500..3000 (1500 ms) -> not full, no Stalled yet.
+		CHECK(a.Assess(3000, pp) == NavProgressVerdict::Progressing);
+		a.OnPacketSent(4700, 0.0f, 0.0f, 0.0f, 100.0f);
+		// Window 1600..4700: anchor at 1500, span 3200 ms -> Stalled (progress 0).
+		CHECK(a.Assess(4700, pp) == NavProgressVerdict::Stalled);
+	}
+
+	// Slow but progressing: 1.2 m per 3.2 s -> Progressing.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.NotifyReplan(0, 0.0f);
+		const NavProgressParams pp;
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		a.OnPacketSent(3000, 0.0f, 0.0f, 0.6f, 99.4f);
+		a.OnPacketSent(4700, 0.0f, 0.0f, 1.2f, 98.8f);
+		CHECK(a.Assess(4700, pp) == NavProgressVerdict::Progressing);
+	}
+}
+
+TEST_CASE("NavProgress_UTurn_vs_Displacement")
+{
+	// Narrow U-turn: the route progress is positive while the Euclidean displacement across the
+	// window is small. F5-09 alone (Euclidean) would fire NoProgress here; the assessor must not.
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+	const std::vector<NavRoutePoint> route = { { 1000.0f, 900.0f }, { 1000.0f, 4000.0f } };
+	(void)route;
+
+	NavProgressAssessor a;
+	a.SetIntent(true, 0);
+	a.NotifyReplan(0, 0.0f);
+	const NavProgressParams pp;
+	// Route progress advances 2 m while the straight-line displacement from the first packet is 0.
+	a.OnPacketSent(1500, 1000.0f, 900.0f, 0.0f, 100.0f);
+	a.OnPacketSent(3000, 1000.0f, 900.0f, 1.0f, 99.0f);
+	a.OnPacketSent(4700, 1000.0f, 900.0f, 2.0f, 98.0f);
+	CHECK(a.Assess(4700, pp) == NavProgressVerdict::Progressing);
+
+	// Document and pin the F5-09 contrast: the same packets fed to the detector fire NoProgress.
+	{
+		NavStuckDetector det;
+		const NavStuckParams dp;   // F5-09 defaults (1500 ms / 1 m)
+		NavStuckKind kind = NavStuckKind::None;
+		const int64_t times[3] = { 1500, 3000, 4700 };
+		for (int i = 0; i < 3; ++i)
+			kind = det.Observe(grid, times[i], 1000.0f, 900.0f, true, dp);
+		CHECK(kind == NavStuckKind::NoProgress);
+	}
+
+	// Along the wall back and forth: route progress <= 0 while the displacement is > 1 m -> Stalled.
+	{
+		NavProgressAssessor b;
+		b.SetIntent(true, 0);
+		b.NotifyReplan(0, 5.0f);
+		b.OnPacketSent(1500, 1000.0f, 900.0f, 5.0f, 50.0f);
+		b.OnPacketSent(3000, 1000.0f, 906.0f, 4.0f, 51.0f);
+		b.OnPacketSent(4700, 1000.0f, 900.0f, 5.0f, 50.0f - 0.0f);
+		// Newest 5.0, anchor 5.0 -> progress 0 < 1 -> Stalled despite 6 m of movement.
+		CHECK(b.Assess(4700, pp) == NavProgressVerdict::Stalled);
+
+		// With no route supplied the Euclidean fallback is used: a forward walk never stalls.
+		NavProgressAssessor c;
+		c.SetIntent(true, 0);
+		c.OnPacketSent(1500, 1000.0f, 900.0f, 0.0f, 50.0f);
+		c.OnPacketSent(3000, 1000.0f, 906.0f, 0.0f, 44.0f);
+		c.OnPacketSent(4700, 1000.0f, 912.0f, 0.0f, 38.0f);
+		CHECK(c.Assess(4700, pp) == NavProgressVerdict::Progressing);
+	}
+}
+
+TEST_CASE("NavProgress_Awaiting")
+{
+	const NavProgressParams pp;
+
+	// Intent on, no packet yet and the first period has not elapsed -> AwaitingPacket.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		CHECK(a.Assess(0, pp) == NavProgressVerdict::AwaitingPacket);
+		CHECK(a.Assess(1000, pp) == NavProgressVerdict::AwaitingPacket);
+	}
+
+	// One packet: on cadence -> Progressing; past periodMs + toleranceMs -> AwaitingPacket.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		CHECK(a.Assess(1500 + 1600, pp) == NavProgressVerdict::Progressing);
+		CHECK(a.Assess(1500 + 1649, pp) == NavProgressVerdict::Progressing);
+		CHECK(a.Assess(1500 + 1651, pp) == NavProgressVerdict::AwaitingPacket);
+	}
+}
+
+TEST_CASE("NavProgress_Guard")
+{
+	const NavProgressParams pp;
+
+	// All packets rejected, none sent -> BlockedByGuard (never Stalled).
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketRejected(1500);
+		a.OnPacketRejected(3000);
+		a.OnPacketRejected(4700);
+		CHECK(a.Assess(4700, pp) == NavProgressVerdict::BlockedByGuard);
+
+		// The standalone guard detector agrees on the same events.
+		BotCore::NavGuardBlockDetector d;
+		d.OnPacketRejected(1500);
+		d.OnPacketRejected(3000);
+		d.OnPacketRejected(4700);
+		CHECK(d.Blocked(4700));
+
+		// A sent packet inside the window clears the block: the assessor moves on to progress.
+		a.OnPacketSent(5200, 0.0f, 0.0f, 3.0f, 97.0f);
+		d.OnPacketSent(5200);
+		CHECK(a.Assess(5200, pp) != NavProgressVerdict::BlockedByGuard);
+		CHECK(!d.Blocked(5200));
+	}
+
+	// A rejected packet long ago with a fresh sent packet is not blocked.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketRejected(1000);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		CHECK(a.Assess(2000, pp) != NavProgressVerdict::BlockedByGuard);
+	}
+}
+
+TEST_CASE("NavProgress_Arrival_Replan")
+{
+	const NavProgressParams pp;
+
+	// Arrival: the newest packet is within arriveM of the goal -> Progressing.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 99.5f, 0.5f);
+		CHECK(a.Assess(1500, pp) == NavProgressVerdict::Progressing);
+	}
+
+	// After NotifyReplan the new route progress baseline restarts: no Stalled before the window.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		a.OnPacketSent(3000, 0.0f, 0.0f, 0.0f, 100.0f);   // would be Stalled later
+		a.NotifyReplan(3100, 0.0f);
+		// New route, progress frozen: no Stalled until the window refills.
+		CHECK(a.Assess(3100, pp) != NavProgressVerdict::Stalled);
+		CHECK(a.Assess(3100 + 3199, pp) != NavProgressVerdict::Stalled);
+	}
+
+	// Intent off -> Idle.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		a.SetIntent(false, 1600);
+		CHECK(a.Assess(2000, pp) == NavProgressVerdict::Idle);
+	}
+}
+
+TEST_CASE("NavProgress_Determinism")
+{
+	const NavRoutePoint route[2] = { { 0.0f, 0.0f }, { 100.0f, 0.0f } };
+	const int64_t events[6] = { 1500, 3000, 4700, 6400, 8100, 9800 };
+
+	auto run = [&](uint32_t seed, std::vector<NavProgressVerdict> & out)
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		const NavProgressParams pp;
+		BotCore::Rng rng(seed);
+		for (int i = 0; i < 6; ++i)
+		{
+			const float p = (float)(10 * i) + (float)(rng.NextBelow(3));
+			a.OnPacketSent(events[i], p, 0.0f, p, 100.0f - p);
+		}
+		for (int i = 0; i < 6; ++i)
+			out.push_back(a.Assess(events[i], pp));
+	};
+
+	std::vector<NavProgressVerdict> a;
+	std::vector<NavProgressVerdict> b;
+	run(20261003u, a);
+	run(20261003u, b);
+	REQUIRE(a.size() == b.size());
+	for (size_t i = 0; i < a.size(); ++i)
+		CHECK(a[i] == b[i]);
+
+	// Reset returns to the initial Idle state.
+	{
+		NavProgressAssessor r;
+		r.SetIntent(true, 0);
+		r.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
+		CHECK(r.Assess(1500, NavProgressParams()) != NavProgressVerdict::Idle);
+		r.Reset();
+		CHECK(r.Assess(1500, NavProgressParams()) == NavProgressVerdict::Idle);
+	}
 }
