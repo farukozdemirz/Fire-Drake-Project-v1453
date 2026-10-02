@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-01` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | Yok (`BotCore` + `BotCoreTests` zaten var: F3-05 `KAPANDI`) |
@@ -256,3 +256,32 @@ git diff --stat gece/2026-10-02-nav...bot/F5-01
 - **Açık sorular:** Yok.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar:** DOĞRULANDI (10/10 kriter; otonom paralel hat `nav`, `AUTO_LOOP=1`: birleştirme ve push yapılmadı, birleştirmeyi döngü betiği yapar).
+- **İncelenen commit:** `eb463e2` (`bot/F5-01`; taban `gece/2026-10-02-nav`; üç commit: `41f47db` kod, `fb0eb14` rapor, `eb463e2` rapor notu). Çalışma ağacı temiz.
+- **Kapsam:** `git diff --stat gece/2026-10-02-nav...bot/F5-01` yedi dosya: §4'teki altı dosya + kendi plan dosyası (yalnızca `Durum` ve Uygulayıcı Raporu). `GameServer/`, `AIServer/`, `shared/`, `docs/` yok. `build/` commit edilmemiş (`git check-ignore build/nav/zone71.navgrid` ignored, `git ls-files build` boş).
+- **Biçim:** `NavGrid.h` ve `NavGridTests.cpp` ASCII + CRLF (374/374 ve 469/469 satır CRLF, ASCII dışı 0); `nav-export.py` ve `run-tests.sh` LF, ASCII. İki `.vcxproj` farkı tek satır (`+<ClInclude Include="NavGrid.h" />`, `+<ClCompile Include="NavGridTests.cpp" />`), BOM (`efbbbf`) korunmuş. Bu paylaşılan `BotCore`/`BotCoreTests` projelerinin `.filters` dosyası yok. `#pragma` yalnızca `once`, debug çıktısı yok.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 selftest | ✔ | `python3 tools/nav-export.py --selftest` → `SELFTEST OK`, rc=0 |
+| K2 gerçek harita | ✔ | çıktı birebir: `bytes=1579030 n=513 unit=4.0 events0=29522 events1=233647 hmin=-30.633 hmax=82.122 main_component=88508 crc32=4fd154bc`; `stat -c %s` = 1579030 |
+| K3 belirlenimli | ✔ | üçüncü koşuda da `crc32=4fd154bc` |
+| K4 derleme | ✔ | Release rc=0; `NavGridTests.cpp`/`MotionTests.cpp`/`NavGrid.h` `touch` edilip yeniden derlendi (derleme çıktısında `NavGridTests.cpp` satırı var), `warning` içeren satır 0; projeler Level4 |
+| K5 test adları | ✔ | `--list` on `Nav_*` adını veriyor |
+| K6 testler | ✔ | `71 tests, 0 failed`, rc=0; on yeni test `[ OK ]`; `NAVGRID real map: n=513 main=88508 clearance_max=13 build_ms=7.5`, `SKIPPED` yok |
+| K7 dosya yokken | ✔ | dosya `.bak`'a taşındı → `NAVGRID real map: SKIPPED (...)`, `[ OK ]`, rc=0; dosya geri konuldu (1579030 bayt) |
+| K8 Debug | ✔ | `./tools/run-tests.sh Debug` rc=0, `71 tests, 0 failed`, `NavGrid` geçen uyarı yok |
+| K9 saflık/kapsam | ✔ | `grep "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavGrid.h` boş; fark kapsamı yukarıda |
+| K10 ölçüm | ✔ | `build_ms` Release 7,5 (uygulayıcı 8,0), Debug 257,7; `clearance_max=13` |
+
+Ek denetim: `NavGrid.h` §5.2 kurallarıyla satır satır karşılaştırıldı: yalnızca `event==1` açık (`NavGrid.h:160`); iteratif BFS, kenara değen bileşen elenir, `sizes > bestSize` katı büyüklüğüyle x-ana taramada ilk bileşen kazanır; clearance çok kaynaklı 8 komşulu BFS, 255 doyumu, `Walk` olmayan 0; `EdgeOpen` aralık/`(0,0)` reddi, iki uç `Walk`, `|Δh| <= maxSlope * mesafe`, çaprazda iki ortogonal komşu `Walk` (simetrik); `HeightAt` köşe bilinear + clamp (`i0 <= n-2`); `Load` tam boyut ister, `int64_t` ile boyut hesaplanıyor; `Build`, `Init` öncesi sessizce döner (`m_n < 2`). Mantık Python `main_component_cells` ile bağımsız olarak aynı 88 508'i veriyor (iki ayrı gerçekleme). Sunucuya, DB'ye, `tools/run-servers.sh`'a dokunulmadı. Mekanik, bot avantajı, thread, DB kuralları bu plana uygulanmaz (saf veri modeli; CLI-08 zemini).
+
+**Bulgular (hepsi not, engel değil):**
+
+1. `Tests/BotCoreTests/NavGridTests.cpp:451`: nesne olayı noktası `(622, 911)` için yalnızca `!Walk` denetleniyor; planın "olay 0" ifadesi `Event(...) == 0` ile ayrıca sınanmıyor (olay 1 olup ana bileşen dışında kalan bir hücre de testi geçirirdi). F5-02'de bir test eklenirken `CHECK_EQ(grid.Event(cell), 0)` eklenebilir.
+2. `tools/nav-export.py:205`: geri okuma doğrulaması yalnızca başlık (`n`, `unit`) ve uzunluğu denetliyor; `events`/`heights` içeriğini orijinalle karşılaştırmıyor (içerik karşılaştırması yalnızca `--selftest`'te var). `read_navgrid` (`:54`) içinde `open(...).read()` dosyayı açık bırakıyor (CPython'da kapanır). Gerçek haritada `crc32` ve C++ testindeki olay/yükseklik sayıları içeriği zaten doğruluyor.
+3. `tools/run-tests.sh`: plan "yalnızca bu satır" dedi; `cd "$ROOT"` ile birlikte bir boş satır da eklenmiş (biçimsel).
+4. Hatırlatma: `HeightAt` ve `Height` hücre-köşe (alt köşe) yaklaşıklığını kullanır (plan §5.2 kural 5, `[Ö]`); F5-02 maliyet fonksiyonu bunu bilerek kullanmalı.
