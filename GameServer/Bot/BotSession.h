@@ -3,9 +3,11 @@
 #include <atomic>
 #include <chrono>
 #include <map>
+#include <mutex>
 #include <string>
 #include "IBotSink.h"
 #include "../../BotCore/BotCombat.h"
+#include "../../BotCore/Perception.h"
 
 class CUser;
 
@@ -120,6 +122,9 @@ public:
 	uint32 m_chatLastHash;                                 // IOCP thread only: BotCore::ChatTextHash of that message
 	BotCore::ChatRateWindow m_chatWindow;                  // IOCP thread only: CLI-18 per-minute window
 
+	std::mutex m_obsLock;                                  // guards m_obs: OnPacket() may run on any thread, see below
+	BotCore::ObsTable m_obs;                               // guarded by m_obsLock: players in view, from received packets only (Perception, ADR-0017 Ek F4-12)
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
@@ -137,4 +142,5 @@ public:
 	std::atomic<uint64> m_partyLeaveEcho;                  // written by OnPacket(): valid bit | kind << 16 | sid of the last PARTY_REMOVE (kind 1, sid = the removed member) or PARTY_DELETE (kind 2, sid 0)
 	std::atomic<uint32> m_chatEchoHash;                    // written by OnPacket() BEFORE m_chatEcho: BotCore::ChatTextHash of the last WIZ_CHAT message received (0 when longer than kChatMaxLen)
 	std::atomic<uint64> m_chatEcho;                        // written by OnPacket(): valid bit | chat type << 32 | uint16 sender sid of the last WIZ_CHAT received
+	std::atomic<uint32> m_obsUnresolved;                   // written by OnPacket(): ids of the last WIZ_REGIONCHANGE that were not in m_obs (no WIZ_REQ_USERIN is sent yet)
 };

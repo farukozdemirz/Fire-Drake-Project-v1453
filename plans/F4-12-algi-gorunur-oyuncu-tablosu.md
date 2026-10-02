@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-12` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-11 (`OnPacket()` kayıt kalıbı, `BotSession` alanları) — `KAPANDI` (merge `ca677c0`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -313,35 +313,82 @@ git diff --check gece/2026-10-02...bot/F4-12
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-12` — `<kısa-sha> [F4-12] …`
+- Branch / commit'ler: `bot/F4-12` (taban `gece/2026-10-02`) — `cc9196a [F4-12] Perception dilim 1: gorunur oyuncu tablosu + /bot see`; bu rapor ayrı commit'te.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/Perception.h` (yeni): `UnitObs`, `ByteReader`, `ParseUserInfo`, `ParseUserInOut`, `ParseUserList`, `ParseMove`, `ParseRegionList`, `ObsTable` (yalnızca `<cstddef>/<cstdint>/<cstring>`, sınır dışı okumaz).
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (yeni): 7 `TEST_CASE` (dosya-yerel `Buf` + `AddUserInfo`).
+  - `BotCore/BotCore.vcxproj`: `ClInclude Perception.h` (BotMotion.h ile Rng.h arasına).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: `ClCompile PerceptionTests.cpp` (MotionTests.cpp ile RngTests.cpp arasına).
+  - `GameServer/Bot/BotSession.h`: `<mutex>` + `../../BotCore/Perception.h`; `m_obsLock`/`m_obs` (IOCP grubu sonu) ve `m_obsUnresolved` (atomikler sonu).
+  - `GameServer/Bot/BotSession.cpp`: başlatıcıya `m_obsUnresolved(0)`, `ResetForRespawn()`'a tablo temizliği, `OnPacket()` sonuna yalnızca-ekleme algı bloğu (ayrıştırma kilit dışı, tablo kilit içi).
+  - `GameServer/Bot/BotManager.h`: `CommandSee` bildirimi.
+  - `GameServer/Bot/BotManager.cpp`: `see` fiil dağıtımı, `unknown command` listesine `see`, `CommandSee` (kilidi bırakıp biçimler/günlüğe yazar; yalnızca `s->m_pUser` üzerinden `GetID/GetNation/GetX/GetZ`).
+- Derleme sonucu (`./tools/build.sh Release`, son satırlar; yalnızca eski `GameServerDlg.cpp` uyarıları):
   ```
-  …
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` da rc=0; yeni dosyalarda/değişen satırlarda uyarı yok.
+- Test sonucu: `./tools/run-tests.sh Release` ve `Debug` → `52 tests, 0 failed` (45 + 7 yeni; yedi yeni ad listede).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; `Perception.h`/`PerceptionTests.cpp`/`BotSession.cpp`/`BotManager.cpp` için uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ iki yapılandırmada `52 tests, 0 failed`; yedi yeni test adı çıktıda.
+  - K4 ✔ `windows.h|stdafx|GameServer|shared/` ve `std::min|std::max|new |malloc|std::vector|std::string` grep'leri boş; include'lar yalnızca `<cstddef>/<cstdint>/<cstring>`.
+  - K5 ✔ iki sözleşme grep'i boş; `me->` yalnızca dört çağrı (`GetID/GetNation/GetX/GetZ`).
+  - K6 ✔ `m_obs.` yalnızca `OnPacket()`/`ResetForRespawn()` (BotSession.cpp) ve `CommandSee` (BotManager.cpp); `CommandSee` kilit bloğu yalnızca iki kopyalama satırı, günlük kilit dışında; `OnPacket()` ayrıştırması kilit dışında.
+  - K7 ✔ `BotSession.cpp` tek `-` satırı yalnızca başlatıcı listesi; `OnPacket()` bloklarında silme yok. `BotManager.cpp` tek `-` satırı yalnızca `unknown command` metni.
+  - K8 ✔ `GameServer/` içinde yalnızca `Bot/` altındaki dört dosya değişti; `Startup/Tick/TickSessions/BuildStatusLines/BeginDespawn` ve ini okuma değişmedi; yeni ini anahtarı yok.
+  - K9 ✔ `--stat` yalnızca §4'teki 8 dosya (+ bu plan dosyası); `proj-GameServer.vcxproj*` farkı boş; iki `vcxproj` farkı birer `+` satır.
+  - K10 ✔ `file` tüm değişen/ yeni dosyalarda CRLF (yeni dosyalar ASCII+CRLF), `vcxproj` BOM'ları korundu; `git diff --check` boş.
+  - K11 ✔ `printf/Sleep/CreateThread/rand(` yok; `mutex` yalnızca include + `m_obsLock` bildirimi + `lock_guard`; `ActionExecutor.*/Telemetry.*/ScenarioRunner.*` değişmedi.
+  - K12 ✔ `CheckMoveStep`=2, diğer 12 guard en az 1; önceki 45 test hâlâ geçiyor.
+  - K13 — Claude (`/plan-dogrula` çalışma zamanı); ben sunucuyu çalıştırmadım (§5.5).
+- Plandan sapmalar: yok. Bir yorumdaki `new ` dizgesi K4 grep'ine takıldığı için "a fresh unit is added" olarak yeniden yazıldı (davranış aynı; grep temizliği).
+- Notlar (engel değil):
+  - `GetUserInfo` ekipman yuvası boşken bayt yazmasa da (`if (pItem == nullptr) continue`), `CUser::GetItem` daima `&m_sItemArray[pos]` döndürür (`User.h:557-560`), yani 70 baytlık ekipman bloğu her zaman sabit; `Skip(70)` güvenli (kod okumasıyla doğrulandı).
+  - `m_obsUnresolved` botun kendi kimliğini de sayar (`selfSid` olarak `0xFFFF`); `see` bunu açıklama satırıyla belirtir (planda kararlaştırıldığı gibi).
+  - `CommandSee` başlıktan hemen sonra açıklama satırını yazar (tablo boş olsa da); plandaki "başlıktan sonra" ifadesine göre.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-12` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-12` @ `a70c42e` (kod commit'i `cc9196a`; taban `f2c47c0`). Gece modu: birleştirme/push döngü betiğinde.
+- Kriter sonuçları (13/13 ✔):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0; log'da `warning` 0; `BotSession.cpp`/`BotManager.cpp` derleme satırları log'da var (yeniden derlendi) |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0; `Perception`/`BotSession`/`BotManager` için uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` rc=0, ikisinde de `52 tests, 0 failed`; yedi yeni test adı çıktıda (`Perception_UserInfo_NoClan/WithClan/Truncated`, `ParseUserInOut`, `ParseUserList`, `ParseMoveAndRegion`, `ObsTable`) |
+| K4 | ✔ | yasak dizge grep'i boş; `#include` yalnızca `Perception.h:8-10` (`<cstddef>`, `<cstdint>`, `<cstring>`); `std::min/max/new/malloc/vector/string` grep'i boş |
+| K5 | ✔ | iki sözleşme grep'i boş; `CommandSee` içinde `me->` yalnızca `BotManager.cpp:2271-2274` (`GetID`, `GetNation`, `GetX`, `GetZ`) |
+| K6 | ✔ | `m_obs` yalnızca `BotSession.cpp:189-222` (`OnPacket()`), `:287` (`ResetForRespawn()`) ve `BotManager.cpp:2265` (`copy = s->m_obs`, kilit bloğu iki kopyalama satırı, biçimleme/günlük kilit dışında `:2271-`); `OnPacket()` ayrıştırması kilit dışında (`lock_guard` yalnızca tablo çağrılarında) |
+| K7 | ✔ | `BotSession.cpp` tek `-` satırı başlatıcı listesi (`:25`); `BotManager.cpp` tek `-` satırı `unknown command` metni; `OnPacket()` mevcut bloklarında silme yok |
+| K8 | ✔ | değişen `GameServer/` dosyaları yalnızca `Bot/BotSession.*`, `Bot/BotManager.*`; `Startup/Tick/TickSessions/BuildStatusLines/BeginDespawn` ve ini okuma diff'te yok; çalışma zamanı: `ENABLED=0` ile `BotCommands.txt` tüketilmedi, bot günlüğüne 0 satır |
+| K9 | ✔ | `--stat` yalnızca §4'teki 8 dosya + plan; `proj-GameServer.vcxproj*` farkı 0 satır; iki `vcxproj` farkı birer `+` satır |
+| K10 | ✔ | `file`: yeni `Perception.h` ve `PerceptionTests.cpp` ASCII + CRLF (her satırda `\r`, ASCII dışı bayt yok); `.cpp/.h` ASCII+CRLF; `vcxproj`'lar UTF-8 BOM + CRLF korunmuş; `git diff --check` boş |
+| K11 | ✔ | yeni `printf/Sleep/CreateThread/rand(` yok (yalnızca `snprintf`); `mutex` yalnızca `BotSession.h:6,125` ve altı `lock_guard`; `ActionExecutor.*`, `Telemetry.*`, `ScenarioRunner.*` diff'te yok |
+| K12 | ✔ | `CheckMoveStep` 2, diğer 12 guard 1'er; önceki 45 test geçiyor (toplam 52); çalışma zamanı: `sit/stand`, `regene`, `move`, `attack`, `pot`/`pinvite`/`pchat` kullanım/ret yolları beklendiği gibi |
+| K13 | ✔ | çalışma zamanı, aşağıda |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+Çalışma zamanı (K13; `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=summary`, `SPAWN_ON_START` boş, zone 71; ini yedekten geri yüklendi, md5 aynı):
 
-```
-…
-```
+1. **Spawn sırası / USER_INOUT:** `BotWP_K`, ~14 sn sonra `BotMF_K` → `see BotMF_K`: `sees 1 unit(s)`, `BotWP_K ally class=106 lvl=80 pos=(1260.6, 897.0) dist=15.1`; `see BotWP_K`: `BotMF_K ally class=110 pos=(1274.0, 890.0)`. Konumlar `list` çıktısıyla birebir; `dist` elle doğrulandı (√(13.4²+7²)=15.1). ✔
+2. **Düşman:** `BotWG_E` spawn → `see BotWP_K` `sees 2 (enemies 1, allies 1)`, `BotWG_E enemy nation=2 class=206`; `see BotWG_E` (spawn anındaki `WIZ_REQ_USERIN`) iki Karus botunu `enemy` olarak gösterdi; açıklama satırı her çıktıda var. ✔
+3. **Hareket:** `move BotWP_K 1266 893` → `see BotMF_K`'de `pos=(1266.0, 893.0)`, `dist=8.5`, `age` 5497 ms (önceki ~28 s'den düştü; `WIZ_MOVE` yeniledi). ✔
+4. **Çıkış ve ölüm:** `despawn BotWG_E` → `see BotWP_K` o birimi göstermedi (`INOUT_OUT`); yeniden spawn + `attack BotWG_E BotMF_K` (`killed` 17 vuruş) → `see BotWP_K`/`see BotWG_E`'de `BotMF_K ... dead age=4810ms` (`WIZ_DEAD`). ✔
+5. **Bölge değişimi:** `BotWP_K` ~114 m yürütüldü (1380, 893) → `see BotWP_K`: `sees 0 unit(s) ... unresolved 1` (kendi kimliği, planlanan sınır); `see BotMF_K`/`see BotWG_E` `BotWP_K`'yı artık göstermedi (`Retain`). `ENABLED=0` → komut dosyası tüketilmedi, log 0 satır. **`RESPAWN_CYCLES=2` ile `see` reddi çalışma zamanında denenmedi** (`ExecuteCommand`'daki ret dalı bu diff'te değişmedi, K7); statik olarak kabul. ✔ (bu madde dışında)
+6. **Gerileme:** `sit/stand`, `regene` (`respawned at (1380.0, 1090.0)`), `move`, `attack`, `pot` kullanım satırı, `pinvite` (`out_of_view`), `pchat` (`not_in_party`); `see` kullanım/bilinmeyen-bot/fazla-argüman/`bogus` listesi (`see` listede) beklendiği gibi; `despawn all` 3/3 temiz (`names cleared yes`); `PERF_SAMPLE` `tick_p95_us` 84–103 (≤ 500), `skipped_ticks` 0; sunucu `run-servers.sh stop` ile `nazik` kapandı. İnsan istemcisi gerektiren T-ARCH-17 (gerçek oyuncu görünür mü, klanlı oyuncu) `docs/STATUS.md` "Proje sahibi testleri"nde bekliyor; kriteri engellemez.
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `BotCore/Perception.h:169-170`: `ParseUserInfo` ad dizisinin tüm 24 baytını kopyalar; `Str` NUL'dan sonrasını yazmadığı için başlatılmamış yığın baytları (`name[n+1..23]`) `out.name`'e geçer. Okuyucu NUL'da durduğundan zararsız ve testler geçer; ileride `memcmp` ile ad karşılaştırması yazılırsa sorun olur. Sonraki dilimde `Str`'ın kalan baytları sıfırlaması veya yalnızca `n+1` bayt kopyalanması önerilir.
+  2. `BotSession.cpp:207`: `Retain(..., 0xFFFF)` nedeniyle `unresolved` botun kendisini de sayar (çalışma zamanında tek başına kalan botta sabit `1`); plan kararı ve `see` açıklama satırı bunu belirtiyor. F4-13 kendi sid'i için atomik alan eklediğinde `selfSid` gerçek değerle verilmeli.
+  3. `lastSeenMs` yalnızca olayda yenilenir: hareketsiz birimde `age` sürekli büyür (örn. 138 s). Tasarım gereği ("tahmin yok"); karar katmanı bayatlama için ayrıca ele alınmalı.
+  4. Üslup: `BotManager.cpp:2262-2267` kopya sırasında `ObsTable` (~3.7 KB) yığında; `OnPacket()`'te de `UnitObs list[64]` yığında. IOCP/DB thread yığını için sorun değil, not.
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).

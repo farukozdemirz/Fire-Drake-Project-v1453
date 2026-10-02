@@ -22,7 +22,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
-		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0)
+		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -166,6 +166,62 @@ void BotSession::OnPacket(Packet & pkt)
 		m_chatEchoHash = hash;
 		m_chatEcho = (1ull << 63) | (uint64(type) << 32) | uint64(sid);
 	}
+
+	// Perception (ADR-0017 Ek F4-12): what a client would learn about the other players in view. Only the packets the
+	// server sends to this session are read; nothing is fetched from other sessions, regions or the map. The payload
+	// starts at contents(); the opcode is stored separately. Parsing happens before the lock is taken.
+	if (opcode == WIZ_USER_INOUT || opcode == WIZ_REQ_USERIN || opcode == WIZ_REGIONCHANGE
+		|| opcode == WIZ_MOVE || opcode == WIZ_DEAD)
+	{
+		const uint8 * data = pkt.size() > 0 ? pkt.contents() : nullptr;
+		size_t len = pkt.size();
+		uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+
+		if (opcode == WIZ_USER_INOUT)
+		{
+			uint16 type = 0;
+			BotCore::UnitObs unit;
+			if (BotCore::ParseUserInOut(data, len, nowMs, type, unit))
+			{
+				std::lock_guard<std::mutex> lock(m_obsLock);
+				if (type == BotCore::kObsInOutOut)
+					m_obs.Remove(unit.sid);
+				else
+					m_obs.Upsert(unit);
+			}
+		}
+		else if (opcode == WIZ_REQ_USERIN)
+		{
+			BotCore::UnitObs list[BotCore::kObsMaxUnits];
+			int n = BotCore::ParseUserList(data, len, nowMs, list, BotCore::kObsMaxUnits);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			for (int i = 0; i < n; i++)
+				m_obs.Upsert(list[i]);
+		}
+		else if (opcode == WIZ_REGIONCHANGE)
+		{
+			uint16 ids[BotCore::kObsMaxUnits * 4];
+			int n = BotCore::ParseRegionList(data, len, ids, BotCore::kObsMaxUnits * 4);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_obsUnresolved = (uint32)m_obs.Retain(ids, n, 0xFFFF);
+		}
+		else if (opcode == WIZ_MOVE)
+		{
+			uint16 sid = 0, x10 = 0, z10 = 0, y10 = 0;
+			if (BotCore::ParseMove(data, len, sid, x10, z10, y10))
+			{
+				std::lock_guard<std::mutex> lock(m_obsLock);
+				m_obs.UpdatePosition(sid, x10, z10, y10, nowMs);
+			}
+		}
+		else if (opcode == WIZ_DEAD && len >= 2)
+		{
+			uint16 sid = (uint16)data[0] | ((uint16)data[1] << 8);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_obs.MarkDead(sid, nowMs);
+		}
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -226,6 +282,11 @@ void BotSession::ResetForRespawn()
 	m_partyLeaveEcho = 0;
 	m_chatEchoHash = 0;
 	m_chatEcho = 0;
+	{
+		std::lock_guard<std::mutex> lock(m_obsLock);
+		m_obs.Clear();
+	}
+	m_obsUnresolved = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

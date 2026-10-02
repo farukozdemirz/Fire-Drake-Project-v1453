@@ -650,10 +650,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandPartyManage(args, true);
 	else if (_stricmp(verb.c_str(), "pchat") == 0)
 		CommandPartyChat(args);
+	else if (_stricmp(verb.c_str(), "see") == 0)
+		CommandSee(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -2221,6 +2223,98 @@ void BotManager::CommandPartyChat(const std::string & args)
 		snprintf(message, sizeof(message),
 			"BotManager: cmd pchat: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
+}
+
+void BotManager::CommandSee(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd see: usage: see <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd see: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd see: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Copy the table and the counter under the lock, then format with the lock released.
+	BotCore::ObsTable copy;
+	uint32 unresolved = 0;
+	{
+		std::lock_guard<std::mutex> lock(s->m_obsLock);
+		copy = s->m_obs;
+		unresolved = s->m_obsUnresolved.load();
+	}
+
+	// The only read of the bot's own session: its CUser, which the contract allows.
+	CUser * me = s->m_pUser;
+	uint16 selfSid = me->GetID();
+	uint8 myNation = me->GetNation();
+	float myX = me->GetX();
+	float myZ = me->GetZ();
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	int total = 0, enemies = 0, allies = 0;
+	for (int i = 0; i < copy.Count(); i++)
+	{
+		const BotCore::UnitObs & u = copy.At(i);
+		if (u.sid == selfSid)
+			continue;
+		total++;
+		if (u.nation != myNation)
+			enemies++;
+		else
+			allies++;
+	}
+
+	char message[320];
+	snprintf(message, sizeof(message),
+		"BotManager: cmd see: %s sees %d unit(s) (enemies %d, allies %d, dropped %u, unresolved %u)",
+		s->m_charName.c_str(), total, enemies, allies, (unsigned)copy.Overflow(), (unsigned)unresolved);
+	WriteBotLog(message);
+	WriteBotLog("BotManager: cmd see:   (unresolved counts the last region id list incl. the bot itself; no WIZ_REQ_USERIN is sent yet)");
+
+	for (int i = 0; i < copy.Count(); i++)
+	{
+		const BotCore::UnitObs & u = copy.At(i);
+		if (u.sid == selfSid)
+			continue;
+
+		bool enemy = u.nation != myNation;
+		float ux = u.x10 / 10.0f;
+		float uz = u.z10 / 10.0f;
+		float dist = (float)sqrt((ux - myX) * (ux - myX) + (uz - myZ) * (uz - myZ));
+		uint64 age = nowMs > u.lastSeenMs ? nowMs - u.lastSeenMs : 0;
+
+		snprintf(message, sizeof(message),
+			"BotManager: cmd see:   sid=%u %s %s nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s age=%llums",
+			(unsigned)u.sid, u.name, enemy ? "enemy" : "ally", (unsigned)u.nation,
+			(unsigned)u.cls, (unsigned)u.level, ux, uz, dist,
+			u.resHpType == BotCore::kObsUserDead ? "dead" : "alive", (unsigned long long)age);
+		WriteBotLog(message);
+	}
 }
 
 void BotManager::ParseSpawnList(const std::string & list)
