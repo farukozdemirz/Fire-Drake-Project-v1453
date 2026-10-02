@@ -72,6 +72,7 @@
     <ClInclude Include="BotCombat.h" />
     <ClInclude Include="BotMotion.h" />
     <ClInclude Include="Perception.h" />
+    <ClInclude Include="ScriptPlan.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
