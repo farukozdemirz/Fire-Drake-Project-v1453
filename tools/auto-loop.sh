@@ -12,6 +12,11 @@
 #        # birlestirilir, faz sinirlari --target fazina kadar asilir, takilmalarda
 #        # Claude "kurtarma" adimiyla karar verir. main'e dokunulmaz, push yapilmaz.
 #
+#   ./tools/auto-loop.sh --run --branch gece/2026-10-02-nav --target F5 --track nav --topic "..."
+#        # paralel hat: AYRI bir git worktree'sinde ve ayri entegrasyon dalinda calisir;
+#        # sunuculara dokunmaz (ana hat sunucu kullanabilir). Konu metni plan-olustur'a
+#        # AUTO_TRACK_TOPIC olarak verilir (plans/OTONOM_DONGU.md §10).
+#
 # Durdurma: calisirken  touch plans/.auto-loop-stop  (sonraki adim basinda kontrol edilir)
 # Durum:    cat plans/_logs/auto-loop.state ; tail -f plans/_logs/auto-loop.log
 
@@ -37,6 +42,8 @@ TRANSIENT_SLEEP_SEC="${TRANSIENT_SLEEP_SEC:-300}"
 
 INTEGRATION_BRANCH=""
 TARGET_PHASE=""
+TRACK=""
+TOPIC=""
 
 ACTIVE_PLAN_FILE="plans/.aktif-plan"
 STOP_FILE="plans/.auto-loop-stop"
@@ -55,8 +62,10 @@ while [ $# -gt 0 ]; do
 	--run) RUN=true ;;
 	--branch) INTEGRATION_BRANCH="${2:-}"; shift ;;
 	--target) TARGET_PHASE="${2:-}"; shift ;;
+	--track) TRACK="${2:-}"; shift ;;
+	--topic) TOPIC="${2:-}"; shift ;;
 	-h | --help)
-		sed -n '2,17p' "$0"
+		sed -n '2,21p' "$0"
 		exit 0
 		;;
 	*) echo "Bilinmeyen arguman: $1" >&2; exit 2 ;;
@@ -71,10 +80,12 @@ NIGHT=false
 export AUTO_LOOP=1
 export AUTO_INTEGRATION_BRANCH="$INTEGRATION_BRANCH"
 export AUTO_TARGET_PHASE="$TARGET_PHASE"
+export AUTO_TRACK="$TRACK"
+export AUTO_TRACK_TOPIC="$TOPIC"
 
 log() {
 	mkdir -p "$LOG_DIR"
-	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$MAIN_LOG"
+	printf '%s %s%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${TRACK:+[$TRACK] }" "$*" | tee -a "$MAIN_LOG"
 }
 
 state() { # tek satirlik canli durum
@@ -147,6 +158,8 @@ extract_correction() {
 
 # Sunucular build/bin altindaki exe'leri kilitler; her adimdan once kapat.
 ensure_servers_stopped() {
+	# Paralel hat sunuculara dokunmaz: ana hat sunucuyu calisma zamani dogrulamasi icin kullaniyor olabilir.
+	[ -n "$TRACK" ] && return 0
 	local out
 	out="$("$ROOT/tools/run-servers.sh" status 2>/dev/null || true)"
 	if printf '%s' "$out" | grep -q '^\[UP\]'; then
@@ -240,6 +253,11 @@ done
 if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^?? start.md$' || true)" ]; then
 	pre "calisma agaci temiz degil (git status). Once commit'leyin veya stash edin."
 fi
+if [ -n "$TRACK" ]; then
+	[ "$(git rev-parse --git-dir 2>/dev/null)" != "$(git rev-parse --git-common-dir 2>/dev/null)" ] || pre "--track yalnizca AYRI bir git worktree'sinde calisir (git worktree add <yol> <dal>); ana calisma agacinda calistirmayin"
+	$NIGHT || pre "--track gece modu (--branch) gerektirir"
+	[ -n "$TOPIC" ] || pre "--track icin --topic zorunlu"
+fi
 if $NIGHT; then
 	git rev-parse --verify --quiet "$INTEGRATION_BRANCH" >/dev/null || pre "entegrasyon dali '$INTEGRATION_BRANCH' yok (git branch $INTEGRATION_BRANCH main ile olusturun)"
 	case "$INTEGRATION_BRANCH" in main | master) pre "entegrasyon dali main olamaz (gece modu main'e dokunmaz)" ;; esac
@@ -312,8 +330,8 @@ finalize() {
 	log "=== Kapanis: sabah raporu yaziliyor ==="
 	state "kapanis raporu"
 	switch_to "$INTEGRATION_BRANCH" || true
-	local rlog="$LOG_DIR/final-report-$(date +%s).log"
-	run_claude "Otonom gece döngüsü bitti (neden: ${1:-bilinmiyor}). Entegrasyon dalı: $INTEGRATION_BRANCH (taban: main). Görev: docs/reports/gece-$(date +%Y-%m-%d).md dosyasını yaz (Türkçe, proje sahibi için sabah raporu): (1) bu gece hangi planlar yazıldı/uygulandı/doğrulandı/iptal edildi (git log main..$INTEGRATION_BRANCH ve plans/README.md'den), (2) hangi fazlar nerede kaldı, faz sonuç raporu taslakları, (3) Claude'un otonom verdiği kararlar (ADR'ler), (4) docs/STATUS.md 'Proje sahibi testleri (bekleyen)' listesi: sabah yapılacak istemci testleri adım adım, (5) blokajlar ve takılmalar (plans/_logs/auto-loop.log), (6) geri alma: main'e hiç dokunulmadı; her şey $INTEGRATION_BRANCH dalında; birleştirme komutu. Dosyayı ve STATUS güncellemesini $INTEGRATION_BRANCH dalına commit et. Başka dosya değiştirme, push/merge yapma." "$rlog" || log "  kapanis raporu yazilamadi (log: $rlog)"
+	local rlog="$LOG_DIR/final-report-$(date +%s).log" rfile="docs/reports/gece-$(date +%Y-%m-%d)${TRACK:+-$TRACK}.md"
+	run_claude "Otonom gece döngüsü bitti (neden: ${1:-bilinmiyor}). Entegrasyon dalı: $INTEGRATION_BRANCH (taban: main). Görev: $rfile dosyasını yaz (Türkçe, proje sahibi için sabah raporu): (1) bu gece hangi planlar yazıldı/uygulandı/doğrulandı/iptal edildi (git log main..$INTEGRATION_BRANCH ve plans/README.md'den), (2) hangi fazlar nerede kaldı, faz sonuç raporu taslakları, (3) Claude'un otonom verdiği kararlar (ADR'ler), (4) docs/STATUS.md 'Proje sahibi testleri (bekleyen)' listesi: sabah yapılacak istemci testleri adım adım, (5) blokajlar ve takılmalar (plans/_logs/auto-loop.log), (6) geri alma: main'e hiç dokunulmadı; her şey $INTEGRATION_BRANCH dalında; birleştirme komutu. Dosyayı ve STATUS güncellemesini $INTEGRATION_BRANCH dalına commit et. Başka dosya değiştirme, push/merge yapma." "$rlog" || log "  kapanis raporu yazilamadi (log: $rlog)"
 	ensure_clean
 	state "bitti: ${1:-?}"
 	stop_keep_awake

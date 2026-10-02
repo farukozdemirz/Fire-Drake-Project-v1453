@@ -32,6 +32,18 @@ Görev: `$1` için (boşsa `docs/STATUS.md`'deki "Sıradaki adımlar"dan ilk uyg
 
 `AUTO_LOOP` 1 değilse kullanıcı karşındadır: kararları ona **tek tek ve sade dille** sor (bölüm 5.3).
 
+### 0.2 Paralel hat (`AUTO_TRACK` dolu)
+
+`echo "$AUTO_TRACK | $AUTO_INTEGRATION_BRANCH | $AUTO_TRACK_TOPIC"` çalıştır. `AUTO_TRACK` doluysa (ör. `nav`) bu çağrı, ana hattan **bağımsız ikinci** döngüden gelir: ayrı bir git worktree'sinde, kendi entegrasyon dalında (`$AUTO_INTEGRATION_BRANCH`) çalışır. Ana hat F4 işlerini yapar; onun işlerini **yazma**. Bu modda §0 ve §0.1 şu farklarla uygulanır (bunlar önceliklidir):
+
+- **Konu:** Planın konusu `AUTO_TRACK_TOPIC` metnindedir; `docs/STATUS.md` "Sıradaki adımlar"ından iş seçme. Konudaki sırayı izle: `plans/README.md`'de bu hattın planları (ör. `F5-NN`) varsa sıradaki dilimi seç; yoksa ilk dilimi yaz. Plan numarası o hattın fazındaki sıradaki `NN`'dir (ör. `F5-01`).
+- **Faz sınırı yok sayılır:** Konu `docs/17` §1 "Paralel yürütülebilir işler" ile izinlidir; F4'ün bitmesini bekleme. STATUS'ta aktif faz F4 olsa da bu hatta F5 planı yaz. Faz rapor taslağı yazma.
+- **Kapsam (sert):** Yalnızca sunucusuz saf mantık: `BotCore/` (başlık-yalnızca, `windows.h`/`stdafx.h`/`GameServer`/`shared` içermez; ADR-0016), `BotCoreTests` birim testleri, `tools/` (Python/betik) ve `docs/`. `GameServer/`, `AIServer/`, `shared/` **değiştirilmez**; sunucu çalıştırılmaz, DB'ye bağlanılmaz, istemci gerekmez. Sunucuya bağlama (GameServer entegrasyonu) bu hattın işi değildir; F4 bitince ayrı plan olur.
+- **Sunucuya dokunma:** Plan `tools/run-servers.sh` çağırmayı şart koşmaz (ana hat sunucuyu kullanıyor olabilir). Doğrulama: `./tools/build.sh Release` (GameServer çözümünün hâlâ derlendiğini gösterir) ve `./tools/run-tests.sh`. Kabul kriterleri sayısal ve komutla doğrulanabilir olmalı (birim test adları, beklenen çıktı).
+- **Ortak dosyalar:** `docs/STATUS.md` ve `plans/README.md` bu hatta kendi kopyandadır; ana hatla birleştirmeyi Claude/proje sahibi yapar. Yalnızca kendi planınla ilgili satırlara dokun, ana hattın satırlarını yeniden düzenleme.
+- **Hedef bitti:** Konudaki tüm dilimler `KAPANDI`/`DOĞRULANDI` ise plan yazma; `plans/.auto-loop-done` dosyasına tek satır neden yaz ve kayıtları commit et.
+- **Plan boyutu ve kalite aynı kalır** (§0.1): küçük, tek yetenek, ≤ ~6 dosya. Hız için plan büyütülmez.
+
 ## 1. Durumu öğren
 
 1. `docs/STATUS.md`, `plans/README.md` (plan listesi) ve aktif fazın `docs/17_IMPLEMENTATION_ROADMAP_AND_PHASE_GATES.md` tanımını oku.

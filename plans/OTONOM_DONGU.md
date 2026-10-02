@@ -154,3 +154,14 @@ Durdurmak için: `touch plans/.auto-loop-stop` (driver her iterasyon başında b
 4. "Claude kararıyla devam etsin" kuralını §2'deki gibi mi istiyorsun, yoksa daha geniş mi (ör. faz sınırını da kapsasın)?
 
 Bunlara cevap vermeden döngüyü başlatmayacağım.
+
+## 10. Paralel hat (ikinci döngü, 2026-10-02)
+
+Ana hat (F4, GameServer C++ zinciri) tek tek ilerler: planlar birbirine bağlı, aynı dosyalara dokunur, çalışma zamanı doğrulaması tek sunucu setini kullanır. Hız için **bağımsız** bir iş (`docs/17` §1 "Paralel yürütülebilir işler": F5 navigasyon algoritmaları, `BotCore`, sunucusuz) ikinci bir döngüyle yürütülür. Kalite eşiği aynıdır: plan boyutu küçük, her plan Claude tarafından ayrı doğrulanır.
+
+- **İzolasyon:** ikinci döngü **ayrı git worktree**'sinde (`/mnt/c/dev/fdp-nav`) ve **ayrı entegrasyon dalında** (`gece/2026-10-02-nav`) çalışır; ana hattın dalına, sunucularına, derleme klasörüne ve loglarına dokunmaz. `tools/auto-loop.sh --track nav` ayrı worktree dışında çalışmayı reddeder.
+- **Sunucu yok:** paralel hat sunucu açmaz/kapatmaz (`ensure_servers_stopped` boş işlem); doğrulama `./tools/build.sh Release` + `./tools/run-tests.sh`.
+- **Kapsam:** yalnızca `BotCore/`, `BotCoreTests`, `tools/`, `docs/`; `GameServer/`, `AIServer/`, `shared/` değişmez. Sunucuya bağlama F4 bitince ayrı plan.
+- **Hedef ve konu:** ana hat `--target F4` (F4 bitince durur), ikinci hat `--target F5 --track nav --topic "..."`; konu metni `AUTO_TRACK_TOPIC` ile `/plan-olustur`'a gider (skill §0.2).
+- **Birleştirme:** iki dal ayrı kalır; sonunda `gece/2026-10-02-nav` dalı `gece/2026-10-02`'ye `--no-ff` birleştirilir (çakışma beklenen yerler: `docs/STATUS.md`, `plans/README.md`; Claude çözer), ardından tam derleme ve `run-tests.sh` koşulur. Her iki hat da `main`'e dokunmaz.
+- **Durdurma:** her worktree'nin kendi `plans/.auto-loop-stop` dosyası vardır.
