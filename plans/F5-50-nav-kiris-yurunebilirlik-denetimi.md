@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-50 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`) — `KAPANDI` |
@@ -117,13 +117,35 @@ git diff --stat gece/2026-10-02-nav...bot/F5-50
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-50` (taban `gece/2026-10-02-nav` @ `196857d`); kod commit'i `fae635d`; bu rapor + `Durum: UYGULANDI` ayrı commit.
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/NavSegment.h` (yeni): `NavSegmentVerdict` (`Ok`/`OutOfBounds`/`BlockedCell`/`SlopeTooSteep`), `NavSegmentResult`, `NavCheckSegment`, `NavCheckStep`. Walk katmanı: kirişin kapalı karesine değen tüm hücreler Amanatides-Woo süpercover ile (vertex'te iki ortogonal komşu; sınır üzerinde uzanan kirişte iki sütun/satır) denetlenir; eğim/çapraz köşe katmanı `NavLineClear`'ın doğruladığı kanonik Bresenham yolu üzerinde `NavGrid::EdgeOpen` ile denetlenir. Uçlar kanonik (x, sonra z) sıraya çevrilir → karar ve raporlanan hücre simetriktir. Yığın üzerinde, dinamik bellek yok, include yalnızca `<cmath>` + `NavGrid.h`.
+  - `Tests/BotCoreTests/NavSegmentTests.cpp` (yeni): `NavSegment_Basic`, `NavSegment_Corner`, `NavSegment_Slope`, `NavSegment_Symmetry_Oracle`, `NavSegment_RealMap_Planner`, `NavSegment_RealMap_Straight`, `NavSegment_Perf`.
+  - `BotCore/BotCore.vcxproj`: bir `<ClInclude Include="NavSegment.h" />` satırı.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: bir `<ClCompile Include="NavSegmentTests.cpp" />` satırı.
+- Derleme sonucu: `./tools/build.sh Release` ve `./tools/build.sh Debug` rc=0; yeni dokunulan dosyalarda uyarı 0 (`grep "warning C"` = 0). Son satır: `BotCoreTests.vcxproj -> ...\bot\F5-50\build\bin\x86-<CFG>\Tests\BotCoreTests.exe`.
+- Test sonucu: Release `169 tests, 0 failed`; Debug `169 tests, 0 failed`; yedi yeni test `[ OK ]`, gerçek harita testleri `SKIPPED` değil (harita var). Satırlar: `NAVSEG oracle: chords=3000 blocked=2947 sym=0 safety=0 graze=0 excess=0`; `NAVSEG planner: paths=997 segments=4876 segment_bad=0 chords=35878 chord_blocked=0 chord_slope=691`; `NAVSEG straight: chords=2000 blocked=1722 sym=0 safety=0 graze=2 excess=0`; `NAVSEG perf: chords=20000 out_of_bounds=29 ms_p50=0.0001 ms_p95=0.0002 ms_p99=0.0002` (Release).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, yeni dosya uyarısı 0.
+  - K2 ✔ Debug rc=0, uyarı 0.
+  - K3 ✔ `169 tests, 0 failed` (Release + Debug), yedi yeni ad `[ OK ]`, mevcut testler değişmedi.
+  - K4 ✔ `windows.h|stdafx|GameServer|shared/` grep boş; include yalnızca `<cmath>` + `NavGrid.h`.
+  - K5 ✔ dinamik bellek yok, global/static durum yok.
+  - K6 ✔ simetri ihlali 0; güvenlik ihlali 0 (Ok ⇏ oracle engelli); `excess=0`; fazla muhafazakâr oran %0,1 sınırında (2/2000).
+  - K7 △ kısmi: planlayıcı segmentleri `segment_bad=0`; kirişlerde **engelli hücre 0** (`chord_blocked=0`, ölçümle aynı güvenlik garantisi). Ancak sentetik 6,75 m kirişlerin `691/35878`'i (~%1,9) `SlopeTooSteep` ile muhafazakâr reddediliyor (Sapma 2/3).
+  - K8 ✔ Perf Release `ms_p95=0.0002` ≤ 0,02.
+  - K9 ✔ fark yalnızca §4'teki dört dosya + plan; `GameServer/`, `shared/`, `AIServer/`, `docs/` farkı 0.
+  - K10 ✔ ASCII + CRLF; `git diff --check` boş.
+  - K11 → Claude yapar.
 - Plandan sapmalar ve gerekçeleri:
+  1. Plan diskte `Durum: HAZIR` idi ve dalda hiç uygulama yoktu (temiz ağaç, `NavSegment.h` yok). Kullanıcı "yarım kalmış" dese de önceki kod yoktu; plan sıfırdan uygulandı.
+  2. Eğim kuralı: plan §3.1(c) süpercover'un ardışık hücre çiftlerinde eğim denetimi ister. Ölçüm: bu kuralla planlayıcı segmentlerinin **577/4876'sı (%11,8)** `SlopeTooSteep` olur; K7 bu haliyle ulaşılamaz. Değerlendirme ölçümü (`docs/reports/degerlendirme-2026-10-02.md` §5.1) ve prototipi (`/tmp/.../scratchpad/nav/exp2.cpp`) yalnızca **Walk** denetliyordu (eğim ölçülmemiş). Bu yüzden Walk katmanı muhafazakâr süpercover olarak bırakıldı, eğim/çapraz köşe ise planlayıcının doğruladığı yolun aynısıyla (`NavLineClear` kanonik Bresenham + `EdgeOpen`) denetlendi; böylece planlayıcı segmentleri `0` ihlal verir.
+  3. K7'nin "her 6,75 m kiriş `Ok`" ifadesi tam sağlanamıyor: uçları keyfî iki nokta olan kirişin kendi hücrelerinden türeyen Bresenham yolu, üst segmentin yolundan farklı olabildiğinden kiriş `SlopeTooSteep` verebilir. Kirişlerde **engelli hücre 0** doğrulanıyor (asıl güvenlik garantisi); `SlopeTooSteep` reddi bilgi satırında raporlanıyor. İcrada paketler ara nokta hedefine (segment) gidiyorsa kiriş segmenttir ve ihlal 0'dır.
+  4. OutOfBounds sınaması: `NavGrid::Build` kenara değen bileşenleri `Walk` dışı bıraktığından, ızgaradan çıkan kiriş engelli kenar hücresinde önce `BlockedCell` verir; `OutOfBounds` yalnızca ızgara dışı uçla tetiklenir. Test bu davranışa göre yazıldı (`Basic`).
 - Açık sorular:
+  - Q1: Eğim kuralının kanonik Bresenham + `EdgeOpen` olması (plan §3.1(c) literal süpercover eğiminden sapma; K7 segmentleri için zorunlu) kabul mü? Literal süpercover eğimi K7'yi ulaşılamaz kılar.
+  - Q2: K7'nin kiriş eğimi `0` şartı isteniyorsa guard üst segment bağlamını bilmelidir; bu planın API'si bağlamsızdır (F5-55'e bırakılabilir).
 
 ---
 
