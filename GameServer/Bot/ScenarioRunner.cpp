@@ -2,6 +2,7 @@
 #include "ScenarioRunner.h"
 #include "BotManager.h"
 #include "BotSession.h"
+#include "ScriptRunner.h"
 #include "Telemetry.h"
 
 #include <algorithm>
@@ -17,6 +18,7 @@ const size_t SCENARIO_MAX_SEEDS = 32;
 const size_t SCENARIO_MAX_RUNS = 200;
 static const uint32 SCENARIO_PREPARE_TIMEOUT_MS = 60000;
 static const uint32 SCENARIO_CLEANUP_TIMEOUT_MS = 60000;
+static const uint32 SCENARIO_SCRIPT_MARGIN_MS = 1000;   // script must end this long before duration_sec
 
 // Appends one line to ./Logs/Bot_<day>_<month>_<year>.log (silently skipped if it cannot be opened).
 static void WriteScenarioLog(const char * line)
@@ -158,7 +160,7 @@ static bool ParseList(const std::string & value, std::vector<std::string> & item
 }
 
 ScenarioRunner::ScenarioRunner(BotManager & mgr)
-	: m_mgr(mgr), m_state(STATE_IDLE), m_runIndex(0), m_completedRuns(0)
+	: m_mgr(mgr), m_state(STATE_IDLE), m_runIndex(0), m_completedRuns(0), m_scriptRunId(0)
 {
 }
 
@@ -180,8 +182,10 @@ bool ScenarioRunner::LoadScenario(const std::string & name, Scenario & out, std:
 
 	bool seenScenarioId = false, seenZone = false, seenBots = false;
 	bool seenSeeds = false, seenRepeat = false, seenDuration = false;
+	bool seenScript = false;
 
 	std::string id = name;
+	std::string script;
 	std::vector<std::string> bots;
 	std::vector<uint32> seeds;
 	uint32 repeat = 1;
@@ -267,7 +271,7 @@ bool ScenarioRunner::LoadScenario(const std::string & name, Scenario & out, std:
 		std::string value = Trim(line.substr(colon + 1));
 
 		bool known = key == "scenario_id" || key == "zone" || key == "bots"
-			|| key == "seeds" || key == "repeat" || key == "duration_sec";
+			|| key == "seeds" || key == "repeat" || key == "duration_sec" || key == "script";
 		if (!known)
 		{
 			failed = true;
@@ -425,6 +429,25 @@ bool ScenarioRunner::LoadScenario(const std::string & name, Scenario & out, std:
 			}
 			repeat = (uint32)parsed;
 		}
+		else if (key == "script")
+		{
+			if (seenScript)
+			{
+				failed = true;
+				error = name + ".yaml:" + std::to_string(lineNo) + ": duplicate key 'script'";
+				break;
+			}
+			seenScript = true;
+
+			std::string parsed = Unquote(value);
+			if (!IsSafeFileStem(parsed))
+			{
+				failed = true;
+				error = name + ".yaml:" + std::to_string(lineNo) + ": script: bad script name";
+				break;
+			}
+			script = parsed;
+		}
 		else // duration_sec
 		{
 			if (seenDuration)
@@ -466,12 +489,38 @@ bool ScenarioRunner::LoadScenario(const std::string & name, Scenario & out, std:
 		return false;
 	}
 
+	if (!script.empty())
+	{
+		std::vector<BotCore::ScriptStep> steps;
+		std::string scriptError;
+		if (!ScriptRunner::LoadScript(script, steps, scriptError))
+		{
+			error = "script: " + scriptError;
+			return false;
+		}
+
+		if (steps.empty())
+		{
+			error = "script: no steps";
+			return false;
+		}
+
+		if ((unsigned long long)steps.back().offsetMs + SCENARIO_SCRIPT_MARGIN_MS > (unsigned long long)durationSec * 1000ULL)
+		{
+			error = "script: last offset " + std::to_string(steps.back().offsetMs)
+				+ " ms leaves less than " + std::to_string(SCENARIO_SCRIPT_MARGIN_MS)
+				+ " ms before duration_sec (" + std::to_string(durationSec) + " s)";
+			return false;
+		}
+	}
+
 	out.name = name;
 	out.id = id;
 	out.bots = bots;
 	out.seeds = seeds;
 	out.repeat = repeat;
 	out.durationSec = durationSec;
+	out.script = script;
 	return true;
 }
 
@@ -557,6 +606,14 @@ void ScenarioRunner::CommandRun(const std::string & name)
 		return;
 	}
 
+	if (!loaded.script.empty() && m_mgr.m_script.IsRunning())
+	{
+		snprintf(message, sizeof(message),
+			"ScenarioRunner: run %s: refused (a script is already running (use 'script stop'))", name.c_str());
+		WriteScenarioLog(message);
+		return;
+	}
+
 	for (size_t i = 0; i < m_mgr.m_sessions.size(); i++)
 	{
 		BotSession * s = m_mgr.m_sessions[i];
@@ -618,12 +675,21 @@ void ScenarioRunner::CommandRun(const std::string & name)
 		(unsigned)m_runSeeds.size(), (unsigned)m_scenario.durationSec);
 	WriteScenarioLog(message);
 
+	if (!m_scenario.script.empty())
+	{
+		snprintf(message, sizeof(message),
+			"ScenarioRunner: run %s: script %s (every run, starts when the match opens)",
+			name.c_str(), m_scenario.script.c_str());
+		WriteScenarioLog(message);
+	}
+
 	StartRun(std::chrono::steady_clock::now());
 }
 
 void ScenarioRunner::StartRun(std::chrono::steady_clock::time_point now)
 {
 	m_sessions.clear();
+	m_scriptRunId = 0;
 
 	std::string names;
 	for (size_t i = 0; i < m_scenario.bots.size(); i++)
@@ -695,6 +761,19 @@ void ScenarioRunner::Tick(std::chrono::steady_clock::time_point now)
 				return;
 			}
 
+			if (!m_scenario.script.empty())
+			{
+				uint32 before = m_mgr.m_script.RunId();
+				m_mgr.m_script.Command("run " + m_scenario.script);
+
+				if (!m_mgr.m_script.IsRunning() || m_mgr.m_script.RunId() == before)
+				{
+					Abort("script start refused", now);
+					return;
+				}
+				m_scriptRunId = m_mgr.m_script.RunId();
+			}
+
 			m_state = STATE_RUNNING;
 			m_stateSince = m_matchSince = now;
 
@@ -724,6 +803,7 @@ void ScenarioRunner::Tick(std::chrono::steady_clock::time_point now)
 		{
 			if (m_sessions[i]->m_phase != BotSession::PHASE_IN_GAME)
 			{
+				StopScript();
 				m_mgr.CommandMatch("end bot_lost");
 				Abort("bot lost: " + m_sessions[i]->m_charName, now);
 				return;
@@ -734,6 +814,7 @@ void ScenarioRunner::Tick(std::chrono::steady_clock::time_point now)
 			now - m_matchSince).count();
 		if (elapsed >= (long long)m_scenario.durationSec * 1000)
 		{
+			StopScript();
 			m_mgr.CommandMatch("end completed");
 			m_completedRuns++;
 			BeginCleanup(now);
@@ -794,10 +875,20 @@ void ScenarioRunner::Abort(const std::string & reason, std::chrono::steady_clock
 		WriteScenarioLog(message);
 	}
 
+	StopScript();
+
 	if (Telemetry::Instance().IsMatchActive())
 		m_mgr.CommandMatch("end aborted");
 
 	BeginCleanup(now);
+}
+
+void ScenarioRunner::StopScript()
+{
+	if (m_scriptRunId != 0 && m_mgr.m_script.IsRunning() && m_mgr.m_script.RunId() == m_scriptRunId)
+		m_mgr.m_script.Command("stop");
+
+	m_scriptRunId = 0;
 }
 
 void ScenarioRunner::BeginCleanup(std::chrono::steady_clock::time_point now)
@@ -833,6 +924,7 @@ void ScenarioRunner::Finish(const std::string & abortNote)
 	m_state = STATE_IDLE;
 	m_sessions.clear();
 	m_abortReason.clear();
+	m_scriptRunId = 0;
 }
 
 void ScenarioRunner::CommandStop()

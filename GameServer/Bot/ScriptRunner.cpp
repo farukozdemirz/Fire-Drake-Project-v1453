@@ -60,7 +60,7 @@ static void SplitWords(const std::string & text, std::vector<std::string> & out)
 }
 
 ScriptRunner::ScriptRunner(BotManager & mgr)
-	: m_mgr(mgr), m_running(false), m_next(0), m_maxLateMs(0)
+	: m_mgr(mgr), m_running(false), m_next(0), m_maxLateMs(0), m_runId(0)
 {
 }
 
@@ -152,6 +152,7 @@ void ScriptRunner::CommandRun(const std::string & name)
 	m_next = 0;
 	m_maxLateMs = 0;
 	m_start = std::chrono::steady_clock::now();
+	m_runId++;
 	m_running = true;
 
 	snprintf(message, sizeof(message),

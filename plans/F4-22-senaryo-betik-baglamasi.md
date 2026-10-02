@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-22` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-03 (`ScenarioRunner`) — `KAPANDI`; F4-20 (`ScriptRunner`) — `KAPANDI` (merge `e36d9d1`); F4-21 (rapor aracı) — `KAPANDI` (merge `d803438`) |
@@ -281,36 +281,73 @@ file GameServer/Bot/ScenarioRunner.h GameServer/Bot/ScenarioRunner.cpp GameServe
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-22` — `<kısa-sha> [F4-22] …`
+- Branch / commit'ler: `bot/F4-22` (taban: `gece/2026-10-02`) — `73ce876 [F4-22] Senaryo-betik baglamasi: senaryoda 'script:' anahtari, mac acilinca betik baslar, kapanmadan once durur` (bu rapor/Durum commit'i ayrıca atılır)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ScriptRunner.h` — `LoadScript` `public:`'e taşındı, `IsRunning()`/`RunId()` eklendi, `m_runId` üyesi (§5.1).
+  - `GameServer/Bot/ScriptRunner.cpp` — kurucuya `m_runId(0)` ve `CommandRun`'da `m_runId++` (§5.1).
+  - `GameServer/Bot/ScenarioRunner.h` — `Scenario::script`, `StopScript()`, `m_scriptRunId` (§5.2).
+  - `GameServer/Bot/ScenarioRunner.cpp` — `#include "ScriptRunner.h"`, `SCENARIO_SCRIPT_MARGIN_MS`, kurucu `m_scriptRunId(0)`, `LoadScenario` `script:` anahtarı + yükleme doğrulaması + süre denetimi, `CommandRun` "zaten betik çalışıyor" kapısı + bilgi satırı, `StartRun`/`Finish` sıfırlama, PREPARE'de betik başlatma, RUNNING bot-kaybı/süre-doldu ve `Abort` öncesi `StopScript()`, yeni `StopScript()` (§5.3-5.6).
+  - `bots/config/scenario_script_smoke_2bot.yaml` — yeni örnek senaryo (§5.7).
+- Derleme sonucu (`tools/build.sh Release` son satırları):
   ```
-  …
+    All 14017 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Birim testler: `tools/run-tests.sh` son satırı …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  rc=0, `error C` 0. `ScriptRunner.cpp`/`ScenarioRunner.cpp`/`BotManager.cpp` `touch` edilip yeniden derlendi; derleme listesinde bu iki dosya görünür, bu dosyalara atıf yapan uyarı 0 (toplam 5 uyarının tümü eski `GameServerDlg.cpp:816/1143/1802` ve `UpgradeHandler.cpp:634/862` satırlarından).
+- Birim testler: `tools/run-tests.sh` son satırı `82 tests, 0 failed` (rc=0).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (rc=0, hedef dosyalarda uyarı 0)
+  - K2 ✔ (`82 tests, 0 failed`)
+  - K3 ✔ (`git diff --stat gece/2026-10-02...bot/F4-22` yalnızca §4'teki 5 dosya; yasak yollarda fark boş; `docs/` ve `tools/` yok)
+  - K4 ✔ (ScriptRunner.cpp'de tam 3 değişen satır; `LoadScript` `public:` altında, satır 21)
+  - K5 ✔ (`m_script.` satırları yalnızca `loaded.script.empty()`/`m_scenario.script.empty()` denetimleri arkasında ya da `StopScript()` içinde; `m_scriptRunId` yalnızca PREPARE dalında `RunId()` ile atanır, satır 774)
+  - K6 ✔ (`StopScript` koşulu birebir; çağrılar tam üç yerde — `Abort` (878), bot kaybı (806), süre doldu (817) — her biri ilgili `CommandMatch("end ...")` öncesinde)
+  - K7 ✔ (yükleme doğrulaması `out` atamasından önce; `duplicate key 'script'`, `script: bad script name`, `script: no steps`; `SCENARIO_SCRIPT_MARGIN_MS` tanım+2 kullanım)
+  - K8 ✔ (yasak sözcük grep'i boş; `fopen` sayısı 2, değişmedi)
+  - K9 ✔ (yalnızca `m_script.Command("run ...")` ve `Command("stop")`; yeni satırlarda `ExecuteCommand`/`ActionExecutor`/`BotFairnessGuard`/`HandlePacket` yok)
+  - K10 ✔ (örnek senaryo §5.7 metniyle aynı, ASCII+CRLF; son ofset 6000 ms, 6000+1000 ≤ 12000)
+  - K11 ✔ (`file` beş dosyada `ASCII text, with CRLF line terminators`; `git diff --check` boş)
+  - K12 — DeepSeek işaretlemez (Claude `/plan-dogrula` çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: Yok. §5.4 adım 4'teki `steps.empty()` güvenlik dönüşü plan metnine uygun eklendi; `SCENARIO_SCRIPT_MARGIN_MS` `static const uint32`, senaryo dosyası arasındaki diğer sabitlerle aynı stilde.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-22` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-22` @ `4ac9de8` (kod commit'i `73ce876`); gece modu, `AUTO_LOOP=1`: birleştirmeyi döngü betiği yapar, push yok.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0, `error C` 0; `ScriptRunner.cpp`/`ScenarioRunner.cpp`/`BotManager.cpp` `touch` ile yeniden derlendi (derleme listesinde üçü de görünür); yalnızca eski `GameServerDlg.cpp:816/1143/1802` uyarıları, bu dosyalara atıf yapan uyarı 0 |
+| K2 | ✔ | `./tools/run-tests.sh` → `82 tests, 0 failed`, rc=0 |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-22`: `ScenarioRunner.cpp/.h`, `ScriptRunner.cpp/.h`, `scenario_script_smoke_2bot.yaml` + plan dosyası; `BotCore/`, `Tests/`, `BotManager.*`, `ActionExecutor.*`, `BotSession.*`, `Telemetry.*`, `ChatHandler.cpp`, `User.h`, `*.vcxproj*`, `tools/`, `docs/` farkı boş |
+| K4 | ✔ | `ScriptRunner.cpp` farkı tam 3 satır (`-` kurucu, `+` kurucu `m_runId(0)`, `+ m_runId++;` `:155` öncesi); `ScriptRunner.h`: `LoadScript` `:21`, `private:` `:25` |
+| K5 | ✔ | `grep -n "m_script\."`: `:609` (`loaded.script.empty()` kapısı), `:766-769` (`m_scenario.script.empty()` bloğu içinde), `:888-889` (`StopScript`, `m_scriptRunId != 0` korumalı); `m_scriptRunId` yalnızca `:774`'te `RunId()` ile atanır (`:692`, `:891`, `:927` sıfırlama) |
+| K6 | ✔ | `StopScript` koşulu `:888` birebir; çağrılar tam üç yerde: bot kaybı `:806`, süre doldu `:817`, `Abort` `:878`; üçü de ilgili `CommandMatch("end ...")` öncesinde. Çalışma zamanında S4 ile doğrulandı |
+| K7 | ✔ | `LoadScript` + süre uyumu `:492-515`, `out.name = name;` (`:517`) öncesinde; `SCENARIO_SCRIPT_MARGIN_MS` tanım `:21` + 2 kullanım `:508,:511`; `duplicate key 'script'` ve `script: bad script name` çalışma zamanında görüldü (S2) |
+| K8 | ✔ | yasak sözcük grep'i boş; `grep -c fopen ScenarioRunner.cpp` = 2 |
+| K9 | ✔ | yeni satırlarda `ActionExecutor`/`BotFairnessGuard`/`HandlePacket`/`ExecuteCommand` sayısı 0; betik yalnızca `m_script.Command("run ...")`/`Command("stop")` ile yönetiliyor |
+| K10 | ✔ | örnek senaryo §5.7 metniyle aynı (diff okundu), `ASCII text, with CRLF line terminators`; `script_smoke_2bot.txt` son ofset 6000 ms; çalışma zamanında `loaded (7 step(s), last offset 6000 ms)` ve 12 s süreyle kabul edildi |
+| K11 | ✔ | `file`: beş dosyada `ASCII text, with CRLF line terminators`; `git diff --check` boş; tab/Allman korunmuş |
+| K12 | ✔ | çalışma zamanı S1-S7 geçti (aşağıda) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Çalışma zamanı (`Release`, `GameServer.ini` değiştirilip yedekten geri yüklendi: md5 öncesi/sonrası `265a8e1c35ea12df46f6d006fe894d9b`; sunucular iş bitince `stop` → `0/3`; test senaryo/betik/`BotCommands.*` dosyaları silindi; `Logs/bots/2026-10-02/` altında test maç dosyaları kaldı). Komutlar `BotCommands.txt` ile, gözlem `Logs/Bot_2_10_2026.log`:
+  1. **S1 ✔.** `scenario run smoke_script` → `loaded (id smoke_script, 2 bot(s), 1 run(s), 12 s each)`, `script smoke (every run, starts when the match opens)`, `match start`, `run smoke: loaded (7 step(s), last offset 6000 ms)`, `match open`, yedi `step i/7` (`late` 0..94 ms), `finished smoke: completed, 7/7 step(s) in 6043 ms`, `match end ... completed, 12093 ms`, `scenario smoke_script finished: 1/1`. `smoke_script-7-1.jsonl` sırası: `MATCH_START`, `SCRIPT_START`, 7 `SCRIPT_STEP`, `SCRIPT_END` (`completed`, `steps_run=7`), `MATCH_END`; `live-202212.jsonl`'de `SCRIPT_`/`MATCH_` satırı 0. `bot-telemetry-report.py` Scripts satırı: `smoke 7/7 completed 6043 ms`; MET-ACT-02 `PASS`.
+  2. **S2 ✔.** Altı reddedilen senaryo, hiçbirinde bot/maç açılmadı: `script: cannot open ./Scripts/nofile.txt`; `script: bad_verb.txt:1: bad verb`; `script: last offset 11500 ms leaves less than 1000 ms before duration_sec (12 s)`; `f422_dotdot.yaml:10: script: bad script name`; boş değer `…:10: script: bad script name`; `f422_dup.yaml:11: duplicate key 'script'`.
+  3. **S3 ✔.** `script run longrun` çalışırken `scenario run smoke_script` → `refused (a script is already running (use 'script stop'))`, bot/maç yok; `script stop` (`stopped after 12/21`) sonrası aynı komut normal çalıştı (`smoke_script-7-2`, 7/7).
+  4. **S4 ✔.** `scenario stop` maçın ~2,8. saniyesinde: `ScriptRunner: stop: smoke: stopped after 3/7`, `match end ... aborted`, botlar despawn, `script status` → `idle`; `smoke_script-7-3.jsonl`: `SCRIPT_END result=stopped steps_run=3` `MATCH_END aborted` öncesinde; kalan adım çalışmadı.
+  5. **S5 ✔.** Betiksiz senaryo (`f422_noscript`) + önceden `script run longrun`: senaryo normal bitti (`finished: 1/1`, günlükte `script` satırı yok), maç bittikten sonra `script status` → `longrun step 17/21 done` (durdurulmadı).
+  6. **S6 ✔.** `seeds: [7, 8]`: `f422_two-7-5.jsonl` ve `f422_two-8-6.jsonl` her biri kendi `MATCH_START` → `SCRIPT_START` → `SCRIPT_END completed` → `MATCH_END`; ikinci koşuda betik yeniden `loaded`/`7/7`.
+  7. **S7 ✔.** `TELEMETRY=summary`: `scenario run smoke_script` betiği çalıştırdı (`7/7`), `ScriptRunner` uyarı satırı yazıldı, maç dosyasında `SCRIPT_*` 0 (`MATCH_START/END` + 3 `PERF_SAMPLE`); betiksiz `scenario run` ve tek başına `script run smoke` F3-03/F4-20 gibi; `PERF_SAMPLE` `tick_p95_us` 433/1099 (decisions koşusunda ~1326 tahmini; artış yok). `ENABLED=0`: `scenario run` komutu dosyası dokunulmadan kaldı, `Bot_*.log` ve `Logs/bots/` dosya sayısı değişmedi.
 
-```
-…
-```
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `Abort` yolunda maç dışarıdan kapanmışsa (`match ended externally`) `StopScript()` maç bitiminden sonra çalışır; `SCRIPT_END` o durumda `MATCH_END`'den sonra `live-*.jsonl`'ye düşer. Plan §5.6 bu yolu açıkça `Abort`'tan geçirdi; beklenen davranış, ölçülmedi (dış `match end` ile aynı anda betik koşusu nadir).
+  2. Not: `bot lost` yolunda `StopScript()` iki kez çağrılır (`:806` ve `Abort` içinde `:878`); ikincisi `m_scriptRunId == 0` olduğundan etkisiz, planın tarifi birebir.
+  3. Not: Uygulayıcı sapma bildirmedi; `steps.empty()` güvenlik dalı plan metninde isteniyordu. Yeni birim testi planlanmadı (durum makinesi çalışma zamanında sınandı).
+- Düzeltme talimatı: gerekmiyor.

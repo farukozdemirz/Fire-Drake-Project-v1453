@@ -1,0 +1,10 @@
+# Smoke scenario with a script: two idle bots, one seed, 12 s match; the script runs inside the match.
+# Copy this file to <server dir>/Scenarios/smoke_script.yaml and bots/config/script_smoke_2bot.txt
+# to <server dir>/Scripts/smoke.txt, then: /bot scenario run smoke_script
+scenario_id: smoke_script
+zone: 71
+bots: [BotWP_K, BotWP_E]
+seeds: [7]
+repeat: 1
+duration_sec: 12
+script: smoke
