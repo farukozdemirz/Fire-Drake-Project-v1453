@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03 (`KAPANDI`: spawn, `BotSession`), F2-04 (`KAPANDI`: `BeginDespawn`), F2-05 (`KAPANDI`: `ResetForRespawn`) |
@@ -254,16 +254,33 @@ file GameServer/Bot/* GameServer/ChatHandler.cpp GameServer/GameServerDlg.h
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-06` — `<kısa-sha> [F2-06] …`
+- Branch / commit'ler: `bot/F2-06` (taban: `gece/2026-10-02`) — kod: `f6d5c55 [F2-06] Bot calisma zamani komutlari: /bot ve BotCommands.txt (spawn/despawn/list)`; bu rapor + `Durum` ayrı commit'te.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/BotManager.h` (+18/−0): `<mutex>`, `EnqueueCommand` bildirimi, yedi komut yardımcısı bildirimi, üç veri üyesi (`m_commandLock`, `m_commandQueue`, `m_lastCommandPoll`).
+  - `GameServer/Bot/BotManager.cpp` (+350/−0): komut dosyası sabitleri, `static` yardımcılar (`FindBotEntry`, `PhaseName`, `Trim`, `SplitNames`), `EnqueueCommand`, `Tick()`'e `ProcessCommands()` çağrısı, `ProcessCommands`/`PollCommandFile`/`ExecuteCommand`/`CommandSpawn`/`CommandDespawn`/`CommandList`/`FindSession`.
+  - `GameServer/ChatHandler.cpp` (+33/−0): `#include "Bot/BotManager.h"`, tabloya `bot` satırı, `HandleBotCommand`.
+  - `GameServer/GameServerDlg.h` (+1/−0): `COMMAND_HANDLER(HandleBotCommand);`.
+- Derleme sonucu (`tools/build.sh Release`, son satırlar):
   ```
-  …
+  Kodun üretilmesi tamamlandı
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `BotManager.cpp` ve `ChatHandler.cpp` uyarı 0. `GameServerDlg.cpp`'de yalnızca önceden var olan 816/1143/1802 uyarıları (eklenen satır 593 değil). `./tools/build.sh Debug` rc=0, hata yok; `BotManager`/`ChatHandler` uyarı 0.
+- Kabul kriterleri öz-değerlendirme (kanıt §7 çıktılarında):
+  - K1 ✔ Release rc=0; eklenen dosya/satırlarda yeni uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `git diff --stat` yalnızca §4'teki 4 dosya + bu plan; ChatHandler +33/−0, GameServerDlg.h +1/−0; `file` BOM'lu UTF-8 + CRLF korunmuş.
+  - K4 ✔ `EnqueueCommand`/`isEnabled` yalnızca `ChatHandler.cpp:1173` (konsol thread'i); diğer tüm komut fonksiyonları `Tick→ProcessCommands` zincirinde.
+  - K5 ✔ `m_commandLock` yalnızca `EnqueueCommand:310` ve `ProcessCommands` swap bloğu `:389`; `ExecuteCommand` `:394`'te kilit bırakıldıktan sonra çağrılır.
+  - K6 ✔ `ProcessCommands:382-383` `SPAWN_START_DELAY_MS` dolmadan return; yoklama `COMMAND_POLL_MS:399`; sıra `remove`→`rename`→`fopen`→`fclose`→`remove` (`:404-435`).
+  - K7 ✔ `m_respawnCycles != 0` reddi `:462-466`; `spawn` yalnızca `PHASE_DESPAWNED`'i `ResetForRespawn` (`:524-531`); `despawn` yalnızca `PHASE_IN_GAME`'i `BeginDespawn` (`:601-611`).
+  - K8 ✔ `grep "cmd \|command file"` çıktısı §5.5-§5.7 metinleriyle birebir; `BotManager.cpp`'de `printf` yok; `ChatHandler.cpp` işleyicisinde yalnızca üç `printf`.
+  - K9 ✔ `git diff` içinde `ParseSpawnList`/`TickSessions`/`PollDespawn`/`StartSession`/`FailSession`/`BeginDespawn`/`Startup` satırı yok.
+  - K10 ✔ `EnqueueCommand` kapalıyken `false` (`:307-308`); `ENABLED=0`'da `StartTicking` timer kurmaz, dolayısıyla `Tick`/`ProcessCommands` hiç çalışmaz; işleyici yalnızca `printf` yazar.
+  - K11 ✔ `file`: `Bot/*` ASCII+CRLF; `ChatHandler.cpp` UTF-8 (BOM)+CRLF; `GameServerDlg.h` UTF-8+CRLF.
+  - K12 ✔ commit sonrası `git status --short` boş; sunucu/ini/`BotCommands.txt`/DB oluşturulmadı veya değiştirilmedi.
+- Plandan sapmalar ve gerekçeleri: yok. (Ek satır sayısı plandaki ~230 tahmininden yüksek; davranış ve dosya kapsamı planla aynı.)
+- Açık sorular: yok. Çalışma zamanı doğrulaması (komut dosyası, konsol `/bot`) Claude'dadır (§7 sonu); `ParseSpawnList` varyantını kopyalamak yerine `FindBotEntry` yazıldı, plan da bunu istiyordu.
 
 ---
 
