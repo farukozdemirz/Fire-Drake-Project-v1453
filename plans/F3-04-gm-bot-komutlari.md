@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-06 (`KAPANDI`: komut çekirdeği, `EnqueueCommand`), F3-02 (`KAPANDI`: `match`), F3-03 (`KAPANDI`: `scenario`) |
@@ -254,6 +254,34 @@ file GameServer/Bot/* GameServer/ChatHandler.cpp GameServer/User.h
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-```
-(yok)
-```
+### Tur 1 — 2026-10-02
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `bot/F3-04` @ `96c5f9b` (kod `e7e33e6`; taban `gece/2026-10-02` @ `13526d9`; gece modu, `AUTO_LOOP=1`: birleştirme/push yapılmadı)
+- **Kriter tablosu:**
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release | ✔ | `BotManager.cpp` + `ChatHandler.cpp` `touch` edilip `./tools/build.sh Release` rc=0; uyarılar yalnızca eski `UpgradeHandler.cpp(634/862)` C4789 (LTCG); `Bot\`, `ChatHandler.cpp`, `User.h` kaynaklı uyarı 0 |
+| K2 Debug | ✔ | aynı iki dosya `touch` + `./tools/build.sh Debug` rc=0; çıktıda `warning` 0 |
+| K3 kapsam | ✔ | `git diff --stat gece/2026-10-02...bot/F3-04`: `BotManager.cpp` 47, `BotManager.h` 11, `ChatHandler.cpp` +54/−0, `User.h` +1/−0, plan dosyası; `docs/`, `tools/`, `shared/`, `.claude/` farkı yok. Çalışma ağacı CRLF, depo blobu LF (`core.autocrlf=true`, taban blobuyla aynı); çalışma ağacında LF-only satır 0; `ChatHandler.cpp` blobu `ef bb bf` ile başlıyor (BOM korunmuş) |
+| K4 thread | ✔ | `grep -n "BotManager::Instance()" GameServer/ChatHandler.cpp`: `:1154`/`:1174` mevcut konsol işleyicisi, yeni işleyicide yalnızca `isEnabled` (`:1189`), `GetStatusSnapshot` (`:1206`), `EnqueueCommand` (`:1227`). `m_statusLines` yazımı yalnızca `BotManager.cpp:772` (`swap`, `m_statusLock` `:771`), okuması yalnızca `:781` (kilit `:780`); `BuildStatusLines` `:769` ve `:788`'de kilit dışında; kilit bloğunun içinde başka kilit yok |
+| K5 `CommandList` aynı | ✔ | diff: başlık `"%u session(s), pool free %u/%u"`, satır `"  %s phase=%s slot=%s despawns=%u"`, `CommandList` öneki `"BotManager: cmd list: "` (`:791`); `poolFree` kilit bloğu aynen taşınmış. **Çalışma zamanında doğrulandı:** `BotManager: cmd list: 2 session(s), pool free 14/16` ve `BotManager: cmd list:   BotWP_K phase=in_game slot=2984 despawns=0` (F2-06 doğrulamasıyla aynı biçim) |
+| K6 `Tick` | ✔ | diff'te `Tick()` içinde yalnızca `TickSessions();` sonrasına `RefreshStatusSnapshot(std::chrono::steady_clock::now());` (`:386`); `STATUS_REFRESH_MS=1000` ile sınırlı; `ENABLED=0`'da `Tick` yok, `GetStatusSnapshot` `false` (`:777`) |
+| K7 işleyici | ✔ | `ChatHandler.cpp:1182-1233`: `!isGM()` → `false`; `!isEnabled()` → tek yanıt; `list` (`vargs.size()==1`, `_stricmp`) anlık görüntü, kuyruğa girmez; kalan her şey boşlukla birleştirilip `EnqueueCommand`. `StrSplit` (`ChatHandler.h:63`) boş parça üretmez, plandaki boşluk endişesi geçersiz |
+| K8 dokunulmayanlar | ✔ | diff yalnızca `CommandList` (yeniden yazım), 3 yeni fonksiyon, `Tick`'e 1 satır, sabit, tablo satırı, işleyici, `User.h` bildirimi; `BotSession.*`, `ScenarioRunner.*`, `Telemetry.*`, konsol `HandleBotCommand` farkta yok |
+| K9 printf/log | ✔ | eklenen satırlarda `printf` yok, yeni `WriteBotLog` yok (yalnızca `CommandList`'teki mevcut çağrının yeni biçimi) |
+| K10 kodlama | ✔ | `file`: `GameServer/Bot/*` hepsi "ASCII text, with CRLF line terminators"; `ChatHandler.cpp` "UTF-8 (with BOM) text, with CRLF"; `User.h` "ASCII ... CRLF"; tab/Allman, yorumlar İngilizce |
+| K11 kapalıyken | ✔ | `m_statusLines` yalnızca `Tick()` yolunda yazılır; **çalışma zamanında** `ENABLED=0`: `BotCommands.txt` 30 sn sonra yerinde, `Bot_*.log` +0 satır |
+| K12 temizlik | ✔ | `git status --short` boş; commit'ler `[F3-04] ...` biçiminde; merge/force izi yok |
+
+- **Çalışma zamanı doğrulaması (Release, `GameServer.ini` yedekten geri yüklendi, `BotCommands.txt` silindi, sunucular kapatıldı 0/3):**
+  1. `ENABLED=1, MAX_BOTS=16, TELEMETRY=summary`: `spawn BotWP_K,botmf_k` + `spawn Foo` + `list` → `queued`, `unknown bot name 'Foo' ignored`, `cmd list: 2 session(s), pool free 16/16` (iki `queued`); sonra `list` → `pool free 14/16`, `in_game` + slot 2984/2985; `despawn all` → `2 despawning`, iki `despawned`.
+  2. F2-05 gerilemesiz: 4 bot, `DESPAWN_AFTER_SEC=2, RESPAWN_CYCLES=4` → `respawn cycles done: 20 spawns, 20 despawns, 0 failed, 0 stuck, 0 names left, pool free 16/16, elapsed 23 s`.
+  3. F3-03 gerilemesiz: `scenario run smoke` → `scenario smoke finished: 2/2 run(s) completed`.
+  4. `Tick` maliyeti: `PERF_SAMPLE` `tick_p95_us` 63-112, `skipped_ticks` 0 (anlık görüntü 1 Hz, fark gözlenmedi). `GameServer.log`'a yeni hata satırı eklenmedi (son hata satırı çalışmadan önceki).
+  5. `+bot` oyun içi yolu (GM istemcisi) otomatikleştirilemedi: T-ARCH-05 insan testi (`docs/STATUS.md` "Proje sahibi testleri (bekleyen)", zaten kayıtlı). Plan bunu kriter dışı bırakmıştı; karara etkisi yok.
+- **Bulgular (hepsi not, engel değil):**
+  1. Kod kapsamı ve içeriği plandaki metinle birebir; sapma yok, uygulayıcı raporu gerçekle uyuşuyor (commit listesi, dosya satır sayıları, derleme sonucu).
+  2. `+bot list` yalnızca tek argümanla anlık görüntüyü kullanır; `+bot list x` kuyruğa girer ve çıktısı yalnızca `Bot_*.log`'da olur (planın tasarımı; konsol yolundaki `LIST extra` davranışıyla tutarlı).
+  3. Test artıkları depo dışında: `C:\dev\fdp\server\Scenarios\smoke.yaml` ve `Logs/bots/2026-10-02/` altındaki yeni telemetri dosyaları temizlenmedi (F3-03 notundaki temizlik maddesine eklenir). Doğrulama sırasında sunucu, `ENABLED=0` koşusunda kendi `GetBool` varsayılanını `GameServer.ini`'ye (`[BOT] ENABLED=0`) yazdı; ini yedekten geri yüklendi (md5 aynı).
