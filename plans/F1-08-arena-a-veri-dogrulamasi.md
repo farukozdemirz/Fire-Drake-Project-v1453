@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-08` (taban: `main`) |
 | Bağımlı olduğu planlar | F0 (KABUL_EDILDI), F1-02 (ölçülen hız: 4,5 m/s yürüyüş, 6,7 m/s sprint) |
@@ -264,4 +264,52 @@ Yalnızca izinli tablolar okunuyor; `docs/appendix/tools/*` değişmedi.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ** (araç ve veri sağlam; engelleyenler rapordaki yanlış K4 açıklaması, K5'teki hatalı `dosya:satır` atıfları ve selftest (d) maddesinin eksikliği)
+- İncelenen: `bot/F1-08` @ `33bd26d` (araç commit'i `5b44c74`; yalnızca `tools/arena-report.py` + plan dosyası)
+- Mod: otonom (`AUTO_LOOP=1`): birleştirme/push yapılmadı.
+- Derleme: — (yalnızca Python aracı; C++ değişikliği yok).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 (Claude çalıştırdı). Ancak (d) planın istediği `axis_candidate` mantığını sınamıyor, yalnızca `walkable_xy` (Bulgu 3) |
+| K2 çıktı eksiksiz | ✔ | Araç yeniden çalıştırıldı: çıkış 0, 67 satır; rapora yapıştırılan çıktıyla **satır satır aynı** (`==` doğru). `AXIS_BEST` A: `angle=15`, B: `angle=135`; A için `angle=0` seçilmemiş |
+| K3 anchor | ✔ | GRID A r=40/60 ve merkez birebir. `AXIS A angle=0 p1_walk=no`, `angle=15` kabul. PATH: bağımsız Dijkstra (ayrı kod, 2B liste, sabit komşu tablosu) aynı sonucu verdi: Karus(1380,1090)→A 259,8 m; Karus(1385,1095)→A 259,8 m, düz 233,1 (anchor); El Morad(635,925)→A **678,1** m / 150,7 s / 101,2 s (anchor birebir); El Morad(630,920)→A 680,5 m (aracın değeri) |
+| K4 CHECK karşılaştırması | ✘ | Satırlar var, ama A `min_margin_monster` farkının (+3,7) **açıklaması yanlış** ve karşılaştırma aynı tanımla yapılmıyor (Bulgu 1) |
+| K5 kod okuması | ✘ | (a)–(d) var, MEC-ZON-03 sonucu doğru; ancak `AttackHandler.cpp` atfı yanlış dal/satır, (a) listesi "tamamı" değil (`GameServerDlg.cpp:2677` eksik), `CharacterMovementHandler.cpp:508-509` yanlış etiketli (Bulgu 2) |
+| K6 yalnızca izinli tablolar | ✔ | `grep FROM\|JOIN`: `K_NPCPOS`, `K_MONSTER`, `K_NPC`, `START_POSITION` (satır 56-58, 64). `INSERT\|UPDATE\|DELETE\|DROP` boş. `git diff --stat main -- docs/appendix/tools` boş |
+| K7 kapsam | ✔ | `git diff --stat main...bot/F1-08`: yalnızca `tools/arena-report.py` (+447) ve plan dosyası; plan farkında yalnızca `Durum`, şablon alanları ve rapor; `git status --short` temiz; `file`: ASCII, CR sayısı 0 |
+| K8 Claude doğrulaması | ✔ (K4/K5 notlarıyla) | Araç yeniden çalıştırıldı; PATH bağımsız Dijkstra ile eşleşti; `START_POSITION` zone 71 canlı satırı `bRangeX=bRangeZ=0`; kod satırları açıldı |
+
+**Bağımsız doğrulama ayrıntıları**
+- `START_POSITION` (zone 71): `sKarusX/Z = 1380/1090`, `sElmoradX/Z = 630/920`, `sKarusGate = 10/10`, `bRangeX = bRangeZ = 0`. Uygulayıcının "plandaki (1385,1095)/(635,925) varsayımı yanlış" bulgusu **doğru**; hata plan tarafındandı (notlar tablosundaki `10 | 10` kapı sütunuydu). `docs/appendix/data/ronark_zone_data_notes.md:51` bu doğrulamayla düzeltildi.
+- AXIS `cluster` toplamı 29: 2 m ızgara, yarıçap 6 m için elle sayıldı (7+10+10+2 = 29), araçla aynı.
+- Plandaki tüm anchor değerleri yeniden üretildi; tek sapma Karus düz mesafesi (226,4 / 233,1), nedeni yukarıdaki başlangıç noktası farkı; bağımsız hesapla iki başlangıç noktasında da yol aynı.
+
+**Bulgular (önem sırasıyla)**
+
+1. **[Orta] K4 açıklaması yanlış ve CHECK aynı tanımı karşılaştırmıyor.** `tools/arena-report.py:369-378`, plan dosyası "K4" bölümü. Uygulayıcı A `min_margin_monster` farkını (+3,7 m) "8 m aday ızgarası ile tam merkez" farkına bağlıyor. Yanlış: referans araçta aday noktası `x = tx*4+2`; A karosu (318,222) için bu tam (1274, 890) merkezidir, yani örnekleme farkı yok. Gerçek neden: `docs/appendix/tools/arena_candidates.py` "spawn" kümesine `monster`, `soldier`, `monument` ve `gate` sınıflarını katıyor (kule ayrı). Claude `ronark_npcpos.csv` üzerinde yeniden hesapladı: A `soldier` (Karus Commander) **143,8** → doc ~144; `monster` (bone collecter) 147,7. B: `monster` (Shaula) 159,8 → doc 160; `soldier` 160,9. Yani `docs/15` §2.3'teki "spawn payı" = min(monster, soldier_npc, monument, gate); araç yalnızca `monster` ile kıyasladığı için A'da yapay +3,7 fark çıktı. Beklenen CHECK farkları ≈ −0,2 (A) ve −0,2 (B).
+2. **[Orta] K5 atıfları hatalı/eksik.** Plan "bulamadığını yaz, tahmin etme" diyor; aşağıdakiler yanlış atıf:
+   - Respawn koordinatı için `AttackHandler.cpp:145-147` gösterilmiş. Gerçek satırlar 141-142 ve **bu dal zone 71'e uygulanmaz**: dal yalnızca `GetZoneID() <= ZONE_ELMORAD` veya o an açık savaş zone'unda çalışır (`AttackHandler.cpp:138`). Zone 71 `else` dalına düşer (`AttackHandler.cpp:158-165`) → `CUser::GetStartPosition` (`User.cpp:3729-3761`, `sKarusX + myrand(0, bRangeX)`). Sonuç (1380,1090) aynı kalır ama atıf yanlış. Ayrıca `m_sBind` ile canlı bir bind nesnesine bağlı oyuncu önce o noktada doğar (`AttackHandler.cpp:125-131`, `User.cpp:4349-4353`); raporda "gerçek respawn noktası (1380,1090)" kayıtsız şartsız yazılmış.
+   - (a) "ZONE_RONARK_LAND kullanımlarının tamamı" denmiş ama `GameServerDlg.cpp:2677` eksik (`TempleEventKickOutUser`: Chaos Dungeon'dan çıkan seviye ≥ 70 oyuncu zone 71'e gönderilir, bu zone 71'e otomatik taşıma olduğu için (d) için de önemli). Grep çıktısı ayrıca `_BASE` (zone 73) eşleşmelerini de içeriyor; rapor bunları sessizce eledi, bunun yazılması gerekir.
+   - (d) `CharacterMovementHandler.cpp:508-509` "warp listesi kısıtı" denmiş; bu `CUser::PlayerRankingProcess` (sıralama), warp listesi değil. Warp listesi: `CharacterMovementHandler.cpp:260-263` ve `User.cpp:4326-4331` (savaş açıkken zone 71 hedefi listeden çıkar). `Map.cpp:109-120` "savaş portal olayları" ifadesi zone 71'e etkisi gösterilmeden yazılmış (yalnızca `isWarZone()` haritalarında).
+   - (b) doğru: `GameServerDlg.cpp:2069-2075`, `KickOutZoneUsers` (`:2994-3027`, varsayılan `bNation = 0` = ALL; `GameServerDlg.h:94`), `CharacterSelectionHandler.cpp:177-186` doğrulandı; **MEC-ZON-03 doğrulandı**. Küçük eksik: `CharacterMovementHandler.cpp:260-263` reddi `m_byBattleZoneType != ZONE_ARDREAM` koşuluna bağlı; kick ise yalnızca `m_byBattleZoneType == 0`.
+   - (c) doğru: `GameServerDlg.cpp:688`/`:700` `KickOutZoneUsers(ZONE_BIFROST, ZONE_RONARK_LAND)` zone 31 oyuncularını zone 71'e taşır; zone 71 oyuncularına dokunmaz; `EventHandler.cpp:14,27`, `User.cpp:1181` bildirim.
+3. **[Düşük] Selftest (d) planın istediğini sınamıyor.** `tools/arena-report.py:404-408` yalnızca `walkable_xy` iki assert'idir; plan "axis_candidate mantığı: bir ucu engelli sentetik haritada reddedilir" diyor. Kabul süzgeci `axis_scan` içinde satır içi (`:281-285`), bu yüzden sınanamıyor.
+4. **[Not]** SPAWN `nearest=1..3` sıralaması `margin`'e göre (`:312`), `rect_dist`'e göre değil (A monster: rect 154,7 / 164,8 / 160,1). Plan "en yakın" diyor ama pay tanımı kullanıldığı için makul; raporda tek cümleyle belirtilsin.
+5. **[Not]** A için yalnızca `angle=15` süzgeci geçiyor (165° ve 120°–150° `dh` > 2 ile elenir; plan anchor'ındaki "165 benzer" gevşekti, dh = 3,52). Eksen kararı Claude'un `docs/15` güncellemesinde.
+6. **[Not, Claude yaptı]** `docs/appendix/data/ronark_zone_data_notes.md:51` düzeltildi (respawn aralığı yok; tam (1380,1090) / (630,920)). Uygulayıcı bu dosyaya dokunmaz.
+
+**Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F1-08-arena-a-veri-dogrulamasi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/arena-report.py: SPAWN_SUMMARY satırına "min_margin_spawn=<m>" alanı ekle (monster, monster_boss, soldier_npc, monument ve gate sınıflarının en küçük "margin" değeri; guard_tower ve service/outpost hariç; docs/appendix/tools/arena_candidates.py'deki "spawns" kümesi). Mevcut min_margin_monster ve min_margin_tower alanlarını koru.
+2. tools/arena-report.py, CHECK bölümü: spawn kıyası "min_margin_spawn" ile yapılsın: "CHECK pt=A min_margin_spawn calc=.. doc=144 diff=..", "CHECK pt=B min_margin_spawn calc=.. doc=160 diff=..". Kule satırları aynen kalsın (A doc=133, B doc=146). min_margin_monster için doc sütunu yok: "CHECK pt=<A|B> min_margin_monster calc=<..> doc=n/a" olarak bilgi satırı kalsın. Beklenen: A spawn calc=143.8 diff=-0.2, B spawn calc=159.8 diff=-0.2.
+3. tools/arena-report.py: axis_scan içindeki kabul süzgecini (yürünebilir iki uç, cluster >= %90 her iki uç, line >= 0.98, dh <= 2.0, confined var) "axis_candidate(entry)" adlı ayrı bir işleve taşı, axis_scan onu çağırsın; çıktı değişmemeli. --selftest (d) maddesine sentetik entry'lerle assert ekle: tüm koşullar geçerken True; p1_walk=False iken False; cluster %89 iken False; line 0.97 iken False; dh 2.1 iken False; confined None iken False.
+4. Çalıştır ve doğrula: python3 tools/arena-report.py --selftest -> "selftest OK"; python3 tools/arena-report.py çıktısının CHECK dışındaki tüm satırları (SPAWN_SUMMARY'deki yeni alan hariç) Tur 1 çıktısıyla aynı olmalı (diff ile göster); yeni çıktıyı kırpmadan rapora yapıştır.
+5. Raporda K4 açıklamasını düzelt: "8 m aday ızgarası" cümlesini sil; nedeni yaz: docs/15 §2.3 'spawn payı' = monster + soldier_npc + monument + gate en küçüğü (A: Karus Commander 143,8; B: Shaula 159,8). SPAWN nearest sıralamasının "margin"e göre olduğunu bir cümleyle belirt.
+6. Raporda K5'i şu şekilde düzelt (her atıfı depoda açıp kontrol et; emin olmadığını "doğrulanamadı" yaz): (a) "grep -rn -a ZONE_RONARK_LAND GameServer shared" çıktısını iki listeye ayır: zone 71 (ZONE_RONARK_LAND) ve ZONE_RONARK_LAND_BASE (73) eşleşmeleri; GameServer/GameServerDlg.cpp:2677 (TempleEventKickOutUser, Chaos Dungeon seviye >= 70 -> zone 71) zone 71 listesine ve (d)'ye ekle. (b) respawn atfını düzelt: AttackHandler.cpp:138-142 dalı yalnızca GetZoneID() <= ZONE_ELMORAD veya açık savaş zone'u içindir; zone 71 AttackHandler.cpp:158-165 -> CUser::GetStartPosition (GameServer/User.cpp:3729-3761) kullanır; m_sBind ile canlı bind nesnesi varsa AttackHandler.cpp:125-131 önceliklidir (bunu "(1380,1090) bind yokken" diye nitele). (c) CharacterMovementHandler.cpp:508-509 PlayerRankingProcess'tir; warp listesi için CharacterMovementHandler.cpp:260-263 ve GameServer/User.cpp:4326-4331 yaz; Map.cpp:109-120 satırını kaldır ya da zone 71'e etkisini dosya:satır ile göster. (d) CharacterMovementHandler.cpp:260-263 reddinin m_byBattleZoneType != ZONE_ARDREAM koşuluna, KickOutZoneUsers çağrısının ise m_byBattleZoneType == 0 koşuluna bağlı olduğunu yaz.
+7. Başka dosyaya dokunma (docs/** dahil; docs/appendix/data/ronark_zone_data_notes.md Claude tarafından düzeltildi). Durum satırını UYGULANDI yap.
+```
