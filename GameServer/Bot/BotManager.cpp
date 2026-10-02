@@ -19,6 +19,12 @@ static const uint32 UPDATE_PERIOD_MS = 1000;
 static const uint32 DESPAWN_TIMEOUT_MS = 30000;
 static const uint32 CYCLE_PROGRESS_EVERY = 50;
 
+static const char * COMMAND_FILE = "./BotCommands.txt";
+static const char * COMMAND_FILE_CLAIMED = "./BotCommands.processing";
+static const uint32 COMMAND_POLL_MS = 1000;
+static const size_t COMMAND_QUEUE_MAX = 64;
+static const size_t COMMAND_FILE_MAX_LINES = 64;
+
 BotManager & BotManager::Instance()
 {
 	static BotManager instance;
@@ -51,6 +57,59 @@ static const BotAccountEntry BOT_TABLE[] =
 	{ "BotWP_E", "BotAccWPE" }, { "BotWG_E", "BotAccWGE" }, { "BotPHD_E", "BotAccPHDE" },
 	{ "BotPHB_E", "BotAccPHBE" }, { "BotMF_E", "BotAccMFE" }, { "BotMI_E", "BotAccMIE" }
 };
+
+static const BotAccountEntry * FindBotEntry(const char * name)
+{
+	for (size_t i = 0; i < sizeof(BOT_TABLE) / sizeof(BOT_TABLE[0]); i++)
+	{
+		if (_stricmp(name, BOT_TABLE[i].charName) == 0)
+			return &BOT_TABLE[i];
+	}
+
+	return nullptr;
+}
+
+static const char * PhaseName(BotSession::Phase phase)
+{
+	switch (phase)
+	{
+	case BotSession::PHASE_QUEUED: return "queued";
+	case BotSession::PHASE_WAIT_SELECT: return "wait_select";
+	case BotSession::PHASE_WAIT_LOADED: return "wait_loaded";
+	case BotSession::PHASE_IN_GAME: return "in_game";
+	case BotSession::PHASE_FAILED: return "failed";
+	case BotSession::PHASE_DESPAWN_WAIT: return "despawn_wait";
+	case BotSession::PHASE_DESPAWNED: return "despawned";
+	case BotSession::PHASE_DESPAWN_STUCK: return "despawn_stuck";
+	default: return "?";
+	}
+}
+
+static std::string Trim(const std::string & text)
+{
+	size_t first = text.find_first_not_of(" \t\r\n");
+	if (first == std::string::npos)
+		return "";
+
+	size_t last = text.find_last_not_of(" \t\r\n");
+	return text.substr(first, last - first + 1);
+}
+
+static void SplitNames(const std::string & text, std::vector<std::string> & out)
+{
+	size_t pos = 0;
+	while (pos <= text.size())
+	{
+		size_t sep = text.find_first_of(", \t", pos);
+		std::string name = text.substr(pos, sep == std::string::npos ? std::string::npos : sep - pos);
+		if (!name.empty())
+			out.push_back(name);
+
+		if (sep == std::string::npos)
+			break;
+		pos = sep + 1;
+	}
+}
 
 bool BotManager::Startup()
 {
@@ -243,6 +302,19 @@ void BotManager::Shutdown()
 	}
 }
 
+bool BotManager::EnqueueCommand(const std::string & line)
+{
+	if (!m_enabled)
+		return false;
+
+	std::lock_guard<std::mutex> lock(m_commandLock);
+	if (m_commandQueue.size() >= COMMAND_QUEUE_MAX)
+		return false;
+
+	m_commandQueue.push_back(line);
+	return true;
+}
+
 uint32 THREADCALL BotManager::TimerThreadProc(void * lpParam)
 {
 	BotManager * self = (BotManager *)lpParam;
@@ -297,7 +369,285 @@ void BotManager::Tick()
 		WriteBotLog(message);
 	}
 
+	ProcessCommands();
 	TickSessions();
+}
+
+void BotManager::ProcessCommands()
+{
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	// Let the AI server connect first, exactly like the initial spawn list. Queued/file commands
+	// simply wait until the delay has passed.
+	if (now - m_firstTickTime < std::chrono::milliseconds(SPAWN_START_DELAY_MS))
+		return;
+
+	PollCommandFile(now);
+
+	std::vector<std::string> lines;
+	{
+		std::lock_guard<std::mutex> lock(m_commandLock);
+		lines.swap(m_commandQueue);
+	}
+
+	for (size_t i = 0; i < lines.size(); i++)
+		ExecuteCommand(lines[i]);
+}
+
+void BotManager::PollCommandFile(std::chrono::steady_clock::time_point now)
+{
+	if (now - m_lastCommandPoll < std::chrono::milliseconds(COMMAND_POLL_MS))
+		return;
+	m_lastCommandPoll = now;
+
+	// A stale claimed file may be left over from a crash; ignore the failure.
+	remove(COMMAND_FILE_CLAIMED);
+	if (rename(COMMAND_FILE, COMMAND_FILE_CLAIMED) != 0)
+		return;
+
+	FILE * fp = fopen(COMMAND_FILE_CLAIMED, "r");
+	if (fp == nullptr)
+	{
+		WriteBotLog("BotManager: command file could not be read");
+		return;
+	}
+
+	uint32 executed = 0;
+	bool overflow = false;
+	char buffer[256];
+	while (fgets(buffer, sizeof(buffer), fp) != nullptr)
+	{
+		std::string line = Trim(buffer);
+		if (line.empty() || line[0] == '#')
+			continue;
+
+		if (executed >= COMMAND_FILE_MAX_LINES)
+		{
+			overflow = true;
+			continue;
+		}
+
+		ExecuteCommand(line);
+		executed++;
+	}
+
+	fclose(fp);
+	remove(COMMAND_FILE_CLAIMED);
+
+	char message[128];
+	if (overflow)
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: command file: more than %u lines, rest ignored", (unsigned)COMMAND_FILE_MAX_LINES);
+		WriteBotLog(message);
+	}
+
+	if (executed > 0)
+	{
+		snprintf(message, sizeof(message), "BotManager: command file: %u command(s) executed", (unsigned)executed);
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::ExecuteCommand(const std::string & line)
+{
+	std::string trimmed = Trim(line);
+	if (trimmed.empty())
+		return;
+
+	char message[320];
+	snprintf(message, sizeof(message), "BotManager: cmd '%s'", trimmed.c_str());
+	WriteBotLog(message);
+
+	if (m_respawnCycles != 0)
+	{
+		WriteBotLog("BotManager: cmd rejected (RESPAWN_CYCLES is active)");
+		return;
+	}
+
+	size_t space = trimmed.find(' ');
+	std::string verb = space == std::string::npos ? trimmed : trimmed.substr(0, space);
+	std::string args = space == std::string::npos ? "" : Trim(trimmed.substr(space + 1));
+
+	if (_stricmp(verb.c_str(), "spawn") == 0)
+		CommandSpawn(args);
+	else if (_stricmp(verb.c_str(), "despawn") == 0)
+		CommandDespawn(args);
+	else if (_stricmp(verb.c_str(), "list") == 0)
+		CommandList();
+	else
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list)", verb.c_str());
+		WriteBotLog(message);
+	}
+}
+
+BotSession * BotManager::FindSession(const char * charName)
+{
+	for (size_t i = 0; i < m_sessions.size(); i++)
+	{
+		if (_stricmp(m_sessions[i]->m_charName.c_str(), charName) == 0)
+			return m_sessions[i];
+	}
+
+	return nullptr;
+}
+
+void BotManager::CommandSpawn(const std::string & args)
+{
+	if (args.empty())
+	{
+		WriteBotLog("BotManager: cmd spawn: no names given");
+		return;
+	}
+
+	std::vector<std::string> names;
+	SplitNames(args, names);
+
+	uint32 queued = 0, ignored = 0;
+
+	for (size_t i = 0; i < names.size(); i++)
+	{
+		char message[224];
+		const std::string & name = names[i];
+		const BotAccountEntry * entry = FindBotEntry(name.c_str());
+		if (entry == nullptr)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd spawn: unknown bot name '%s' ignored", name.c_str());
+			WriteBotLog(message);
+			ignored++;
+			continue;
+		}
+
+		BotSession * s = FindSession(entry->charName);
+		if (s != nullptr)
+		{
+			if (s->m_phase == BotSession::PHASE_DESPAWNED)
+			{
+				s->ResetForRespawn();
+				snprintf(message, sizeof(message), "BotManager: cmd spawn: %s queued again", entry->charName);
+				WriteBotLog(message);
+				queued++;
+			}
+			else
+			{
+				snprintf(message, sizeof(message),
+					"BotManager: cmd spawn: %s ignored (phase %s)", entry->charName, PhaseName(s->m_phase));
+				WriteBotLog(message);
+				ignored++;
+			}
+			continue;
+		}
+
+		m_sessions.push_back(new BotSession(entry->charName, entry->accountName));
+		snprintf(message, sizeof(message), "BotManager: cmd spawn: %s queued", entry->charName);
+		WriteBotLog(message);
+		queued++;
+	}
+
+	char message[128];
+	snprintf(message, sizeof(message),
+		"BotManager: cmd spawn: %u queued, %u ignored", (unsigned)queued, (unsigned)ignored);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandDespawn(const std::string & args)
+{
+	if (args.empty())
+	{
+		WriteBotLog("BotManager: cmd despawn: no names given");
+		return;
+	}
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	std::string lower = args;
+	STRTOLOWER(lower);
+
+	if (lower == "all")
+	{
+		uint32 despawning = 0, notInGame = 0;
+		for (size_t i = 0; i < m_sessions.size(); i++)
+		{
+			BotSession * s = m_sessions[i];
+			if (s->m_phase == BotSession::PHASE_IN_GAME)
+			{
+				BeginDespawn(s, now);
+				despawning++;
+			}
+			else
+			{
+				notInGame++;
+			}
+		}
+
+		char message[160];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd despawn all: %u despawning, %u not in game",
+			(unsigned)despawning, (unsigned)notInGame);
+		WriteBotLog(message);
+		return;
+	}
+
+	std::vector<std::string> names;
+	SplitNames(args, names);
+
+	for (size_t i = 0; i < names.size(); i++)
+	{
+		char message[224];
+		const std::string & name = names[i];
+		BotSession * s = FindSession(name.c_str());
+		if (s == nullptr)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd despawn: %s ignored (no such session)", name.c_str());
+			WriteBotLog(message);
+			continue;
+		}
+
+		if (s->m_phase == BotSession::PHASE_IN_GAME)
+		{
+			BeginDespawn(s, now);
+		}
+		else
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd despawn: %s ignored (phase %s)", name.c_str(), PhaseName(s->m_phase));
+			WriteBotLog(message);
+		}
+	}
+}
+
+void BotManager::CommandList()
+{
+	size_t poolFree;
+	{
+		std::lock_guard<std::recursive_mutex> lock(g_pMain->m_socketMgr.GetLock());
+		poolFree = g_pMain->m_socketMgr.GetReservedSessionMap().size();
+	}
+
+	char message[192];
+	snprintf(message, sizeof(message),
+		"BotManager: cmd list: %u session(s), pool free %u/%u",
+		(unsigned)m_sessions.size(), (unsigned)poolFree, (unsigned)m_poolSize);
+	WriteBotLog(message);
+
+	for (size_t i = 0; i < m_sessions.size(); i++)
+	{
+		BotSession * s = m_sessions[i];
+		char slot[16];
+		if (s->m_pUser != nullptr)
+			snprintf(slot, sizeof(slot), "%u", (unsigned)s->m_slotId);
+		else
+			snprintf(slot, sizeof(slot), "-");
+
+		snprintf(message, sizeof(message),
+			"BotManager: cmd list:   %s phase=%s slot=%s despawns=%u",
+			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount);
+		WriteBotLog(message);
+	}
 }
 
 void BotManager::ParseSpawnList(const std::string & list)

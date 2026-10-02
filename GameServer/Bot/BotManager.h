@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,10 @@ public:
 	// Joins the timer thread. Idempotent; safe when ticking never started.
 	void Shutdown();
 
+	// Any thread. Queues one command line ("spawn <names>", "despawn <name|all>", "list") for the
+	// IOCP thread. Returns false when the bot system is disabled or the queue is full (64 lines).
+	bool EnqueueCommand(const std::string & line);
+
 private:
 	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
@@ -45,6 +50,15 @@ private:
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
 	void Tick(); // IOCP worker thread only
+
+	// Runtime commands (ADR-0015). All of these run on the IOCP thread, called from Tick().
+	void ProcessCommands();                       // polls ./BotCommands.txt, then drains m_commandQueue
+	void PollCommandFile(std::chrono::steady_clock::time_point now);
+	void ExecuteCommand(const std::string & line);
+	void CommandSpawn(const std::string & args);
+	void CommandDespawn(const std::string & args);
+	void CommandList();
+	BotSession * FindSession(const char * charName);
 
 	// Spawn list from [BOT] SPAWN_ON_START (parsed in Startup(); sessions are never freed).
 	void ParseSpawnList(const std::string & list);
@@ -76,4 +90,8 @@ private:
 	uint32 m_tickCount;      // IOCP thread only
 	uint32 m_tickThreadId;   // IOCP thread only
 	std::chrono::steady_clock::time_point m_firstTickTime; // IOCP thread only
+
+	std::mutex m_commandLock;                // guards m_commandQueue only
+	std::vector<std::string> m_commandQueue; // filled by any thread, drained on the IOCP thread
+	std::chrono::steady_clock::time_point m_lastCommandPoll; // IOCP thread only
 };

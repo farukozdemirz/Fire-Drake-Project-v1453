@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03 (`KAPANDI`: spawn, `BotSession`), F2-04 (`KAPANDI`: `BeginDespawn`), F2-05 (`KAPANDI`: `ResetForRespawn`) |

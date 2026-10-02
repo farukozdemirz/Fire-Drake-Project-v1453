@@ -590,6 +590,7 @@ public:
 	COMMAND_HANDLER(HandleCountCommand);
 	COMMAND_HANDLER(HandlePermitConnectCommand);
 	COMMAND_HANDLER(HandleWarResultCommand);
+	COMMAND_HANDLER(HandleBotCommand);
 };
 
 extern CGameServerDlg * g_pMain;
