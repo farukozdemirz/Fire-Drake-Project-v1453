@@ -121,6 +121,18 @@ Yasak örnekleri: düşmanın tam MP'si, cooldown durumu, envanteri, pot stoku, 
 
 Ekipman ve stat dağılımı farklı karakterler aynı rol profilini paylaşıyorsa politika girdisine ekipman sınıfı (ör. `gear_tier`) özellik olarak eklenir; ayrı politika açılmaz.
 
+### 6.1 Hedefle uyum: "oynadıkça gelişen bot" ne demektir (ADR-0030-DEG, değerlendirme 2026-10-02)
+
+Proje hedefi "deneyimlerinden gelişen botlar"dır. Bu projede bu ifade **üç ayrı düzeyde** ve ayrı ölçütlerle karşılanır; hangisinin hedeflendiği açıktır:
+
+| Düzey | Ne gelişir | Nasıl | Kalıcılık | Faz | Ölçüt |
+|---|---|---|---|---|---|
+| Oturum içi (L0.5) | Tek botun/takımın rakip kestirimi (rakip heal hızı, burst, hedefin heal'i) | `EnemyIntel`, kısa pencere istatistikleri | Maç bitince silinir | F6–F7 | Öğrenme **değil**, durum kestirimi; MET-STALL-01 |
+| Rol profili (L1/L2) | Aynı rolü oynayan **tüm** botların ortak politikası | Çevrim dışı arama (L1), kısıtlı bandit (L2); `PolicyStore` sürümü | Sürümlü politika dosyası | F9/F10 | AC-LRN-01, AC-LRN-08 |
+| Karakter | — | **Planlı değil**: karakter başına kalıcı politika yok; yalnızca telemetri/teşhis | — | F10 sonrası, ayrı ADR | — |
+
+Sonuç: "her bot oynadıkça ustalaşır" beklentisi **bireysel maç geçmişinden değil, filonun toplam deneyiminden** (aynı rolü oynayan tüm botlar aynı politikayı paylaşır) karşılanır. Gerekçe: veri miktarı, rakibe aşırı uyum riski (§6), tekrarlanabilirlik ve açıklanabilirlik. Karakter bazında kalıcı öğrenme istenirse ADR-0030-DEG'deki seçenek B (rol politikasına çekilmiş, sınırlı karakter sapması) ayrı onayla açılır.
+
 ## 7. Ödül fonksiyonu
 
 ### 7.1 Yapı
@@ -180,6 +192,8 @@ Destek katkısının ölçümü ancak **karşı-olgusal bir yaklaşım** ile adi
 | **Kilitli değerlendirme seti** | [15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md)'teki `EVAL-*` senaryoları, B grubu rakip profilleri (eğitimde hiç kullanılmamış), sabit seed listesi | Yalnızca kabul kararı. Bu sette elde edilen sonuç parametre ayarı için kullanılmaz. |
 
 Kilitli setin içeriği sürüm numaralıdır (`evalset-v1`). Sette değişiklik ADR gerektirir ve önceki sonuçlarla karşılaştırma yapılmaz.
+
+**Değerlendirme seti erişim denetimi (2026-10-02):** kilitli `evalset-v1` sonuçları ayar için okunmaz; her açılış `EVAL_ACCESS` olayıyla (kim, ne için, hangi aday) kaydedilir; bir aday sürümü için en çok bir kabul koşusu yapılır (ek koşu = yeni aday sürümü + yeni seed listesi); hiperparametre ayarı yalnızca doğrulama havuzunda yapılır. Rakip profilleri ayrıdır: A grubu (OP-AGGRO, OP-KITE, OP-RANDOM) eğitimde, B grubu (OP-TURTLE, OP-HEALER-FIRST, OP-SPREAD) yalnızca kilitli değerlendirmede; politika koşucusu eğitim modunda B kimliklerini yüklemeyi reddeder.
 
 ## 10. Deneyim kaydı ve yeniden üretilebilirlik
 
@@ -248,8 +262,10 @@ Keşif yalnızca eğitim arenasında açıktır (ε-greedy için ε ≤ 0.1 veya
 | AC-LRN-02 | Aynı politika ve seed listesi ile değerlendirme iki ayrı günde tekrarlandığında kazanma oranları birbirinin %95 güven aralığı içinde |
 | AC-LRN-03 | Yasaklı gözlem alanlarına erişim denemesi 0 (statik kontrol + çalışma zamanı assert) |
 | AC-LRN-04 | Aralık dışı parametre içeren politika dosyası yüklenemiyor ve bot baseline'a dönüyor (birim testi) |
-| AC-LRN-05 | Otomatik geri alma: yapay olarak bozulmuş politika (ör. geri çekilme eşiği %95) canary aşamasında 10 dk içinde geri alınıyor |
+| AC-LRN-05 | Otomatik geri alma: yapay olarak **geçerli ama kötü** politika (tüm parametreler izinli aralıkta, ör. `P-SUR-RETREAT-HP` 0,40 + `P-SUR-REENTER-HP` 0,90 + `P-SUR-THREAT-WEIGHT` 2,0) canary aşamasında 10 dk içinde geri alınıyor; geri çekilme eşiği %95 gibi **aralık dışı** değerler AC-LRN-04 ile yüklemede reddedilir ve bu teste girmez |
 | AC-LRN-06 | Destek rolü katkısı: priest politikasının iyileşmesi heal metriği şişmesiyle değil, `heal_saved` ve takım sonucu ile gösteriliyor |
+| AC-LRN-07 | Yükleme reddi (AC-LRN-04, birim testi: aralık dışı değer hiç yüklenmez) ile çalışma zamanı geri alma (AC-LRN-05, oyun içi: yüklenebilir ama guard metriklerini bozan politika canary'de geri alınır) **ayrı** testlerdir; biri diğerinin yerine sayılmaz |
+| AC-LRN-08 | Öğrenme başarısı ayrı ölçülür: F9 çıkışı "baseline'ı SPRT ile geçen politika" **veya** "iyileşme yok" kanıtıdır (ikisi de geçerli). İkinci durumda rapor aday sayısı, arama bütçesi, aranan parametre uzayı ve güven aralığını içerir; kanıtsız "iyileşme yok" kabul edilmez. F9 tamamlanması "daha güçlü politika bulundu" anlamına gelmez |
 
 ## 15. Açık konular
 
@@ -264,3 +280,4 @@ Tamamı [18](18_RISKS_ASSUMPTIONS_AND_OPEN_QUESTIONS.md)'de izlenir. Bu doküman
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §6.1 öğrenme düzeyi netleştirildi (ADR-0030-DEG), AC-LRN-05 örneği AC-LRN-04 ile uyumlu hale getirildi, AC-LRN-07/08, §9 değerlendirme seti erişim denetimi |

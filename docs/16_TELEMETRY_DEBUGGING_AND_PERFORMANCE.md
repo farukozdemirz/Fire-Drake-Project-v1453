@@ -207,10 +207,11 @@ MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetridek
 
 | Kimlik | Ad | Tanım |
 |---|---|---|
-| MET-OUT-01 | Kazanma oranı | Senaryo hedefine göre; Wilson %95 GA ile |
+| MET-OUT-01 | Kazanma oranı | `docs/15` §6b `win_rule` sonucuna göre (`draw` = 0,5, `invalid` paya girmez); Wilson %95 GA ile |
 | MET-OUT-02 | Kill/death farkı | Takım bazında |
 | MET-OUT-03 | Maç süresi | Zaman aşımı oranı ile birlikte |
 | MET-OUT-04 | Elo/TrueSkill | Politika sürümleri ve taktik profilleri arası lig |
+| MET-OUT-05 | Sonuç kodu dağılımı | `win_a`/`win_b`/`draw`/`invalid` oranı ve `invalid` nedenleri (`NO_ENGAGE`, `SETUP_FAIL`, `TEST_TELEPORT`, `THIRD_PARTY`) |
 
 ### 6.8 Performans
 
@@ -224,6 +225,21 @@ MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetridek
 
 Eşikler başlangıç hipotezidir. F3–F6 fazlarında ölçülen dağılımlara göre güncellenir; güncelleme [17](17_IMPLEMENTATION_ROADMAP_AND_PHASE_GATES.md)'deki karar kaydı şablonuyla yapılır.
 
+### 6.9 Rol bilinçli yorum ve ek metrikler (değerlendirme 2026-10-02)
+
+**Yorum kuralı:** her metrik rolün görevine göre okunur; bir rolün birincil olmayan metriği başarısızlık sayılmaz. Örnek: kritik heal atan priest o sırada ortak hedefe saldırmadığı için MET-TGT-03/MET-DMG-01'de **başarısız sayılmaz**; payda yalnızca o anda yüksek öncelikli görevde olmayan üyeleri içerir.
+
+| Kimlik | Ad | Tanım | Başlangıç eşiği `[Ö]` |
+|---|---|---|---|
+| MET-ROLE-01 | Rol bilinçli katılım | MET-TGT-03 ve MET-DMG-01 paydasından, `DECISION.override = true` ve gerekçesi `EMERGENCY_HEAL_RULE`/cure/res/`PEEL`/`DEATH_AVOID_RULE` olan üyelerin o süreleri çıkarılır; "görevde geçen süre" ayrıca raporlanır | MET-TGT-03 eşiği aynı |
+| MET-HEAL-05 | Kaçırılan kritik heal | Müttefik tahmini HP < `P-PRI-HEAL-EMERG`, menzilde, MP/cooldown uygun iken `P-ACT-LATENCY` + cast süresi içinde heal başlamayan fırsat oranı | ≤ %5 |
+| MET-HEAL-06 | Gereksiz heal/buff | Hedefte aşırı overheal (`P-PRI-OVERHEAL-MAX` üstü) veya ayakta buff'ı varken yapılan heal/buff sayısı / tüm heal/buff (MET-BUFF-03 dahil) | ≤ %10 |
+| MET-CURE-02 | Kaçırılan cure | Kritik debuff başladı, cure fırsatı var, 3 sn içinde cure başlamadı oranı | ≤ %10 |
+| MET-IDLE-01 | Boşta süre ve ulaşamama | Canlı + aksiyon fırsatı yok + hareket yok süre / canlı süre; ayrıca hedef atandı ama 10 sn içinde etkili menzile girilemedi oranı (MET-TGT-01 ile) | Guard metrik (artış = alarm) |
+| MET-SUR-07 | Başarısız savaşa dönüş | `REENTER` sonrası 10 sn içinde ölüm veya aynı geri çekilmeye yeniden giriş / tüm dönüşler | ≤ %20 |
+| MET-STALL-01 | Heal-stall kararı | Stall tespiti → karar (`HEALER_SWITCH`/`SPLIT`/`BURST_NOW`) ve 15 sn sonucu (hedef öldü / healer öldü / sonuçsuz); "karar yok" oranı | Karar yok ≤ %10; sonuç dağılımı raporlanır |
+
+Öğrenme ile değerlendirme rakipleri ayrıdır; kilitli sete erişim denetimi `docs/14` §9'dadır.
 ## 7. İstatistik kuralları
 
 - **Tek maç kanıt değildir.** Her karşılaştırma en az: N tekrar × 2 taraf (Karus/El Morad değişimi) × aynı seed listesi. Başlangıç N = 20 (8 vs 8 için), 1 vs 1 için N = 50.
@@ -267,3 +283,4 @@ Ayrıntılı senaryolar [15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md)
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §6.9 rol bilinçli yorum ve yeni metrikler (MET-ROLE-01, MET-HEAL-05/06, MET-CURE-02, MET-IDLE-01, MET-SUR-07, MET-STALL-01), MET-OUT-01 tanımı, MET-OUT-05 |

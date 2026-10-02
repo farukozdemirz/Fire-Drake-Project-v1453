@@ -24,6 +24,8 @@ Aşağıdaki kararlar proje sahibiyle tek tek görüşülerek verildi. Her biri 
 
 ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kararıyla kabul edildi ([adr](adr/ADR-0005-bot-tick-thread-modeli.md); gözden geçirilmeli). ADR-0014 (bot oturumu hesap doğrulamasını ve `SET_LOGIN_INFO`'yu atlar) aynı şekilde kabul edildi ([adr](adr/ADR-0014-bot-oturumu-hesap-dogrulamasi.md); gözden geçirilmeli). ADR-0015 (bot çalışma zamanı komut kanalı: konsol `/bot` + `BotCommands.txt`) aynı şekilde kabul edildi ([adr](adr/ADR-0015-bot-calisma-zamani-komut-kanali.md); gözden geçirilmeli). ADR-0007 (telemetri biçimi: JSONL, sınırlı kuyruk, ayrı yazıcı thread) aynı şekilde kabul edildi ([adr](adr/ADR-0007-telemetri-formati-ve-depolama.md); gözden geçirilmeli). Henüz açık olan teknik kararlar faz içinde verilecektir: ADR-0006 (navigasyon verisi/navmesh), ADR-0008 (L1 yöntemi).
 
+Değerlendirme (2026-10-02) ADR'leri, arka plan ajanında Claude kararı, **gözden geçirilmeli**: [ADR-0030-DEG](adr/ADR-0030-DEG-ogrenme-duzeyi.md) (öğrenme düzeyi: rol profili), [ADR-0031-DEG](adr/ADR-0031-DEG-senaryo-kazanma-kurali.md) (kazanma kuralı), [ADR-0032-DEG](adr/ADR-0032-DEG-senaryo-baslangic-yerlesimi.md) (senaryo başlangıç yerleşimi ve sıfırlama), [ADR-0033-DEG](adr/ADR-0033-DEG-arena-siniri-ve-geri-cekilme.md) (arena sınırı ve geri çekilme).
+
 ## 2. Varsayımlar
 
 | Kimlik | Varsayım | Durum | Doğrulama |
@@ -69,6 +71,9 @@ ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kar
 | Q-22 | Binding/provoke (Type7) sunucu etkisi (MB-10) | W-G kullanımı | T-MECH-SKILL-W | F6 |
 | Q-23 | Mage armor yansıma hatası (MB-03) düzeltilsin mi (K-8) | Dengelenme | Karar | F6 |
 | Q-24 | Değerlendirme için gerekli maç sayısına ulaşmak üzere paralel sunucu örnekleri çalıştırılabilir mi (ayrı DB/port) | R-10 | Deneme | F8 |
+| Q-25 | Priest/mage insan aksiyon hızı ve cast döngüsü dağılımı (heal/cure rotasyonu, toplam aksiyon/sn); CLI-11 6/sn emniyet ağının ve cast sınırlarının insanla eşdeğerliği | Adalet (üç katman, `docs/03` §13.4) | Priest ve mage ile T-MECH-CLIENT-01..04 yeniden (insan) | F6 |
+| Q-26 | İstemci suya/göl cebine girebiliyor mu, suda yavaşlıyor mu, kıyı olay ızgarasıyla uyumlu mu (T-NAV-09) | Su katmanı gerekir mi (`docs/12` §13.1) | İstemcide göl kıyısında yürüme + sunucu konum kaydı | F5 |
+| Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-016, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
 
 ## 4. Riskler
 
@@ -103,3 +108,4 @@ ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kar
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: Q-25..Q-27, ADR-0030..0033-DEG bağlantıları |
