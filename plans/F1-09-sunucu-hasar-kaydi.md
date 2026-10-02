@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-09` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-01 (paket izleyici: aynı bayrak kalıbı), F1-06/F1-07 (ölçülecek modeller; `DOĞRULANDI`/`KAPANDI`) |
@@ -304,10 +304,33 @@ Not: sırasıyla bayraklı/bayraksız derleme arasında MSBuild komut satırı d
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz yok)
+### Tur 1 — 2026-10-02
 
----
+- **Karar:** `DOĞRULANDI`
+- **İncelenen commit:** `3406555` (`bot/F1-09`, taban `gece/2026-10-02`; 2 commit: `28fc383` kod, `3406555` rapor). Çalışma ağacı temiz. Otonom gece modu: birleştirme/push yapılmadı (döngü betiği entegrasyon dalına birleştirir).
+- Sunucular kapalıydı (`run-servers.sh status` → 0/3). Derlemeler bağımsız olarak bu oturumda çalıştırıldı (`/tmp/dogrula-f109/`).
 
-## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `Release` | ✔ | rc=0, 0 hata, 16 uyarı. Bağımsız ikinci tam yeniden derleme (bayrak değişimiyle zorlanmış, `AttackHandler/DamageTrace/User/...` hepsi derlendi) de rc=0, 16 uyarı. Uyarıların tamamı eski satırlarda (`AISocket 208/337/491`, `DBAgent 81/1809`, `EventHandler 267`, `GameServerDlg 803/1130/1789`, `LoginHandler 38`, `MagicInstance 337/1867`, `MagicProcess 28`, `Map 162`, `User 2724/2739`); `DamageTrace.cpp` ve kanca satırları uyarısız |
+| K2 `--damage-trace` | ✔ | rc=0, 16 aynı uyarı. `grep -a -c "DamageTrace_"`: `gs_plain.exe:0`, `gs_damage.exe:1` (tam yeniden derlenen `gs_plain2.exe:0`; yalnızca PE zaman damgası farklı, boyut aynı) |
+| K3 `--packet-trace --damage-trace` | ✔ | rc=0, 16 uyarı; `gs_both.exe`: `PacketTrace_`=1, `DamageTrace_`=1 |
+| K4 `Debug` | ✔ | rc=0, 0 uyarı, `x86-Debug\Server\GameServer.exe` üretildi |
+| K5 bayraksız davranış | ✔ | `git diff --stat gece/2026-10-02...bot/F1-09`: `User.cpp` +5/−0, `AttackHandler.cpp` +5/−0, `MagicInstance.cpp` +5/−0. Eklenenler: 1 `#include` + 1 `#ifdef FDP_DAMAGE_TRACE`…`#endif` bloğu (3 satır) + boş satır; hiçbir mevcut satır değişmedi. `GameServer/` farkı yalnızca izinli 7 dosya. Bayrak kapalıyken `DamageTrace.h` boş, `DamageTrace.cpp` boş çeviri birimi |
+| K6 kanca yerleri | ✔ | `User.cpp:1950` `m_sHp += amount;` → `:1953` `LogHpChange(pAttacker, this, originalAmount, oldHP, m_sHp)` → `:1956` `result << m_iMaxHp << m_sHp << tid;`. `AttackHandler.cpp:58` `Scope('R', 0, GetSocketID())` < `:61` `damage = GetDamage(pTarget);` < `:79` `pTarget->HpChange(-damage, this);`, hepsi `:42` `if (isAttackable… CanCastRHit…)` bloğunda (kapsam = `Attack` bloğu sonuna kadar). `MagicInstance.cpp:657` `if (bType == 0)` < `:661` `Scope('S', nSkillID, pSkillCaster->GetID())` < `:673` `switch (bType)`, fonksiyon kapsamında. `m_sHp` güncellemesi ve `result` arasında; `amount`, `m_sHp`, paket, dönüş değerine kanca dokunmuyor |
+| K7 kayıt kapsamı | ✔ | `DamageTrace.cpp:88` `if (pAttacker == nullptr \|\| !pAttacker->isPlayer() \|\| pTarget == nullptr) return;`. `fprintf` (`:123`) biçim dizgesi 20 dönüşüm, 19 `\t` + sonda `\n`; argüman sayısı 20 (4 zaman/bağlam + 6 saldıran + 6 hedef + 4 HP) ve sütun sırası plan §5.4 ile aynı |
+| K8 gizlilik/güvenlik | ✔ | Yalnızca 20 sütun (paket yükü/sohbet/hesap/IP yok). `SanitizeName` `\t`, boşluk, `\r`, `\n` → `_`, en çok 63 karakter. `git ls-files Logs` boş, `Logs/` dizini oluşmadı, `git status --short` boş |
+| K9 kodlama | ✔ | `DamageTrace.h/.cpp`: ASCII, CRLF. `User.cpp`/`MagicInstance.cpp`: UTF-8 BOM + CRLF (taban sürümde de BOM var, CRLF değişimi yok); `AttackHandler.cpp`: ASCII + CRLF; vcxproj/filters: BOM + CRLF; `tools/build.sh`: LF, CRLF yok |
+| K10 `build.sh` | ✔ | `bash -n` temiz; `./tools/build.sh Release --bogus` → `Unknown option: --bogus`, çıkış kodu `2`, MSBuild çalışmadı. Fark: yalnızca `Usage:` satırı ve argüman döngüsü (+8/−4). `--packet-trace` tek başına ve argümansız çağrı aynı MSBuild argümanlarını üretir (`EXTRA` dizisi aynı) |
+| K11 temiz ağaç | ✔ | `git status --short` boş (`build/` yok sayılıyor, `Logs/` yok); `/tmp/opencode` kopyaları ve benim `/tmp/dogrula-f109/` kopyalarım silindi |
 
-(henüz yok)
+**Kapsam/kural kontrolü:** değişen dosyalar tam olarak §4 listesi (+ kendi plan dosyası: yalnızca `Durum` ve Uygulayıcı Raporu). `docs/`, `AGENTS.md`, `shared/`, `AIServer/` değişmemiş. vcxproj: `FdpTraceDefs` ikinci satırı `:44` altında, `:63`/`:101` `PreprocessorDefinitions` dokunulmamış; `ClCompile`/`ClInclude`/filters `PacketTrace.*` komşuluğunda. Mekanik: kanca salt-okur; `Scope` yalnızca `thread_local` yapıyı yazar. Thread: bağlam `thread_local`, dosya yazımı tek `std::mutex` altında, `HpChange` içinde başka kilit alınmıyor, ağ/DB yok. Yeniden giriş: `Scope` önceki bağlamı geri yüklüyor (iç içe güvenli). Bot sistemi etkilenmiyor (bayrak kapalı = kod derlenmez).
+
+**Uygulayıcı raporu dürüstlük kontrolü:** commit listesi, değişen dosyalar, `grep -c` sayıları, K6 satır numaraları ve 16 uyarı bağımsız çalıştırmayla birebir aynı çıktı. Küçük not: K1 çıktısı "son 10 satır" yerine kısaltılmış/özetlenmiş yapıştırılmış, K11 ifadesi ("yalnızca izinli tablo dosyalarını gösterir") belirsiz; ikisi de gerçekle çelişmiyor.
+
+**Bulgular (önem sırasıyla; hiçbiri engelleyici değil; kod hatası yok):**
+
+1. *Not (bilgi, F1-10 için)* `DamageTrace.cpp:141` — Bağlam dışı (`ctx = -`, `primary = 0`) satırlar zaman tikleri (DoT/Type 3 süreli hasar zamanlayıcı iş parçacığından, `ExecuteSkill` kapsamı dışında) ve yansıtılan hasar için üretilir; bağlam yalnızca `ExecuteSkill`/`Attack` çağrı süresince geçerlidir. F1-10 özet betiği `primary=1` satırlarını doğrudan atış ölçümü, `ctx=-` satırlarını ayrı (DoT) olarak ele almalı.
+2. *Not (düşük)* Plan dosyasında yinelenen boş "Doğrulama Raporu" başlığı vardı (şablon kalıntısı); kaldırıldı.
+
+**Bu plan için kalan insan testi:** çalışma zamanı ölçümü (iki istemciyle T-MECH-DMG-01..03) planın kapsamı dışıdır; `docs/STATUS.md` "Proje sahibi testleri" tablosunda zaten var, bayraklı derleme komutu notu eklendi.
