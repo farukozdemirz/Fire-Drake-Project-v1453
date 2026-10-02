@@ -257,6 +257,24 @@ namespace BotCore
 		if (newest.speed == 0)
 			return;
 
+		// Teleport jump guard (F5-56): when two consecutive observations that are at least a
+		// normal span apart imply an impossible speed (> 30 m/s; respawn, summon, blink), the
+		// newest sample no longer pairs with the past. Report no velocity until a fresh
+		// observation re-establishes a plausible pair. The span gate keeps packet bunching
+		// (sub-minSpan gaps) out of this branch; it is handled by the normal selection below.
+		if (m_count >= 2)
+		{
+			const int64_t jspan = newest.t - At(1).t;
+			if (jspan >= static_cast<int64_t>(minSpanMs) && jspan > 0)
+			{
+				const float jdx = newest.x - At(1).x;
+				const float jdz = newest.z - At(1).z;
+				const float implied = std::sqrt(jdx * jdx + jdz * jdz) * 1000.0f / static_cast<float>(jspan);
+				if (implied > 30.0f)
+					return;
+			}
+		}
+
 		// Nearest older sample whose span from the newest is at least minSpanMs, staying within
 		// windowMs of the newest observation. At packet cadence (~1.5 s) the newest-to-previous
 		// span is already long enough; a short recent pair falls back to a longer span.

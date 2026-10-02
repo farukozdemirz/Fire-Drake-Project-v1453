@@ -7,7 +7,7 @@
 // repeat acceptance timings with the MSVC Release unit tests.
 //
 //   nav_measure <section> [--navgrid PATH] [--seed N] [--n COUNT]
-//   sections: segments | smoothing | synthetic | velocity | arena | budget | budget-scheduled | stuck | all
+//   sections: segments | smoothing | synthetic | velocity | velocity-robust | arena | budget | budget-scheduled | stuck | all
 //
 // Every section prints one "KEY value ..." line per result so a CI-less wrapper can grep them.
 
@@ -481,6 +481,184 @@ namespace
 			total, zero, total > zero ? errSum / (total - zero) : 0.0, errMax);
 	}
 
+	// ---------- velocity-robust (F5-56): arrival jitter/bunching, variable interval, packet loss ----------
+	struct VRObs
+	{
+		int64_t t = 0;
+		float x = 0.0f;
+		int16_t speed = -1;
+	};
+
+	struct VRStats
+	{
+		int ticks = 0;
+		int zero = 0;
+		double p50 = 0.0;
+		double p95 = 0.0;
+		double max = 0.0;
+	};
+
+	float VRQuant(double v)
+	{
+		return (float)(std::floor(v * 10.0 + 0.5) / 10.0);
+	}
+
+	std::vector<VRObs> VRCadence(uint32_t seed, int intervalMs, double jitterMs, double bunchProb)
+	{
+		std::vector<int64_t> sends;
+		for (int64_t t = 1000; t < 120000; t += intervalMs)
+			sends.push_back(t);
+
+		std::mt19937 rng(seed);
+		std::uniform_real_distribution<double> ud(0.0, 1.0);
+		std::vector<double> nominal(sends.size());
+		for (size_t i = 0; i < sends.size(); ++i)
+			nominal[i] = (double)sends[i] + (ud(rng) * 2.0 - 1.0) * jitterMs;
+
+		std::vector<double> arrival(nominal);
+		if (bunchProb > 0.0)
+		{
+			for (size_t i = 1; i + 1 < sends.size(); )
+			{
+				if (ud(rng) < bunchProb)
+				{
+					arrival[i] = nominal[i + 1] - ud(rng) * 10.0;
+					i += 2;
+				}
+				else
+				{
+					++i;
+				}
+			}
+		}
+
+		std::vector<VRObs> out;
+		out.reserve(sends.size());
+		int64_t prev = -1;
+		for (size_t i = 0; i < sends.size(); ++i)
+		{
+			int64_t t = (int64_t)std::llround(arrival[i]);
+			if (t <= prev)
+				t = prev + 1;
+			out.push_back(VRObs{ t, VRQuant(4.5 * (double)sends[i] / 1000.0), (int16_t)45 });
+			prev = t;
+		}
+		return out;
+	}
+
+	std::vector<VRObs> VRVariable(uint32_t seed)
+	{
+		std::mt19937 rng(seed);
+		std::vector<VRObs> out;
+		int64_t t = 1000;
+		while (t < 120000)
+		{
+			out.push_back(VRObs{ t, VRQuant(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1000 + (int64_t)(rng() % 1501u);
+		}
+		return out;
+	}
+
+	std::vector<VRObs> VRLoss(uint32_t)
+	{
+		std::vector<VRObs> out;
+		int64_t t = 1000;
+		int k = 0;
+		while (t < 120000)
+		{
+			if (k % 4 != 3)
+				out.push_back(VRObs{ t, VRQuant(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1500;
+			++k;
+		}
+		return out;
+	}
+
+	VRStats VRRun(const std::vector<VRObs> & obs, double mps)
+	{
+		VRStats s;
+		std::vector<double> errs;
+		const int64_t end = obs.back().t + 4000;
+		for (int64_t now = obs.front().t; now <= end; now += 100)
+		{
+			NavTargetTracker t;
+			for (size_t i = 0; i < obs.size(); ++i)
+			{
+				if (obs[i].t > now)
+					break;
+				t.Observe(obs[i].t, obs[i].x, 0.0f, obs[i].speed);
+			}
+			if (t.Count() < 2)
+				continue;
+			int64_t nt = 0;
+			float nx = 0.0f;
+			float nz = 0.0f;
+			t.Latest(nt, nx, nz);
+			if (now - nt > 4000)
+				continue;
+			float vx = 0.0f;
+			float vz = 0.0f;
+			t.Velocity(now, 4000, 400, vx, vz);
+			const double mag = std::sqrt((double)vx * vx + (double)vz * vz);
+			++s.ticks;
+			if (mag <= 1e-3)
+				++s.zero;
+			else
+				errs.push_back(std::fabs(mag - mps) / mps);
+		}
+		std::sort(errs.begin(), errs.end());
+		s.p50 = Pct(errs, 50);
+		s.p95 = Pct(errs, 95);
+		s.max = errs.empty() ? 0.0 : errs.back();
+		return s;
+	}
+
+	void VelocityRobust(Ctx & c)
+	{
+		struct Scenario { const char * name; int kind; };
+		const Scenario scen[] = {
+			{ "arrival_jitter", 0 },
+			{ "arrival_bunching", 1 },
+			{ "variable_interval", 2 },
+			{ "packet_loss", 3 },
+		};
+		for (const Scenario & sc : scen)
+		{
+			double worstP50 = 0.0, worstP95 = 0.0, worstMax = 0.0, worstZero = 0.0;
+			int p95Seed = 0, maxSeed = 0;
+			for (int seed = 1; seed <= 20; ++seed)
+			{
+				std::vector<VRObs> obs;
+				if (sc.kind == 0)
+					obs = VRCadence((uint32_t)seed, 1500, 150.0, 0.0);
+				else if (sc.kind == 1)
+					obs = VRCadence((uint32_t)seed, 1500, 150.0, 0.05);
+				else if (sc.kind == 2)
+					obs = VRVariable((uint32_t)seed);
+				else
+					obs = VRLoss((uint32_t)seed);
+				const VRStats s = VRRun(obs, 4.5);
+				const double zp = s.ticks > 0 ? 100.0 * (double)s.zero / (double)s.ticks : 0.0;
+				if (s.p50 > worstP50)
+					worstP50 = s.p50;
+				if (s.p95 > worstP95)
+				{
+					worstP95 = s.p95;
+					p95Seed = seed;
+				}
+				if (s.max > worstMax)
+				{
+					worstMax = s.max;
+					maxSeed = seed;
+				}
+				if (zp > worstZero)
+					worstZero = zp;
+			}
+			std::printf("VELOCITYR scenario=%s seeds=20 seed_p95=%d seed_max=%d zero_pct=%.3f err_p50=%.4f err_p95=%.4f err_max=%.4f\n",
+				sc.name, p95Seed, maxSeed, worstZero, worstP50, worstP95, worstMax);
+		}
+	}
+
 	// ---------- arena / respawn ----------
 	void Arena(Ctx & c)
 	{
@@ -743,7 +921,7 @@ int main(int argc, char ** argv)
 {
 	if (argc < 2)
 	{
-		std::printf("usage: nav_measure <segments|smoothing|velocity|arena|budget|budget-scheduled|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
+		std::printf("usage: nav_measure <segments|smoothing|velocity|velocity-robust|arena|budget|budget-scheduled|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
 		return 2;
 	}
 	std::string section = argv[1];
@@ -777,6 +955,8 @@ int main(int argc, char ** argv)
 		Synthetic(c);
 	if (all || section == "velocity")
 		Velocity(c);
+	if (all || section == "velocity-robust")
+		VelocityRobust(c);
 	if (all || section == "arena")
 		Arena(c);
 	if (all || section == "budget")
