@@ -231,7 +231,7 @@ plans/F5-57-nav-niyet-ve-gercek-ilerleme.md — Doğrulama Turu 1 düzeltmeleri.
   - K4 ✔ (düzeltilmiş): dört senaryo × üç modelde `stalled == 0`, `stuckEpisodes == 0` (satırlar raporun üstünde). `corner45`/`corner_dense` artık köşeli rotaları kullanıyor ve izdüşüm (`NavRouteProgressM`) yolundan geçiyor; bkz. aşağıdaki sapma.
   - K5 ✔: dondurulmuş süpürmede ilk `Stalled` tam **4700** ms (pencere `toleranceMs` ile 3200 ms); replan sonrası sağlıklı yürüyüşte `Stalled` yok (B1 kapandı), dondurulmuş replanda ilk `Stalled` **9200** ms; (`Awaiting`/`Blocked`/`Idle` iken `Stalled` yok, U-dönüşü `Progressing`).
   - K6 ✔: yasak başlık yok; yeni kod dinamik bellek/global durum içermiyor; `git diff gece/2026-10-02-nav...bot/F5-57 -- <iki dosya>` yalnızca `+` satırları (silinen 0).
-  - K7 ✔: `git diff --stat` yalnızca §4'teki iki kod dosyası; `GameServer/`, `shared/`, `docs/`, `.vcxproj` farkı 0; dosyalar ASCII + CRLF; `git diff --check` boş.
+  - K7 ✔: benim commit'lerimin `git diff --stat`'ı yalnızca §4'teki iki kod dosyası + plan dosyası; `GameServer/`, `shared/`, `.vcxproj` farkı 0; tabandaki `docs/STATUS.md` ve `plans/README.md` değişiklikleri Claude'un Tur 1 doğrulama commit'inden (`7910536`), DeepSeek dokunmadı; dosyalar ASCII + CRLF; `git diff --check` boş.
   - K8 (Claude): `stuck`/`progress` güncel kodda koşuldu; F5-09 varsayılanı 6 yanlış epizodunun `cadence_3200`/`assessor` ile 0'a indiği ve `PROGRESS_TRUE assessor 3200` doğrulandı.
   - K9: kapsam dışı (oyun içi kanıt F5-55).
 - Plandan sapmalar / notlar:
