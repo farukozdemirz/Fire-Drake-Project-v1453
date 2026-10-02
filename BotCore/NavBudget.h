@@ -37,10 +37,12 @@ namespace BotCore
 
 		// Writes the bots to run this tick into `out` (up to `cap`) and returns the count. Selection
 		// order: requests waiting at least `maxWaitMs` first (oldest first), then the rest FIFO
-		// (oldest first); a rotating start offset moves the head every call so equal-wait bots take
-		// turns. A query's cost is estimated from the bot's per-bot EWMA, else the global EWMA, else
-		// `initialCostMs`; selection stops when the estimate would exceed `budgetMs`. Progress
-		// guarantee: at least one bot is returned whenever requests are pending, whatever the budget.
+		// (oldest first); among equal keys a rotating rank (id - call counter) decides, so tied bots
+		// take turns across calls. A query's cost is estimated from the bot's per-bot EWMA, else the
+		// global EWMA, else `initialCostMs`; selection stops at the first estimate that would exceed
+		// `budgetMs` (a query is never split). NextBatch does not remove the chosen bots from the
+		// queue: the caller must Cancel each one after serving it. Progress guarantee: at least one
+		// bot is returned whenever requests are pending, whatever the budget.
 		int NextBatch(int64_t nowMs, double budgetMs, uint16_t * out, int cap)
 		{
 			if (out == nullptr || cap <= 0 || m_pending <= 0)
@@ -59,9 +61,8 @@ namespace BotCore
 				++count;
 			}
 
-			// Order: over-waiters first, then by wait descending (oldest first), then id; the
-			// rotation offset only shifts the starting point of equal-key runs. A simple stable
-			// insertion sort keeps < 128 entries cheap.
+			// Order: over-waiters first, then by wait descending (oldest first), then the rotating
+			// rank (see CandWorse). A simple stable insertion sort keeps < 128 entries cheap.
 			for (int i = 1; i < count; ++i)
 			{
 				const uint16_t id = m_candId[i];
@@ -80,18 +81,14 @@ namespace BotCore
 				m_candOver[j + 1] = (int16_t)over;
 			}
 
-			// Rotate the order by the call counter so tied entries take turns.
-			const int rot = count > 0 ? (m_offset % count) : 0;
-
 			int chosen = 0;
 			double spent = 0.0;
-			for (int step = 0; step < count && chosen < cap; ++step)
+			for (int i = 0; i < count && chosen < cap; ++i)
 			{
-				const int index = (rot + step) % count;
-				const uint16_t botId = m_candId[index];
+				const uint16_t botId = m_candId[i];
 				const double cost = EstimatedCost(botId);
 				if (chosen > 0 && spent + cost > budgetMs)
-					continue;
+					break;   // select in priority order until the budget is full
 				out[chosen++] = botId;
 				spent += cost;
 			}
@@ -184,7 +181,7 @@ namespace BotCore
 		}
 
 		// True when candidate a must sort after candidate b: over-waiters first, then older wait,
-		// then the larger id (so the rotation over equal entries is deterministic).
+		// then by rotating rank (so equal entries take turns across NextBatch calls).
 		bool CandWorse(uint16_t aId, int64_t aWait, int aOver,
 			uint16_t bId, int64_t bWait, int bOver) const
 		{
@@ -192,7 +189,18 @@ namespace BotCore
 				return aOver < bOver;
 			if (aWait != bWait)
 				return aWait < bWait;
-			return aId > bId;
+			return RotationRank(aId) > RotationRank(bId);
+		}
+
+		// Rank of a bot for equal-key ordering: (id - m_offset) mod kCapacity, ascending. Only the
+		// tie-break uses it, so a whole run of equal entries is never rotated as a block.
+		int RotationRank(uint16_t id) const
+		{
+			int r = (int)id - m_offset;
+			r %= kCapacity;
+			if (r < 0)
+				r += kCapacity;
+			return r;
 		}
 
 		static constexpr double m_initialCostMs = 0.5;   // P-NAV-TICK-BUDGET-MS: cold-start estimate

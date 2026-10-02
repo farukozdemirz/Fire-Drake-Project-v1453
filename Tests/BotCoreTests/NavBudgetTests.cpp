@@ -228,10 +228,69 @@ TEST_CASE("NavBudget_Scheduler_Fairness")
 		// t = 1100: the remaining early bots have now waited > 1000 -> they lead the queue.
 		const int n1 = burst.NextBatch(1100, 1.5, out, 128);
 		CHECK_EQ(n1, 5);
-		// All remaining entries (ids 5..39) waited the same; any of them may lead after rotation,
-		// but they must come from the original burst (not a later arrival).
-		CHECK(out[0] >= 5 && out[0] < 40);
+		// All remaining entries (ids 5..39) waited the same 1100 ms. The deterministic oldest-request
+		// order gives id 5 first: the first call advanced the rotation offset to 1, and the rotating
+		// rank of the remaining ids is still ascending.
+		CHECK_EQ((int)out[0], 5);
 	}
+}
+
+TEST_CASE("NavBudget_Scheduler_Priority")
+{
+	NavQueryScheduler s;
+	s.SetMaxWaitMs(1000);
+	uint16_t out[128];
+
+	// (a) Over-waiters always lead, at every rotation offset. 3 bots waited 1500 ms (ids 10..12)
+	// and 5 bots waited 100 ms (ids 0..4); the budget fits exactly one query (initial cost 0.5).
+	for (int off = 0; off < 10; ++off)
+	{
+		for (int i = 0; i < 3; ++i)
+			s.Request((uint16_t)(10 + i), 0);          // now = 1500 -> wait 1500 (over maxWait)
+		for (int i = 0; i < 5; ++i)
+			s.Request((uint16_t)i, 1400);              // now = 1500 -> wait 100
+
+		const int n = s.NextBatch(1500, 0.5, out, 128);
+		CHECK_EQ(n, 1);
+		CHECK(out[0] >= 10 && out[0] <= 12);
+
+		// Drain so the next iteration re-requests with fresh timestamps; the call has still
+		// advanced the rotation offset by one.
+		for (int i = 0; i < 3; ++i)
+			s.Cancel((uint16_t)(10 + i));
+		for (int i = 0; i < 5; ++i)
+			s.Cancel((uint16_t)i);
+	}
+	CHECK_EQ(s.Pending(), 0);
+
+	// (b) Distinct waits sort oldest first, independent of the rotation offset. Ids 20..25 waited
+	// 600, 500, ..., 100 ms at now = 1000.
+	for (int off = 0; off < 6; ++off)
+	{
+		for (int i = 0; i < 6; ++i)
+			s.Request((uint16_t)(20 + i), 400 + (int64_t)i * 100);
+		const int n = s.NextBatch(1000, 100.0, out, 128);
+		CHECK_EQ(n, 6);
+		for (int i = 0; i < 6; ++i)
+			CHECK_EQ((int)out[i], 20 + i);
+		for (int i = 0; i < 6; ++i)
+			s.Cancel((uint16_t)(20 + i));
+	}
+
+	// (c) Equal waits rotate across calls: the first pick changes on every consecutive call.
+	s.Clear();
+	for (int i = 0; i < 6; ++i)
+		s.Request((uint16_t)i, 1000);
+	uint16_t firstPick[4] = {};
+	for (int k = 0; k < 4; ++k)
+	{
+		const int n = s.NextBatch(1000, 0.5, out, 128);   // one query per call
+		CHECK_EQ(n, 1);
+		firstPick[k] = out[0];
+		s.Cancel(out[0]);
+	}
+	for (int k = 1; k < 4; ++k)
+		CHECK(firstPick[k] != firstPick[k - 1]);
 }
 
 TEST_CASE("NavBudget_Scheduler_Cost")
@@ -475,6 +534,7 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 		std::vector<double> waits;      // request -> plan, ms
 		long deferredTicks = 0;
 		long holdTicks = 0;
+		long staleHoldTicks = 0;
 		long followStaleTicks = 0;
 		int noPlanTicks = 0;
 		int totalTicks = 0;
@@ -482,7 +542,7 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 		double holdDistMoved = 0.0;
 	};
 
-	auto simulate = [&](bool scheduled) -> Run
+	auto simulate = [&](bool scheduled, double extraCostMs) -> Run
 	{
 		Run r;
 		// Re-seed both modes identically.
@@ -518,6 +578,7 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 			st[(size_t)b].wps.clear();
 			st[(size_t)b].wpIndex = 0;
 		}
+		st[0].scheduler.Clear();   // fresh queue/cost estimates for every mode (A, B, B2)
 
 		NavPathfinder pathfinder;
 		NavSearchParams search;
@@ -567,8 +628,18 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 			wz = grid.CellCenter(bestZ);
 		};
 
-		for (int64_t t = 0; t < endMs; t += tickMs)		{
+		for (int64_t t = 0; t < endMs; t += tickMs)
+		{
 			++r.totalTicks;
+
+			// Tick-start positions, so the held-bot movement measure compares two real points.
+			float posStartX[16];
+			float posStartZ[16];
+			for (int b = 0; b < bots; ++b)
+			{
+				posStartX[b] = st[(size_t)b].x;
+				posStartZ[b] = st[(size_t)b].z;
+			}
 
 			// Move targets; turn them at the scheduled time.
 			for (int b = 0; b < bots; ++b)
@@ -604,10 +675,12 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 					const float mdz = tb.z - st[(size_t)b].planTargetZ;
 					const bool moved = std::sqrt(mdx * mdx + mdz * mdz) >= 6.0f;
 					if (!st[(size_t)b].hasPlan || (t - st[(size_t)b].planAtMs) >= 500 || moved)
-					if (requestAt[b] < 0)
 					{
-						st[0].scheduler.Request((uint16_t)b, t);   // one shared scheduler
-						requestAt[b] = t;
+						if (requestAt[b] < 0)
+						{
+							st[0].scheduler.Request((uint16_t)b, t);   // one shared scheduler
+							requestAt[b] = t;
+						}
 					}
 				}
 				batchCount = st[0].scheduler.NextBatch(t, 1.5, batch, 64);
@@ -656,7 +729,9 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 				}
 				if (scheduled)
 				{
-					st[0].scheduler.ReportCost((uint16_t)b, ms, bs.plan.expanded);
+					// `extraCostMs` is a synthetic surcharge for mode B2 only, so the measured
+					// real A* cost stays separate from what the scheduler believes.
+					st[0].scheduler.ReportCost((uint16_t)b, ms + extraCostMs, bs.plan.expanded);
 					st[0].scheduler.Cancel((uint16_t)b);
 					requestAt[b] = -1;
 				}
@@ -668,37 +743,34 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 				BotState & bs = st[(size_t)b];
 				const Target & tb = tg[(size_t)b];
 
-				bool blocked = false;
-				if (scheduled)
-				{
-					// Deferred? The bot has a pending request that was not served this tick.
-					blocked = requestAt[b] >= 0;
-				}
+				// Plan freshness, shared by the deferred contract and the stale-follow metric.
+				const float driftX = tb.x - bs.planTargetX;
+				const float driftZ = tb.z - bs.planTargetZ;
+				bs.targetDriftM = std::sqrt(driftX * driftX + driftZ * driftZ);
+				const int64_t age = t - bs.planAtMs;
+				const NavDeferParams deferParams;
+				const bool stale = bs.hasPlan
+					&& (age > (int64_t)deferParams.planMaxAgeMs || bs.targetDriftM > deferParams.driftMaxM);
+
+				// Deferred? The bot has a pending request that was not served this tick.
+				const bool blocked = scheduled && requestAt[b] >= 0;
 
 				bool follow = true;
 				if (blocked)
 				{
 					++r.deferredTicks;
-					const float driftX = tb.x - bs.planTargetX;
-					const float driftZ = tb.z - bs.planTargetZ;
-					bs.targetDriftM = std::sqrt(driftX * driftX + driftZ * driftZ);
-					const int64_t age = t - bs.planAtMs;
-					const NavDeferAction action = BotCore::NavWhileDeferred(bs.hasPlan, age, bs.targetDriftM, NavDeferParams());
-					if (action == NavDeferAction::FollowPlan && bs.hasPlan)
-					{
-						// acceptable: plan is still fresh
-					}
-					else
+					const NavDeferAction action = BotCore::NavWhileDeferred(bs.hasPlan, age, bs.targetDriftM, deferParams);
+					if (action != NavDeferAction::FollowPlan || !bs.hasPlan)
 					{
 						follow = false;
 						++r.holdTicks;
-						if (bs.hasPlan && (age > 5000 || bs.targetDriftM > 15.0f))
-							++r.followStaleTicks;   // never allowed to be counted
+						if (stale)
+							++r.staleHoldTicks;   // informational: held while the plan is stale
 					}
 				}
-
-				const float beforeX = bs.x;
-				const float beforeZ = bs.z;
+				// A bot that keeps moving on a stale plan is an invariant violation (must be 0).
+				if (follow && stale)
+					++r.followStaleTicks;
 
 				bool moved = false;
 				if (follow && bs.wpIndex < (int)bs.wps.size())
@@ -724,9 +796,10 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 				}
 				if (!moved && !follow)
 				{
-					// Holding: position must not change at all (no jitter).
-					const float ddx = bs.x - beforeX;
-					const float ddz = bs.z - beforeZ;
+					// Holding: position must not change at all (no jitter). Compared against the
+					// tick-start position, so this is not a tautology.
+					const float ddx = bs.x - posStartX[b];
+					const float ddz = bs.z - posStartZ[b];
 					r.holdDistMoved += std::sqrt(ddx * ddx + ddz * ddz);
 				}
 
@@ -741,34 +814,45 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 		return r;
 	};
 
-	const Run a = simulate(false);
-	const Run b = simulate(true);
+	// Mode B2 adds a synthetic per-query cost so the queue actually builds up; this is the only
+	// difference from B (the real A* measurement itself is untouched).
+	const double b2ExtraCostMs = 0.5;
+	const Run a = simulate(false, 0.0);
+	const Run b = simulate(true, 0.0);
+	const Run b2 = simulate(true, b2ExtraCostMs);
 
 	std::vector<double> waitsA = a.waits;
 	std::sort(waitsA.begin(), waitsA.end());
 	std::vector<double> waitsB = b.waits;
 	std::sort(waitsB.begin(), waitsB.end());
+	std::vector<double> waitsB2 = b2.waits;
+	std::sort(waitsB2.begin(), waitsB2.end());
 	std::vector<double> distsA = a.dists;
 	std::sort(distsA.begin(), distsA.end());
 	std::vector<double> distsB = b.dists;
 	std::sort(distsB.begin(), distsB.end());
+	std::vector<double> distsB2 = b2.dists;
+	std::sort(distsB2.begin(), distsB2.end());
 
 	const double aMean = distsA.empty() ? 0.0 : [&] { double s = 0; for (double d : distsA) s += d; return s / distsA.size(); }();
 	const double bMean = distsB.empty() ? 0.0 : [&] { double s = 0; for (double d : distsB) s += d; return s / distsB.size(); }();
+	const double b2Mean = distsB2.empty() ? 0.0 : [&] { double s = 0; for (double d : distsB2) s += d; return s / distsB2.size(); }();
 
 	const double aNoPlanPct = 100.0 * (double)a.noPlanTicks / ((double)a.totalTicks * (double)bots);
 	const double bNoPlanPct = 100.0 * (double)b.noPlanTicks / ((double)b.totalTicks * (double)bots);
+	const double b2NoPlanPct = 100.0 * (double)b2.noPlanTicks / ((double)b2.totalTicks * (double)bots);
 
-	std::printf("NAVBUDGET chase mode=A plan_wait_p50=%.0f plan_wait_p95=%.0f plan_wait_max=%.0f without_plan_pct=%.1f deferred_ticks=%ld hold_ticks=%ld follow_stale_ticks=%ld dist_mean=%.2f dist_p95=%.2f\n",
-		PercentileDouble(waitsA, 0.5), PercentileDouble(waitsA, 0.95),
-		waitsA.empty() ? 0.0 : waitsA.back(),
-		aNoPlanPct,
-		a.deferredTicks, a.holdTicks, a.followStaleTicks, aMean, PercentileDouble(distsA, 0.95));
-	std::printf("NAVBUDGET chase mode=B plan_wait_p50=%.0f plan_wait_p95=%.0f plan_wait_max=%.0f without_plan_pct=%.1f deferred_ticks=%ld hold_ticks=%ld follow_stale_ticks=%ld dist_mean=%.2f dist_p95=%.2f\n",
-		PercentileDouble(waitsB, 0.5), PercentileDouble(waitsB, 0.95),
-		waitsB.empty() ? 0.0 : waitsB.back(),
-		bNoPlanPct,
-		b.deferredTicks, b.holdTicks, b.followStaleTicks, bMean, PercentileDouble(distsB, 0.95));
+	auto printChase = [&](const char * mode, const Run & r, const std::vector<double> & w,
+		const std::vector<double> & d, double mean, double noPlanPct)
+	{
+		std::printf("NAVBUDGET chase mode=%s plan_wait_p50=%.0f plan_wait_p95=%.0f plan_wait_max=%.0f without_plan_pct=%.1f deferred_ticks=%ld hold_ticks=%ld stale_hold_ticks=%ld follow_stale_ticks=%ld dist_mean=%.2f dist_p95=%.2f\n",
+			mode, PercentileDouble(w, 0.5), PercentileDouble(w, 0.95),
+			w.empty() ? 0.0 : w.back(), noPlanPct,
+			r.deferredTicks, r.holdTicks, r.staleHoldTicks, r.followStaleTicks, mean, PercentileDouble(d, 0.95));
+	};
+	printChase("A", a, waitsA, distsA, aMean, aNoPlanPct);
+	printChase("B", b, waitsB, distsB, bMean, bNoPlanPct);
+	printChase("B2", b2, waitsB2, distsB2, b2Mean, b2NoPlanPct);
 
 	// Acceptance (B).
 	CHECK(!waitsB.empty());
@@ -778,12 +862,25 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 	CHECK_EQ(b.followStaleTicks, 0);
 	CHECK(b.holdDistMoved == 0.0);
 	CHECK(bMean <= 1.25 * aMean);
+
+	// Acceptance (B2): the queue really built up (>= 5% of bot-ticks deferred, some holds), and
+	// the deferred contract still holds under that load. The wait thresholds are Release-only
+	// (Debug A* is ~10x slower, which turns B2 into a different, harsher overload).
+	CHECK(b2.deferredTicks >= (long)(((long long)b2.totalTicks * bots + 19) / 20));
+	CHECK(b2.holdTicks > 0);
+	CHECK(b2NoPlanPct <= 3.0);
+	CHECK_EQ(b2.followStaleTicks, 0);
+#ifndef _DEBUG
+	CHECK(PercentileDouble(waitsB2, 0.95) <= 800.0);
+	CHECK((waitsB2.empty() ? 0.0 : waitsB2.back()) <= 1100.0);
+#endif
 }
 
 // Real-map load: 16 bots each tracking a near64 target every 500 ms for 60 s of virtual time.
-// Mode A runs every follower Update every tick (worst case); mode B uses the scheduler (1.5 ms
-// budget) plus replan phases. Per-tick nav time is real steady_clock; the p95/p99 and the longest
-// path wait are reported. Harita yoksa SKIPPED.
+// Mode A runs every follower Update every tick (worst case); mode B uses one shared scheduler
+// (1.5 ms budget) plus replan phases. Each mode runs three times, printed as its own line; per-bot
+// and total query counts are reported, and the worst p95/p99 drive the Release acceptance.
+// Harita yoksa SKIPPED.
 TEST_CASE("NavBudget_RealMap_Load")
 {
 	NavGrid grid;
@@ -798,6 +895,7 @@ TEST_CASE("NavBudget_RealMap_Load")
 	const int bots = 16;
 	const int64_t tickMs = 100;
 	const int64_t endMs = 60000;
+	const double budgetMs = 1.5;   // P-NAV-TICK-BUDGET-MS
 
 	std::vector<NavCell> walk;
 	for (int x = 0; x < grid.Size(); ++x)
@@ -809,7 +907,6 @@ TEST_CASE("NavBudget_RealMap_Load")
 	struct BotState
 	{
 		NavFollower follower;
-		NavQueryScheduler scheduler;
 		float x = 0.0f;
 		float z = 0.0f;
 		int64_t planAtMs = 0;
@@ -824,25 +921,37 @@ TEST_CASE("NavBudget_RealMap_Load")
 		const NavCell c = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
 		st[(size_t)b].x = grid.CellCenter(c.x);
 		st[(size_t)b].z = grid.CellCenter(c.z);
-		st[(size_t)b].scheduler.SetMaxWaitMs(1000);
 	}
 
-	auto simulate = [&](bool scheduled, std::vector<double> & tickSum, int64_t & longestWaitMs, double tickBudgetMs) -> long
+	// One shared scheduler for every bot (the production shape: a single instance on the tick
+	// thread). Request, NextBatch, ReportCost, Cancel and Pending all use this instance.
+	NavQueryScheduler scheduler;
+	scheduler.SetMaxWaitMs(1000);
+
+	struct ModeStats
 	{
-		long deferredTicks = 0;
-		BotCore::Rng srng(999u);
+		std::vector<double> tickSum;
+		int64_t longestWaitMs = 0;
+		long servedTotal = 0;         // executed A* queries (Update returning true)
+		int servedPerBot[16] = {};
+		int servedMinPerBot = 0;
+	};
+
+	auto runMode = [&](bool scheduled, uint32_t seed, ModeStats & out)
+	{
+		BotCore::Rng srng(seed);
 		NavPathfinder pathfinder;
 		NavSearchParams search;
 		NavFollowParams fp;
 		fp.replanIntervalMs = 500;
 		fp.replanDistM = 6.0f;
 
-		// Reset followers.
 		for (int b = 0; b < bots; ++b)
 		{
 			st[(size_t)b].follower.Reset();
 			st[(size_t)b].planAtMs = 0;
 		}
+		scheduler.Clear();
 
 		int64_t requestAt[16];
 		for (int b = 0; b < bots; ++b)
@@ -850,30 +959,47 @@ TEST_CASE("NavBudget_RealMap_Load")
 
 		for (int64_t t = 0; t < endMs; t += tickMs)
 		{
-			// Every 500 ms pick a fresh near64 target (same cadence in both modes).
+			// Target refresh / request cadence. Mode A is phase-less; mode B is staggered by
+			// NavReplanPhaseMs(slot) so the 500 ms replans do not all land in the same tick.
 			for (int b = 0; b < bots; ++b)
 			{
 				BotState & bs = st[(size_t)b];
-				if (bs.follower.Tracker().Count() == 0 || (t - bs.planAtMs) >= 500)
+				bool due;
+				if (!scheduled)
 				{
-					const NavCell from;
-					NavCell self;
-					self.x = grid.CellOf(bs.x);
-					self.z = grid.CellOf(bs.z);
-					(void)from;
-					NavCell goal = self;
-					for (int tries = 0; tries < 200; ++tries)
-					{
-						const NavCell cand = walk[(size_t)srng.NextBelow((uint32_t)walk.size())];
-						if (std::abs(cand.x - self.x) > 64 || std::abs(cand.z - self.z) > 64)
-							continue;
-						if (cand == self)
-							continue;
-						goal = cand;
-						break;
-					}
-					bs.targetX = grid.CellCenter(goal.x);
-					bs.targetZ = grid.CellCenter(goal.z);
+					due = bs.follower.Tracker().Count() == 0 || (t - bs.planAtMs) >= 500;
+				}
+				else
+				{
+					const int64_t phase = (int64_t)BotCore::NavReplanPhaseMs(b);
+					due = t >= phase && ((t - phase) % 500) == 0;
+				}
+				if (!due)
+					continue;
+
+				NavCell self;
+				self.x = grid.CellOf(bs.x);
+				self.z = grid.CellOf(bs.z);
+				NavCell goal = self;
+				for (int tries = 0; tries < 200; ++tries)
+				{
+					const NavCell cand = walk[(size_t)srng.NextBelow((uint32_t)walk.size())];
+					if (std::abs(cand.x - self.x) > 64 || std::abs(cand.z - self.z) > 64)
+						continue;
+					if (cand == self)
+						continue;
+					goal = cand;
+					break;
+				}
+				bs.targetX = grid.CellCenter(goal.x);
+				bs.targetZ = grid.CellCenter(goal.z);
+				bs.follower.ObserveTarget(t, bs.targetX, bs.targetZ, 45);
+
+				if (scheduled)
+				{
+					scheduler.Request((uint16_t)b, t);
+					if (requestAt[b] < 0)
+						requestAt[b] = t;
 				}
 			}
 
@@ -886,17 +1012,7 @@ TEST_CASE("NavBudget_RealMap_Load")
 			}
 			else
 			{
-				for (int b = 0; b < bots; ++b)
-				{
-					if ((t - st[(size_t)b].planAtMs) >= 500 && requestAt[b] < 0)
-					{
-						st[(size_t)b].scheduler.Request((uint16_t)b, t);
-						requestAt[b] = t;
-					}
-				}
-				batchCount = st[0].scheduler.NextBatch(t, tickBudgetMs, batch, 64);
-				if (st[0].scheduler.Pending() > 0)
-					++deferredTicks;
+				batchCount = scheduler.NextBatch(t, budgetMs, batch, 64);
 			}
 
 			double sum = 0.0;
@@ -905,7 +1021,6 @@ TEST_CASE("NavBudget_RealMap_Load")
 				const int b = batch[k];
 				BotState & bs = st[(size_t)b];
 
-				bs.follower.ObserveTarget(t, bs.targetX, bs.targetZ, 45);
 				const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 				const bool planned = bs.follower.Update(grid, pathfinder, t, bs.x, bs.z, 4.5f, fp);
 				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -914,54 +1029,89 @@ TEST_CASE("NavBudget_RealMap_Load")
 				if (planned)
 				{
 					bs.planAtMs = t;
-					if (scheduled && requestAt[b] >= 0)
-					{
-						const int64_t wait = t - requestAt[b];
-						if (wait > longestWaitMs)
-							longestWaitMs = wait;
-						requestAt[b] = -1;
-					}
+					++out.servedPerBot[b];
+					++out.servedTotal;
 				}
 				if (scheduled)
 				{
-					bs.scheduler.ReportCost((uint16_t)b, ms, 0);
-					bs.scheduler.Cancel((uint16_t)b);
+					// Longest wait is the real request -> service gap, measured for every served bot.
+					if (requestAt[b] >= 0)
+					{
+						const int64_t wait = t - requestAt[b];
+						if (wait > out.longestWaitMs)
+							out.longestWaitMs = wait;
+					}
+					scheduler.ReportCost((uint16_t)b, ms, 0);
+					scheduler.Cancel((uint16_t)b);
 					requestAt[b] = -1;
 				}
 			}
-			tickSum.push_back(sum);
+			out.tickSum.push_back(sum);
 		}
-		return deferredTicks;
+
+		out.servedMinPerBot = out.servedPerBot[0];
+		for (int b = 1; b < bots; ++b)
+			if (out.servedPerBot[b] < out.servedMinPerBot)
+				out.servedMinPerBot = out.servedPerBot[b];
 	};
 
-	std::vector<double> sumA;
-	std::vector<double> sumB;
-	int64_t waitA = 0;
-	int64_t waitB = 0;
-	simulate(false, sumA, waitA, 1.5);
-	simulate(true, sumB, waitB, 1.5);
+	const int runs = 3;
+	auto printMode = [&](const char * mode, int run, const ModeStats & s)
+	{
+		std::vector<double> sorted = s.tickSum;
+		std::sort(sorted.begin(), sorted.end());
+		std::printf("NAVBUDGET realm mode=%s run=%d tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f longest_wait=%.0f served_total=%ld served_min_per_bot=%d\n",
+			mode, run, PercentileDouble(sorted, 0.5), PercentileDouble(sorted, 0.95),
+			PercentileDouble(sorted, 0.99), sorted.empty() ? 0.0 : sorted.back(),
+			(double)s.longestWaitMs, s.servedTotal, s.servedMinPerBot);
+	};
 
-	std::vector<double> sortedA = sumA;
-	std::sort(sortedA.begin(), sortedA.end());
-	std::vector<double> sortedB = sumB;
-	std::sort(sortedB.begin(), sortedB.end());
+	double worstA95 = 0.0;
+	double worstB95 = 0.0;
+	double worstB99 = 0.0;
+	int64_t worstWaitB = 0;
+	long totalA = 0;
+	long totalB = 0;
+	int minB = 1 << 30;
+	for (int r = 0; r < runs; ++r)
+	{
+		ModeStats msA;
+		ModeStats msB;
+		runMode(false, 7000u + (uint32_t)r, msA);
+		runMode(true, 7000u + (uint32_t)r, msB);
+		printMode("A", r, msA);
+		printMode("B", r, msB);
 
-	const double a95 = PercentileDouble(sortedA, 0.95);
-	const double b95 = PercentileDouble(sortedB, 0.95);
-	const double b99 = PercentileDouble(sortedB, 0.99);
+		std::vector<double> sa = msA.tickSum;
+		std::sort(sa.begin(), sa.end());
+		std::vector<double> sb = msB.tickSum;
+		std::sort(sb.begin(), sb.end());
+		const double a95 = PercentileDouble(sa, 0.95);
+		const double b95 = PercentileDouble(sb, 0.95);
+		const double b99 = PercentileDouble(sb, 0.99);
+		if (a95 > worstA95)
+			worstA95 = a95;
+		if (b95 > worstB95)
+			worstB95 = b95;
+		if (b99 > worstB99)
+			worstB99 = b99;
+		if (msB.longestWaitMs > worstWaitB)
+			worstWaitB = msB.longestWaitMs;
+		totalA += msA.servedTotal;
+		totalB += msB.servedTotal;
+		if (msB.servedMinPerBot < minB)
+			minB = msB.servedMinPerBot;
+	}
 
-	std::printf("NAVBUDGET realm mode=A tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f longest_wait=%.0f\n",
-		PercentileDouble(sortedA, 0.5), a95, PercentileDouble(sortedA, 0.99),
-		sortedA.empty() ? 0.0 : sortedA.back(), (double)waitA);
-	std::printf("NAVBUDGET realm mode=B tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f longest_wait=%.0f\n",
-		PercentileDouble(sortedB, 0.5), b95, b99,
-		sortedB.empty() ? 0.0 : sortedB.back(), (double)waitB);
+	std::printf("NAVBUDGET realm summary worst_A_p95=%.3f worst_B_p95=%.3f worst_B_p99=%.3f worst_B_wait=%.0f served_A=%ld served_B=%ld served_B_min_per_bot=%d\n",
+		worstA95, worstB95, worstB99, (double)worstWaitB, totalA, totalB, minB);
 
 #ifndef _DEBUG
-	CHECK(b95 <= 2.0);
-	CHECK(b99 <= 4.5);
-	CHECK(waitB <= 1100);
-	CHECK(b95 <= a95 * 0.70);
+	CHECK(minB >= 1);                                   // every bot served in mode B
+	CHECK((long long)totalB * 10 >= (long long)totalA * 9);   // B total >= 90% of A total
+	CHECK(worstB95 <= 2.0);
+	CHECK(worstB99 <= 4.5);
+	CHECK(worstWaitB <= 1100);
+	CHECK(worstB95 <= worstA95 * 0.70);
 #endif
 }
-
