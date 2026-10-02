@@ -2246,3 +2246,205 @@ TEST_CASE("Perception_Snap_MetaFields")
 		}
 	}
 }
+
+// Writes one WIZ_MAGIC_PROCESS payload in the server's wire order (MagicInstance.cpp BuildSkillPacket):
+// u8 opcode, u32 skillId, i16 caster, i16 target, i16 data[7] = 23 bytes.
+static void AddSkillEvent(Buf & b, uint8_t op, uint32_t skillId, int16_t caster, int16_t target, const int16_t data[7])
+{
+	b.U8(op);
+	b.U32(skillId);
+	b.U16((uint16_t)caster);
+	b.U16((uint16_t)target);
+	for (int i = 0; i < 7; i++)
+		b.U16((uint16_t)data[i]);
+}
+
+TEST_CASE("Perception_ParseSkillEvent")
+{
+	const int16_t zero[7] = { 0, 0, 0, 0, 0, 0, 0 };
+
+	// CASTING: skill 110518 = bytes B6 AF 01 00, caster 2984, target 10001.
+	{
+		Buf b;
+		AddSkillEvent(b, BotCore::kMagicCasting, 110518, 2984, 10001, zero);
+		CHECK_EQ(int(b.v.size()), 23);
+
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(BotCore::ParseSkillEvent(b.v.data(), b.v.size(), 777, ev));
+		CHECK_EQ(int(ev.op), 1);
+		CHECK_EQ((unsigned)ev.skillId, 110518u);
+		CHECK_EQ(int(ev.caster), 2984);
+		CHECK_EQ(int(ev.target), 10001);
+		CHECK(ev.tMs == 777);
+	}
+
+	// EFFECTING with the target position in data[0..2] (x10, z10, y10).
+	{
+		const int16_t data[7] = { 12740, 8900, 123, 0, 0, 0, 0 };
+		Buf b;
+		AddSkillEvent(b, BotCore::kMagicEffecting, 110518, 2984, 10001, data);
+
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(BotCore::ParseSkillEvent(b.v.data(), b.v.size(), 1000, ev));
+		CHECK_EQ(int(ev.op), 3);
+		CHECK_EQ((unsigned)ev.skillId, 110518u);
+		CHECK_EQ(int(ev.caster), 2984);
+		CHECK_EQ(int(ev.target), 10001);
+		CHECK_EQ(int(ev.data[0]), 12740);
+		CHECK_EQ(int(ev.data[1]), 8900);
+		CHECK_EQ(int(ev.data[2]), 123);
+	}
+
+	// A short (22-byte) packet is rejected.
+	{
+		Buf b;
+		AddSkillEvent(b, BotCore::kMagicCasting, 110518, 2984, 10001, zero);
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(!BotCore::ParseSkillEvent(b.v.data(), 22, 777, ev));
+	}
+
+	// op outside 1..13 is rejected.
+	{
+		Buf b;
+		AddSkillEvent(b, 0, 110518, 2984, 10001, zero);
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(!BotCore::ParseSkillEvent(b.v.data(), b.v.size(), 777, ev));
+	}
+	{
+		Buf b;
+		AddSkillEvent(b, 14, 110518, 2984, 10001, zero);
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(!BotCore::ParseSkillEvent(b.v.data(), b.v.size(), 777, ev));
+	}
+
+	// Null buffer and zero length are rejected.
+	{
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		CHECK(!BotCore::ParseSkillEvent(nullptr, 23, 777, ev));
+		Buf b;
+		AddSkillEvent(b, BotCore::kMagicCasting, 110518, 2984, 10001, zero);
+		CHECK(!BotCore::ParseSkillEvent(b.v.data(), 0, 777, ev));
+	}
+}
+
+TEST_CASE("Perception_SkillRing_Basic")
+{
+	BotCore::SkillEventRing ring;
+	CHECK_EQ(ring.Count(), 0);
+	CHECK_EQ((unsigned)ring.Total(), 0u);
+
+	BotCore::SkillEvent ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.op = BotCore::kMagicCasting;
+	ev.skillId = 100;
+	ev.tMs = 10;
+	ring.Add(ev);
+	ev.op = BotCore::kMagicEffecting;
+	ev.skillId = 200;
+	ev.tMs = 20;
+	ring.Add(ev);
+
+	CHECK_EQ(ring.Count(), 2);
+	CHECK_EQ((unsigned)ring.Total(), 2u);
+	CHECK_EQ(int(ring.At(0).skillId), 200);   // newest
+	CHECK_EQ(int(ring.At(1).skillId), 100);
+
+	// Overflow: capacity is kSkillEventRing, Total keeps counting.
+	for (int i = 0; i < BotCore::kSkillEventRing + 5; i++)
+	{
+		ev.op = BotCore::kMagicEffecting;
+		ev.skillId = (uint32_t)(1000 + i);
+		ev.tMs = (uint64_t)(100 + i);
+		ring.Add(ev);
+	}
+	CHECK_EQ(ring.Count(), BotCore::kSkillEventRing);
+	CHECK_EQ((unsigned)ring.Total(), (unsigned)(2 + BotCore::kSkillEventRing + 5));
+	CHECK_EQ(int(ring.At(0).skillId), 1000 + BotCore::kSkillEventRing + 4);
+}
+
+TEST_CASE("Perception_SkillRing_Queries")
+{
+	BotCore::SkillEventRing ring;
+	BotCore::SkillEvent ev;
+	memset(&ev, 0, sizeof(ev));
+
+	ev.op = BotCore::kMagicCasting;
+	ev.skillId = 110518;
+	ev.caster = 2984;
+	ev.target = 10001;
+	ev.tMs = 1000;
+	ring.Add(ev);
+
+	ev.op = BotCore::kMagicEffecting;
+	ev.caster = 2984;
+	ev.target = 10001;
+	ev.tMs = 2100;
+	ring.Add(ev);
+
+	ev.op = BotCore::kMagicEffecting;
+	ev.caster = 2984;
+	ev.target = 7777;
+	ev.tMs = 3000;
+	ring.Add(ev);
+
+	// Newest EFFECTING (no caster filter) within the window.
+	const BotCore::SkillEvent * found = ring.FindLatest(BotCore::kMagicEffecting, BotCore::kSkillIdAny,
+		BotCore::kSkillIdAny, 3200, 5000);
+	CHECK(found != nullptr);
+	if (found != nullptr)
+	{
+		CHECK_EQ(int(found->target), 7777);
+		CHECK_EQ((unsigned)found->skillId, 110518u);
+	}
+
+	// Caster + target filter: the older EFFECTING is found (newest target does not match).
+	found = ring.FindLatest(BotCore::kMagicEffecting, 2984, 10001, 3200, 5000);
+	CHECK(found != nullptr);
+	if (found != nullptr)
+		CHECK_EQ((unsigned)found->tMs, 2100u);
+
+	// Outside the window -> nothing.
+	CHECK(ring.FindLatest(BotCore::kMagicEffecting, 2984, 10001, 10000, 5000) == nullptr);
+
+	// CountIn: two EFFECTING events overall, one for target 10001.
+	CHECK_EQ(ring.CountIn(BotCore::kSkillOpAny, BotCore::kSkillIdAny, 3200, 5000), 3);
+	CHECK_EQ(ring.CountIn(BotCore::kMagicEffecting, BotCore::kSkillIdAny, 3200, 5000), 2);
+	CHECK_EQ(ring.CountIn(BotCore::kMagicEffecting, 10001, 3200, 5000), 1);
+	CHECK_EQ(ring.CountIn(BotCore::kMagicEffecting, 10001, 10000, 5000), 0);
+}
+
+TEST_CASE("Perception_SkillRing_Copy")
+{
+	BotCore::SkillEventRing source;
+	BotCore::SkillEvent ev;
+	memset(&ev, 0, sizeof(ev));
+	ev.op = BotCore::kMagicEffecting;
+	ev.skillId = 110518;
+	ev.target = 10001;
+	ev.tMs = 500;
+	source.Add(ev);
+
+	BotCore::SkillEventRing copy = source;
+	CHECK_EQ(copy.Count(), 1);
+	CHECK_EQ((unsigned)copy.Total(), 1u);
+	CHECK_EQ(int(copy.At(0).skillId), 110518);
+
+	// Adding to the copy does not touch the source.
+	ev.skillId = 999;
+	ev.tMs = 900;
+	copy.Add(ev);
+	CHECK_EQ(copy.Count(), 2);
+	CHECK_EQ(source.Count(), 1);
+	CHECK_EQ(int(source.At(0).skillId), 110518);
+
+	// Clearing the source does not touch the copy.
+	source.Clear();
+	CHECK_EQ(source.Count(), 0);
+	CHECK_EQ(copy.Count(), 2);
+}

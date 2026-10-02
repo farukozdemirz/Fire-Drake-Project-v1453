@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4; F7 priest/debuff için ön koşul) |
 | Branch | `bot/F4-52 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-03 (cast), F4-12 (gözlem tabloları) — `KAPANDI`; F4-50/F4-51 ile dosya çakışması yok (yalnızca `Perception.h` sonuna ekleme) |
@@ -94,14 +94,53 @@ grep -n "m_skillEvents" GameServer/Bot/BotSession.cpp GameServer/Bot/BotManager.
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (derleme Release/Debug rc=0, `96 tests, 0 failed`; çalışma zamanı K9 Claude'da)
+- Branch / commit'ler: `bot/F4-52` (taban `gece/2026-10-02`); commit'ler bu satır eklendiğinde atılacak: kod + rapor `[F4-52] ...`, ardından `Durum` commit'i.
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
-- Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `BotCore/Perception.h` (+137): dosya sonuna `SkillEvent`, `ParseSkillEvent` (tam 23 bayt, op 1..13), `kSkillEventRing = 64` ve kopyalanabilir `SkillEventRing` (`Add`/`Count`/`Total`/`At`/`FindLatest`/`CountIn`/`Clear`) eklendi; opcode sabitleri `shared/packets.h` include edilmeden `kMagicCasting/kMagicFlying/kMagicEffecting/kMagicOpMax` olarak yinelendi, kaynak yorumda. Mevcut hiçbir satır silinmedi.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+202): `AddSkillEvent` yardımcısı ve 4 yeni `TEST_CASE` (`Perception_ParseSkillEvent`, `_SkillRing_Basic`, `_SkillRing_Queries`, `_SkillRing_Copy`).
+  - `GameServer/Bot/BotSession.h` (+1): `BotCore::SkillEventRing m_skillEvents` `m_hp` satırının altına, `m_obsLock` altında.
+  - `GameServer/Bot/BotSession.cpp` (+16, mevcut blok dokunulmadı): `WIZ_MAGIC_PROCESS && pkt.size() >= 23` için ayrı yeni blok (kilit dışında ayrıştır, kilit altında `Add`); `ResetForRespawn` içinde `m_skillEvents.Clear()`.
+  - `GameServer/Bot/BotManager.cpp` (+43/−3): `CommandSnap` `[events]` biçimini kabul eder; halka kilit altında `eventCopy`'ye kopyalanır; argümansız `snap` sonuna `events total=<n>` satırı, `snap <bot> events` ile en yeni ≤ 10 olay + `events total=<n> in_ring=<n>` yazılır. Silinen 3 satır yalnızca eski kullanım-dizesi/copy-yorumu (cast yankısı bloğuna dokunulmadı).
+- Derleme sonucu: `./tools/build.sh Release` ve `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (yalnızca eski `UpgradeHandler.cpp` C4789). `./tools/run-tests.sh Release --no-build` ve `Debug --no-build`: `96 tests, 0 failed` (plan başında 92).
+- Kabul kriterleri öz-değerlendirme: K1 ✔ K2 ✔ K3 ✔ (96 = 92 + 4, dört yeni ad `[ OK ]`) K4 ✔ (Perception.h'te yalnızca yorumda `shared/packets.h` geçer, include yok; `check-perception-contract.py` R4 0) K5 ✔ K6 ✔ (cast echo bloğu birebir; `-` satırları yalnızca `CommandSnap` kullanım/copy yorumu) K7 ✔ (`m_skillEvents` yalnızca `m_obsLock` altında, ayrıştırma kilit dışında) K8 ✔ K9 Claude'da.
+- Plandan sapmalar ve gerekçeleri: Yok. Not: `CountIn` imzası plandaki gibi `(op, target, nowMs, windowMs)`; `FindLatest`'te joker için `kSkillOpAny = 0xFF` ve `kSkillIdAny = -1` sabitleri eklendi (plan `0xFF`/`-1` diyordu).
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02 (gece modu)
+
+**Karar: DOĞRULANDI.** İncelenen commit: `bot/F4-52` @ `b088687` (taban `gece/2026-10-02`; iki commit: `91bbf55` kod, `b088687` rapor). Birleştirmeyi döngü betiği yapar.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | Dört kod dosyası `touch` edilip `./tools/build.sh Release` rc=0; log'da `warning` 0 (değişen dosyalarda ve genel) |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0; `warning` 0 |
+| K3 | ✔ | `run-tests.sh Release --no-build` ve `Debug --no-build`: `96 tests, 0 failed`; taban `PerceptionTests.cpp` 39 → 43 `TEST_CASE` (+4); `Perception_ParseSkillEvent`, `_SkillRing_Basic`, `_SkillRing_Queries`, `_SkillRing_Copy` her iki yapılandırmada `[ OK ]` |
+| K4 | ✔ | `grep -nE 'windows\.h|stdafx|GameServer|shared/' BotCore/Perception.h` yalnızca `:1790` yorum satırı (`shared/packets.h` kaynak notu); include yok; sabitler `kMagicCasting/Flying/Effecting/OpMax` yinelendi |
+| K5 | ✔ | Eklenen satırlarda `g_pMain\|GetUserPtr\|m_MagictableArray\|_MAGIC_TABLE\|m_pUser->` 0; olay yalnızca `OnPacket` paketinden (`BotSession.cpp:71-84`); `check-perception-contract.py` yeni ihlal çıkarmadı (R3 satırları eski test sürücüsü kayıtları) |
+| K6 | ✔ | `BotSession.cpp`/`.h` farkında `-` satırı 0 (mevcut `m_castEcho` bloğu `:58-68` dokunulmadı); `BotManager.cpp` `-` satırları yalnızca `CommandSnap` kullanım dizgisi + bir yorum. Çalışma zamanında `cast` aynı biçimde çalıştı; `ENABLED=0` yolu değişmedi (yalnızca alınan paket işlenir) |
+| K7 | ✔ | `grep -n m_skillEvents`: `BotSession.cpp:82` (`lock_guard<m_obsLock>` altında `Add`), `:425` (`ResetForRespawn` kilitli blokta `Clear`), `BotManager.cpp:2566` (kilitli kopya), `BotSession.h:156` (bildirim); `ParseSkillEvent` kilitten önce (`BotSession.cpp:79`) |
+| K8 | ✔ | Beş kod dosyası tamamen CRLF (`1924/1924`, `3443/3443`, `470/470`, `180/180`, `2450/2450`; depo LF, `autocrlf=true`); eklenen satırlarda ASCII dışı 0; `git diff --check` rc=0; yeni `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok; yeni ini anahtarı/komut/thread/paket isteği yok (`snap <bot> events` mevcut `snap` fiilinin ikinci argümanı) |
+| K9 (çalışma zamanı) | ✔ (fail yolu kısmen kod okumasıyla) | Aşağıda |
+
+**Kapsam:** `git diff --stat gece/2026-10-02...bot/F4-52`: yalnızca planın izin listesindeki 5 dosya + kendi plan dosyası; `docs/`, `AGENTS.md`, başka plan, `shared/` değişmedi. Uygulayıcı Raporu'ndaki sayılar (+137/+202/+1/+16/+43−3) ve test sayısı (92 → 96) doğru.
+
+**Çalışma zamanı (K9; `Release`, `GameServer.ini` değiştirilmedi (`ENABLED=1`, `TELEMETRY=decisions`); `BotMF_K` (2984), `BotWP_E` (2985), `BotPHD_K` (2986) zone 71 aynı bölgede; `BotWG_E` (2987) zone 71 ama (630, 920)'de, yani uzak bölgede; iş bitince `run-servers.sh stop`, `0/3`; `BotCommands.*` kalmadı):**
+
+1. **Kurban ve izleyici ✔.** `cast BotMF_K 110518 BotWP_E` sonrası `snap BotWP_E events` ve `snap BotPHD_K events` aynı iki olayı verdi: `op=1 skill=110518 caster=2984 target=2985 d0=1274 d1=0 d2=892` (age 4402 ms / 4405 ms) ve `op=3 … d0=1274 d1=1 d2=892` (age 3301 ms / 3304 ms). CASTING→EFFECTING aralığı ≈ 1,10 sn (cast süresine uyar); EFFECTING `d0..d2` hedef konumu (1274, 892) ile aynı. Caster'ın kendi halkasında da aynı iki olay var (sunucu yayını caster'a da gider).
+2. **İkinci cast ✔.** `BotPHD_K` `total` 2 → 4, aynı biçim (age 3302 / 4409 ms yeni, 50704 / 51805 ms eski).
+3. **Başka bölgedeki bot ✔.** İki cast boyunca `snap BotWG_E events`: `total=0 in_ring=0`.
+4. **NPC cast'leri ✔ (plan §2).** `BotWP_E` doğum noktasındayken NPC `caster=12955` olayları (`skill=300113`, `target=2985`) halkaya düştü (`total=10`); ayrım yapmadan saklanıyor.
+5. **Fail yolu: kısmen.** Bot ön denetimi (`bad_skill`) geçersiz skill'i ve sınıfa uymayan skill'i istemci tarafında reddediyor (`cast BotMF_K 999999 …`, `cast BotPHD_K 110518 …` → `refused (bad_skill)`, paket gitmez); MP yetersizliği komutla kurulamadı. Sunucu tarafı **kod okumasıyla** doğrulandı: `MagicInstance.cpp:705-717` `SendSkillFailed` yalnızca çağırana (`pSkillCaster->isPlayer()`) yollar, bölgeye yayınlamaz; ilk (menzil dışı) cast `out_of_range` ile istemci tarafında durdu ve hiçbir botta olay üretmedi (`total=0`). Plan K9'un "izleyicide fail olayı yok" beklentisi bu yüzden canlı değil, kodla kanıtlandı; engel değil.
+6. **Gerileme ✔.** Argümansız `snap BotPHD_K` sonuna `events total=4` ekledi (plan izin verdi), `see`, `cast`, `list`, `regene`, `move` çalıştı; hatalı `snap BotPHD_K foo` → `usage: snap <bot> [events]`; `Bot_2_10_2026.log` içinde bu oturumda `WARN`/`ERROR` 0.
+
+**Bulgular (hepsi not, engel değil)**
+
+1. **[Bilgi] NPC cast'leri 64'lük halkayı hızla doldurabilir** (`BotCore/Perception.h:1800` `kSkillEventRing`, `BotSession.cpp:71-84`). Doğum noktasında tek NPC (12955) birkaç saniyede 10 olay üretti; yoğun NPC bölgesinde bir botun ilgilendiği oyuncu olayları eskiyip atılabilir. Plan §2 ayrım yapmamayı açıkça istedi; F4-53'te sınıflandırma/süzme eklenirken (ör. yalnızca oyuncu ya da ilgili hedefe yönelik olayları ayrı tutmak) dikkate alınmalı.
+2. **[Bilgi] `ParseSkillEvent` op aralığı reddinde `out`'u kısmen yazmış bırakır** (`BotCore/Perception.h:1816-1832`); çağıran `false`'ta `out`'u kullanmıyor (`BotSession.cpp:78-84`), zararsız. Plan yalnızca null için "dokunmaz" dedi.
+3. **[Üslup] `At(i)` `while (idx < 0)` döngüsü** (`Perception.h:1868`) tek adımda biter (en çok bir tur); `%` ile eşdeğer, okunabilirlik tercihi.
+4. **[Bilgi] Fail olayları görünmez (beklenen):** `MAGIC_FAIL` yalnız çağırana gider; F4-53 debuff "başarısız" gözlemini bu halkadan çıkaramaz, EFFECTING yokluğu/süre aşımı olarak yorumlamalıdır (`docs/07` §9.2 ile F4-53 planında ele alınmalı).

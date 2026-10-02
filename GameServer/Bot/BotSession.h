@@ -153,6 +153,7 @@ public:
 	BotCore::PendingIds m_npcPending;                      // guarded by m_obsLock: ids of the last WIZ_NPC_REGION the NPC table did not know (Perception, ADR-0017 Ek F4-15)
 	BotCore::TeamTable m_team;                             // guarded by m_obsLock (the same mutex as m_obs): the bot's party members, from received WIZ_PARTY packets only (Perception, ADR-0017 Ek F4-18)
 	BotCore::HpTable m_hp;                                 // guarded by m_obsLock (the same mutex as m_obs): HP observations from received WIZ_TARGET_HP packets only (Perception, ADR-0017 Ek F4-51)
+	BotCore::SkillEventRing m_skillEvents;                 // guarded by m_obsLock (the same mutex as m_obs): received WIZ_MAGIC_PROCESS broadcasts of any caster (Perception, ADR-0017 Ek F4-52)
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;

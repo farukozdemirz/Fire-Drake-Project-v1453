@@ -1784,4 +1784,141 @@ namespace BotCore
 		c.remainingMs = remainingMs;
 		return true;
 	}
+
+	// --- observed skill events (ADR-0017 Ek F4-52) ---
+
+	// WIZ_MAGIC_PROCESS opcodes as the server writes them (shared/packets.h MagicOpcode). BotCore does not include
+	// that header (it belongs to the server), so the values are repeated here with the source noted. Only the range
+	// matters for the ring: a region broadcast carries CASTING (1), FLYING (2) or EFFECTING (3).
+	constexpr uint8_t kMagicCasting   = 1;     // MAGIC_CASTING
+	constexpr uint8_t kMagicFlying    = 2;     // MAGIC_FLYING
+	constexpr uint8_t kMagicEffecting = 3;     // MAGIC_EFFECTING
+	constexpr uint8_t kMagicOpMax     = 13;    // MAGIC_CANCEL2; an op outside 1..13 is rejected
+	constexpr uint8_t kSkillOpAny     = 0xFF;  // FindLatest / CountIn wildcard for the opcode
+	constexpr int16_t kSkillIdAny     = -1;    // FindLatest / CountIn wildcard for caster / target
+
+	constexpr int kSkillEventRing = 64;        // ring capacity per bot (design limit)
+
+	// One WIZ_MAGIC_PROCESS payload the bot received: u8 opcode, u32 skillId, i16 caster, i16 target, i16 data[7]
+	// (MagicInstance.cpp BuildSkillPacket, 23 bytes). data[] is stored raw: its meaning depends on the skill.
+	struct SkillEvent
+	{
+		uint64_t tMs;          // caller's clock (steady_clock ms) of the packet
+		uint8_t  op;
+		uint32_t skillId;
+		int16_t  caster, target;
+		int16_t  data[7];
+	};
+
+	// WIZ_MAGIC_PROCESS: at least 23 bytes; a shorter packet is rejected (the server broadcast is always 23). Bytes
+	// beyond the first 23 are ignored. op must be 1..13. Bounds safe; a null buffer returns false without touching
+	// 'out'; nowMs is copied into out.tMs on success.
+	inline bool ParseSkillEvent(const uint8_t * data, size_t len, uint64_t nowMs, SkillEvent & out)
+	{
+		if (data == nullptr || len < 23)
+			return false;
+
+		ByteReader r(data, len);
+		out.op = r.U8();
+		out.skillId = r.U32();
+		out.caster = (int16_t)r.U16();
+		out.target = (int16_t)r.U16();
+		for (int i = 0; i < 7; i++)
+			out.data[i] = (int16_t)r.U16();
+		if (!r.ok())
+			return false;
+
+		if (out.op < 1 || out.op > kMagicOpMax)
+			return false;
+
+		out.tMs = nowMs;
+		return true;
+	}
+
+	// Fixed-size, copyable ring of received skill events. No allocation and no mutex: the caller holds the lock.
+	// At(0) is the newest event; Total() counts every Add() including the ones the ring has overwritten.
+	class SkillEventRing
+	{
+	public:
+		SkillEventRing() { Clear(); }
+
+		void Clear()
+		{
+			m_count = 0;
+			m_next = 0;
+			m_total = 0;
+		}
+
+		int Count() const { return m_count; }
+		uint32_t Total() const { return m_total; }
+
+		void Add(const SkillEvent & ev)
+		{
+			m_events[m_next] = ev;
+			m_next = (m_next + 1) % kSkillEventRing;
+			if (m_count < kSkillEventRing)
+				m_count++;
+			m_total++;
+		}
+
+		// i = 0 is the newest event. The caller must pass 0 <= i < Count().
+		const SkillEvent & At(int i) const
+		{
+			int idx = (int)m_next - 1 - i;
+			while (idx < 0)
+				idx += kSkillEventRing;
+			return m_events[idx];
+		}
+
+		// Newest event within the last windowMs that matches op/caster/target (kSkillOpAny / kSkillIdAny are
+		// wildcards), or nullptr. Search order: newest first.
+		const SkillEvent * FindLatest(uint8_t op, int16_t caster, int16_t target, uint64_t nowMs, uint32_t windowMs) const
+		{
+			for (int i = 0; i < m_count; i++)
+			{
+				const SkillEvent & ev = At(i);
+				if (op != kSkillOpAny && ev.op != op)
+					continue;
+				if (caster != kSkillIdAny && ev.caster != caster)
+					continue;
+				if (target != kSkillIdAny && ev.target != target)
+					continue;
+				if (!WithinWindow(ev, nowMs, windowMs))
+					continue;
+				return &ev;
+			}
+			return nullptr;
+		}
+
+		// How many events within the last windowMs match op/target (wildcards as in FindLatest). op has no caster
+		// filter here, matching the plan's signature.
+		int CountIn(uint8_t op, int16_t target, uint64_t nowMs, uint32_t windowMs) const
+		{
+			int n = 0;
+			for (int i = 0; i < m_count; i++)
+			{
+				const SkillEvent & ev = At(i);
+				if (op != kSkillOpAny && ev.op != op)
+					continue;
+				if (target != kSkillIdAny && ev.target != target)
+					continue;
+				if (!WithinWindow(ev, nowMs, windowMs))
+					continue;
+				n++;
+			}
+			return n;
+		}
+
+	private:
+		// An event is inside the window when it is not in the future and its age is at most windowMs.
+		static bool WithinWindow(const SkillEvent & ev, uint64_t nowMs, uint32_t windowMs)
+		{
+			return nowMs >= ev.tMs && nowMs - ev.tMs <= windowMs;
+		}
+
+		SkillEvent m_events[kSkillEventRing];
+		int        m_count;   // valid events (<= kSkillEventRing)
+		int        m_next;    // slot the next Add() writes
+		uint32_t   m_total;   // every Add() since Clear()
+	};
 }

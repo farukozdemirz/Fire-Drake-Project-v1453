@@ -68,6 +68,21 @@ void BotSession::OnPacket(Packet & pkt)
 		}
 	}
 
+	// Perception skill events (ADR-0017 Ek F4-52): every WIZ_MAGIC_PROCESS broadcast the server sends to this session
+	// is stored in the fixed-size ring, for any caster (players and NPCs alike). Parsed before the lock; the ring
+	// lives under m_obsLock. The own-cast echo block above is unaffected.
+	if (opcode == WIZ_MAGIC_PROCESS && pkt.size() >= 23)
+	{
+		uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+		BotCore::SkillEvent ev;
+		if (BotCore::ParseSkillEvent(pkt.contents(), pkt.size(), nowMs, ev))
+		{
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_skillEvents.Add(ev);
+		}
+	}
+
 	// State change broadcast: u16 socket id, u8 bType, u32 nBuff (User.cpp:2817-2819). Only the bot's own packet is recorded;
 	// m_castSelfId (own id) is written on the IOCP thread before HandlePacket() runs on the same thread.
 	if (opcode == WIZ_STATE_CHANGE && pkt.size() >= 7)
@@ -407,6 +422,7 @@ void BotSession::ResetForRespawn()
 		m_npcPending.Clear();
 		m_team.Clear();
 		m_hp.Clear();
+		m_skillEvents.Clear();
 	}
 	m_obsUnresolved = 0;
 	m_npcUnresolved = 0;
