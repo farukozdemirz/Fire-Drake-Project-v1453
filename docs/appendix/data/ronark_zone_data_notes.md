@@ -48,7 +48,7 @@
 | 71 | 1380 | 1090 | 630 | 920 | 10 | 10 | 0 | 0 | 0 | 0 |
 | 72 | 848 | 129 | 183 | 898 | 5 | 5 | 0 | 0 | 0 | 0 |
 
-Usage (User.cpp GetStartPosition / AttackHandler.cpp Regene / CUser::Home): /town and death-respawn in zone 71 put Karus at (1380..1390, 1090..1100) and El Morad at (630..640, 920..930) (start + rand(0, bRange), positive only), unless the player is bound to a live bind object (m_sBind). /town needs HP >= 50% of max, not dead, not Kaul, not frozen (BUFF_TYPE_FREEZE). Coordinates are in meters (Warp() multiplies by 10).
+Usage (User.cpp GetStartPosition / AttackHandler.cpp Regene / CUser::Home): /town and death-respawn in zone 71 put Karus at exactly (1380, 1090) and El Morad at exactly (630, 920) (start + rand(0, bRange), positive only; the live row has bRangeX = bRangeZ = 0, the "10 | 10" in the table above are sKarusGateX/Z, not the range; verified by F1-08 `tools/arena-report.py` 2026-10-02), unless the player is bound to a live bind object (m_sBind). /town needs HP >= 50% of max, not dead, not Kaul, not frozen (BUFF_TYPE_FREEZE). Coordinates are in meters (Warp() multiplies by 10).
 START_POSITION_RANDOM: 0 rows for zones 71-73 (table only has zone 85 Chaos Dungeon rows).
 
 HOME (2 rows, one per nation; **not loaded by this GameServer** - no HomeSet/m_HomeArray in the repo, kept for reference):

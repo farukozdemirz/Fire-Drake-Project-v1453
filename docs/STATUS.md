@@ -53,12 +53,14 @@ Liste: `plans/README.md`.
 | F1-05 Bot ekipman/ağırlık raporu | KAPANDI | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
 | F1-06 Hasar modeli ve başlangıç HP | KAPANDI | `bot/F1-06` (taban: `main`); `plans/F1-06-hasar-modeli-ve-baslangic-hp.md`; DeepSeek `tools/stat-model.py` yazar, `db/002` Hp/Mp = 32000 yeniden uygular |
 | F1-07 Büyü ve heal modeli | KAPANDI | `bot/F1-07` (taban: `main`); `plans/F1-07-buyu-ve-heal-modeli.md`; DeepSeek `tools/spell-model.py` yazar, DB'ye yazılmaz |
-| F1-08 Arena A veri doğrulaması | HAZIR | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; DeepSeek `tools/arena-report.py` yazar (DB okuma + SMD) |
+| F1-08 Arena A veri doğrulaması | DOĞRULANDI | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; Tur 2'de doğrulandı, otonom döngü olduğu için `main`'e birleştirilmedi (etkileşimli `/plan-dogrula` veya proje sahibi birleştirir) |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
+| 2026-10-02 | F1-08 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔. Tur 1 ve Tur 2 araç sürümleri yan yana çalıştırıldı: CHECK dışı çıktı birebir aynı. CHECK spawn payı artık `docs/15` tanımıyla: A 143,8 (doc 144), B 159,8 (doc 160), kule A 132,8 / B 145,5; fark ≤ 0,5 m. K5 atıfları depoda tek tek açıldı. Eksen önerisi: A için `angle=15` (dh 0,83; 70,6 m arena içi yol), B yedeği `angle=135`. Zone 71'e otomatik taşıma yolları: Bifrost bitişi (zone 31→71) ve Chaos Dungeon çıkışı seviye ≥ 70 (`GameServerDlg.cpp:2677`); MEC-ZON-03 doğrulandı |
+| 2026-10-02 | F1-08 | DÜZELTME GEREKLİ (Tur 1) | 6/8 kriter ✔ (K4, K5 ✘). Araç bağımsız çalıştırıldı (67 satır, rapordakiyle aynı), PATH bağımsız Dijkstra ile aynı (Karus→A 259,8 m; El Morad (635,925)→A 678,1 m). Veri bulgusu: zone 71 `START_POSITION` `bRange=0`, respawn tam (1380,1090) / (630,920) (notlar dosyası düzeltildi). Engelleyen: CHECK spawn payı `docs/15`'teki tanımla (monster+soldier_npc+monument+gate) karşılaştırılmıyor, rapordaki "8 m ızgara" açıklaması yanlış (gerçek: Karus Commander 143,8); K5'te yanlış `dosya:satır` atıfları ve eksik `GameServerDlg.cpp:2677`. MEC-ZON-03 doğrulandı |
 | 2026-10-02 | F1-02 | DÜZELTME GEREKLİ (Tur 1) | 7/8 kriter ✔. Engelleyen: CAST süresi eşleştirmesi iptal sonrası bayat CASTING kullanıyor (3300 ms ölçülür, doğrusu 300); ayrıca planda eksik olan CASTING→iptal süresi eklenecek. Kod Claude'un planındaki lafızdan kaynaklı; düzeltme talimatı plan dosyasında |
 | 2026-10-02 | F1-01 | DOĞRULANDI (Tur 1) | 11/11 kriter ✔ (Release, Release `--packet-trace`, Debug bağımsız derlendi; bayraklı exe'de log dizgesi var, bayraksızda yok). Sapma: `WIZ_PARTY` kişisel ad okuduğu için izleme dışı (doğru). Yeni: KI-009 (düşük) |
 | 2026-10-01 | F0-02 | DOĞRULANDI (Tur 2) | 14/14 kriter ✔; Tur 1'in 6 bulgusu kapandı (zaman aşımı yolu geçici kopyayla çalışma zamanında doğrulandı). Kalan: KI-008 (düşük, `stop` satırı hep `0 sn`) |
@@ -95,7 +97,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Proje sahibi: F1-08 DeepSeek'te; bitince `/plan-dogrula`. T-DATA-01 giriş doğrulaması 5/6 bot için tamam (model = oyun, `docs/04` §3.4). Sıradaki: M-I girişinin teyidi, F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci), F1 faz sonuç raporu taslağı.
+1. F1-08 DOĞRULANDI ama `main`'e birleştirilmedi (otonom döngü): etkileşimli `/plan-dogrula` ya da proje sahibi `git switch main && git merge --no-ff bot/F1-08 && git push origin main`. Sonra Claude: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları. Paralel: Claude F1 faz sonuç raporu taslağı ve F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci); proje sahibi bot girişi denemesi: T-DATA-01 girişi 5/6 bot için tamam (model = oyun, `docs/04` §3.4), kalan M-I girişinin teyidi, sonra T-MECH-DMG ölçümü.
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
