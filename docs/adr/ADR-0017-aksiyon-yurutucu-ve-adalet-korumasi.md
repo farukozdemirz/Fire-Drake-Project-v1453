@@ -201,3 +201,16 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 8. **Kapsam sınırı:** `PerceptionSnapshot`, NPC HP'si, `WIZ_OBJECT_EVENT`, tabloyu kullanan karar/guard, pazarcılar yok. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 9. **Dilim sırası:** F4-15 bölge değişiminde NPC isteği; sonraki: `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`, tower mesafesi), betikli test dizileri; sonra F4 faz raporu taslağı.
 
+
+## Ek (F4-16): `Perception` dilim 5 — `PerceptionSnapshot` ve `/bot snap` (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-16-algi-anlik-goruntu.md`
+
+1. **Neden:** F4-12..F4-15 ile bot görüş alanını iki ayrı tabloda (`ObsTable`, `NpcTable`) tutuyor. Karar katmanı ham tabloları okursa sözleşme denetimi (`docs/14` §5.2) dağılır; `docs/13` §5.2 tek bir `PerceptionSnapshot` öngörür. Bu dilim görüntüyü saf mantık olarak (`BotCore/Perception.h`, `BuildSnapshot`) kurar ve gerçek veriyle `/bot snap` ile sınar. Karar/guard/telemetri bu dilimde yok; görüntü periyodik kurulmaz (kurulum maliyeti ve kullanıcısı olmadan ölçüm anlamsız).
+2. **Sınıflandırma:** botun kendisi atlanır; `nation != self.nation` düşman, aksi müttefik (`/bot see` ile aynı kural; karakterler her zaman ulus 1/2'dir). Ölü ve oturan oyuncular listede kalır (bayrak); NPC'ler tek listede, sınıflandırma (canavar/kule/kapı) yok: NPC tip tablosu karar katmanıyla birlikte gelir.
+3. **Gizli oyuncular süzülmez (açık soru):** `UnitView.invisibility` ham bayttır. İstemcinin gizli bir düşmanı çizip çizmediği doğrulanmadı `[Ö]` (`docs/03` §16: gizlilik durumu paketle gelir `[D]`); kararı karar katmanı verecek ve ancak bir insan ölçümüyle netleşir. Uyarı: ölçülene kadar karar katmanı gizli düşmanı **hedeflemek** için kullanmamalıdır (muhafazakâr varsayım).
+4. **Sıralama ve kapasite:** her liste `(dist, id)` artan, eşitlikte küçük kimlik önce (deterministik, tekrarlanabilir deney için); en çok 32 oyuncu/düşman, 32 NPC (tablolar 64/128; arena 8v8 için fazlasıyla yeterli); `*Total` kapasiteye sığmayanları da sayar. `dist` ve `ageMs` yalnızca raporlanır; bayat/uzak birim silinmez (eşik kararı karar katmanında).
+5. **Alanlar bilinçli dar:** `UnitView`/`NpcView` yalnızca tabloda bulunan, istemcinin bildiği alanları taşır (HP/MP/ad/envanter yok). `SelfState` yalnızca botun kendi `CUser`'ından HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor alır (`docs/14` §5.1 "Öz durum"); buff, cooldown, stok, `TeamView`, `NavView` sonraki dilimlerdir.
+6. **Bilinen sınır:** başkalarının `WIZ_STATE_CHANGE` yayını tabloya işlenmez, bu yüzden başkaları için `sitting` bayrağı (`resHpType == 2`) yalnızca `WIZ_USER_INOUT`/`WIZ_REQ_USERIN` anındaki değerdir; ayrı dilimde ele alınır.
+7. **Kapsam sınırı:** karar/guard, telemetri olayı, periyodik kurulum, takım ve navigasyon görünümü yok. `ENABLED=0` iken davranış değişmez; `/bot snap` yalnızca komut kanalından çalışır.
+8. **Dilim sırası:** F4-16 görüntü; sonraki: `SelfState` buff/cooldown/stok, party HP (`TeamView`), `WIZ_STATE_CHANGE` yayını, betikli test dizileri; sonra F4 faz raporu taslağı.

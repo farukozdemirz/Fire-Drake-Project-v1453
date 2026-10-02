@@ -164,6 +164,8 @@ struct Action { ActionType type; uint32 skillId; int16 targetId; float x, z; std
 struct ActionResult { uint64 decisionId; bool ok; int16 failCode; std::string reason; uint64 latencyMs; };
 ```
 
+> **Uygulama notu (F4-16, ADR-0017 Eki F4-16):** `PerceptionSnapshot` `BotCore/Perception.h`'de kısmen uygulandı: `SelfState` (HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor), düşman/müttefik oyuncu listeleri (`UnitView`, HP/MP/ad yok, en çok 32, yakından uzağa) ve NPC listesi (`NpcView`) `BuildSnapshot` ile kurulur; `/bot snap <bot>` ile sınanır. `team` (`TeamView`), `nav` (`NavView`) ve `self`'in buff/cooldown/stok alanları henüz yoktur (sonraki dilimler, F5).
+
 ### 5.3 Rol profili
 
 | Alan | Örnek |
