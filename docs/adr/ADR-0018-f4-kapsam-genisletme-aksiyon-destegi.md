@@ -33,3 +33,6 @@ Değerlendirme (`docs/reports/degerlendirme-2026-10-02.md`, §6) ADR'nin belirsi
 5. **Madde 8 (envanter doldurma)** yalnızca pot değil taş/scroll doldurmayı da kapsar ve `ScenarioReset` ile ortak sözleşme olarak tanımlanır (`docs/15` §6a).
 6. **Madde 10 (algı eksikleri)** yalnızca oturma/seviye değildir: değerlendirme düzeltme planları `F4-50..54` ile eşlenir (gözlem meta verisi, düşman HP tablosu, skill olay halkası, tek yönlü görüş teşhisi, gözlenen durum).
 7. **Kabul:** her dilimin oyun içi kabulü `docs/17` G4 kapısına ve `docs/reports/degerlendirme-takip.md` tablosundaki "oyun içinde doğrulandı" sütununa bağlanır; birim testi veya doküman güncellemesi dilimi "doğrulandı" yapmaz.
+
+## Ek 2 (2026-10-02, F4-25; otonom döngüde Claude kararı — gözden geçirilmeli)
+Dilim 2 (uçan skill'ler) ikiye bölünür: **2a** tek hedefli, tek tipli Type3 uçan skill'ler (F4-25: Fire ball, Fire spear, Static orb); **2b** okçu Type2 skill'leri (ok tüketimi ve yay denetimi; ok stoğu için dilim 8 ile birlikte). Gerekçe ve paket düzeni: ADR-0017 Eki F4-25. Dilim sırası değişmez; F4-25'ten sonra sıradaki **F4-26 = dilim 3 (çift tipli Type3)**.

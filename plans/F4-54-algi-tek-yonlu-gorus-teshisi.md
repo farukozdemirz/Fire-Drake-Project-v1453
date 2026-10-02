@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge cf22667) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-54 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12, F4-13, F4-14, F4-15 (görünür oyuncu/NPC tabloları ve bölge değişimi istekleri) — `KAPANDI` |

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge 34aeb41) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4; F7 priest/debuff için ön koşul) |
 | Branch | `bot/F4-52 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-03 (cast), F4-12 (gözlem tabloları) — `KAPANDI`; F4-50/F4-51 ile dosya çakışması yok (yalnızca `Perception.h` sonuna ekleme) |

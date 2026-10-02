@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge 9714aea) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-51 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-06 (`TargetHpReq`, CLI-10), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI`; F4-50 önerilir (aynı `UnitView` alanlarına dokunur: F4-50 önce birleşmeli, aksi halde `UnitView` çakışması çözülür) |
