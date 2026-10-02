@@ -19,6 +19,7 @@
 | GameServer'da yol bulma yok; AIServer A* yürünebilirliği ters yorumluyor | `[D]` | [`AIServer/MAP.cpp:124-127`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/MAP.cpp#L124-L127) (MB-11) |
 | Ana oynanabilir alan: 4-bağlantılı en büyük iç bileşen, 88 508 hücre (~1,42 km²); iki ulusun respawn noktası ve merkez bu bileşende | `[V]` | `appendix/maps/zone71_components4.png` |
 | Haritanın dış bandı (115 363 hücre) ulaşılamaz | `[V]` | |
+| **"Bowl" (kase):** harita merkezi ≈ (1024, 1024), yarıçap ~150 m. Canavar spawn'larının ~%25'i burada (705 canavardan 177'si; 100 m içinde 128) ve türler güçlü (undying, Death knight, Dark eyes, Baron, Cardinal, Harunga, Riote, Atross). İki ırkın savaşacak insan/takım ararken dönüp dolaştığı alan; canavarlar yürüyen oyuncuya saldırır; çok sayıda takılma noktası (engel) var | `[V]` yoğunluk, `[A]` oyuncu davranışı ve engel yoğunluğu | `K_NPCPOS` zone 71 (2026-10-03); proje sahibi gözlemi; T-NAV-12 ile doğrulanacak. Kontrollü arena A (merkeze ~284 m) bilinçli olarak bowl dışındadır; serbest Ronark (F11) bowl'u içerir |
 | Göller: iç kısımlar ana alandan kopuk yürünebilir cepler, kıyılar engelli | `[V]`/`[I]` | Bileşen görseli + yükseklik görseli |
 | Bu harita resmî 2005 Colony Zone haritasıyla örtüşüyor | `[S]` | [19](19_SOURCES_AND_EVIDENCE.md) W-10 |
 
