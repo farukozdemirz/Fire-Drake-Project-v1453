@@ -377,6 +377,123 @@ namespace BotCore
 		return r.ok();
 	}
 
+	// --- target HP observations (ADR-0017 Ek F4-51) ---
+
+	constexpr int      kHpMaxEntries = 32;      // table capacity per bot; oldest observation is dropped when full
+	constexpr uint32_t kHpStaleMs    = 10000;   // an observation older than this is stale (docs/09 section 4.2 EnemyIntel)
+
+	// One WIZ_TARGET_HP payload (User.cpp:2350-2387 SendTargetHP): u16 tid, u8 echo, i32 maxHp, i32 hp, u16 damage.
+	struct TargetHpMsg
+	{
+		uint16_t tid;
+		uint8_t  echo;
+		int32_t  maxHp, hp;
+		uint16_t damage;
+	};
+
+	// WIZ_TARGET_HP: exactly 13 bytes. A shorter packet is not accepted even when hp could be read: the wire
+	// layout is fixed and a partial packet could carry a wrong value. maxHp <= 0, hp < 0 or hp > maxHp is
+	// rejected as well. Bounds safe; a null buffer returns false without touching 'out'.
+	inline bool ParseTargetHp(const uint8_t * data, size_t len, TargetHpMsg & out)
+	{
+		if (data == nullptr || len < 13)
+			return false;
+
+		ByteReader r(data, len);
+		out.tid = r.U16();
+		out.echo = r.U8();
+		out.maxHp = (int32_t)r.U32();
+		out.hp = (int32_t)r.U32();
+		out.damage = r.U16();
+		if (!r.ok())
+			return false;
+
+		if (out.maxHp <= 0 || out.hp < 0 || out.hp > out.maxHp)
+			return false;
+
+		return true;
+	}
+
+	// One stored HP observation of a unit (player or NPC), keyed by the WIZ_TARGET_HP tid.
+	struct HpObs
+	{
+		uint16_t id;
+		int32_t  hp, maxHp;
+		uint16_t lastDamage;   // damage field of the packet that last touched the record
+		uint64_t atMs;         // caller's clock (steady_clock ms) of that packet
+		bool     reply;        // true when echo != 0: a reply to the bot's own selection request
+	};
+
+	// Copyable table of HP observations, keyed by id. It has no mutex: the caller holds the lock.
+	class HpTable
+	{
+	public:
+		HpTable() { Clear(); }
+
+		void Clear() { m_count = 0; }
+
+		int Count() const { return m_count; }
+
+		// Insert or overwrite by id. When a new id arrives and the table is full, the entry with the
+		// smallest atMs (oldest) is dropped. Returns true when the record was stored.
+		bool Upsert(const HpObs & src)
+		{
+			int idx = IndexOf(src.id);
+			if (idx >= 0)
+			{
+				m_entries[idx] = src;
+				return true;
+			}
+
+			if (m_count >= kHpMaxEntries)
+			{
+				int oldest = 0;
+				for (int i = 1; i < m_count; i++)
+				{
+					if (m_entries[i].atMs < m_entries[oldest].atMs)
+						oldest = i;
+				}
+				m_entries[oldest] = src;
+				return true;
+			}
+
+			m_entries[m_count] = src;
+			m_count++;
+			return true;
+		}
+
+		// Drops the record of 'id' (death / OUT); the last element closes the gap (order is not preserved).
+		void Invalidate(uint16_t id)
+		{
+			int idx = IndexOf(id);
+			if (idx < 0)
+				return;
+			m_count--;
+			if (idx != m_count)
+				m_entries[idx] = m_entries[m_count];
+		}
+
+		const HpObs * Find(uint16_t id) const
+		{
+			int idx = IndexOf(id);
+			return idx >= 0 ? &m_entries[idx] : nullptr;
+		}
+
+	private:
+		int IndexOf(uint16_t id) const
+		{
+			for (int i = 0; i < m_count; i++)
+			{
+				if (m_entries[i].id == id)
+					return i;
+			}
+			return -1;
+		}
+
+		HpObs m_entries[kHpMaxEntries];
+		int   m_count;
+	};
+
 	// WIZ_REGIONCHANGE: u16 count, then count x u16 sid. Writes at most 'cap' ids and returns how
 	// many were read (0 when malformed; a short trailing list just stops).
 	inline int ParseRegionList(const uint8_t * data, size_t len, uint16_t * ids, int cap)
@@ -1042,6 +1159,11 @@ namespace BotCore
 		float    vx, vz;               // estimated velocity in m/s (0 when it cannot be estimated)
 		uint8_t  posState;             // POS_FRESH / POS_STALE / POS_LOST
 		uint8_t  src;                  // kSrcObserved / kSrcTeam / kSrcEstimate
+		bool     hpKnown;              // a WIZ_TARGET_HP observation exists for this id (ADR-0017 Ek F4-51)
+		int32_t  hp, maxHp;            // observed target HP; valid only when hpKnown
+		uint16_t lastDamage;           // damage field of that packet
+		uint32_t hpAgeMs;              // nowMs - atMs of the observation (0 when unknown)
+		bool     hpStale;              // hpAgeMs > kHpStaleMs
 	};
 
 	// One visible NPC (monster, guard tower, gate, ...). No classification yet.
@@ -1057,6 +1179,11 @@ namespace BotCore
 		bool     dead;
 		bool     gateOpen;
 		uint32_t ageMs;
+		bool     hpKnown;              // a WIZ_TARGET_HP observation exists for this id (ADR-0017 Ek F4-51)
+		int32_t  hp, maxHp;            // observed target HP; valid only when hpKnown
+		uint16_t lastDamage;           // damage field of that packet
+		uint32_t hpAgeMs;              // nowMs - atMs of the observation (0 when unknown)
+		bool     hpStale;              // hpAgeMs > kHpStaleMs
 	};
 
 	// --- team view (ADR-0017 Ek F4-18) ---
@@ -1548,6 +1675,57 @@ namespace BotCore
 
 			out.npcTotal++;
 			SnapInsertNearest<NpcView, kSnapMaxNpcs>(out.npcs, out.npcCount, v);
+		}
+	}
+
+	// Attaches the HP observations in 'hp' to every view record already built in 'out'. Player ids are socket
+	// ids (< 10000) and NPC ids are >= NPC_BAND (10000), so one table serves both without collisions. A view
+	// record with no observation keeps hpKnown = false. BuildSnapshot's signature is unchanged.
+	inline void AttachHp(PerceptionSnapshot & out, const HpTable & hp, uint64_t nowMs)
+	{
+		for (int i = 0; i < out.enemyCount; i++)
+		{
+			UnitView & v = out.enemies[i];
+			const HpObs * o = hp.Find(v.id);
+			if (o == nullptr)
+				continue;
+			v.hpKnown = true;
+			v.hp = o->hp;
+			v.maxHp = o->maxHp;
+			v.lastDamage = o->lastDamage;
+			uint64_t age = nowMs > o->atMs ? nowMs - o->atMs : 0;
+			v.hpAgeMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+			v.hpStale = v.hpAgeMs > kHpStaleMs;
+		}
+
+		for (int i = 0; i < out.allyCount; i++)
+		{
+			UnitView & v = out.allies[i];
+			const HpObs * o = hp.Find(v.id);
+			if (o == nullptr)
+				continue;
+			v.hpKnown = true;
+			v.hp = o->hp;
+			v.maxHp = o->maxHp;
+			v.lastDamage = o->lastDamage;
+			uint64_t age = nowMs > o->atMs ? nowMs - o->atMs : 0;
+			v.hpAgeMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+			v.hpStale = v.hpAgeMs > kHpStaleMs;
+		}
+
+		for (int i = 0; i < out.npcCount; i++)
+		{
+			NpcView & v = out.npcs[i];
+			const HpObs * o = hp.Find(v.id);
+			if (o == nullptr)
+				continue;
+			v.hpKnown = true;
+			v.hp = o->hp;
+			v.maxHp = o->maxHp;
+			v.lastDamage = o->lastDamage;
+			uint64_t age = nowMs > o->atMs ? nowMs - o->atMs : 0;
+			v.hpAgeMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+			v.hpStale = v.hpAgeMs > kHpStaleMs;
 		}
 	}
 

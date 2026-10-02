@@ -1818,6 +1818,243 @@ TEST_CASE("Perception_ParseMoveFull")
 	}
 }
 
+TEST_CASE("Perception_ParseTargetHp")
+{
+	{
+		Buf b;
+		b.U16(0x1234); b.U8(1); b.U32(5650); b.U32(5266); b.U16(100);   // 13 bytes, real layout
+
+		BotCore::TargetHpMsg out;
+		memset(&out, 0, sizeof(out));
+		CHECK(BotCore::ParseTargetHp(b.v.data(), b.v.size(), out));
+		CHECK_EQ(int(out.tid), 0x1234);
+		CHECK_EQ(int(out.echo), 1);
+		CHECK_EQ(out.maxHp, 5650);
+		CHECK_EQ(out.hp, 5266);
+		CHECK_EQ(int(out.damage), 100);
+	}
+
+	{
+		Buf b;
+		b.U16(0x1234); b.U8(1); b.U32(5650); b.U32(5266);              // 12 bytes: one short
+		BotCore::TargetHpMsg out;
+		CHECK(!BotCore::ParseTargetHp(b.v.data(), b.v.size(), out));
+	}
+
+	{
+		Buf b;
+		b.U16(1); b.U8(0); b.U32(100); b.U32(101); b.U16(0);            // hp > maxHp
+		BotCore::TargetHpMsg out;
+		CHECK(!BotCore::ParseTargetHp(b.v.data(), b.v.size(), out));
+	}
+
+	{
+		Buf b;
+		b.U16(1); b.U8(0); b.U32(0); b.U32(0); b.U16(0);                // maxHp = 0
+		BotCore::TargetHpMsg out;
+		CHECK(!BotCore::ParseTargetHp(b.v.data(), b.v.size(), out));
+	}
+
+	{
+		Buf b;
+		b.U16(1); b.U8(0); b.U32(100); b.U32(0xFFFFFFFF); b.U16(0);     // hp < 0
+		BotCore::TargetHpMsg out;
+		CHECK(!BotCore::ParseTargetHp(b.v.data(), b.v.size(), out));
+	}
+
+	{
+		BotCore::TargetHpMsg out;
+		CHECK(!BotCore::ParseTargetHp(nullptr, 0, out));
+	}
+}
+
+TEST_CASE("Perception_HpTable_Upsert")
+{
+	BotCore::HpTable table;
+	CHECK_EQ(table.Count(), 0);
+
+	BotCore::HpObs o;
+	memset(&o, 0, sizeof(o));
+	o.id = 5;
+	o.hp = 100;
+	o.maxHp = 200;
+	o.atMs = 10;
+	CHECK(table.Upsert(o));
+
+	const BotCore::HpObs * p = table.Find(5);
+	CHECK(p != nullptr);
+	CHECK_EQ(p->hp, 100);
+
+	// Overwrite by id, no new slot.
+	BotCore::HpObs o2 = o;
+	o2.hp = 150;
+	o2.atMs = 20;
+	CHECK(table.Upsert(o2));
+	CHECK_EQ(table.Count(), 1);
+	CHECK_EQ(table.Find(5)->hp, 150);
+	CHECK(table.Find(5)->atMs == 20);
+
+	// Copy independence.
+	BotCore::HpTable copy = table;
+	copy.Upsert(o2);
+	copy.Invalidate(5);
+	CHECK_EQ(table.Count(), 1);
+	CHECK_EQ(copy.Count(), 0);
+
+	// Capacity 32: the 33rd new id drops the oldest atMs.
+	BotCore::HpTable full;
+	for (int i = 0; i < BotCore::kHpMaxEntries; i++)
+	{
+		BotCore::HpObs e;
+		memset(&e, 0, sizeof(e));
+		e.id = (uint16_t)(100 + i);
+		e.hp = i;
+		e.maxHp = 1000;
+		e.atMs = (uint64_t)i;
+		CHECK(full.Upsert(e));
+	}
+	CHECK_EQ(full.Count(), BotCore::kHpMaxEntries);
+
+	BotCore::HpObs newest;
+	memset(&newest, 0, sizeof(newest));
+	newest.id = 999;
+	newest.hp = 7;
+	newest.maxHp = 1000;
+	newest.atMs = 1000;
+	CHECK(full.Upsert(newest));
+	CHECK_EQ(full.Count(), BotCore::kHpMaxEntries);
+	CHECK(full.Find(100) == nullptr);       // atMs 0: the oldest was dropped
+	CHECK(full.Find(999) != nullptr);
+
+	// Invalidate closes the gap.
+	full.Invalidate(999);
+	CHECK(full.Find(999) == nullptr);
+}
+
+TEST_CASE("Perception_HpTable_Attach")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+	BotCore::NpcTable npcs;
+
+	{
+		BotCore::UnitObs u = MakeUnit(5);       // enemy player
+		u.nation = 2;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		CHECK(obs.Upsert(u));
+	}
+	{
+		BotCore::NpcObs n = MakeNpc(10005);     // npc, same numeric suffix but distinct id space
+		CHECK(npcs.Upsert(n));
+	}
+
+	BotCore::HpTable hp;
+	{
+		BotCore::HpObs o;
+		memset(&o, 0, sizeof(o));
+		o.id = 5;
+		o.hp = 400;
+		o.maxHp = 500;
+		o.lastDamage = 33;
+		o.atMs = 8000;
+		o.reply = true;
+		CHECK(hp.Upsert(o));
+	}
+	{
+		BotCore::HpObs o;
+		memset(&o, 0, sizeof(o));
+		o.id = 10005;
+		o.hp = 900;
+		o.maxHp = 1000;
+		o.atMs = 5000;
+		CHECK(hp.Upsert(o));
+	}
+
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 16000, out);
+	BotCore::AttachHp(out, hp, 16000);
+
+	CHECK_EQ(out.enemyCount, 1);
+	if (out.enemyCount == 1)
+	{
+		CHECK(out.enemies[0].hpKnown);
+		CHECK_EQ(out.enemies[0].hp, 400);
+		CHECK_EQ(out.enemies[0].maxHp, 500);
+		CHECK_EQ(int(out.enemies[0].lastDamage), 33);
+		CHECK_EQ(out.enemies[0].hpAgeMs, 8000u);
+		CHECK(!out.enemies[0].hpStale);          // 8000 <= kHpStaleMs
+	}
+	CHECK_EQ(out.npcCount, 1);
+	if (out.npcCount == 1)
+	{
+		CHECK(out.npcs[0].hpKnown);
+		CHECK_EQ(out.npcs[0].hp, 900);
+		CHECK_EQ(out.npcs[0].hpAgeMs, 11000u);
+		CHECK(out.npcs[0].hpStale);              // 11000 > kHpStaleMs
+	}
+
+	// Boundary: exactly kHpStaleMs is not stale, one more is.
+	BotCore::HpObs edge;
+	memset(&edge, 0, sizeof(edge));
+	edge.id = 5;
+	edge.hp = 1;
+	edge.maxHp = 2;
+	edge.atMs = 6000;
+	hp.Upsert(edge);
+
+	BotCore::PerceptionSnapshot out2;
+	BotCore::BuildSnapshot(self, obs, npcs, 6000 + BotCore::kHpStaleMs, out2);
+	BotCore::AttachHp(out2, hp, 6000 + BotCore::kHpStaleMs);
+	CHECK(!out2.enemies[0].hpStale);
+	CHECK_EQ(out2.enemies[0].hpAgeMs, BotCore::kHpStaleMs);
+
+	BotCore::PerceptionSnapshot out3;
+	BotCore::BuildSnapshot(self, obs, npcs, 6000 + BotCore::kHpStaleMs + 1, out3);
+	BotCore::AttachHp(out3, hp, 6000 + BotCore::kHpStaleMs + 1);
+	CHECK(out3.enemies[0].hpStale);
+	CHECK_EQ(out3.enemies[0].hpAgeMs, BotCore::kHpStaleMs + 1);
+}
+
+TEST_CASE("Perception_HpTable_Death")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	BotCore::UnitObs u = MakeUnit(5);
+	u.nation = 2;
+	u.x10 = 10030;
+	u.z10 = 10040;
+	CHECK(obs.Upsert(u));
+
+	BotCore::HpTable hp;
+	BotCore::HpObs o;
+	memset(&o, 0, sizeof(o));
+	o.id = 5;
+	o.hp = 10;
+	o.maxHp = 100;
+	o.atMs = 1000;
+	CHECK(hp.Upsert(o));
+
+	// The death invalidates the stored HP, exactly what BotSession does for WIZ_DEAD / OUT.
+	hp.Invalidate(5);
+	CHECK(hp.Find(5) == nullptr);
+
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, BotCore::NpcTable(), 2000, out);
+	BotCore::AttachHp(out, hp, 2000);
+	CHECK_EQ(out.enemyCount, 1);
+	if (out.enemyCount == 1)
+	{
+		CHECK(!out.enemies[0].hpKnown);
+		CHECK_EQ(out.enemies[0].hpAgeMs, 0u);
+	}
+
+	// BuildSnapshot's signature and its ageMs are unchanged.
+	CHECK_EQ(out.tMs, 2000u);
+	CHECK_EQ(out.enemies[0].ageMs, 2000u);
+}
+
 TEST_CASE("Perception_Obs_MoveHistory")
 {
 	BotCore::ObsTable table;

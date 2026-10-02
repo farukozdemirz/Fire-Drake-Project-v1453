@@ -93,6 +93,29 @@ void BotSession::OnPacket(Packet & pkt)
 		m_targetHpEcho = (1ull << 63) | (uint64(echo) << 16) | uint64(tid);
 	}
 
+	// Perception target HP (ADR-0017 Ek F4-51): every WIZ_TARGET_HP the bot receives is stored per id, beside the
+	// action record above. Parsed before the lock; the table lives under m_obsLock. Nothing is read from any CUser.
+	if (opcode == WIZ_TARGET_HP)
+	{
+		const uint8 * data = pkt.size() > 0 ? pkt.contents() : nullptr;
+		size_t len = pkt.size();
+		uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+		BotCore::TargetHpMsg msg;
+		if (BotCore::ParseTargetHp(data, len, msg))
+		{
+			BotCore::HpObs obs;
+			obs.id = msg.tid;
+			obs.hp = msg.hp;
+			obs.maxHp = msg.maxHp;
+			obs.lastDamage = msg.damage;
+			obs.atMs = nowMs;
+			obs.reply = msg.echo != 0;
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_hp.Upsert(obs);
+		}
+	}
+
 	// Respawn reply: u16 x*10, u16 z*10, u16 y*10 (AttackHandler.cpp:196-198). ActionExecutor::RequestRegene clears the
 	// record before its request and reads it afterwards, on the same thread.
 	if (opcode == WIZ_REGENE && pkt.size() >= 6)
@@ -205,9 +228,14 @@ void BotSession::OnPacket(Packet & pkt)
 			{
 				std::lock_guard<std::mutex> lock(m_obsLock);
 				if (type == BotCore::kObsInOutOut)
+				{
 					m_obs.Remove(unit.sid);
+					m_hp.Invalidate(unit.sid);
+				}
 				else
+				{
 					m_obs.Upsert(unit);
+				}
 			}
 		}
 		else if (opcode == WIZ_REQ_USERIN)
@@ -241,6 +269,7 @@ void BotSession::OnPacket(Packet & pkt)
 			uint16 sid = (uint16)data[0] | ((uint16)data[1] << 8);
 			std::lock_guard<std::mutex> lock(m_obsLock);
 			m_obs.MarkDead(sid, nowMs);
+			m_hp.Invalidate(sid);
 		}
 	}
 
@@ -262,9 +291,14 @@ void BotSession::OnPacket(Packet & pkt)
 			{
 				std::lock_guard<std::mutex> lock(m_obsLock);
 				if (type == BotCore::kNpcInOutOut)
+				{
 					m_npcs.Remove(npc.id);
+					m_hp.Invalidate(npc.id);
+				}
 				else
+				{
 					m_npcs.Upsert(npc);
+				}
 			}
 		}
 		else if (opcode == WIZ_REQ_NPCIN)
@@ -301,6 +335,7 @@ void BotSession::OnPacket(Packet & pkt)
 			uint16 id = (uint16)data[0] | ((uint16)data[1] << 8);
 			std::lock_guard<std::mutex> lock(m_obsLock);
 			m_npcs.MarkDead(id, nowMs);
+			m_hp.Invalidate(id);
 		}
 	}
 }
@@ -371,6 +406,7 @@ void BotSession::ResetForRespawn()
 		m_npcs.Clear();
 		m_npcPending.Clear();
 		m_team.Clear();
+		m_hp.Clear();
 	}
 	m_obsUnresolved = 0;
 	m_npcUnresolved = 0;

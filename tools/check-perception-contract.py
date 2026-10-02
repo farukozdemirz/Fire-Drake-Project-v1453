@@ -8,7 +8,8 @@ Scans the bot sources (GameServer/Bot, BotCore) and checks five rules:
   R3  cross-session CUser reads only in the known test drivers
   R4  BotCore includes only standard and sibling headers
   R5  the view structs carry no forbidden field (the player name in UnitView is allowed from F4-50;
-      UnitView hp stays forbidden until F4-51; the NPC name is never allowed)
+      the target HP in UnitView/NpcView is allowed from F4-51 because it arrives with WIZ_TARGET_HP,
+      docs/03 section 16 [D]; the NPC name is never allowed)
 
 Exit codes: 0 PASS, 1 at least one violation, 2 usage / input error.
 Only the standard library is used. The scanner is line based (comment and
@@ -77,10 +78,11 @@ ALLOW_R3 = [
     (BOT, "IsSamePartyMember", "m_pUser", 2, TEST_DRIVER),
 ]
 VIEW_FORBIDDEN = {   # struct name -> forbidden words (lower case) in field names
-    # The player name arrives with WIZ_USER_INOUT (docs/03 section 16) and is allowed from F4-50 on;
-    # hp stays forbidden here until F4-51. The NPC name is never a decision input.
-    "UnitView": ("hp", "mp", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
-    "NpcView": ("hp", "mp", "name", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
+    # The player name arrives with WIZ_USER_INOUT (docs/03 section 16) and is allowed from F4-50 on.
+    # The target HP arrives with WIZ_TARGET_HP (docs/03 section 16 [D]) and is allowed from F4-51 on;
+    # mp/cooldown/inventory data is never sent and stays forbidden. The NPC name is never a decision input.
+    "UnitView": ("mp", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
+    "NpcView": ("mp", "name", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
     "TeamMemberView": ("cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
 }
 
@@ -595,6 +597,22 @@ def selftest_cases(base):
     })
     res = audit(base, [], [])
     assert not res["violations"], res["violations"]   # player name is allowed in UnitView (F4-50)
+
+    reset_tree(base)
+    write_tree(base, {
+        "GameServer/Bot/T.cpp": "\n".join(["void Foo::Bar(int a)", "{", "\treturn;", "}"]),
+        "BotCore/Perception.h": clean_perception().replace("\t\tfloat x, z;", "\t\tfloat x, z;\n\t\tint32_t hp, maxHp;"),
+    })
+    res = audit(base, [], [])
+    assert not res["violations"], res["violations"]   # target HP is allowed in UnitView (F4-51)
+
+    reset_tree(base)
+    write_tree(base, {
+        "GameServer/Bot/T.cpp": "\n".join(["void Foo::Bar(int a)", "{", "\treturn;", "}"]),
+        "BotCore/Perception.h": clean_perception().replace("\t\tuint16_t id;\n\t};", "\t\tuint16_t id;\n\t\tint32_t hp, maxHp;\n\t};"),
+    })
+    res = audit(base, [], [])
+    assert not res["violations"], res["violations"]   # target HP is allowed in NpcView (F4-51)
 
     reset_tree(base)
     write_tree(base, {

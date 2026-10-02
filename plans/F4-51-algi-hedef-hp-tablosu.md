@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-51 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-06 (`TargetHpReq`, CLI-10), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI`; F4-50 önerilir (aynı `UnitView` alanlarına dokunur: F4-50 önce birleşmeli, aksi halde `UnitView` çakışması çözülür) |
@@ -102,13 +102,30 @@ grep -n "m_hp" GameServer/Bot/BotSession.cpp GameServer/Bot/BotManager.cpp
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-51` (taban: `gece/2026-10-02` @ `d3605e2`, F4-50 birleşmiş); commit'ler bu raporla birlikte.
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/Perception.h`: `kHpMaxEntries`, `kHpStaleMs`, `TargetHpMsg`, `ParseTargetHp` (tam 13 bayt + `maxHp<=0`/`hp<0`/`hp>maxHp` ret), `HpObs`, kopyalanabilir `HpTable` (ezme, dolunca en eski `atMs` atılır, `Invalidate`, `Find`), `UnitView`/`NpcView`'a HP alanları, saf `AttachHp` (`BuildSnapshot` imzası değişmedi).
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: 4 yeni `TEST_CASE` (`ParseTargetHp`, `HpTable_Upsert`, `HpTable_Attach`, `HpTable_Death`).
+  - `GameServer/Bot/BotSession.h`: `HpTable m_hp` (m_obsLock).
+  - `GameServer/Bot/BotSession.cpp`: mevcut `WIZ_TARGET_HP` kaydının yanına ayrı algı bloğu (kilitten önce ayrıştırma, kilit altında `Upsert`), `WIZ_USER_INOUT OUT`/`WIZ_NPC_INOUT OUT`/`WIZ_DEAD` (oyuncu ve NPC) `Invalidate`, `ResetForRespawn` temizliği.
+  - `GameServer/Bot/BotManager.cpp`: yalnızca `CommandSnap` — `hpCopy` (kilit altında), `AttachHp` çağrısı, `enemy`/`ally`/`npc` satırlarına `hp=<hp>/<max> hp_age=<ms>[ stale]` veya `hp=?`.
+  - `tools/check-perception-contract.py`: `UnitView`/`NpcView` `VIEW_FORBIDDEN`'dan `hp` çıkarıldı, `mp`/`name`/`cooldown`/envanter yasak kaldı; başlık R5 açıklaması güncellendi; selftest'e `hp` alanının `UnitView` ve `NpcView`'da geçtiği iki vaka eklendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0 (yeni uyarı yok), `./tools/build.sh Debug` rc=0; `./tools/run-tests.sh Release` ve `Debug` → `92 tests, 0 failed` (plan başı 88, +4). `python3 tools/check-perception-contract.py` → `RESULT: PASS` (R1 0, R2 0/28, R3 0/18, R4 0, R5 0), `--selftest` → `selftest OK`.
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ Release rc=0, touch sonrası değişen dosyalarda uyarı yok.
+  - K2 ✔ Debug rc=0, uyarı yok.
+  - K3 ✔ Release+Debug `92 tests, 0 failed`, dört yeni ad `[ OK ]`.
+  - K4 ✔ `BotCore/Perception.h`'te yasak include/kelime grep'i boş.
+  - K5a ✔ araç `RESULT: PASS` + `--selftest OK`; `mp` eklemek hâlâ R5 ihlali (selftest), `hp` alanı `UnitView`/`NpcView`'da geçiyor.
+  - K5 ✔ yeni satırlarda `g_pMain`/`GetUserPtr`/`_PARTY_GROUP`/`m_pUser->` yok; HP yalnızca `WIZ_TARGET_HP` paketinden (`AttachHp` saf tabloyu kullanır).
+  - K6 ✔ mevcut `m_targetHpValues`/`m_targetHpEcho` kaydı ve `/bot target` yolu değişmedi; `BotSession.cpp` farkında `-` satırı yok.
+  - K7 ✔ yeni paket isteği/zamanlayıcı/ini anahtarı/komut yok; `ENABLED=0` yolu değişmedi (yalnızca alınan paket işlenir).
+  - K8 ✔ `m_hp` yalnızca `m_obsLock` altında (6 erişim: 5 `OnPacket`/`ResetForRespawn` kilitli blok, 1 `CommandSnap` kilitli kopya); ayrıştırma kilitten önce.
+  - K9 ✔ ASCII+CRLF (araç ASCII+LF, mevcut kural), `git diff --check` boş; yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok (bulunan iki `printf` eski satırlar).
+  - K10 → Claude yapar (çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: yok.
+- Açık sorular: yok.
 
 ---
 
