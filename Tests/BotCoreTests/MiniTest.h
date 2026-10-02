@@ -151,10 +151,12 @@ namespace minitest
 #define CHECK_EQ(a, b) \
 	do \
 	{ \
-		if (!((a) == (b))) \
+		const auto & minitest_a_ = (a); \
+		const auto & minitest_b_ = (b); \
+		if (!(minitest_a_ == minitest_b_)) \
 		{ \
 			std::ostringstream minitest_oss_; \
-			minitest_oss_ << "CHECK_EQ(" #a ", " #b ") failed: " << (a) << " != " << (b); \
+			minitest_oss_ << "CHECK_EQ(" #a ", " #b ") failed: " << minitest_a_ << " != " << minitest_b_; \
 			::minitest::ReportFailure(__FILE__, __LINE__, minitest_oss_.str()); \
 		} \
 	} while (0)
