@@ -635,6 +635,10 @@ namespace BotCore
 	// F5-57 (docs/12 s13.3): the intent + real-progress verdict. A caller feeds the intent
 	// (start/stop), the sent move packets and the guard rejections, then asks Assess() each tick.
 	// AwaitingPacket, BlockedByGuard and Idle are not stuck states; only Stalled is a detection.
+	// Integration contract: the caller passes moving = (verdict == Progressing ||
+	// verdict == Stalled) to NavStuckMonitor::Update; Idle, AwaitingPacket and BlockedByGuard
+	// pass moving = false (the monitor takes its "stopped, not stuck" path, a running recovery is
+	// cancelled, memory is kept).
 	enum class NavProgressVerdict { Idle, Progressing, AwaitingPacket, Stalled, BlockedByGuard };
 
 	struct NavProgressParams
@@ -655,7 +659,9 @@ namespace BotCore
 		void Reset();
 		// Movement intent. Starting resets the packet window; ending makes Assess Idle.
 		void SetIntent(bool active, int64_t nowMs);
-		// A new route: the progress baseline restarts, the packet history is kept.
+		// A new route: the progress baseline restarts, the packet history is kept. The caller must
+		// call it on every new route; without it the assessor falls back to the Euclidean
+		// displacement between packets.
 		void NotifyReplan(int64_t nowMs, float routeProgressM);
 		// A move packet that reached the wire.
 		void OnPacketSent(int64_t tMs, float x, float z, float routeProgressM, float distToGoalM);
@@ -679,7 +685,7 @@ namespace BotCore
 
 		bool m_intent = false;
 		bool m_hasProgressBase = false;
-		float m_progressBaseM = 0.0f;
+		int64_t m_replanMs = 0;      // anchor packets must be at or after this stamp after a replan
 		Packet m_packets[kCapacity];
 		int m_count = 0;
 		int m_next = 0;
@@ -692,7 +698,7 @@ namespace BotCore
 	{
 		m_intent = false;
 		m_hasProgressBase = false;
-		m_progressBaseM = 0.0f;
+		m_replanMs = 0;
 		m_count = 0;
 		m_next = 0;
 		for (int i = 0; i < kCapacity; ++i)
@@ -710,15 +716,16 @@ namespace BotCore
 			m_rejectCount = 0;
 			m_rejectNext = 0;
 			m_hasProgressBase = false;
-			m_progressBaseM = 0.0f;
+			m_replanMs = 0;
 		}
 		m_intent = active;
 	}
 
-	inline void NavProgressAssessor::NotifyReplan(int64_t, float routeProgressM)
+	// reserved: the baseline is the first packet sent after the replan
+	inline void NavProgressAssessor::NotifyReplan(int64_t nowMs, float)
 	{
 		m_hasProgressBase = true;
-		m_progressBaseM = routeProgressM;
+		m_replanMs = nowMs;
 	}
 
 	inline void NavProgressAssessor::OnPacketSent(int64_t tMs, float x, float z, float routeProgressM,
@@ -755,7 +762,8 @@ namespace BotCore
 		if (!m_intent)
 			return NavProgressVerdict::Idle;
 
-		const int64_t winStart = nowMs - (int64_t)params.periods * (int64_t)params.periodMs;
+		const int64_t winStart = nowMs
+			- ((int64_t)params.periods * (int64_t)params.periodMs + (int64_t)params.toleranceMs);
 
 		// (2) Arrival of the newest packet: the goal is within the arrival radius.
 		if (m_count > 0 && params.arriveM > 0.0f && NewestSent().distToGoalM <= params.arriveM)
@@ -793,7 +801,9 @@ namespace BotCore
 
 		// (4) Waiting: no packet at all yet, or the expected packet is overdue. Between two
 		// on-cadence packets the bot is not "waiting" but confirmed moving (Progressing), so the
-		// monitor keeps its window; only a gap beyond one period counts as a wait.
+		// monitor keeps its window; only a gap beyond one period counts as a wait. With intent
+		// active and no packet for a long time the verdict stays AwaitingPacket; it is not a stuck
+		// detection.
 		if (m_count == 0)
 			return NavProgressVerdict::AwaitingPacket;
 		if (nowMs - NewestSent().t > (int64_t)(params.periodMs + params.toleranceMs))
@@ -806,6 +816,11 @@ namespace BotCore
 		for (int i = 0; i < m_count; ++i)
 		{
 			const int idx = (m_next - 1 - i + 2 * kCapacity) % kCapacity;
+			// After a replan only packets sent on the new route may anchor the comparison: the old
+			// route's progress is not comparable with the new route's. The packet history itself is
+			// kept for the guard and waiting decisions.
+			if (m_hasProgressBase && m_packets[idx].t < m_replanMs)
+				continue;
 			if (m_packets[idx].t <= winStart)
 			{
 				oldestIdx = idx;

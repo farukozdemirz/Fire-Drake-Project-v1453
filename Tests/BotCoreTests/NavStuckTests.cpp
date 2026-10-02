@@ -1684,12 +1684,20 @@ namespace
 	// When useMonitor is set, the same verdict drives NavStuckMonitor::Update (integration
 	// contract: moving = Progressing || Stalled).
 	CadenceAus RunProgressWalk(const NavGrid & grid, const std::vector<NavRoutePoint> & route,
-		float totalLen, float speedMps, int64_t durationMs, int tickModel, bool useMonitor, uint32_t seed)
+		float speedMps, int64_t durationMs, int tickModel, bool useMonitor, uint32_t seed)
 	{
 		CadenceAus out;
 		double mean = 100.0, jitter = 0.0, late = 0.0;
 		if (tickModel == 1) { mean = 100.0; jitter = 10.0; }
 		else if (tickModel == 2) { mean = 110.8; jitter = 20.0; late = 0.03; }
+
+		float totalLen = 0.0f;         // polyline length; the route shape drives the walk
+		for (size_t i = 0; i + 1 < route.size(); ++i)
+		{
+			const float dx = route[i + 1].x - route[i].x;
+			const float dz = route[i + 1].z - route[i].z;
+			totalLen += std::sqrt(dx * dx + dz * dz);
+		}
 
 		std::mt19937 rngSeed(seed);
 		NavProgressAssessor assessor;
@@ -1731,7 +1739,8 @@ namespace
 					cum += seg;
 				}
 
-				assessor.OnPacketSent(t, x, z, pos, totalLen - pos);
+				const float routeProgressM = NavRouteProgressM(route.data(), (int)route.size(), x, z);
+				assessor.OnPacketSent(t, x, z, routeProgressM, totalLen - pos);
 				nextPacket = t + (int64_t)BotCore::kMovePeriodMs;
 			}
 
@@ -1802,22 +1811,30 @@ TEST_CASE("NavProgress_RouteProgress")
 TEST_CASE("NavProgress_NormalWalk_NoAlarm")
 {
 	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
-	const std::vector<NavRoutePoint> route = { { 1000.0f, 900.0f }, { 1000.0f, 5000.0f } };
-	const float len = 4100.0f;
 
-	struct Scenario { const char * name; float speed; };
-	const Scenario scenarios[3] = {
-		{ "walk45", 4.5f },
-		{ "sprint67", 6.7f },
-		{ "corner45", 4.5f },
+	const std::vector<NavRoutePoint> walk45 = { { 1000.0f, 900.0f }, { 1000.0f, 5000.0f } };
+	// Two corners: segments 1100 m / 1000 m / 4000 m; at 4.5 m/s the 600 s walk covers 2700 m
+	// and passes a waypoint, so a packet straddles the corner.
+	const std::vector<NavRoutePoint> corner45 = { { 1000.0f, 900.0f }, { 1000.0f, 2000.0f },
+		{ 2000.0f, 2000.0f }, { 2000.0f, 6000.0f } };
+	// Tight corners: segments 50 m / 30 m / 4050 m; the first two segments take a few packets.
+	const std::vector<NavRoutePoint> cornerDense = { { 1000.0f, 900.0f }, { 1000.0f, 950.0f },
+		{ 1030.0f, 950.0f }, { 1030.0f, 5000.0f } };
+
+	struct Scenario { const char * name; float speed; const std::vector<NavRoutePoint> * route; };
+	const Scenario scenarios[4] = {
+		{ "walk45", 4.5f, &walk45 },
+		{ "sprint67", 6.7f, &walk45 },
+		{ "corner45", 4.5f, &corner45 },
+		{ "corner_dense", 4.5f, &cornerDense },
 	};
 
-	for (int i = 0; i < 3; ++i)
+	for (int i = 0; i < 4; ++i)
 	{
 		for (int model = 0; model < 3; ++model)
 		{
-			const CadenceAus r = RunProgressWalk(grid, route, len, scenarios[i].speed, 600000, model,
-				true, 20261003u);
+			const CadenceAus r = RunProgressWalk(grid, *scenarios[i].route, scenarios[i].speed, 600000,
+				model, true, 20261003u);
 			std::printf("NAVPROGRESS normal %s model=%d ticks=%ld stalled=%ld awaiting=%ld progressing=%ld false_alarms=%ld monitor_episodes=%d\n",
 				scenarios[i].name, model, r.ticks, r.stalled, r.awaiting, r.progressing, r.stalledEpisodes,
 				r.stuckEpisodes);
@@ -1851,10 +1868,11 @@ TEST_CASE("NavProgress_Stalled")
 		CHECK(a.Assess(1500, pp) == NavProgressVerdict::Progressing);
 		CHECK(a.Assess(3000, pp) == NavProgressVerdict::Progressing);   // still on cadence
 		a.OnPacketSent(3000, 0.0f, 0.0f, 0.0f, 100.0f);
-		// Window spans 1500..3000 (1500 ms) -> not full, no Stalled yet.
+		// The window starts before the first packet -> no anchor, no Stalled yet.
 		CHECK(a.Assess(3000, pp) == NavProgressVerdict::Progressing);
 		a.OnPacketSent(4700, 0.0f, 0.0f, 0.0f, 100.0f);
-		// Window 1600..4700: anchor at 1500, span 3200 ms -> Stalled (progress 0).
+		// The window starts at 1500, so the packet at 1500 is the anchor and the full window
+		// (periods * periodMs + toleranceMs = 3200 ms) has elapsed -> Stalled (progress 0).
 		CHECK(a.Assess(4700, pp) == NavProgressVerdict::Stalled);
 	}
 
@@ -1869,6 +1887,31 @@ TEST_CASE("NavProgress_Stalled")
 		a.OnPacketSent(4700, 0.0f, 0.0f, 1.2f, 98.8f);
 		CHECK(a.Assess(4700, pp) == NavProgressVerdict::Progressing);
 	}
+
+	// Frozen packets after a replan: packets at 1500 and every 1500 ms carry the same route
+	// progress. Sweeping 0..12000 ms at 10 ms steps, the first Stalled is the anchor packet
+	// plus periods * periodMs + toleranceMs (1500 + 3200 = 4700).
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.NotifyReplan(0, 0.0f);
+		const NavProgressParams pp;
+		int64_t firstStall = -1;
+		int64_t nextPacket = 1500;
+		for (int64_t t = 0; t <= 12000; t += 10)
+		{
+			while (t >= nextPacket)
+			{
+				a.OnPacketSent(nextPacket, 0.0f, 0.0f, 0.0f, 100.0f);
+				nextPacket += 1500;
+			}
+			if (firstStall < 0 && a.Assess(t, pp) == NavProgressVerdict::Stalled)
+				firstStall = t;
+		}
+		std::printf("NAVPROGRESS stalled frozen first_ms=%lld\n", (long long)firstStall);
+		CHECK(firstStall >= 0);
+		CHECK(firstStall >= 1500 + 3200);
+	}
 }
 
 TEST_CASE("NavProgress_UTurn_vs_Displacement")
@@ -1876,8 +1919,6 @@ TEST_CASE("NavProgress_UTurn_vs_Displacement")
 	// Narrow U-turn: the route progress is positive while the Euclidean displacement across the
 	// window is small. F5-09 alone (Euclidean) would fire NoProgress here; the assessor must not.
 	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
-	const std::vector<NavRoutePoint> route = { { 1000.0f, 900.0f }, { 1000.0f, 4000.0f } };
-	(void)route;
 
 	NavProgressAssessor a;
 	a.SetIntent(true, 0);
@@ -1942,6 +1983,29 @@ TEST_CASE("NavProgress_Awaiting")
 		CHECK(a.Assess(1500 + 1649, pp) == NavProgressVerdict::Progressing);
 		CHECK(a.Assess(1500 + 1651, pp) == NavProgressVerdict::AwaitingPacket);
 	}
+
+	// One 2.5 s gap in an otherwise healthy stream (packets at 1500/3000/5500/7000/8500):
+	// during the gap the verdict is AwaitingPacket, never Stalled across the whole sweep.
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		a.NotifyReplan(0, 0.0f);
+		const int64_t times[5] = { 1500, 3000, 5500, 7000, 8500 };
+		const float prog[5] = { 0.0f, 6.75f, 13.5f, 20.25f, 27.0f };
+		int next = 0;
+		for (int64_t t = 0; t <= 8500; t += 10)
+		{
+			while (next < 5 && t >= times[next])
+			{
+				a.OnPacketSent(times[next], 0.0f, 0.0f, prog[next], 100.0f - prog[next]);
+				++next;
+			}
+			const NavProgressVerdict v = a.Assess(t, pp);
+			CHECK(v != NavProgressVerdict::Stalled);
+			if (t >= 3000 + 1651 && t <= 5499)
+				CHECK(v == NavProgressVerdict::AwaitingPacket);
+		}
+	}
 }
 
 TEST_CASE("NavProgress_Guard")
@@ -1993,16 +2057,63 @@ TEST_CASE("NavProgress_Arrival_Replan")
 		CHECK(a.Assess(1500, pp) == NavProgressVerdict::Progressing);
 	}
 
-	// After NotifyReplan the new route progress baseline restarts: no Stalled before the window.
+	// A replan in the middle of a healthy walk: three packets on the old route, NotifyReplan,
+	// then four healthy packets on the new route. The old route's progress must not anchor the
+	// comparison, so no Stalled at any step.
 	{
 		NavProgressAssessor a;
 		a.SetIntent(true, 0);
-		a.OnPacketSent(1500, 0.0f, 0.0f, 0.0f, 100.0f);
-		a.OnPacketSent(3000, 0.0f, 0.0f, 0.0f, 100.0f);   // would be Stalled later
-		a.NotifyReplan(3100, 0.0f);
-		// New route, progress frozen: no Stalled until the window refills.
-		CHECK(a.Assess(3100, pp) != NavProgressVerdict::Stalled);
-		CHECK(a.Assess(3100 + 3199, pp) != NavProgressVerdict::Stalled);
+		const int64_t times[7] = { 1500, 3000, 4500, 6000, 7500, 9000, 10500 };
+		const float prog[7] = { 25.0f, 31.75f, 38.5f, 6.75f, 13.5f, 20.25f, 27.0f };
+		int next = 0;
+		bool replanDone = false;
+		bool stalled = false;
+		for (int64_t t = 4500; t <= 10500; t += 10)
+		{
+			if (!replanDone && t >= 4600)
+			{
+				a.NotifyReplan(4600, 0.0f);
+				replanDone = true;
+			}
+			while (next < 7 && t >= times[next])
+			{
+				a.OnPacketSent(times[next], 0.0f, 0.0f, prog[next], 100.0f - prog[next]);
+				++next;
+			}
+			if (a.Assess(t, pp) == NavProgressVerdict::Stalled)
+				stalled = true;
+		}
+		CHECK(!stalled);
+	}
+
+	// The same replan with frozen packets on the new route: the first new packet anchors, so the
+	// first Stalled is at that anchor + periods * periodMs + toleranceMs (6000 + 3200 = 9200).
+	{
+		NavProgressAssessor a;
+		a.SetIntent(true, 0);
+		const int64_t times[8] = { 1500, 3000, 4500, 6000, 7500, 9000, 10500, 12000 };
+		const float prog[8] = { 25.0f, 31.75f, 38.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+		int next = 0;
+		bool replanDone = false;
+		int64_t firstStall = -1;
+		for (int64_t t = 4500; t <= 12000; t += 10)
+		{
+			if (!replanDone && t >= 4600)
+			{
+				a.NotifyReplan(4600, 0.0f);
+				replanDone = true;
+			}
+			while (next < 8 && t >= times[next])
+			{
+				a.OnPacketSent(times[next], 0.0f, 0.0f, prog[next], 100.0f);
+				++next;
+			}
+			if (firstStall < 0 && a.Assess(t, pp) == NavProgressVerdict::Stalled)
+				firstStall = t;
+		}
+		std::printf("NAVPROGRESS replan frozen first_ms=%lld\n", (long long)firstStall);
+		CHECK(firstStall >= 0);
+		CHECK(firstStall >= 6000 + 3200);
 	}
 
 	// Intent off -> Idle.
