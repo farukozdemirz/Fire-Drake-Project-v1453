@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 5 "Birim test çatısı") |
 | Branch | `bot/F3-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | Yok (F3-01..F3-03, F3-06 `KAPANDI`; bu plan sunucu koduna dokunmaz) |
@@ -258,4 +258,42 @@ git diff --stat gece/2026-10-02...bot/F3-05
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-*(henüz doğrulanmadı)*
+### Tur 1 — 2026-10-02
+
+- **Karar:** **DÜZELTME GEREKLİ** (12 kriterin 12'si yazıldığı gibi karşılandı; ancak test çatısında bir doğruluk hatası var: `CHECK_EQ` başarısızlık yolunda operandı yeniden değerlendiriyor)
+- **İncelenen commit:** `b135cf1` (`bot/F3-05`, taban `gece/2026-10-02` = `a6928b0`; 3 commit, mesajlar `[F3-05] …` biçiminde, merge/force izi yok, `build/` izlenmiyor)
+- **Kapsam:** `git diff --stat gece/2026-10-02...bot/F3-05` yalnızca §4'teki 9 dosya + plan dosyası; `GameServer/ AIServer/ LogInServer/ shared/ Scripting/ docs/ AGENTS.md CLAUDE.md .claude/` farkı yok; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişti; `.sln` farkı salt ekleme (`^-` satırı yok).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0; `Rng.cpp`, `RngTests.cpp`, `main.cpp` `touch` ile zorla yeniden derlendi (artımlı atlama yok); `grep -i warning \| grep -i botcore` boş; hata 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, aynı üç dosya derlendi, aynı denetim boş |
+| K3 | ✔ | `run-tests.sh Release --no-build` rc=0, son satır `6 tests, 0 failed`; `BotCoreTests.exe` (1077760 B) ve `libs/BotCore.lib` (13498 B) var |
+| K4 | ✔ | `run-tests.sh Debug --no-build` rc=0, `6 tests, 0 failed` |
+| K5 | ✔ | `grep -ci …` = 4 (`RngTests.cpp`) |
+| K6 | ✔ (bulguyla) | `0xE220…DAF`→`…DAE` yapıldı, yeniden derlendi: rc=1, `…\RngTests.cpp(10): CHECK_EQ(…) failed`, `6 tests, 1 failed`; dosya geri alındı (`git diff` boş), tekrar `6 tests, 0 failed` rc=0. **Ama çıktı Bulgu 1'i ortaya çıkardı** |
+| K7 | ✔ | `--list` 6 ad rc=0; `Rng_NextBelow` → `1 tests, 0 failed` rc=0; `NoSuchTest` → `no tests matched` rc=2; `run-tests.sh Bogus` → kullanım, rc=2 |
+| K8 | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|winsock` ve `rand(` grep'leri boş |
+| K9 | ✔ | bkz. Kapsam |
+| K10 | ✔ | `file`: `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `run-tests.sh` ASCII, CRLF yok (LF) |
+| K11 | ✔ | sunucu kaynak/proje farkı yok (K9); `GameServer.exe` bağlandı, hata yok |
+| K12 | ✔ | `time run-tests.sh Release --no-build` = 0,040 sn |
+
+**Algoritma denetimi:** `Rng.cpp` §5.1 ile satır satır eşleşiyor (SplitMix64 sabitleri, xoshiro256** sırası/kaydırmaları, `Rotl` k=7/45 için tanımsız kaydırma yok, `NextBelow` reddetmeli örnekleme, `NextRange` `uint32_t` aritmetiği, `NextDouble` 2^-53). Pinlerin hepsi çalıştırmada tuttu. `.vcxproj` farkı (`BotCore` ↔ `BotCoreTests`) planın §5.6 listesiyle birebir.
+
+**Bulgular (önem sırasıyla)**
+
+1. **[Orta] `CHECK_EQ` başarısızlık yolunda `(a)`'yı ikinci kez değerlendiriyor** — `Tests/BotCoreTests/MiniTest.h:154` (koşul) ve `:157` (mesaj: `<< (a) << " != " << (b)`). Yan etkili ifadelerde (`rng.NextU64()`, `BotCore::SplitMix64(state)`; mevcut testlerin hemen hepsi böyle) başarısızlık mesajı **yanlış "gerçek" değeri** basar ve rng/durum fazladan ilerlediği için sonraki pinler **zincirleme** başarısız olur. Kanıt (K6 çıktısı): satır 10'da beklenen `…DAE` (=16294208416658607534), gerçek ilk çıktı 16294208416658607535 olduğu halde mesaj `7960286522194355700` (= ikinci çıktı `0x6E78…65F4`) yazıyor; satır 11 ve 12 de, hiçbir hata olmamasına rağmen, kayan durum yüzünden başarısız görünüyor. Çıkış kodu ve `failed` sayısı doğru olduğundan hata yakalanıyor, ama çatının amacı (bir gerileme olduğunda güvenilir tanı) bozuluyor; sonraki tüm BotCore testleri bu çatıyı kullanacak. Plan §5.3 "başarısızlıkta iki değeri yazar" diyor: yazılan değer gerçek değer olmalı.
+2. **[Not]** Başarısızlık satırı metni plan §5.3'teki `CHECK(expr) basarisiz` yerine İngilizce `failed` (`:157`); K6'nın istediği `RngTests.cpp(` ifadesi MSVC `__FILE__` tam yol bastığı için satır içinde geçiyor, satır başında değil. Engel değil; düzeltme gerektirmez.
+3. **[Not]** `MiniTest.h` 172 satır (planda "~100"); işlev fazlası yok, yalnızca biçim (Allman, boş satırlar). Engel değil.
+4. **[Not]** `./tools/run-servers.sh status` çıktısında `GameServer.exe pid=4336 (yol okunamadı)` notu var; üç sunucu `[DOWN]`, derleme `GameServer.exe`'yi yazabildi (kilit yok). Bu planla ilgisi yok.
+
+**Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F3-05-botcore-birim-test-catisi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. Tests/BotCoreTests/MiniTest.h, CHECK_EQ makrosu (:151-160): her operandı tam bir kez değerlendir. Gövdeyi şu kalıba çevir: "const auto & minitest_a_ = (a); const auto & minitest_b_ = (b); if (!(minitest_a_ == minitest_b_)) { std::ostringstream minitest_oss_; minitest_oss_ << "CHECK_EQ(" #a ", " #b ") failed: " << minitest_a_ << " != " << minitest_b_; ::minitest::ReportFailure(__FILE__, __LINE__, minitest_oss_.str()); }" (do { ... } while (0) sarmalayıcısı, tab girinti ve CRLF kalsın; makro adları ve imzaları değişmesin). CHECK ve REQUIRE zaten ifadeyi bir kez değerlendiriyor, onlara dokunma.
+2. Düzeltmeyi kanıtla (K6 denemesinin tekrarı): RngTests.cpp'de 0xE220A8397B1DCDAFull pin'ini geçici olarak ...DAEull yap, ./tools/run-tests.sh Release çalıştır. Beklenen: yalnızca satır 10 başarısız (satır 11 ve 12 başarısız OLMAMALI), rc=1, "6 tests, 1 failed", ve satır 10 mesajında "gerçek" değer 16294208416658607535 (0xE220A8397B1DCDAF'nin ondalığı) olmalı. Çıktının ilgili satırlarını raporuna yapıştır. Sonra pin'i geri al (git diff Tests/BotCoreTests/RngTests.cpp boş olmalı); bu deneme commit edilmez.
+3. Plan §6 K1..K12'yi yeniden çalıştır; en azından: ./tools/build.sh Release ve ./tools/build.sh Debug (BotCore/BotCoreTests uyarısı 0), ./tools/run-tests.sh Release --no-build ve Debug --no-build -> "6 tests, 0 failed" rc=0. Çıktıyı raporda göster.
+4. Başka dosyaya dokunma (RngTests.cpp'yi yalnızca adım 2'nin geçici denemesi için değiştir ve geri al; docs/**, GameServer/** dahil). Durum satırını UYGULANDI yap.
+```
