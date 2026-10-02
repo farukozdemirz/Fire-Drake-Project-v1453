@@ -8,6 +8,9 @@ std::queue<Socket *> SocketMgr::s_disconnectionQueue;
 Thread SocketMgr::s_cleanupThread; 
 Atomic<uint32> SocketMgr::s_refCounter;
 
+SocketMgr::BotTickHandler SocketMgr::s_botTickHandler = nullptr;
+std::atomic<bool> SocketMgr::s_botTickPending(false);
+
 uint32 THREADCALL SocketCleanupThread(void * lpParam)
 {
 	while (SocketMgr::s_bRunningCleanupThread)
@@ -93,6 +96,29 @@ void SocketMgr::Initialise()
 	m_completionPort = nullptr;
 }
 
+void SocketMgr::SetBotTickHandler(BotTickHandler handler)
+{
+	s_botTickHandler = handler;
+}
+
+bool SocketMgr::PostBotTick()
+{
+	// One persistent event object: the worker never deletes BOT_TICK events.
+	static OverlappedStruct ov(SOCKET_IO_EVENT_BOT_TICK);
+
+	bool expected = false;
+	if (!s_botTickPending.compare_exchange_strong(expected, true))
+		return false; // previous tick still queued or running
+
+	ov.Reset(SOCKET_IO_EVENT_BOT_TICK);
+	if (!PostQueuedCompletionStatus(m_completionPort, 0, (ULONG_PTR)0, &ov.m_overlap))
+	{
+		s_botTickPending = false;
+		return false;
+	}
+	return true;
+}
+
 void SocketMgr::CreateCompletionPort()
 {
 	SetCompletionPort(CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, (ULONG_PTR)0, 0));
@@ -139,6 +165,13 @@ void HandleWriteComplete(Socket * s, uint32 len)
 }
 
 void HandleShutdown(Socket * s, uint32 len) {}
+
+void HandleBotTick(Socket * s, uint32 len)
+{
+	if (SocketMgr::s_botTickHandler != nullptr)
+		SocketMgr::s_botTickHandler();
+	SocketMgr::s_botTickPending = false;
+}
 
 void SocketMgr::OnConnect(Socket *pSock) {}
 void SocketMgr::DisconnectCallback(Socket *pSock) {}

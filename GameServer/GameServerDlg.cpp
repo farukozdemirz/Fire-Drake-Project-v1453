@@ -211,6 +211,7 @@ bool CGameServerDlg::Startup()
 	CUser::InitChatCommands();
 
 	g_pMain->m_socketMgr.RunServer();
+	BotManager::Instance().StartTicking();
 
 	return true; 
 }
@@ -3124,6 +3125,8 @@ void CGameServerDlg::SendFlyingSantaOrAngel()
 
 CGameServerDlg::~CGameServerDlg() 
 {
+	BotManager::Instance().Shutdown();
+
 	printf("Waiting for timer threads to exit...");
 	foreach (itr, g_timerThreads)
 	{

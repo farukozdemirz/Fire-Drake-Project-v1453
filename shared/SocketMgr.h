@@ -57,6 +57,16 @@ protected:
 	static Atomic<uint32> s_refCounter;
 
 public:
+	// Bot tick: a timer thread posts SOCKET_IO_EVENT_BOT_TICK; the IOCP worker runs the handler.
+	typedef void (*BotTickHandler)();
+	static void SetBotTickHandler(BotTickHandler handler);
+	// Posts one BOT_TICK event. Returns false (and posts nothing) if the previous one has not
+	// been consumed yet or the post failed, so the queue never accumulates ticks.
+	bool PostBotTick();
+
+	static BotTickHandler s_botTickHandler;
+	static std::atomic<bool> s_botTickPending;
+
 	static bool s_bRunningCleanupThread;
 };
 
@@ -65,10 +75,12 @@ typedef void(*OperationHandler)(Socket * s, uint32 len);
 void HandleReadComplete(Socket * s, uint32 len);
 void HandleWriteComplete(Socket * s, uint32 len);
 void HandleShutdown(Socket * s, uint32 len);
+void HandleBotTick(Socket * s, uint32 len);
 
 static OperationHandler ophandlers[] =
 {
 	&HandleReadComplete,
 	&HandleWriteComplete,
-	&HandleShutdown
+	&HandleShutdown,
+	&HandleBotTick
 };
