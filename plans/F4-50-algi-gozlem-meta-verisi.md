@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
@@ -109,13 +109,25 @@ git diff gece/2026-10-02...bot/F4-50 -- BotCore/Perception.h | grep -nE '^\+.*(w
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-50` (taban `gece/2026-10-02`); `953cb46` `[F4-50] Algı gözlem meta verisi: konum geçmişi, hız, tazelik`; `f645f78` `[F4-50] Sözleşme aracı R5: UnitView.name alanına izin ver`. Uygulama öncesi taban: `0dfeca1` (F4-24 birleşik).
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/Perception.h`: `PosSample`/`MoveObs`, `PosState`, kaynak sabitleri, `UnitObs`'a `lastMoveMs`/`lastSpeed`/`hist`/`histCount`/`histNext`, `ObsSampleBack`/`ClassifyPos`/`EstimateVelocity`/`EstimatePosition`, `ParseMoveFull`, `ObsTable::UpdateMove`, `Upsert` kayıt örneği tohumlaması, `UnitView` yeni alanları (`name`, `posAgeMs`, `speedField`, `moving`, `vx`, `vz`, `posState`, `src`), `BuildSnapshot` dolumu.
+  - `GameServer/Bot/BotSession.cpp`: `WIZ_MOVE` dalı `ParseMoveFull` + `UpdateMove` (kilit sırası ve ayrıştırmanın kilitten önce olması korunur).
+  - `GameServer/Bot/BotManager.cpp`: `CommandSee` ve `CommandSnap` enemy/ally satırlarına `name=… pos_age=… speed=… v=(…) pos=…` alanları eklendi; mevcut alanlar/sıra değişmedi.
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: dört yeni `TEST_CASE` (`Perception_ParseMoveFull`, `Perception_Obs_MoveHistory`, `Perception_Obs_PosClassify`, `Perception_Snap_MetaFields`).
+  - `tools/check-perception-contract.py`: `VIEW_FORBIDDEN["UnitView"]`'dan `"name"` çıkarıldı (`hp` F4-51'e kadar yasak, `NpcView` değişmedi), R5 başlık açıklaması ve `--selftest` V6 vektörleri güncellendi (hp→mp; `UnitView`'a `name` geçerli, `NpcView`'a `name` ihlal).
+- Derleme sonucu: `./tools/build.sh Release` rc=0; son satırlar `proj-LogInServer…`, `proj-GameServer…`, `proj-AIServer…`, `BotCoreTests.vcxproj -> …\x86-Release\Tests\BotCoreTests.exe`. `./tools/build.sh Debug` rc=0. Değişen dört dosya `touch` edilip yeniden derlendiğinde `warning`/`error` satırı yok. Testler: Release ve Debug `88 tests, 0 failed` (taban 84; dört yeni ad `[ OK ]`). `python3 tools/check-perception-contract.py --selftest` → `selftest OK`; `python3 tools/check-perception-contract.py` → `RESULT: PASS` (R1-R5 ihlal 0, allowlist R2 28 / R3 18, `files 19`).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0; değişen dosyalarda yeni uyarı yok), K2 ✔ (Debug rc=0), K3 ✔ (88 = 84 + 4; dört yeni ad `[ OK ]`, mevcutlar geçti), K4 ✔ (yasak include grep'i boş; yeni include yok).
+  - K5a ✔ (`RESULT: PASS` + `selftest OK`; `UnitView.name` ihlal değil, `NpcView.name` ve `UnitView` `mp`/`cooldown`/`stock`/`inventory`/`item`/`potion` ihlal). K5 ✔ (yeni `GameServer/Bot` satırlarında `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` yok).
+  - K6 ✔ (`ParseMoveFull` kısa 10 bayt/null false; `ObsTable` kapasite/taşma testi değişmedi), K8 ✔ (yeni ini/komut/paket/thread/mutex yok; kod yalnızca `OnPacket()`/`/bot see|snap` yolu), K9 ✔ (ASCII + CRLF, `git diff --check` boş, eklenen satırlarda `printf(`/`Sleep`/`CreateThread`/`rand(` yok).
+  - K7 △: `ageMs` anlamı ve `/bot see` mevcut alanları korundu (yalnız satır sonuna alan eklendi), ancak `git diff | grep '^-'` boş değil: §3.2'nin zorunlu kıldığı `WIZ_MOVE` dalı değişimi (`ParseMove`/`UpdatePosition` → `ParseMoveFull`/`UpdateMove`) ve format satırları kaçınılmaz `-` satırları üretir; ilgisiz davranış satırı kaldırılmadı.
+  - K10 → çalışma zamanı doğrulaması planda Claude'a bırakılmıştır; bu turda sunucu çalıştırılmadı.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - §3.1 `moving` alanı `speedField > 0` diyor; ancak §5.3 `Snap_MetaFields` "bilgi kaydı + 5 sn, hiç `MOVE` yok → `ageMs` 5000, durağan değilse `posState` stale" bekler. Kayıt paketinde hız `-1` (bilinmiyor) olduğundan testin geçmesi için `moving = (speedField != 0)` uygulandı: bilinmeyen hız muhafazakâr biçimde hareketli sayılır (docs/13 §5.2a'daki durağan/hareketli ayrımına uygun; hız `0` kesin durağan). Bu seçim raporda açıkça belirtilir.
+  - K7'nin `^-` grep'i, §3.2/§3.4'ün zorunlu satır değişiklikleri nedeniyle lafzen boş olamaz (yukarıda).
+- Açık sorular: Yok. (Not: `moving` yorumu plan metnindeki `speedField > 0` ifadesinden kasıtlı olarak sapar; doğrulamada onay gerekirse §3.1/`docs/13` §5.2a güncellenebilir.)
 
 ---
 
