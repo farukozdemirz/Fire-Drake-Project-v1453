@@ -624,10 +624,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandStop(args);
 	else if (_stricmp(verb.c_str(), "attack") == 0)
 		CommandAttack(args);
+	else if (_stricmp(verb.c_str(), "cast") == 0)
+		CommandCast(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -784,7 +786,7 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 		poolFree = g_pMain->m_socketMgr.GetReservedSessionMap().size();
 	}
 
-	char message[192];
+	char message[256];
 	snprintf(message, sizeof(message),
 		"%u session(s), pool free %u/%u",
 		(unsigned)m_sessions.size(), (unsigned)poolFree, (unsigned)m_poolSize);
@@ -811,11 +813,17 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 		else
 			snprintf(hp, sizeof(hp), "-");
 
+		char mp[24];
+		if (s->m_pUser != nullptr)
+			snprintf(mp, sizeof(mp), "%d/%d", s->m_pUser->GetMana(), s->m_pUser->GetMaxMana());
+		else
+			snprintf(mp, sizeof(mp), "-");
+
 		snprintf(message, sizeof(message),
-			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d",
+			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d casting=%d mp=%s",
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount,
 			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load(),
-			hp, s->m_attackActive ? 1 : 0);
+			hp, s->m_attackActive ? 1 : 0, s->m_castPhase != BotSession::CAST_IDLE ? 1 : 0, mp);
 		out.push_back(message);
 	}
 }
@@ -1331,6 +1339,184 @@ void BotManager::CommandAttack(const std::string & args)
 	WriteBotLog(message);
 }
 
+void BotManager::CommandCast(const std::string & args)
+{
+	static const char * kUsage =
+		"BotManager: cmd cast: usage: cast <bot> <skill id> <target bot|self> [cycles] | cast <bot|all> off";
+
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() == 2 && _stricmp(words[1].c_str(), "off") == 0)
+	{
+		if (_stricmp(words[0].c_str(), "all") == 0)
+		{
+			uint32 stopped = 0, notCasting = 0;
+			for (size_t i = 0; i < m_sessions.size(); i++)
+			{
+				BotSession * s = m_sessions[i];
+				if (s->m_phase != BotSession::PHASE_IN_GAME)
+					continue;
+
+				char message[224];
+				if (s->m_castPhase != BotSession::CAST_IDLE)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd cast: %s stopped after %u packet(s) sent",
+						s->m_charName.c_str(), (unsigned)s->m_castPackets);
+					ActionExecutor::EndCast(s);
+					stopped++;
+				}
+				else
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd cast: %s not casting", s->m_charName.c_str());
+					notCasting++;
+				}
+				WriteBotLog(message);
+			}
+
+			char summary[128];
+			snprintf(summary, sizeof(summary),
+				"BotManager: cmd cast all: %u stopped, %u not casting",
+				(unsigned)stopped, (unsigned)notCasting);
+			WriteBotLog(summary);
+			return;
+		}
+
+		BotSession * s = FindSession(words[0].c_str());
+		if (s == nullptr)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: unknown or not spawned bot '%s'",
+				IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+			WriteBotLog(message);
+			return;
+		}
+
+		if (s->m_phase != BotSession::PHASE_IN_GAME)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s not in game (phase %s)",
+				s->m_charName.c_str(), PhaseName(s->m_phase));
+			WriteBotLog(message);
+			return;
+		}
+
+		char message[224];
+		if (s->m_castPhase != BotSession::CAST_IDLE)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s stopped after %u packet(s) sent",
+				s->m_charName.c_str(), (unsigned)s->m_castPackets);
+			ActionExecutor::EndCast(s);
+		}
+		else
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s not casting", s->m_charName.c_str());
+		}
+		WriteBotLog(message);
+		return;
+	}
+
+	if (words.size() < 3 || words.size() > 4)
+	{
+		WriteBotLog(kUsage);
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd cast: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd cast: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	long skillId = 0;
+	if (!ParseIntStrict(words[1], skillId) || skillId < 1 || skillId > 2147483647L)
+	{
+		WriteBotLog(kUsage);
+		return;
+	}
+
+	std::string targetName;
+	if (_stricmp(words[2].c_str(), "self") != 0)
+	{
+		BotSession * target = FindSession(words[2].c_str());
+		if (target == nullptr)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: unknown or not spawned bot '%s'",
+				IsKnownBotName(words[2]) ? words[2].c_str() : "?");
+			WriteBotLog(message);
+			return;
+		}
+
+		if (target->m_phase != BotSession::PHASE_IN_GAME)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: target %s not in game (phase %s)",
+				target->m_charName.c_str(), PhaseName(target->m_phase));
+			WriteBotLog(message);
+			return;
+		}
+
+		if (target == s)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s refused (bad_target)", s->m_charName.c_str());
+			WriteBotLog(message);
+			return;
+		}
+
+		targetName = target->m_charName;
+	}
+
+	long cycles = 1;
+	if (words.size() == 4)
+	{
+		if (!ParseIntStrict(words[3], cycles) || cycles < 1 || cycles > 20)
+		{
+			WriteBotLog(kUsage);
+			return;
+		}
+	}
+
+	CastOutcome outcome = ActionExecutor::BeginCast(s, (uint32)skillId, targetName, (uint32)cycles, now);
+
+	char message[256];
+	if (outcome.kind == CastOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd cast: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd cast: %s casting %ld on %s (%ld cycle(s))",
+			s->m_charName.c_str(), skillId, targetName.empty() ? "self" : targetName.c_str(), cycles);
+	WriteBotLog(message);
+}
+
 void BotManager::ParseSpawnList(const std::string & list)
 {
 	if (list.empty())
@@ -1628,6 +1814,75 @@ void BotManager::TickSessions()
 						}
 					}
 				}
+
+				if (s->m_castPhase != BotSession::CAST_IDLE)
+				{
+					if (s->m_pUser->isDead())
+					{
+						ActionExecutor::EndCast(s);
+						char message[192];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s cast stopped (dead)", s->m_charName.c_str());
+						WriteBotLog(message);
+					}
+					else
+					{
+						// Test driver: the target view comes straight from the target bot's session (or the
+						// caster itself for "self"). The Perception slice (ADR-0017) replaces this source,
+						// not CastTarget.
+						CastTarget tv;
+						if (s->m_castTargetName.empty())
+						{
+							tv.id = (int16)s->m_pUser->GetID();
+							tv.x = s->m_pUser->GetX();
+							tv.y = s->m_pUser->GetY();
+							tv.z = s->m_pUser->GetZ();
+							tv.isSelf = true;
+						}
+						else
+						{
+							BotSession * t = FindSession(s->m_castTargetName.c_str());
+							if (t == nullptr || t->m_phase != BotSession::PHASE_IN_GAME || t->m_pUser == nullptr)
+							{
+								ActionExecutor::EndCast(s);
+								char message[192];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s cast stopped (target_lost)", s->m_charName.c_str());
+								WriteBotLog(message);
+							}
+							else
+							{
+								tv.id = (int16)t->m_pUser->GetID();
+								tv.x = t->m_pUser->GetX();
+								tv.y = t->m_pUser->GetY();
+								tv.z = t->m_pUser->GetZ();
+								tv.isSelf = false;
+							}
+						}
+
+						if (s->m_castPhase != BotSession::CAST_IDLE)
+						{
+							CastOutcome cast = ActionExecutor::TickCast(s, tv, now);
+							if (cast.kind == CastOutcome::FINISHED)
+							{
+								char message[256];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s cast finished (%s) after %u cycle(s), %u ok, %u packet(s) sent",
+									s->m_charName.c_str(), cast.reason,
+									(unsigned)s->m_castCycle, (unsigned)s->m_castDone, (unsigned)s->m_castPackets);
+								WriteBotLog(message);
+							}
+							else if (cast.kind == CastOutcome::REFUSED || cast.kind == CastOutcome::FAILED)
+							{
+								char message[224];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s cast stopped (%s)",
+									s->m_charName.c_str(), cast.reason);
+								WriteBotLog(message);
+							}
+						}
+					}
+				}
 			}
 			break;
 
@@ -1699,6 +1954,7 @@ void BotManager::BeginDespawn(BotSession * s, std::chrono::steady_clock::time_po
 	CUser * pUser = s->m_pUser;
 	ActionExecutor::AbandonMove(s);
 	ActionExecutor::EndAttack(s);
+	ActionExecutor::EndCast(s);
 	// Socket::Disconnect() does nothing without a socket, so run what a real disconnect runs:
 	// OnDisconnect() removes the account/character names, takes the bot out of its region
 	// and queues WIZ_LOGOUT (LogOut() sets m_deleted until the DB thread has saved the bot).

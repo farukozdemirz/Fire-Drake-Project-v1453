@@ -119,4 +119,139 @@ namespace BotCore
 		int m_count;   // entries stored, 0..kMaxActionsPerWindow
 		int m_next;    // ring index of the next write
 	};
+
+	// --- cast slice (ADR-0017 Ek F4-03) ---
+
+	constexpr uint32_t kCastExtraMs = 80;    // docs/03 CLI-03: CASTING -> EFFECTING = CastTime*100 + 70..90 ms (measured)
+	constexpr uint32_t kCastGapMs   = 140;   // docs/03 CLI-04: 135..140 ms between EFFECTING and the next CASTING (measured)
+	constexpr uint32_t kTypeGateMs  = 1000;  // docs/03 MEC-MAG-03 / MEC-MAG-10: same type, skill id < 400000
+
+	// Time the bot waits between CASTING and EFFECTING; 0 when the skill has no cast time (no CASTING packet then).
+	inline uint32_t CastDurationMs(uint8_t castTime)
+	{
+		return castTime == 0 ? 0 : uint32_t(castTime) * 100 + kCastExtraMs;
+	}
+
+	// Per-skill reuse time (MEC-MAG-02, CLI-04): ReCastTime is in 0.1 s units, real time, no whole-second rounding.
+	inline uint32_t CastRecastMs(uint16_t reCastTime)
+	{
+		return uint32_t(reCastTime) * 100;
+	}
+
+	// Skill range (MEC-MAG-11): skillRange (metres, MAGIC.Range) > 0 -> distanceM < skillRange (the server rejects >=);
+	// skillRange == 0 (weapon-bound Type1) -> 0 <= distanceField <= weaponRangeField (same 0.1 m field as R).
+	inline bool CastInRange(float distanceM, uint16_t skillRange, int16_t distanceField, int16_t weaponRangeField)
+	{
+		if (skillRange > 0)
+			return distanceM < float(skillRange);
+
+		return distanceField >= 0 && distanceField <= weaponRangeField;
+	}
+
+	struct CastStartCheck
+	{
+		float distanceM;            // caster -> target, metres (0 for a self cast)
+		uint16_t skillRange;        // MAGIC.Range
+		int16_t distanceField;      // DistanceField(distanceM)
+		int16_t weaponRangeField;   // AttackRangeField(...)
+		bool needsStanding;         // MAGIC.UseStanding == 1
+		bool standing;              // the bot has no walk in progress
+		int32_t mana;               // caster's current MP
+		uint16_t msp;               // MAGIC.Msp
+		uint32_t reCastMs;          // CastRecastMs(MAGIC.ReCastTime)
+		bool hasSkillLast;          // this skill was effected earlier in this spawn
+		uint32_t sinceSkillLastMs;
+		bool typeGated;             // MAGIC.Type1/Type2 in 1..7 and skill id < 400000 (MEC-MAG-03)
+		bool hasTypeLast;           // one of the skill's gated types was effected earlier
+		uint32_t sinceTypeLastMs;   // the smallest "since" over the skill's gated types
+		bool hasAnyLast;            // any skill was effected earlier in this spawn
+		uint32_t sinceAnyLastMs;
+		int actionsInWindow;        // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum CastVerdict
+	{
+		CAST_OK = 0,
+		CAST_REJECT_OUT_OF_RANGE = 1,   // MEC-MAG-11
+		CAST_REJECT_NOT_STANDING = 2,   // CLI-09 / MEC-MAG-07
+		CAST_REJECT_NO_MANA = 3,        // MEC-MAG-08
+		CAST_REJECT_RECAST = 4,         // CLI-04 (per skill)
+		CAST_REJECT_TYPE_GATE = 5,      // MEC-MAG-03
+		CAST_REJECT_GAP = 6,            // CLI-04 (gap after the previous EFFECTING)
+		CAST_REJECT_RATE = 7,           // CLI-11
+		CAST_REJECT_TOO_EARLY = 8       // CLI-03 (EFFECTING before the cast time ran out)
+	};
+
+	// Milliseconds until the timing rules (recast, type gate, gap) allow the next cast to start; 0 = now.
+	// Range, standing, mana and rate are NOT timing waits and are not part of this value.
+	inline uint32_t CastWaitMs(const CastStartCheck & c)
+	{
+		uint32_t wait = 0;
+
+		if (c.hasSkillLast && c.sinceSkillLastMs < c.reCastMs)
+		{
+			uint32_t w = c.reCastMs - c.sinceSkillLastMs;
+			if (w > wait)
+				wait = w;
+		}
+
+		if (c.typeGated && c.hasTypeLast && c.sinceTypeLastMs < kTypeGateMs)
+		{
+			uint32_t w = kTypeGateMs - c.sinceTypeLastMs;
+			if (w > wait)
+				wait = w;
+		}
+
+		if (c.hasAnyLast && c.sinceAnyLastMs < kCastGapMs)
+		{
+			uint32_t w = kCastGapMs - c.sinceAnyLastMs;
+			if (w > wait)
+				wait = w;
+		}
+
+		return wait;
+	}
+
+	// Guard rule for the first packet of a cast (CASTING, or EFFECTING when there is no cast time).
+	// Order: range, standing, mana, recast, type gate, gap, rate.
+	inline CastVerdict CheckCastStart(const CastStartCheck & c)
+	{
+		if (!CastInRange(c.distanceM, c.skillRange, c.distanceField, c.weaponRangeField))
+			return CAST_REJECT_OUT_OF_RANGE;
+
+		if (c.needsStanding && !c.standing)
+			return CAST_REJECT_NOT_STANDING;
+
+		if (c.mana < int32_t(c.msp))
+			return CAST_REJECT_NO_MANA;
+
+		if (c.hasSkillLast && c.sinceSkillLastMs < c.reCastMs)
+			return CAST_REJECT_RECAST;
+
+		if (c.typeGated && c.hasTypeLast && c.sinceTypeLastMs < kTypeGateMs)
+			return CAST_REJECT_TYPE_GATE;
+
+		if (c.hasAnyLast && c.sinceAnyLastMs < kCastGapMs)
+			return CAST_REJECT_GAP;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return CAST_REJECT_RATE;
+
+		return CAST_OK;
+	}
+
+	// Guard rule for the EFFECTING packet. Order: too early, range, rate.
+	inline CastVerdict CheckCastEffect(bool inRange, uint32_t sinceCastingMs, uint8_t castTime, int actionsInWindow)
+	{
+		if (sinceCastingMs < CastDurationMs(castTime))
+			return CAST_REJECT_TOO_EARLY;
+
+		if (!inRange)
+			return CAST_REJECT_OUT_OF_RANGE;
+
+		if (actionsInWindow >= kMaxActionsPerWindow)
+			return CAST_REJECT_RATE;
+
+		return CAST_OK;
+	}
 }

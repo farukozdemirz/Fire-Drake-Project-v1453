@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-02 (saldırı dilimi, guard deseni, `m_actionWindow`) — `KAPANDI`; F4-01 (hareket) — `KAPANDI` |
@@ -390,16 +390,125 @@ git diff --check gece/2026-10-02...bot/F4-03
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (doğrulamaya hazır)
+- Branch / commit'ler: `bot/F4-03` (taban: `gece/2026-10-02`), tek commit `c4c8c49` — `[F4-03] cast dilimi: CastStart/CastEffect (Type1/Type3) + CLI-03/04/09/11 guard`
 - Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: §5.2 eklemeleri (sabitler, `CastDurationMs`, `CastRecastMs`, `CastInRange`, `CastStartCheck`, `CastVerdict`, `CastWaitMs`, `CheckCastStart`, `CheckCastEffect`).
+  - `Tests/BotCoreTests/CombatTests.cpp`: beş yeni `TEST_CASE` + `OkCast()` yardımcısı.
+  - `GameServer/Bot/ActionExecutor.h`: `CastTarget`, `CastOutcome`, `BeginCast`/`TickCast`/`EndCast` bildirimleri.
+  - `GameServer/Bot/ActionExecutor.cpp`: cast yolu (`SubmitCast`, `RejectCast`, `BeginCast`, `TickCast`, `EndCast`) + `GameServerDlg.h`/`MagicInstance.h`/`<cstring>` include'ları.
+  - `GameServer/Bot/BotSession.h/.cpp`: cast durumu üyeleri, `#include <map>`, kurucu/`ResetForRespawn` sıfırlamaları, `OnPacket()` içinde `WIZ_MAGIC_PROCESS` sonuç okuma.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandCast`, fiil dağıtımı, `TickSessions()` cast bloğu, `BeginDespawn()` `EndCast`, `BuildStatusLines()` `casting=`/`mp=`.
 - Derleme sonucu:
+  - `./tools/build.sh Release`: rc=0; `proj-GameServer.vcxproj -> ...GameServer.exe`; yeni dosyalarda uyarı yok (kalan uyarılar eski satırlar: `GameServerDlg.cpp:816/1143/1802`, `UpgradeHandler.cpp:634/862`).
+  - `./tools/build.sh Debug`: rc=0; `GameServer.exe` üretildi; aynı eski uyarılar.
+  - `./tools/run-tests.sh Release`: `24 tests, 0 failed`; beş yeni `Combat_Cast*` testi görünüyor.
+  - `./tools/run-tests.sh Debug`: `24 tests, 0 failed`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release hatasız; değişen dosyalarda yeni uyarı yok).
+  - K2 ✔ (Debug hatasız).
+  - K3 ✔ (Release ve Debug `24 tests, 0 failed`).
+  - K4 ✔ (`BotCombat.h`'de sunucu başlığı yok; include yalnızca `<algorithm>`, `<cstdint>`).
+  - K5 ✔ (`WIZ_MAGIC_PROCESS` yalnızca `ActionExecutor.cpp` üretimi + `BotSession.cpp` okuma; `MagicPacket`/`MagicInstance` çağrısı, soğuma listesi, MP/HP yazımı yok; yalnızca `#include "../MagicInstance.h"`).
+  - K6 ✔ (`HandlePacket` cast çağrısı tek yerde (`SubmitCast`); `CheckCastStart` CAST_ARMED'da, `CheckCastEffect` EFFECTING'de, `CAST_OK` dışında erken dönüş).
+  - K7 ✔ (`-` satırları yalnızca bilinçli: unknown command metni, `char message[192]`→`[256]`, `BuildStatusLines` biçim satırı; `Startup`/`Tick` akışı ve ini okuma değişmedi).
+  - K8 ✔ (`git diff --stat`: §4'teki 8 dosya + plan; `vcxproj*` değişmemesi doğrulandı).
+  - K9 ✔ (`file` çıktıları tümü ASCII + CRLF; `git diff --check` temiz).
+  - K10 ✔ (`ActionExecutor.*` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok).
+  - K11 ✔ (`CheckMoveStep` ×2, `CheckAttack` ×1; `Move`/`Attack`/`Cast` `EmitFairnessReject` çağrıları; Motion/Combat testleri geçiyor).
+  - K12 (çalışma zamanı) — DeepSeek yapmaz, Claude yapar.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `CommandCast`'te hedef adı çözümlendikten sonra kendine-cast denetimi için `target == s` erken reddi korundu (planla uyumlu).
+  - `TickCast`'ta `FINISHED`/`FAILED` dönüşlerinde `reason` olarak `CastOutcome.reason` kullanıldı (`SubmitCast` zaten `const char*` sabit döndürür); plandaki tabloyla birebir.
+  - Yok: `recast`/`type_gate`/`gap` durumları `CastWaitMs > 0` iken `NOTHING` döner (plan §5.4 madde 3 ile uyumlu), guard reddi yalnızca gerçek ihlalde yazılır.
+- Açık sorular: yok.
+
+### Tur 2
+
+- Durum: UYGULANDI (doğrulamaya hazır)
+- Branch / commit'ler: `bot/F4-03` (taban: `gece/2026-10-02`); önceki turlar korundu, düzeltme commit'i Tur 2 raporuyla birlikte atılır.
+- Düzeltme talimatına uyum: Doğrulama Turu 1 bulgusu 1 (Orta) giderildi. `GameServer/Bot/ActionExecutor.cpp` `RejectCast()` içindeki `switch (verdict)`'e `CAST_REJECT_OUT_OF_RANGE` için `default`'tan önce `case` eklendi: `rule = "MEC-MAG-11"`, `reason = "out_of_range"`, `value = (c.skillRange > 0) ? c.distanceM : (float)c.distanceField`, `limit = (c.skillRange > 0) ? (float)c.skillRange : (float)c.weaponRangeField`. Başka verdict'e ve başka fonksiyona dokunulmadı; başlangıç kural/sebep metinleri değişmedi. Tek satırlık İngilizce yorum eklendi.
+- Değişen dosyalar ve neden:
+  - `GameServer/Bot/ActionExecutor.cpp` (+4 satır, yalnızca ekleme): `CAST_REJECT_OUT_OF_RANGE` case'i + İngilizce yorum. Başka dosya değişmedi (`docs/**`, `BotCombat.h`, testler, `GameServer/**` dahil).
+- Derleme ve test sonuçları:
+  - `./tools/build.sh Release`: rc=0; `ActionExecutor.cpp` yeniden derlendi, bu dosya için uyarı/hata yok (`GameServer.exe` üretildi).
+  - `./tools/build.sh Debug`: rc=0; `ActionExecutor.cpp` yeniden derlendi, bu dosya için uyarı/hata yok (`GameServer.exe` üretildi).
+  - `./tools/run-tests.sh Release`: rc=0; `24 tests, 0 failed`.
+  - `./tools/run-tests.sh Debug`: rc=0; `24 tests, 0 failed`.
+  - `git diff --stat`: yalnızca `GameServer/Bot/ActionExecutor.cpp` (+4) ve bu plan dosyası (`Durum` satırı); `file GameServer/Bot/ActionExecutor.cpp` → `ASCII text, with CRLF`; `git diff --check` boş.
+- Kabul kriterleri öz-değerlendirme (düzeltme kapsamı): bulgu 1 `value`/`limit` artık plan §5.4 tablosu ve §7 S4 beklentisini karşılar (`skillRange > 0` ise metre, aksi halde `distanceField` / `weaponRangeField`). K1/K2/K3 yeniden karşılandı (rc=0, uyarı yok, 24/24). Diğer kriterler (K4–K11) bu değişiklikten etkilenmez; K12 çalışma zamanı doğrulaması Claude'a aittir.
+- Plandan sapmalar: yok (talimat birebir uygulandı; talimattaki "tek satır" yorum koda eklendi).
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz doğrulanmadı)
+### Tur 1 — 2026-10-02
+
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02...bot/F4-03` @ `28011b1` (3 commit: `8f6a6ec` plan, `c4c8c49` uygulama, `28011b1` rapor; hepsi `[F4-03] ...` biçiminde, merge/force izi yok). Otonom gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı.
+- Özet: Kod planla birebir uyumlu ve 11 kriter + çalışma zamanı senaryolarının çoğu geçti; tek somut hata: guard'ın `out_of_range` reddi `FAIRNESS_REJECT` olayına `value`/`limit` değerlerini **0,00 / 0,00** yazıyor (plan §5.4 kural tablosu ve §7 S4 `value ≥ limit 56` bekliyor). Rapor kanıtı: K12 S4 ✘.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `./tools/build.sh Release` rc=0; `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp` touch'lanıp yeniden derlendi (log'da dördü de görünüyor): `warning`/`error` satırı 0 |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` rc=0, uyarı/hata yok |
+| K3 Birim testleri | ✔ | `tools/run-tests.sh Release` ve `Debug`: `24 tests, 0 failed`; `Combat_CastDuration`, `Combat_CastInRange`, `Combat_CastStart_Order`, `Combat_CastWait`, `Combat_CastEffect` görünüyor |
+| K4 `BotCombat.h` saflığı | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`BotCombat.h:6-7`) |
+| K5 Paket yolu | ✔ | `WIZ_MAGIC_PROCESS`: `ActionExecutor.cpp:588` (`Packet pkt(WIZ_MAGIC_PROCESS)`) ve `BotSession.cpp:44` (`OnPacket` sonuç okuma); `MagicPacket`/`m_CoolDownList`/`m_MagicTypeCooldownList`/`MSpChange`/`HpChange` bot kodunda yok, yalnızca `ActionExecutor.cpp:7` `#include "../MagicInstance.h"` |
+| K6 Guard atlanmıyor | ✔ | `HandlePacket` cast için tek yerde (`ActionExecutor.cpp:596`, `SubmitCast`); `CheckCastStart` `:841` (CAST_ARMED, CASTING ve süresiz EFFECTING için) ve `CAST_OK` değilse `RejectCast` ile erken dönüş; `CheckCastEffect` `:881` ve aynı erken dönüş; çalışma zamanında da sınandı (S4: `ACTION_SUBMIT` yok) |
+| K7 `ENABLED=0` değişmez | ✔ | `git diff ... BotManager.cpp \| grep '^-'`: yalnızca `unknown command` metni, `char message[192]`→`[256]` ve `BuildStatusLines` biçim satırı (4 `-` satırı); `Startup()`/`Tick()`/ini okuma değişmedi; `BotSession` değişikliği yalnızca yeni üyeler, `ResetForRespawn()` ve `OnPacket()` içi atomik yazım. Çalışma zamanında `ENABLED=0` yeniden sınanmadı (kod yolu `IsEnabled`/`m_phase` kapılarında, bu planda değişmedi) |
+| K8 Kapsam | ✔ | `git diff --stat`: §4'teki 8 dosya + plan; `proj-GameServer.vcxproj*`, `BotCore.vcxproj`, `BotCoreTests.vcxproj` farkı 0 |
+| K9 Kodlama | ✔ | `file`: tüm değiştirilen dosyalar `ASCII text, with CRLF`; `git diff --check` boş |
+| K10 Yasaklı çağrılar | ✔ | `grep "printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand("` `ActionExecutor.*` içinde boş |
+| K11 F4-01/F4-02 gerilemesiz | ✔ | `CheckMoveStep` ×2, `CheckAttack` ×1; `EmitFairnessReject` hareket (`:97`, `:190`) `"Move"`, saldırı (`:402`) `"Attack"`; `Motion_*`/`Combat_*` testleri geçiyor; çalışma zamanı: `attack ... 3` → `3 hit(s) sent, 3 ok`, aralık 1640–1650 ms, 30 m `move` → `after 5 packets` |
+| K12 Çalışma zamanı | ✘ | S1–S3, S5–S7 geçti; **S4'te `FAIRNESS_REJECT out_of_range` `value`/`limit` 0,00** (bulgu 1). Ayrıntı aşağıda |
+
+- Çalışma zamanı sınaması (Release, `ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; `BotMF_K` Karus mage, `BotWP_K` Karus warrior, `BotWP_E` El Morad warrior, `BotPHD_E` El Morad priest; zone 71; eski `Logs/bots/` `bots_old_f403`'e taşındı):
+  - **S1 Type3, cast süreli (110518 Ignition, `BotMF_K` → `BotWP_E`, 2 çevrim):** `casting 110518 on BotWP_E (2 cycle(s))`, `cast finished (effected) after 2 cycle(s), 2 ok, 4 packet(s) sent`. JSONL sırası `CastStart` (`cast_ms:1080`) → `casting` (`op:1`) → `CastEffect` → `effected` (`op:3, code:0`) ×2; `CastStart`→`CastEffect` farkı 1101 / 1097 ms (aralık [1080, 1330] içinde); `CastEffect`→sonraki `CastStart` 1098 ms (tip kapısı ≥ 1000, boşluk ≥ 140; bot bekledi, `FAIRNESS_REJECT` yazılmadı); `latency_us` 9–138; `BotWP_E` `hp` 5650 → 5157, `BotMF_K` `mp` 6021 → 5941 (MP yenilenmesi nedeniyle tam 120 değil).
+  - **S2 Type1, cast süresiz (106560 sword dancing, `BotWP_K` → `BotWP_E`, 2 çevrim):** yalnızca `CastEffect` (`CastStart` yok, `since_casting_ms:0`), iki `EFFECTING` arası 1094 ms (≥ 1000), `reason:"effected"`; `BotWP_K` `mp` 5370 → 4930 (2 × 300 − yenilenme).
+  - **S3 heal (212545 Superior healing):** `self` → `CastStart` (`target:2987` = kendi kimliği, `cast_ms:1580`) → `CastEffect` 1641 ms sonra → `effected`; dost `BotWP_E`'ye → `effected` (aynı millet, Moral 2 kuralı sunucuda geçti), `BotWP_E` `hp` 5157 → 5650 (iyileşme).
+  - **S4 guard reddi:** `BotWP_E` 70 m uzağa yürütüldü (`move ... after 11 packets`); `cast BotMF_K 110518 BotWP_E` → `cast stopped (out_of_range)`; `cast BotWP_K 106560 BotWP_E` → `cast stopped (out_of_range)`. JSONL'de yalnızca `FAIRNESS_REJECT` (`"type":"Cast"`, `"rule":"MEC-MAG-11"`, `"reason":"out_of_range"`), **`ACTION_SUBMIT` yok** ✔, oturum kopmadı, `GameServer.log` 32 → 32 satır ✔; ancak **`"value":0.00,"limit":0.00`** ✘ (beklenen: mage için ≈ 70 / 56; Type1 için `distanceField` / `weaponRangeField`). `UseStanding = 1` skill: yerel `MAGIC`'te 8 satır var (hepsi `3010xx`, `Skill = 1010` = sınıf 101); botların sınıf kodlarıyla (106/110/112/206/210/212) eşleşmediği için `bad_skill` ile reddedilir. `not_standing` yalnızca birim testindedir (planın öngördüğü durum). Tip kapısı beklemesi S1/S2'de (ikinci çevrim) `FAIRNESS_REJECT` yazmadan gözlendi.
+  - **S5 reddedilen komutlar:** `999999` → `refused (bad_skill)`; `cast BotWP_K 110518 ...` (başka sınıf) → `refused (bad_skill)`; `110533` → `refused (unsupported_skill)`; `110518 self` ve `110518 BotMF_K` → `refused (bad_target)`; `Ghost` ve `Nobody` → `unknown or not spawned bot '?'`; `... 0`, `... 21`, `... abc`, argümansız → kullanım satırı; `cast BotMF_K off` (hareketsiz) → `not casting`; `cast all off` → `0 stopped, 4 not casting`. **`off` ortada:** `cast ... 5` sonra ~3,4 sn'de `off` → `stopped after 3 packet(s) sent`; sonraki 6 sn'de JSONL satır sayısı değişmedi (EFFECTING gitmedi). `despawn` edilmiş bot / hedef ve `RESPAWN_CYCLES=2` reddi bu turda yeniden sınanmadı (kod F2-05/F4-02'deki kalıpla aynı).
+  - **S6 yaşam döngüsü:** seri sürerken hedef `despawn` → `cast stopped (target_lost)`; caster `despawn` → `despawned (... names cleared yes)`, sonra JSONL satır sayısı değişmedi (129 → 129), `pool free` 13/16 (3 oturum); yeniden `spawn` → `casting=0 mp=6021/6021`.
+  - **S7 gerilemesiz:** `attack BotWP_K BotWP_E 3` → `3 hit(s) sent, 3 ok`; aynı bot `cast 106560 ... 3` + `attack ... 3` birlikte → `cast finished (effected) after 3 cycle(s), 3 ok`, `attack finished (hit) ... 3 ok`, yeni `FAIRNESS_REJECT` yok (CLI-11 ortak pencere ≤ 6/sn); 30 m `move` → `after 5 packets`; `PERF_SAMPLE` `tick_p95_us` 104–367 µs (≤ 1 ms), `skipped_ticks` 0; sunucu 3/3 UP, `GameServer.log` +0 satır. `TELEMETRY=summary` ve `ENABLED=0` bu turda **yeniden sınanmadı** (cast kodunun `IsEnabled(TEL_DECISIONS)` kapıları F4-02 ile aynı kalıp; `ENABLED=0` yolu diff'te değişmedi).
+  - Temizlik: ini yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`, önce/sonra aynı), `BotCommands.*` kalmadı, sunucular kapalı; dört bot satırı (`BotMF_K`, `BotWP_E`, `BotWP_K`, `BotPHD_E`) için hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000` geri yazıldı (yalnızca bu dört satır; kişisel veri tablosu okunmadı). Test artıkları depo dışında `C:\dev\fdp\server\Logs\bots_old_f403\` ve `Logs\bots\`.
+- Bulgular (önem sırasına göre):
+  1. **[Orta] `FAIRNESS_REJECT out_of_range` olayında `value`/`limit` hep 0.** `GameServer/Bot/ActionExecutor.cpp:525-526` `value`/`limit` 0 ile başlatılıyor; `switch (verdict)` (`:528-553`) `CAST_REJECT_OUT_OF_RANGE` için `case` içermiyor, `default: break;` ile düşüyor. Plan §5.4 kural tablosu `OUT_OF_RANGE` için `value` = `skillRange > 0` ise `meters` değilse `distanceField`, `limit` = `skillRange > 0` ise `skillRange` değilse `weaponRangeField` diyor; §7 S4 de `value ≥ limit 56` bekliyor. Sonuç: MET-FAIR-01 ve telemetri analizinde menzil reddi ölçülemez (F4-02'de aynı olay `value:148.00, limit:20.00` veriyordu). Birim testle yakalanmaz (`RejectCast` `BotCombat.h` dışında), uygulayıcı özdeğerlendirmesi bunu görmedi.
+  2. **[Not]** `SubmitCast` (`:645` `(void)now;`) ve `BeginCast` (`:656` `(void)now;`) `now` parametresi de kullanılmıyor; F4-02'deki `(void)now` kalıbı gibi kabul edildi, engel değil.
+  3. **[Not]** Plan §7 S1'deki "`mp` azaldı (2 × 60)" beklentisi tam değil: bot MP yenilenmesi (`list` ~8 sn sonra) farkı küçültüyor (6021 → 5941); kod etkilenmez, sonuç yalnızca paketten okunuyor.
+  4. **[Not]** `UseStanding = 1` skill'leri yerel `MAGIC`'te yalnızca sınıf 101 (`Skill = 1010`) için var; bot sınıflarıyla eşleşmediğinden `not_standing` çalışma zamanında yalnızca birim testiyle sınanabilir (planda öngörülüydü).
+- **Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F4-03-aksiyon-yurutucu-cast.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. GameServer/Bot/ActionExecutor.cpp, RejectCast() (:520-553): switch (verdict) içine CAST_REJECT_OUT_OF_RANGE için case ekle (default'tan önce): rule = "MEC-MAG-11"; reason = "out_of_range"; value = (c.skillRange > 0) ? c.distanceM : (float)c.distanceField; limit = (c.skillRange > 0) ? (float)c.skillRange : (float)c.weaponRangeField. Yorum İngilizce, tek satır. Başka verdict'e ve başka fonksiyona dokunma; kural/sebep metinleri aynı kalsın (başlangıç değerleri zaten "MEC-MAG-11"/"out_of_range").
+2. ./tools/build.sh Release ve ./tools/build.sh Debug hatasız, ActionExecutor.cpp için uyarı yok. ./tools/run-tests.sh Release ve Debug: 24 tests, 0 failed. Çıktıları raporuna yaz.
+3. Başka dosyaya dokunma (docs/**, BotCombat.h, testler, GameServer/** içindeki diğer dosyalar dahil). Sunucuyu çalıştırma. Durum satırını UYGULANDI yap.
+```
+
+### Tur 2 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-03` @ `dee7d03` (5 commit, hepsi `[F4-03] ...` biçiminde; Tur 1'den beri değişen yalnızca `GameServer/Bot/ActionExecutor.cpp` +4 satır ve bu plan dosyası). Otonom gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı.
+- Özet: Tur 1 bulgusu 1 (`RejectCast` `out_of_range` `value`/`limit` 0) giderildi ve çalışma zamanında doğrulandı. Diğer tüm kriterler Tur 1'de kanıtlandı; bu turda değişen kod yalnızca bir `case`, ilgili kriterler yeniden sınandı.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `ActionExecutor.cpp` touch'lanıp `./tools/build.sh Release` rc=0, `warning`/`error` satırı 0 |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` rc=0, uyarı/hata 0 |
+| K3 Birim testleri | ✔ | `tools/run-tests.sh Release` ve `Debug`: `24 tests, 0 failed` |
+| K4–K5, K8–K11 | ✔ | Tur 1 kanıtı geçerli; Tur 1→2 farkı yalnızca `ActionExecutor.cpp` (+4, `CAST_REJECT_OUT_OF_RANGE` case'i, `:551-554`); `BotCombat.h`, testler, `vcxproj*` dokunulmadı; `file` → ASCII + CRLF; `git diff 46c812f..bot/F4-03 -- GameServer/` yalnızca bu case |
+| K6 Guard atlanmıyor | ✔ | Değişmedi; `RejectCast` `HandlePacket`'tan önce erken dönüş, çalışma zamanında reddedilen cast için `ACTION_SUBMIT` yok |
+| K7 `ENABLED=0` | ✔ | Tur 1 kanıtı; bu turda `BotManager.cpp` değişmedi |
+| K12 Çalışma zamanı | ✔ | S4 yeniden sınandı (aşağıda); S1 gerilemesiz |
+
+- Çalışma zamanı (Release, `ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; ini'ye geçici `[BOT]` bölümü eklendi, sonra yedekten geri yüklendi):
+  - **S4 (bulgu 1):** `BotWP_E` 70 m uzağa yürütüldü (`pos=1344.0,890.0`); `cast BotMF_K 110518 BotWP_E` → `cast stopped (out_of_range)`; JSONL: `FAIRNESS_REJECT` `"type":"Cast","rule":"MEC-MAG-11","reason":"out_of_range","value":70.00,"limit":56.00` ✔ (Tur 1'de 0,00/0,00). `cast BotWP_K 106560 BotWP_E` (Type1) → `value":700.00,"limit":20.00` (`distanceField`/`weaponRangeField`, 0,1 m alanı) ✔. `"type":"Cast…"` içeren başka olay yok (`ACTION_SUBMIT` yok), `GameServer.log` 32 → 32 satır, oturum kopmadı.
+  - **S1 gerilemesiz:** `BotWP_E` yan yana (`1276,890`); `cast BotMF_K 110518 BotWP_E 2` → her çevrimde `CastStart` (`cast_ms:1080`) → `casting` (`op:1`) → `CastEffect` (`since_casting_ms` 1094 / 1096) → `effected` (`op:3`, `code:0`); çevrimler arası ≈ 1088 ms; `latency_us` 15–95; `BotWP_E` `hp` 5650 → 5185, `BotMF_K` `mp` 6021 → 5941; `FAIRNESS_REJECT` yok.
+  - Temizlik: ini yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`), `BotCommands.*` kalmadı, sunucular kapatıldı (`run-servers.sh stop`); dört bot satırı hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000` geri yazıldı (yalnızca bot satırları, kişisel veri okunmadı). Test artıkları depo dışında (`Logs\bots\2026-10-02\live-095945.jsonl`, `Logs\bots_old_f403\`).
+- Bulgular: Tur 1 bulgusu 1 kapandı. Notlar (engel değil): `SubmitCast`/`BeginCast` içindeki kullanılmayan `now` parametresi `(void)now` ile bastırılmış (F4-02 kalıbı); `RejectCast` `switch` içinde yeni `case` yorumu satır içinde en sonda, sıra `TOO_EARLY`'den sonra (işlev etkilenmez); `git diff --check` yalnızca `docs/STATUS.md` markdown tablo satır sonu boşluğunu bildirir (kod dosyalarında boş).
+- Kalan (insan testi): T-ARCH-08 (`docs/STATUS.md` "Proje sahibi testleri"): gerçek istemcide cast animasyonu; plan kapsamında kriteri engellemez.
