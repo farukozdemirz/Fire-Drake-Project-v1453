@@ -86,6 +86,16 @@ public:
 	bool m_castAnyHas;                                     // IOCP thread only
 	std::chrono::steady_clock::time_point m_castAnyLast;   // IOCP thread only: last EFFECTING of any skill
 
+	bool m_potActive;                                      // IOCP thread only: a pot series is in progress
+	uint32 m_potItemId;                                    // IOCP thread only: ITEM.Num of the pot
+	uint32 m_potSkillId;                                   // IOCP thread only: its ITEM.Effect1 skill
+	uint8 m_potKind;                                       // IOCP thread only: 1 = HP (DirectType 1), 2 = MP (DirectType 2)
+	uint32 m_potLeft;                                      // IOCP thread only: pots still to drink in this series
+	uint32 m_potSent;                                      // IOCP thread only: pot packets sent in this series
+	uint32 m_potOk;                                        // IOCP thread only: of those, result "effected"
+	bool m_potHasLast;                                     // IOCP thread only: m_potLast is valid for this spawn (shared timer)
+	std::chrono::steady_clock::time_point m_potLast;       // IOCP thread only: when the last pot packet went out (any pot)
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];

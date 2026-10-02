@@ -10,6 +10,8 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_attackSent(0), m_attackHits(0),
 		m_castPhase(CAST_IDLE), m_castSkillId(0), m_castLeft(0), m_castCycle(0),
 		m_castDone(0), m_castPackets(0), m_castAnyHas(false),
+		m_potActive(false), m_potItemId(0), m_potSkillId(0), m_potKind(0),
+		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0)
 {
@@ -85,6 +87,14 @@ void BotSession::ResetForRespawn()
 	for (int i = 0; i < 8; i++)
 		m_castTypeHas[i] = false;
 	m_castAnyHas = false;
+	m_potActive = false;
+	m_potItemId = 0;
+	m_potSkillId = 0;
+	m_potKind = 0;
+	m_potLeft = 0;
+	m_potSent = 0;
+	m_potOk = 0;
+	m_potHasLast = false;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

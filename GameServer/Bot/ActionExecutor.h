@@ -50,6 +50,14 @@ struct CastOutcome
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early"
 };
 
+struct PotionOutcome
+{
+	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed: "ok", "effected", "srv_fail", "no_result",
+	                       // "not_in_game", "dead", "bad_item", "unsupported_item", "no_stock", "pot_cooldown", "rate"
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -101,4 +109,20 @@ public:
 
 	// Clears the cast state without sending anything (stop, despawn, target lost). Keeps the reuse timers.
 	static void EndCast(BotSession * s);
+
+	// Validates and arms a series of 'count' pots of ITEM 'itemId'; sends nothing yet (the same Tick()'s TickPotion()
+	// does). REFUSED (nothing armed): "not_in_game", "dead", "bad_item" (count < 1, unknown item, no Effect1, level or
+	// class does not match, unknown skill), "unsupported_item" (see 5.4 rules). The bag stock is NOT checked here:
+	// the guard checks it before every packet, so the refusal is visible as FAIRNESS_REJECT (CLI-06).
+	static PotionOutcome BeginPotion(BotSession * s, uint32 itemId, uint32 count,
+		std::chrono::steady_clock::time_point now);
+
+	// Called once per Tick() for every in-game session; NOTHING unless s->m_potActive and the shared pot timer allows
+	// the next pot. Sends at most one WIZ_MAGIC_PROCESS (MAGIC_EFFECTING). SENT: pot sent, series continues.
+	// FINISHED: last pot sent. REFUSED: guard rejected, series dropped. FAILED: server answered MAGIC_FAIL or
+	// published nothing, series dropped.
+	static PotionOutcome TickPotion(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// Clears the pot series without sending anything (stop, despawn). Keeps the shared pot timer.
+	static void EndPotion(BotSession * s);
 };

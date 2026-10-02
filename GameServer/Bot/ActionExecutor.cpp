@@ -935,3 +935,311 @@ void ActionExecutor::EndCast(BotSession * s)
 	s->m_castPhase = BotSession::CAST_IDLE;
 	s->m_castLeft = 0;
 }
+
+// --- potion slice (ADR-0017 Ek F4-04) ---
+
+// Counts 'itemId' in the bot's own bag only (slots 14..41). Equipment, cospre and magic bag are not counted.
+static uint32 CountInBag(CUser * user, uint32 itemId)
+{
+	uint32 count = 0;
+	for (uint8 i = INVENTORY_INVENT; i < INVENTORY_INVENT + HAVE_MAX; i++)
+	{
+		_ITEM_DATA * item = user->GetItem(i);
+		if (item != nullptr && item->nNum == itemId)
+			count += item->sCount;
+	}
+
+	return count;
+}
+
+// Maps a pot guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PotionOutcome RejectPotion(BotSession * s, CUser * user, BotCore::PotionVerdict verdict,
+	const BotCore::PotionCheck & c)
+{
+	const char * rule = "CLI-06";
+	const char * reason = "no_stock";
+	float value = (float)c.stock;
+	float limit = 1.0f;
+
+	switch (verdict)
+	{
+	case BotCore::POT_REJECT_COOLDOWN:
+		rule = "CLI-06"; reason = "pot_cooldown"; value = (float)c.sinceLastMs; limit = (float)BotCore::kPotCooldownMs;
+		break;
+	case BotCore::POT_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "Potion", rule, reason, value, limit);
+
+	ActionExecutor::EndPotion(s);
+	PotionOutcome out;
+	out.kind = PotionOutcome::REFUSED;
+	out.reason = reason;
+	return out;
+}
+
+// Builds one WIZ_MAGIC_PROCESS (MAGIC_EFFECTING) for the bot's own pot, runs it through CUser::HandlePacket() and
+// maps the result the server published back (via BotSession::m_castEcho). 'stockBefore' is for telemetry only.
+static PotionOutcome SubmitPotion(BotSession * s, CUser * user, uint32 stockBefore, uint64 nowMs)
+{
+	uint32 decisionId = NextDecisionId(s);
+	const char * kind = (s->m_potKind == 2) ? "mp" : "hp";
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"UsePotion\""
+			+ ",\"item\":" + std::to_string(s->m_potItemId)
+			+ ",\"skill\":" + std::to_string(s->m_potSkillId)
+			+ ",\"kind\":\"" + kind + "\""
+			+ ",\"stock\":" + std::to_string(stockBefore)
+			+ ",\"use\":" + std::to_string(s->m_potSent + 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	Packet pkt(WIZ_MAGIC_PROCESS);
+	pkt << uint8(MAGIC_EFFECTING) << uint32(s->m_potSkillId)
+		<< int16(user->GetID()) << int16(user->GetID())
+		<< int16(0) << int16(0) << int16(0) << int16(0) << int16(0) << int16(0);
+
+	s->m_castEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+
+	uint64 echo = s->m_castEcho.load();
+	int op = -1;
+	int code = 0;
+	bool ok = false;
+	const char * reason = "no_result";
+	if ((echo & (1ull << 63)) != 0
+		&& (uint32)(echo & 0xFFFFFFFF) == s->m_potSkillId)
+	{
+		op = (int)((echo >> 48) & 0xF);
+		code = (int)(int16)((echo >> 32) & 0xFFFF);
+		if (op == MAGIC_EFFECTING) { ok = true; reason = "effected"; }
+		else if (op == MAGIC_FAIL) { reason = "srv_fail"; }
+	}
+
+	// 'stock_after' is for operators/verification only; the outcome never reads it (MB-01 pots do not drop).
+	uint32 stockAfter = CountInBag(user, s->m_potItemId);
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"UsePotion\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"op\":" + std::to_string(op)
+			+ ",\"code\":" + std::to_string(code)
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"stock_after\":" + std::to_string(stockAfter);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	PotionOutcome out;
+	out.kind = PotionOutcome::SENT;
+	out.reason = reason;
+	return out;
+}
+
+PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 count,
+	std::chrono::steady_clock::time_point now)
+{
+	PotionOutcome out;
+	out.kind = PotionOutcome::NOTHING;
+	out.reason = "ok";
+
+	(void)now;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	if (count < 1)
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "bad_item";
+		return out;
+	}
+
+	_ITEM_TABLE * it = g_pMain->GetItemPtr(itemId);
+	if (it == nullptr || it->m_iEffect1 == 0)
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "bad_item";
+		return out;
+	}
+
+	// Mirrors the server's own item checks (MagicInstance.cpp:1018-1028).
+	if ((it->m_bClass != 0 && !user->JobGroupCheck(it->m_bClass))
+		|| (it->m_bReqLevel != 0 && user->GetLevel() < it->m_bReqLevel))
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "bad_item";
+		return out;
+	}
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(it->m_iEffect1);
+	if (m == nullptr)
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "bad_item";
+		return out;
+	}
+
+	_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(it->m_iEffect1);
+
+	bool supported =
+		m->bType[0] == 3
+		&& m->bType[1] == 0
+		&& m->bMoral == MORAL_SELF
+		&& m->sSkill == 0
+		&& m->sMsp == 0
+		&& m->sUseStanding == 0
+		&& m->sEtc == 0
+		&& m->bFlyingEffect == 0
+		&& (m->iUseItem == 0 || m->iUseItem == itemId)
+		&& BotCore::PotSupported(m->sReCastTime)
+		&& t3 != nullptr
+		&& (t3->bDirectType == 1 || t3->bDirectType == 2)
+		&& t3->sFirstDamage > 0
+		&& t3->sTimeDamage == 0;
+	if (!supported)
+	{
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "unsupported_item";
+		return out;
+	}
+
+	s->m_potActive = true;
+	s->m_potItemId = itemId;
+	s->m_potSkillId = it->m_iEffect1;
+	s->m_potKind = t3->bDirectType;
+	s->m_potLeft = count;
+	s->m_potSent = 0;
+	s->m_potOk = 0;
+	s->m_castSelfId = user->GetID();
+
+	out.kind = PotionOutcome::SENT;
+	out.reason = "ok";
+	return out;
+}
+
+PotionOutcome ActionExecutor::TickPotion(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	PotionOutcome out;
+	out.kind = PotionOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (s == nullptr || !s->m_potActive)
+		return out;
+
+	CUser * user = s->m_pUser;
+	if (user == nullptr || !user->isInGame())
+	{
+		EndPotion(s);
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		EndPotion(s);
+		out.kind = PotionOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	BotCore::PotionCheck c;
+	c.stock = CountInBag(user, s->m_potItemId);
+	c.hasLast = s->m_potHasLast;
+	c.sinceLastMs = 0;
+	if (s->m_potHasLast)
+		c.sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_potLast).count();
+	c.actionsInWindow = inWindow;
+
+	// The bag rule is checked before every packet (CLI-06; the server does not check MB-01 pots).
+	if (c.stock < 1)
+		return RejectPotion(s, user, BotCore::POT_REJECT_NO_STOCK, c);
+
+	// Shared timer still running: normal flow, not a guard rejection, so no FAIRNESS_REJECT is written.
+	if (BotCore::PotionWaitMs(c) > 0)
+		return out;
+
+	BotCore::PotionVerdict verdict = BotCore::CheckPotion(c);
+	if (verdict != BotCore::POT_OK)
+		return RejectPotion(s, user, verdict, c);
+
+	PotionOutcome sent = SubmitPotion(s, user, c.stock, nowMs);
+
+	// The pot feeds the cast timers as if it were a type-3 effect (ADR-0017 Ek F4-04 item 5).
+	s->m_potHasLast = true;
+	s->m_potLast = now;
+	s->m_castTypeHas[3] = true;
+	s->m_castTypeLast[3] = now;
+	s->m_castAnyHas = true;
+	s->m_castAnyLast = now;
+
+	s->m_potSent++;
+
+	const char * reason = sent.reason;
+	if (std::strcmp(reason, "effected") != 0)
+	{
+		EndPotion(s);
+		out.kind = PotionOutcome::FAILED;
+		out.reason = reason;
+		return out;
+	}
+
+	s->m_potOk++;
+	s->m_potLeft--;
+
+	if (s->m_potLeft == 0)
+	{
+		EndPotion(s);
+		out.kind = PotionOutcome::FINISHED;
+		out.reason = "effected";
+		return out;
+	}
+
+	out.kind = PotionOutcome::SENT;
+	out.reason = "effected";
+	return out;
+}
+
+void ActionExecutor::EndPotion(BotSession * s)
+{
+	if (s == nullptr)
+		return;
+
+	s->m_potActive = false;
+	s->m_potLeft = 0;
+}
