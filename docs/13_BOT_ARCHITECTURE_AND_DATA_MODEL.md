@@ -270,7 +270,7 @@ GameServer/Bot/            BotManager, BotAgent, Perception, Brain/, ActionExecu
 GameServer/Bot/Nav/        NavGrid, AStar, LoS, SafePoint, StuckRecovery
 BotCore/ (statik kütüphane) sunucuya bağımlı olmayan saf mantık: utility, FSM, nav algoritmaları,
                            fairness kuralları, istatistik → birim test edilebilir
-Tests/BotCoreTests/        doctest veya GoogleTest (depoda test çatısı yok, yeni proje)
+Tests/BotCoreTests/        kendi mini çatımız, doctest uyumlu makrolar (ADR-0016; F3-05); `tools/run-tests.sh`
 tools/                     kurulum betiği (USERDATA), telemetri analizi (Python), SMD önizleme
 ```
 
