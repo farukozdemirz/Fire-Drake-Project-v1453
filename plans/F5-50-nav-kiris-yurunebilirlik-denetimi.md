@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-50 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`) — `KAPANDI` |
@@ -150,3 +150,48 @@ git diff --stat gece/2026-10-02-nav...bot/F5-50
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar:** DÜZELTME GEREKLİ
+- **İncelenen commit:** `f17d461` (`bot/F5-50`; kod `fae635d`; taban `gece/2026-10-02-nav` @ `196857d`). Çalışma ağacı temiz, ağaçta commit edilmemiş iş yok. Paralel hat `nav` (`AUTO_LOOP=1`): sunuculara dokunulmadı.
+- **Özet:** Walk (engelli hücre) katmanı doğru ve bağımsız çapraz denetimden geçti. Eğim katmanı planın §3.1(c) kuralını değil, uçların hücrelerinden türeyen yola bağımlı bir Bresenham denetimini uyguluyor. Sonuç: planlayıcının kendi 6,75 m kirişlerinin %1,9'u (691/35878) `SlopeTooSteep` alıyor ve test bu yüzden planın "ihlal 0" iddiasını gevşetmiş (K7). Uygulayıcı bunu açıkça raporladı (sapma 2/3, Q1/Q2); sorun kısmen planın kendi tutarsızlığıdır, aşağıda karar verildi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, uyarı yok | ✔ | `tools/build.sh Release` rc=0 (`/tmp/f550_rel.log`), `grep -ci warning` = 0 |
+| K2 Debug rc=0, uyarı yok | ✔ | `tools/build.sh Debug` rc=0, uyarı 0 |
+| K3 testler `0 failed`, yedi yeni ad `[ OK ]` | ✔ | `./tools/run-tests.sh Release --no-build` ve `Debug --no-build`: `169 tests, 0 failed`; `NavSegment_Basic/Corner/Slope/Symmetry_Oracle/RealMap_Planner/RealMap_Straight/Perf` `[ OK ]`, harita var (SKIPPED yok) |
+| K4 yasak include yok | ✔ | `grep -nE "windows.h\|stdafx\|GameServer\|shared/" BotCore/NavSegment.h` yalnızca bir yorum satırı eşleşir (`:4`, "no server header"); `#include` yalnızca `NavGrid.h` + `<cmath>` (`:13`, `:15`) |
+| K5 dinamik bellek / global-static yok | ✔ | `grep -nE "\bnew\b\|malloc\|std::vector\|static "` yalnızca yorum (`:4`); tüm diziler yığında (`:147-148`, `:226-227`) |
+| K6 oracle güvenlik 0, aşırı muhafazakâr ≤ %0,1, simetri 0 | ✔ | Test çıktısı: `oracle ... sym=0 safety=0 graze=0 excess=0` (3000), `straight ... sym=0 safety=0 graze=2 excess=0` (2000; 2/2000 = %0,1 sınırda ama ≤). Bağımsız doğrulama için K11 |
+| K7 planlayıcı segment/kiriş ihlali 0 | ✘ | Segment: `segment_bad=0` ✔. Kiriş: `chord_blocked=0` ✔ ama `chord_slope=691/35878` (`SlopeTooSteep`); plan "her 6,75 m kiriş `Ok`" ister. Test `NavSegmentTests.cpp:482-483` yalnızca `segmentBad` ve `chordBlocked`'ı denetler, kiriş eğim ihlalini `CHECK` etmez (`:459-460`, `:471-472`) |
+| K8 Perf p95 ≤ 0,02 ms | ✔ | Release `ms_p95=0.000200` (yeniden koşuldu); Debug `0.001200` |
+| K9 yalnızca §4 dosyaları | ✔ | `git diff --stat gece/2026-10-02-nav...bot/F5-50`: `NavSegment.h`, `NavSegmentTests.cpp`, iki `.vcxproj` (birer satır), plan dosyası; `GameServer/`, `shared/`, `AIServer/`, `docs/` farkı 0 |
+| K10 ASCII + CRLF, `git diff --check` boş | ✔ | `file`: iki yeni dosya `ASCII text, with CRLF`; CRLF satır sayısı = satır sayısı (302/302, 623/623); `git diff --check` rc=0; `.vcxproj` BOM+CRLF korunmuş |
+| K11 bağımsız Python süpercover çapraz denetimi | ✔ | Aşağıda |
+
+**K11 yöntemi ve sonucu.** C++ tarafı (`/tmp`, commit edilmez) gerçek harita `zone71` için `Walk`/yükseklik dökümü ve 43 754 kiriş kararı üretti (rastgele sürekli uçlu 1500 + hücre-merkezi vertex'e yatkın 1500 + planlayıcı segment ve 6,75 m kirişleri). Python, `Fraction` ile tam rasyonel aritmetikle kapalı-kare kesişimini hesapladı; 3500 kiriş (1500 R, 1500 Q, 500 P, 500 C) karşılaştırıldı: **güvenlik ihlali 0** (`Ok` denen kirişte engelli hücre yok), **muhafazakâr fazla ret 0** (C++ `Blocked` ⇒ Python da engelli), raporlanan `cellX/cellZ` her durumda gerçekten dokunulan ve `Walk` olmayan hücre. Uygulayıcının sayıları yeniden üretildi: `P Ok = 4876`, `C Slope = 691`. Ek ölçüm: literal süpercover eğim kuralı (planın §3.1(c) hâli) planlayıcı segmentlerinin 143/1219'unu (%11,7) reddeder; uygulayıcının %11,8 değeriyle uyumlu.
+
+**Bulgular (önem sırasıyla)**
+
+1. **K7 / `BotCore/NavSegment.h:240-291`, `Tests/BotCoreTests/NavSegmentTests.cpp:482-483`:** eğim katmanı, kirişin kendi uç hücreleri arasındaki Bresenham yolunu `EdgeOpen` ile dener. Bu yol, kirişin gerçekten geçtiği hücrelerle ve üst segmentin Bresenham yoluyla aynı olmak zorunda değildir; karar yola bağımlıdır. Planlayıcı segmentinin 6,75 m'lik alt kirişi kendi uç hücrelerinden farklı bir yol türetip `SlopeTooSteep` alabiliyor (691/35878, %1,9). F5-55'te guard bu kirişleri `FAIRNESS_REJECT` yapar ve bot kendi planlayıcı rotasında takılır; plan §8 tam olarak bunu engellemek için "ikisinin tanımı ayrışırsa K7 yakalar" der. Test de bu yüzden gevşetilmiş. Düzeltme: aşağıdaki talimat 1-2.
+2. **Plan kusuru (Claude), Q1/Q2 cevabı:** §3.1(c)'deki literal süpercover eğim kuralı ölçümle (hem uygulayıcı hem bağımsız) planlayıcı çıktısının %11,7'sini reddeder; yani K7 ile §3.1(c) birlikte sağlanamaz. `docs/12` §13.1'deki "ihlal 0" ölçümü yalnızca Walk'ı kapsıyordu (değerlendirme raporu eğimi ölçmemiş). **Karar (planlayıcı):** kiriş denetiminin zorunlu kuralı Walk süpercover'dır (AC-NAV-03, "engelli hücreye giren hareket = 0"). Eğim katmanı isteğe bağlı olur, varsayılan **kapalı**; yalnızca uçları planlayıcı waypoint'i olan tam segmentler için planlayıcıyla tutarlıdır (Q2: kiriş, üst segment bağlamını bilmeden eğimi garanti edemez; bağlamlı eğim denetimi gerekirse F5-55 değerlendirir). Uygulayıcının Q1 sapması bu yüzden "kabul" değil, "yeniden tasarım"dır. `docs/12` §13.1 aynı doğrultuda güncellendi.
+3. **Güvenlik tarafı fail-open, `NavSegment.h:187-188`:** `guard` aşılırsa `break` ile dönüp ardından uç hücre/eğim aşamalarını koşturup `Ok` dönebilir. Pratikte ulaşılamaz (taşan geçiş önce `OutOfBounds` verir), ama güvenlik denetiminin "emin değilsem geç" demesi yanlıştır; fail-closed olmalı.
+4. **Girdi doğrulaması yok, `NavSegment.h:107-108`, `:179-180`:** `NaN`/`inf`/çok büyük koordinatta `(int)std::floor(...)` tanımsız davranıştır (x86'da `INT_MIN`, ardından OOB ile tesadüfen güvenli). Güvenlik denetimi bunu açıkça `OutOfBounds` saymalı.
+5. **Not (engel değil), `NavSegment.h:190,197`:** vertex eşitliği toleransı `t` biriminde `1e-12`; plan `|tMaxX − tMaxZ| <= 1e-9` der. Daha sıkı olduğundan bu yönde güvenlik kaybı ölçülmedi (3500 kirişte 0 uyuşmazlık, vertex'e yatkın 1500 Q dahil) ama plandan sapma raporlanmamış. Talimat 5 gerekçe ister, değiştirmeyi zorlamaz.
+6. **Not, sapma 4 kabul:** `NavGrid::Build` kenar bileşenlerini `Walk` dışı bıraktığı için ızgaradan çıkan kiriş önce `BlockedCell` verir; `NavSegment_Basic` buna göre yazılmış (`:204-208`). Makul.
+7. **Dürüstlük:** Uygulayıcı raporu doğru: tüm sayılar (`691`, `4876`, `35878`, `169 tests`, `p95`) yeniden üretildi; K7 kısmi olarak açıkça işaretlenmiş.
+
+#### Düzeltme talimatı
+
+```
+plans/F5-50-nav-kiris-yurunebilirlik-denetimi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+Karar (planlayıcı, Q1/Q2 cevabı): kiriş denetiminin zorunlu kuralı Walk süpercover'dır; eğim katmanı isteğe bağlıdır ve varsayılan KAPALIdır. Plan §3.1(c) ve K7 bu karara göre okunur. Dokunulabilecek dosyalar değişmez: BotCore/NavSegment.h, Tests/BotCoreTests/NavSegmentTests.cpp.
+1. BotCore/NavSegment.h: NavCheckSegment imzasına son parametre olarak `bool checkSlope = false` ekle. Mevcut eğim bloğu (Bresenham + EdgeOpen, `SlopeTooSteep`) yalnızca `checkSlope == true` iken çalışsın; `false` iken fonksiyon yalnızca Walk süpercover sonucunu (Ok / OutOfBounds / BlockedCell) döndürsün. NavCheckStep'e de aynı `bool checkSlope = false` parametresini ekle ve aynen ilet. Üstteki dosya yorumunu güncelle: eğim katmanı yalnızca uçları planlayıcı waypoint'i olan tam segmentler için planlayıcıyla tutarlıdır, keyfi alt kirişler için garanti vermez. `NavSegmentVerdict::SlopeTooSteep` kalsın.
+2. Tests/BotCoreTests/NavSegmentTests.cpp: (a) `NavSegment_Slope` içindeki tüm eğim denetimlerini `checkSlope = true` ile çağır (`Check` yardımcısına ve `NavCheckSegment` çağrılarına parametre ekle) ve aynı testte "eğim sınırın üstünde" (`2.51`) ızgarasında varsayılan çağrının (`checkSlope` verilmeden) `Ok` döndürdüğünü `CHECK` et; (b) `NavSegment_RealMap_Planner`: planlayıcı segmentlerini `checkSlope = true` ile denetle ve `CHECK_EQ(segmentBad, 0)` koru; 6,75 m kirişleri varsayılan (Walk-only) çağrıyla denetle ve `chordViolations` (`Ok` olmayan her karar) için `CHECK_EQ(chordViolations, 0)` ekle; eğim açıkken kirişlerde kaç `SlopeTooSteep` çıktığını ayrıca say (`chord_slope_opt`) ve yalnızca bilgi olarak yaz (`CHECK` yok). `printf` satırı: `NAVSEG planner: paths=%d segments=%d segment_bad=%d chords=%d chord_violations=%d chord_slope_opt=%d`. Diğer testler (Basic, Corner, Symmetry_Oracle, RealMap_Straight, Perf) varsayılan çağrıyla kalsın.
+3. BotCore/NavSegment.h `guard` aşımı (`++guard > guardMax`): `break` yerine `fail(NavSegmentVerdict::OutOfBounds, -1, -1)` çağırıp `res` ile dön (fail-closed). Yorum: "numerical safety net; never reached by a correct traversal".
+4. BotCore/NavSegment.h girdi doğrulaması: koordinat dönüşümlerinden (`std::floor` + `(int)`) önce dört girdinin `std::isfinite` olduğunu ve `std::fabs(deger / unit)` değerlerinin `1e9`'u aşmadığını denetle; aksi halde `OutOfBounds` (`cellX = cellZ = -1`, `cellsTouched = 0`) dön. Testler (`NavSegment_Basic`): `NaN`, `+inf` ve `1e12` koordinatlı kirişler `OutOfBounds` dönsün (`<limits>` ekle).
+5. BotCore/NavSegment.h `:190,197` vertex toleransı: plan `1e-9` der, kod `1e-12` kullanıyor. Ya toleransı plana (`1e-9`) çek ve testlerin (özellikle `RealMap_Straight` `excess=0`, `graze*1000 <= total`) hâlâ geçtiğini göster, ya da `1e-12`yi korumak için kısa yorum yaz (`t` birimi, hedeflenen metre ölçeği). Hangisini seçtiğini raporuna yaz.
+6. `./tools/build.sh Release` ve `Debug` (rc=0, uyarı 0), `./tools/run-tests.sh Release` ve `Debug` (`0 failed`) koş; raporuna yeni `NAVSEG planner:` satırını (beklenen `segment_bad=0 chord_violations=0`) ve `NAVSEG oracle/straight/perf` satırlarını yapıştır; `git diff --check` boş, dosyalar ASCII + CRLF.
+```
