@@ -677,7 +677,8 @@ TEST_CASE("Perception_ParseNpcInOut")
 
 	{
 		Buf b;
-		b.U8(1);                              // 1 byte: too short for the id
+		b.U8(1);                              // 2 bytes: too short for the id
+		b.U8(0);
 		uint8_t type = 0;
 		BotCore::NpcObs out;
 		CHECK(!BotCore::ParseNpcInOut(b.v.data(), b.v.size(), 0, type, out));
