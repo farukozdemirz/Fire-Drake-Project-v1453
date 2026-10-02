@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
@@ -128,6 +128,23 @@ git diff gece/2026-10-02...bot/F4-50 -- BotCore/Perception.h | grep -nE '^\+.*(w
   - §3.1 `moving` alanı `speedField > 0` diyor; ancak §5.3 `Snap_MetaFields` "bilgi kaydı + 5 sn, hiç `MOVE` yok → `ageMs` 5000, durağan değilse `posState` stale" bekler. Kayıt paketinde hız `-1` (bilinmiyor) olduğundan testin geçmesi için `moving = (speedField != 0)` uygulandı: bilinmeyen hız muhafazakâr biçimde hareketli sayılır (docs/13 §5.2a'daki durağan/hareketli ayrımına uygun; hız `0` kesin durağan). Bu seçim raporda açıkça belirtilir.
   - K7'nin `^-` grep'i, §3.2/§3.4'ün zorunlu satır değişiklikleri nedeniyle lafzen boş olamaz (yukarıda).
 - Açık sorular: Yok. (Not: `moving` yorumu plan metnindeki `speedField > 0` ifadesinden kasıtlı olarak sapar; doğrulamada onay gerekirse §3.1/`docs/13` §5.2a güncellenebilir.)
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-50` (taban `gece/2026-10-02`); Doğrulama Turu 1 düzeltme turu; commit bu raporla birlikte.
+- Değişen dosyalar ve neden:
+  - `BotCore/Perception.h`: `BuildSnapshot` satırında `v.moving = (u.lastSpeed > 0);` (bilinmeyen `-1` ve durağan `0` artık hareketli değil); `UnitView.moving` alan yorumu "speedField > 0; unknown speed (-1, no WIZ_MOVE since registration) counts as stationary: the server sends a WIZ_MOVE for every step of a moving unit"; `ClassifyPos` yorumundan "an unknown speed is treated as moving (conservative, docs/13 section 5.2a)" çıkarıldı, yerine "moving = last WIZ_MOVE speed > 0" yazıldı; `ClassifyPos` gövdesine dokunulmadı.
+  - `GameServer/Bot/BotManager.cpp`: `CommandSee` içinde `bool moving = (u.lastSpeed > 0);`; başka satıra dokunulmadı.
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: `Perception_Snap_MetaFields` ilk blok beklentileri güncellendi (`speedField -1`, `CHECK(!v.moving)`, `posState POS_FRESH`, `ageMs`/`posAgeMs` 5000 aynen, `vx`/`vz` 0; yorum "unknown speed counts as stationary: no MOVE since registration"); mevcut `speed = 0` bloğu aynen korundu; üçüncü blok eklendi (`UpdateMove(5, 10030, 10040, 0, 45, 1000)`; `nowMs=5000` → `posAge 4000`, `moving` true, `POS_STALE`; `nowMs=7500` → `posAge 6500`, `POS_LOST`). Yeni `TEST_CASE` eklenmedi (toplam 88 kalır).
+- Derleme sonucu: `./tools/build.sh Release` rc=0; son satırlar `BotCoreTests.vcxproj -> …\x86-Release\Tests\BotCoreTests.exe`, `proj-GameServer.vcxproj -> …\x86-Release\Server\GameServer.exe`. `./tools/build.sh Debug` rc=0. Değişen üç dosya `touch` edilip yeniden derlendiğinde değişen dosyalarda `warning`/`error` yok. Testler: Release ve Debug `88 tests, 0 failed`; dört yeni ad hâlâ `[ OK ]`. `python3 tools/check-perception-contract.py` → `RESULT: PASS` (R1-R5 ihlal 0, allowlist R2 28 / R3 18, `files 19`); `--selftest` → `selftest OK` rc=0.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0; değişen dosyalarda yeni uyarı yok), K2 ✔ (Debug rc=0), K3 ✔ (Release ve Debug `88 tests, 0 failed`; dört yeni ad `[ OK ]`), K4 ✔ (Perception.h'te yasak include yok; yeni include yok).
+  - K5a ✔ (`RESULT: PASS` + `selftest OK`), K5 ✔ (yeni `GameServer/Bot` satırı yalnızca `> 0` karşılaştırması, sunucu nesnesi erişimi yok).
+  - K6 ✔ (`ParseMoveFull`/`ObsTable` mantığı değişmedi), K7 ✔ (yalnızca karşılaştırma ve yorumlar değişti; mevcut alanlar/`ageMs` aynı), K8 ✔ (yeni ini/komut/paket/thread/mutex yok), K9 ✔ (ASCII + CRLF; `git diff --check` boş; eklenen satırlarda `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok).
+  - K10 → çalışma zamanı doğrulaması planda Claude'a bırakılmıştır; bu turda sunucu çalıştırılmadı.
+- Plandan sapmalar: Tur 1'deki `moving` sapması **kaldırıldı**; `moving` artık plan §3.1 ve `docs/13` §5.2a ile uyumlu biçimde `speedField > 0` (bilinmeyen hız `-1` ve durağan `0` hareketli sayılmaz). Plan metninden başka sapma yok.
+- Açık sorular: Yok.
 
 ---
 
