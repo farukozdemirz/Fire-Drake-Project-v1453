@@ -68,7 +68,8 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F2-05](F2-05-bot-yeniden-spawn-dongusu.md) | Bot yeniden spawn döngüsü (`[BOT] RESPAWN_CYCLES`): slot iadesinden sonra aynı oturumla yeniden spawn, ilerleme/özet logları; T-PERF-06 (1000 spawn/despawn) altyapısı | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-05` (taban: `gece/2026-10-02`) |
 | [F2-06](F2-06-bot-calisma-zamani-komutlari.md) | Bot çalışma zamanı komutları: konsol `/bot spawn\|despawn\|list` ve `BotCommands.txt` komut dosyası (ADR-0015; yalnızca `ENABLED=1`) | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-06` (taban: `gece/2026-10-02`) |
 | [F3-01](F3-01-telemetri-kuyrugu-ve-yazici.md) | Telemetri kuyruğu, yazıcı thread ve `PERF_SAMPLE` (`[BOT] TELEMETRY`, ADR-0007; JSONL, `Logs/bots/`) | F3 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F3-01` (taban: `gece/2026-10-02`) |
-| [F3-02](F3-02-mac-baslangic-bitis-ve-summary.md) | Maç bağlamı: `MATCH_START`/`MATCH_END`, `<match>.jsonl` ve `summary.json` (`/bot match start\|end`; ADR-0007/0015 ekleri) | F3 | DOĞRULANDI | `bot/F3-02` (taban: `gece/2026-10-02`) |
+| [F3-02](F3-02-mac-baslangic-bitis-ve-summary.md) | Maç bağlamı: `MATCH_START`/`MATCH_END`, `<match>.jsonl` ve `summary.json` (`/bot match start\|end`; ADR-0007/0015 ekleri) | F3 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F3-02` (taban: `gece/2026-10-02`) |
+| [F3-06](F3-06-telemetri-analiz-araci.md) | Telemetri analiz aracı (`tools/bot-telemetry-report.py`): JSONL → Markdown rapor, MET-PERF-02 bütçe hükmü, geçersiz maç bayrakları (F3-03..05 numaraları ScenarioRunner/GM komutları/birim test çatısı için ayrılmıştır) | F3 | HAZIR | `bot/F3-06` (taban: `gece/2026-10-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
