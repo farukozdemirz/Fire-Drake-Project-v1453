@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-52 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`: `NavTargetTracker`, `NavFollower`) — `KAPANDI` |
@@ -91,14 +91,59 @@ git diff --stat gece/2026-10-02-nav...bot/F5-52
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-52` (taban: `gece/2026-10-02-nav`); commit mesajı `[F5-52] ...` (rapor commit'i bu dosyayla birlikte).
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/NavTrack.h`: `NavTargetTracker::Observe`/`NavFollower::ObserveTarget`'a varsayılanlı `int16_t speedField = -1`; `Sample`'a `speed`; yeni `Velocity` kuralı (son iki gözlem aralığı `minSpanMs`..`windowMs`; aralık kısaysa geriye doğru `span ≥ minSpanMs` en yakın örnek; `speed == 0` → durmuş; `speed > 0` → büyüklük `speed/10 × 1,1` ile sınırlı, yön korunur); `NavFollowParams` varsayılanları `velocityWindowMs = 4000`, `minVelocitySpanMs = 400`; `Update`'te öngörü süresine gözlem yaşı eklenir (tavan `maxLeadSec`).
+  - `Tests/BotCoreTests/NavTrackTests.cpp`: beş yeni test (aşağıda) + eski varsayılanlara örtük bağlı iki test güncellendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0. `touch BotCore/NavTrack.h Tests/BotCoreTests/NavTrackTests.cpp` ile yeniden derlemede bu dosyalara yeni uyarı yok (kalan uyarılar eski dosyalarda). Testler: Release `162 tests, 0 failed`, Debug `162 tests, 0 failed`; beş yeni test adı `[ OK ]`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dosyalarda yeni uyarı yok.
+  - K2 ✔ Debug rc=0, yeni uyarı yok.
+  - K3 ✔ Release+Debug `0 failed`; `NavTrack_Velocity_PacketCadence`, `NavTrack_Velocity_Speed0`, `NavTrack_Velocity_Stale`, `NavTrack_Velocity_Turn`, `NavTrack_Follower_LeadAtPacketCadence` `[ OK ]`; mevcut `NavTrack_*` testleri geçer (iki test güncellendi, gerekçe aşağıda).
+  - K4 ✔ cadence satırları (Release): `period=500 zero=0 nonzero=196 mag_min=4.500 mag_max=4.500`, `period=1000 zero=0 nonzero=191 ...`, `period=1500 zero=0 nonzero=186 ...`, `period=1540 zero=0 nonzero=185 ...`, `period=2000 zero=0 nonzero=181 ...`; 1500/1540 için sıfır hız oranı **%0** (eski %100).
+  - K5 ✔ `Velocity(int64_t, int, int, float&, float&)` imzası değişmedi; mevcut açık argümanlı çağrılar (1000/100) derlenir ve beklentileri aynı kalır; `Observe`/`ObserveTarget` yeni argümanı varsayılanlı (`-1`).
+  - K6 ✔ `BotCore/NavTrack.h`'te `windows.h|stdafx|GameServer|shared/` yok; NaN/∞ sürümde `mag > maxV && mag > 0` NaN'ı dışlar (çökme yok); mevcut testler geçer.
+  - K7 ✔ `NavTrack_Perf` Release: `exact ms_p95=0.551`, `mage ms_p95=0.616` (≤ 2 ms, AC-NAV-02).
+  - K8 ✔ `git status` yalnızca `BotCore/NavTrack.h`, `Tests/BotCoreTests/NavTrackTests.cpp`, plan dosyası; `GameServer/`/`shared/`/`docs/` farkı 0; ASCII + CRLF (`file` ile teyit); `git diff --check` boş.
+  - K9 (Claude): doğrulamada değerlendirme betiğinin `Velocity` döngüsünü düzeltilmiş başlıkla yeniden koşar.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - Gözlem yaşı yalnızca geçerli bir taban öngörü varken (`lead0 > 0`, mevcut blok içinde) eklenir; düz `min(maxLeadSec, NavPredictLead(...) + yaş)` yazılsaydı `botSpeedMps = 0` ve `maxLeadSec = 0` vakalarında (mevcut `NavTrack_Follower_Prediction` (c)) haksız bir öngörü üretilirdi. Bu, planın "öngörü süresine yaş eklenir" ifadesinin güvenli yorumudur.
+  - Eski varsayılanlara (1000/100) örtük bağlı iki mevcut test, plan §3.4 uyarınca güncellendi:
+    - `NavTrack_Follower_Triggers`: 0→1100 ms gözlemleri yeni 4000 ms pencerede ~5,45 m/s verir, halka merkezi ileri kayar; `goal` `Cell(21,5)` → `Cell(23,5)` (yorumla gerekçelendirildi).
+    - `NavTrack_Follower_Prediction` (d): bayat eşiği 1000 → 4000 ms olduğundan `now = newest + 1001/1000` yerine `+4001/+4000` (5001/5000) kullanıldı; `4000` hâlâ geçerli, `4001` bayat.
+  - `NavTrack_Chase_Sim` ve `NavTrack_RealMap` (hareketli hedef) değişmeden geçti (`replans=29`, `caught_ms=11400`, `final_dist=3.7`).
+- Açık sorular: yok.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI**
+- İncelenen commit: `bot/F5-52` @ `80007af` (kod: `5e0ba56`; taban `gece/2026-10-02-nav`; paralel hat `nav`, sunucuya dokunulmadı, birleştirmeyi döngü betiği yapar).
+- Kapsam: `git diff --stat` = `BotCore/NavTrack.h`, `Tests/BotCoreTests/NavTrackTests.cpp`, bu plan dosyası; `GameServer/`, `shared/`, `docs/` farkı 0. Commit mesajları `[F5-52] ...`. Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `touch BotCore/NavTrack.h Tests/BotCoreTests/NavTrackTests.cpp` sonrası `./tools/build.sh Release` rc=0, derleme çıktısında uyarı sayısı 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, uyarı 0 |
+| K3 | ✔ | Release ve Debug `162 tests, 0 failed`; beş yeni test (`NavTrack_Velocity_PacketCadence/Speed0/Stale/Turn`, `NavTrack_Follower_LeadAtPacketCadence`) `[ OK ]`; mevcut `NavTrack_*` `[ OK ]`; iki güncellenen test aşağıda |
+| K4 | ✔ | Kendi koşumda `period=1500 zero=0 nonzero=186 mag 4.500..4.500`, `period=1540 zero=0 nonzero=185 ...` (500/1000/2000 ms de `zero=0`); ayrıca bağımsız geçici betik (varsayılan `NavFollowParams` 4000/400, `speed` verilmeden): 500/1000/1500/1540 ms hepsi %0 sıfır (eski %0/%0/%100/%100); betik commit edilmedi |
+| K5 | ✔ | `Velocity(int64_t, int, int, float&, float&)` imzası aynı (`NavTrack.h:35` yakını); `Observe`/`ObserveTarget` yeni argümanı `= -1` varsayılanlı; açık 1000/100 argümanlı `NavTrack_Tracker_Velocity` değişmeden geçti |
+| K6 | ✔ | `grep -c "windows.h\|stdafx\|GameServer\|shared/" BotCore/NavTrack.h` = 0; NaN/∞ için `mag > maxV && mag > 0` NaN'ı dışlar; mevcut NaN/∞ testleri geçti |
+| K7 | ✔ | `NavTrack_Perf` Release: `exact ms_p95=0.562`, `mage ms_p95=0.613` (≤ 2 ms) |
+| K8 | ✔ | `git diff --check` boş; iki dosya `ASCII text, with CRLF line terminators`, tüm satırlar CRLF, ASCII dışı bayt 0; kapsam dışı dosya yok |
+| K9 (Claude) | ✔ | Yukarıdaki bağımsız betik: 1500/1540 ms sıfır oranı %0 (0/186, 0/185) |
+
+**Bulgular (hepsi not, engel değil)**
+
+1. `BotCore/NavTrack.h:366-370` — gözlem yaşı yalnızca `lead0 > 0` bloğunda eklenir; plandaki düz `min(maxLeadSec, NavPredictLead + yaş)` yerine bu seçim `botSpeedMps = 0`/`maxLeadSec = 0` durumunda sahte öngörüyü önler (mevcut `NavTrack_Follower_Prediction` (c)). Gerekçe makul, `docs/12` §13.2'nin "min(1,5 sn, …) aynı kalır; yaş eklenir" ifadesiyle uyumlu; kabul.
+2. `Tests/BotCoreTests/NavTrackTests.cpp:510-512` (`NavTrack_Follower_Triggers`) — hedef `Cell(21,5)` → `Cell(23,5)`: 4000 ms pencerede 0→1100 ms gözlemleri ~5,45 m/s verdiği için; plan §3.4'e uygun ve gerekçesi yorumda. Kabul.
+3. `Tests/BotCoreTests/NavTrackTests.cpp:606-618` (`NavTrack_Follower_Prediction` (d)) — bayat eşiği 1000 → 4000 ms'e taşındığı için `+1001/+1000` → `+4001/+4000`; sınır dahil/hariç korunur. Kabul.
+4. `NavTrack_Velocity_PacketCadence` yalnızca `speed=45` ile koşuyor; `speed` verilmeyen (−1) yol bu testte yok, ama `NavTrack_Velocity_Speed0` ve `Stale` onu kapsıyor. Not.
+5. NaN konum girdisinde `Velocity` NaN hız döndürebilir (karşılaştırmalar yanlış çıkar); bu davranış F5-04'ten beri aynı, plan kapsamı dışı.
+
+Kod yorumları ve girinti çevreyle uyumlu, ölü kod/`printf` dışında (testte planın istediği `NAVTRACK cadence` satırı) yok. `docs/12` §13.2 zaten yeni kuralı ve 4000/400 `[A]` değerlerini içeriyor; ek doküman değişikliği gerekmedi. Çalışma zamanı/sunucu kriteri bu hatta yok.
