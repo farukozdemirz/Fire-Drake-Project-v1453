@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-09 (log biçimi, `DOĞRULANDI`, `gece/2026-10-02`'ye birleşti), F1-06/F1-07 (model çıktıları, `KAPANDI`) |
@@ -146,15 +146,152 @@ git status --short
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-10` (taban: `gece/2026-10-02`); `79f3b19` "Hasar logu ozet ve model karsilastirma betigi"; rapor + `Durum` commit'i bu satırdan sonra.
 - Değişen dosyalar ve neden:
-- Kabul kriterleri öz-değerlendirme:
+  - `tools/damage-trace-summary.py` (yeni): planın istediği tek araç; `L`/`A`/`D`/`C` bölümleri ve `--selftest`.
+  - `plans/F1-10-hasar-logu-ozet-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Doğrulama (adım 1): `GameServer/DamageTrace.cpp:123` `fprintf` (20 sütun), `ctx` üretimi `:111-117`; `GameServer/User.cpp:1871` `originalAmount`, kanca `:1953`; `tools/stat-model.py:467` `write_report`, `R` biçimi `:494`, `K` biçimi `:512`; `tools/spell-model.py:479` `write_report`, `M` biçimi `:532-533`, `H` biçimi `:566-567`. Kayma yok.
+
+- Kabul kriterleri öz-değerlendirme (komut çıktıları):
+  - **K1 ✔** `python3 tools/damage-trace-summary.py --selftest` → `selftest OK`, `rc=0`.
+  - **K2 ✔** Sentetik 4 satırlık log (`/tmp` altında üretildi, sonra silindi) ile:
+    ```
+    == L ==
+    L files=1 lines=5 parsed=5 bad=0 span_s=0.4 filtered=0 zero=0
+    L note=misses_not_logged hit_rate_not_measured
+    == A ==
+    A ctx=R kind=dmg a=BotWP_K t=BotMI_K n=2 req_avg=205.0 req_min=200 req_max=210 app_avg=175.0 app_ratio=0.854 a_hit=50-50 t_ac=100-100 lethal=0
+    A ctx=S101006 kind=heal a=BotPHD_K t=BotWP_K n=1 req_avg=300.0 req_min=300 req_max=300 app_avg=300.0 app_ratio=1.000 a_hit=50-50 t_ac=100-100 lethal=0
+    A ctx=S109510 kind=dmg a=BotWP_K t=BotMI_K n=1 req_avg=250.0 req_min=250 req_max=250 app_avg=100.0 app_ratio=0.400 a_hit=50-50 t_ac=100-100 lethal=1
+    == D ==
+    D a=BotWP_K t=BotMI_K kind=dmg n=1 req_sum=-80 req_avg=80.0 ctx_seen=-
+    == C ==
+    C kind=R a=BotWP_K t=BotMI_K skill=- n=2 meas=205.0 model=205.0 diff_pct=+0.0 verdict=LOW_N match=exact range_viol=0
+    C kind=H a=BotPHD_K t=BotWP_K skill=101006 n=1 meas=300.0 model=310.0 diff_pct=-3.2 verdict=LOW_N match=exact range_viol=-
+    C kind=K a=BotWP_K t=BotMI_K skill=109510 n=1 meas=250.0 model=210.0 diff_pct=+19.0 verdict=LOW_N match=exact range_viol=-
+    ```
+    `grep -c "^== "` = **4** (başlık sırası L, A, D, C).
+  - **K3 ✔** C satır alanları `kind= a= t= skill= n= meas= model= diff_pct= verdict= match= range_viol=` sırasıyla; `--tol`/`--min-n` varsayılanları 15 ve 5 (kullanım satırı `--tol PCT ... (default 15)`, `--min-n N ... (default 5)`; kod `options = {"tol": 15.0, "min_n": 5, ...}`).
+  - **K4 ✔** Boş dosya → `parsed=0 bad=0`, `rc=0`; yalnızca bozuk satırlı dosya → `lines=2 parsed=0 bad=2`, `rc=0`; olmayan yol → `error: cannot read log: [Errno 2] ...`, `rc=2`. Hiçbirinde traceback yok.
+  - **K5 ✔** `grep` ile `tools/damage-trace-summary.py:357,359` `heal_instant`/`dmg_avg`; model tarafı `stat-model.py:494,512` ve `spell-model.py:532,566` ile aynı alan adları.
+  - **K6 ✔** `file tools/damage-trace-summary.py` → `Python script, ASCII text executable`; CRLF yok (`grep -c $'\r'` = 0); içe aktarımlar yalnızca `io`, `re`, `sys`.
+  - **K7 ✔** `git status --short` temiz; `git diff --stat gece/2026-10-02...bot/F1-10` yalnızca `plans/F1-10-...md` ve `tools/damage-trace-summary.py`; `/tmp/f110_*` geçici dosyaları silindi.
+  - **K8 ✔** `./tools/build.sh Release` → `rc=0`; son satırlar: `proj-LogInServer.vcxproj -> ...LogInServer.exe`, `proj-GameServer.vcxproj -> ...GameServer.exe`, `proj-AIServer.vcxproj -> ...AIServer.exe`.
+
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - Yok. Plan dışı dosyaya dokunulmadı; sunucu/DB/`docs/**` değişmedi.
+  - Küçük uygulama tercihleri: (a) `L` satırında `filtered` ve `zero` alanları taban satırın sonuna eklendi (plan bu iki alanı "L satırına ekle" dediği için); (b) modele karşılık gelmeyen C satırlarında `model`/`diff_pct` alanları `-` olarak basılır (hüküm `NO_MODEL`).
+  - `--selftest` içinde `_E` profil geri düşüşü, `K` boşluklu skill adı, `lethal`/`app_ratio` ve `ctx=- / primary=0` → `D` ayrıca assert edilir; planın istediği maddelerin tamamı kapsanır.
+
+- Açık sorular: Yok. `docs/15` §4.1 T-MECH-DMG ölçümü insan oturumu; F1-10 sonuç yorumu gerçek log geldiğinde yapılır.
+
+### Tur 2 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-10` (taban: `gece/2026-10-02`); düzeltme commit'i bu rapordaki `Durum` ile birlikte atılır.
+- Değişen dosyalar ve neden:
+  - `tools/damage-trace-summary.py`: Tur 1 bulgularının düzeltmesi (`find_r` dönüş türü, `run_selftest` `_E` güçlendirme, `requested == 0` satırları ve `zero` sayacı, `main(argv=None)`).
+  - `plans/F1-10-hasar-logu-ozet-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Yapılan düzeltmeler (talimat sırasıyla):
+  1. `find_r` (:167): `find_by_profile(stat_r, a_name, t_name, None, "R")` — profil geri düşüşü artık model türü `R` döndürüyor; tam-ad dönüşü ve başka hiçbir dönüş yolu değişmedi.
+  2. `run_selftest` `_E` blokı: üç ayrı durum (`min_n=3`, 6'şar olay). (a) `ctx=R`, `requested=-205 x6`, model `R BotWP_K->BotMI_K ... dmg_avg=205.0 dmg_min=180 dmg_max=230`; (b) `ctx=S109510`, `requested=-210 x6`, model `K BotWP_K->BotMI_K skill=109510 Hammer Drop ... dmg_avg=210.0`; (c) `ctx=S101006` heal, `requested=+300 x6`, saldıran `BotPHD_E`, model `H BotPHD_K skill=101006 Heal ... heal_instant=310`. Üçü de `verdict=OK match=profile` bekliyor; tam ad durumundaki mevcut `match=exact` assert'i korundu.
+  3. `build_d_groups` (:240): `primary=0` ve `requested == 0` satırlar artık gruplanmıyor, `zero` sayacına ekleniyor ve fonksiyon `(groups, zero)` döndürüyor. `write_report` L satırında `zero_a + zero_d` yazıyor; böylece `zero=` hem `A` (primary=1) hem `D` (primary=0) tarafındaki sıfır istekleri sayıyor. Selftest: `ctx=- primary=0 requested=0` satırı `D` bölümünde görünmüyor ve `zero=1`; A+D birlikte `zero=2`.
+  4. `main(argv=None)`; içeride `argv is None` ise `sys.argv[1:]`; `if __name__ == "__main__"` bloğu `sys.exit(main())` çağırıyor (`packet-trace-summary.py` iskeletiyle uyumlu).
+
+- Düzeltme 1 kanıtı (geçici geri alma, tek satır): `/tmp/opencode/dts_bug.py` kopyasında `find_r` son parametresi `None` yapılıp `--selftest` çalıştırıldı → `AssertionError`, çıktıda `C kind=- a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=- diff_pct=- verdict=NO_MODEL match=profile range_viol=-`, `rc=1`; düzeltme geri konunca `selftest OK rc=0`. Geçici kopya silindi.
+
+- Kabul kriterleri öz-değerlendirme (komut çıktıları):
+  - **K1 ✔** `python3 tools/damage-trace-summary.py --selftest` → `selftest OK`, `rc=0` (düzeltme sonrası).
+  - **Adım 5(a) ✔** `/tmp/opencode/f110_a.log --min-n 3 --stat-model /tmp/opencode/f110_a_stat.txt`:
+    ```
+    == C ==
+    C kind=R a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=205.0 diff_pct=+0.0 verdict=OK match=profile range_viol=0
+    ```
+  - **Tur 1 K2 aynı ✔** Tur 1'deki sentetik 5 satırlık log/model yeniden çalıştırıldı; çıktı Tur 1 raporundakiyle **birebir aynı** (`L ... zero=0`, A 3 grup, D 1 satır, C 3 satır; `C kind=R ... match=exact range_viol=0` dahil). Yalnızca `C kind=R` satırı etkilenebilirdi; `_K` tam ad kullanıldığı için fark yok (diff boş).
+  - **Adım 3 ✔** `ctx=- primary=0 requested=0` (tek satır) → `D` boş, `L ... zero=1`; A (primary=1 sıfır) + D (primary=0 sıfır) → `zero=2`.
+  - **K3 ✔** C alan sırası ve `--tol`/`--min-n` varsayılanları (15 / 5) değişmedi; argümansız çalıştırma `USAGE`, `rc=2`.
+  - **K4 ✔** Boş → `parsed=0 bad=0 rc=0`; bozuk → `lines=2 parsed=0 bad=2 rc=0`; olmayan yol → `error: cannot read log: [Errno 2] ...`, `rc=2`. Traceback yok.
+  - **K5 ✔** Model alan adları (`dmg_avg`, `heal_instant`) ve biçimler değişmedi.
+  - **K6 ✔** `file` → `Python script, ASCII text executable`; CR satırı 0; içe aktarımlar yalnızca `io`, `re`, `sys`.
+  - **K7 ✔** `git diff --stat` yalnızca `tools/damage-trace-summary.py` (+64/−13 civarı) ve plan dosyası; `git status --short` bu iki dosyayı gösteriyor (commit öncesi); `/tmp/opencode/f110_*` ve `dts_bug.py` silindi.
+  - **K8 ✔** `./tools/build.sh Release` → `rc=0`; son satırlar: `proj-LogInServer.vcxproj -> ...LogInServer.exe`, `proj-GameServer.vcxproj -> ...GameServer.exe`, `proj-AIServer.vcxproj -> ...AIServer.exe` (sunucular önceden `[DOWN]` idi).
+
+- Plandan sapmalar: Yok. Talimattaki 6 madde dışında dosyaya dokunulmadı; `docs/**`, `GameServer/**`, DB değişmedi.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz doldurulmadı)
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ** (araç sağlam ve kriterlerin tamamı lafzen karşılandı; ancak `ctx=R` için profil geri düşüşü, planın adım 4 "Eşleme" kuralına rağmen modeli bulduğu halde değer okumuyor ve selftest bunu yakalamıyor)
+- İncelenen: `bot/F1-10` @ `552e2a8` (araç commit'i `79f3b19`; yalnızca `tools/damage-trace-summary.py` + plan dosyası)
+- Mod: otonom (`AUTO_LOOP=1`, gece modu): birleştirme/push yapılmadı; sunucular `[DOWN]` idi.
+- Derleme: `./tools/build.sh Release` → rc=0, `warning` satırı 0 (C++ değişikliği yok; üç exe bağlandı).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, rc=0 (Claude çalıştırdı). Ancak `_E` profil durumunda hükmü sınamıyor (Bulgu 1) |
+| K2 bölümler | ✔ | Sentetik log (bellekte, `render`) ve `/dev/null` ile: `== L ==`, `== A ==`, `== D ==`, `== C ==` bu sırada; `L files= lines= parsed= bad= span_s=` ve `L note=misses_not_logged hit_rate_not_measured` var |
+| K3 `C` biçimi / varsayılanlar | ✔ | `kind= a= t= skill= n= meas= model= diff_pct= verdict= match= range_viol=` sırası kodda `:376-386`; `USAGE` `--tol ... (default 15)`, `--min-n ... (default 5)`; `options = {"tol": 15.0, "min_n": 5,...}` `:557`; argümansız çalıştırma `USAGE` yazar (rc=2) |
+| K4 dayanıklılık | ✔ | `/dev/null` → `parsed=0 bad=0`, rc=0; yalnızca bozuk (`junk`, `foo\tbar\r\n`) → `lines=2 parsed=0 bad=2`, rc=0; `/tmp/olmayan.log` → `error: cannot read log: [Errno 2]...`, rc=2; dizin yolu → `[Errno 21]`, rc=2; `--tol abc` → mesaj, rc=2. Traceback yok |
+| K5 model biçimi uyumu | ✔ | `stat-model.py:494` (`R ... dmg_avg= dmg_min= dmg_max=`), `:512` (`K ... skill=%d %s ... dmg_avg=`), `spell-model.py:533,539` (`M ... dmg_avg= dmg_min= dmg_max= dot_tick=`), `:567` (`H ... heal_instant=`) ile aynı alan adları (`tools/damage-trace-summary.py:357,359,320-321,311-315`) |
+| K6 yalnızca stdlib / kodlama | ✔ | `import io, re, sys`; `file` → `Python script, ASCII text executable`; CR sayısı 0 |
+| K7 kapsam | ✔ | `git diff --stat gece/2026-10-02...bot/F1-10`: yalnızca `tools/damage-trace-summary.py` (+633) ve plan dosyası; plan farkında yalnızca `Durum` ve Uygulayıcı Raporu; `git status --short` boş; `/tmp/f110_*` yok |
+| K8 derleme | ✔ | Yukarıda: rc=0, uyarı 0 |
+
+**Bağımsız doğrulama ayrıntıları**
+- Rapordaki K2 çıktısı kod mantığıyla tutarlı; `lethal`, `app_ratio` (`hp_before=100, applied=-100, requested=-250` → 0.400, `lethal=1`) elle yeniden üretildi.
+- Profil geri düşüşü bağımsız denendi (saldıran/hedef `_E`, model `_K`; 6'şar olay): `K` satırı `verdict=OK match=profile`, `H` satırı `verdict=OK match=profile`, ama `R` satırı `C kind=- ... model=- diff_pct=- verdict=NO_MODEL match=profile` (Bulgu 1).
+- `D` bölümü `--spell-model` ile `model_dot_tick=109510:7.0` üretiyor (doğru).
+
+**Bulgular (önem sırasıyla)**
+
+1. **[Orta] `ctx=R` profil geri düşüşü modeli bulup değerini okumuyor.** `tools/damage-trace-summary.py:163-167` `find_r`, profil yolunda `find_by_profile(stat_r, a_name, t_name, None, None)` çağırıyor; son parametre (`kind`) `None` olduğu için dönen `model_kind` `None` oluyor. `write_c_section` `:356-360` yalnızca `model_kind == "H"` veya `in ("R","K","M")` ise `model_value` okuduğundan `model_value` `None` kalıyor → `NO_MODEL`, `kind=-`. Plan adım 4 "Eşleme": tam ad yoksa profil çifti ile Karus satırı kullanılır ve `match=profile` yazılır. El Morad (`_E`) botlarıyla yapılacak T-MECH-DMG oturumunda tüm `R` (temel vuruş) grupları sessizce `NO_MODEL` çıkar; asıl istenen hüküm (± %15) kaybolur. `K`/`H` yolları doğru.
+2. **[Düşük] Selftest bu hatayı yakalamıyor.** `:528-532` `_E` durumu yalnızca `"match=profile" in fallback` kontrol ediyor (`min_n=1`); plan "`_E` ... profil geri düşüşü `match=profile` verir" dese de `verdict` ve `model=` değerinin dolu olduğu sınanmıyor. `K` ve `H` için `_E` geri düşüşü hiç sınanmıyor.
+3. **[Düşük] `primary=0` ve `requested == 0` satırı `kind=heal` etiketleniyor.** `:246` (`"dmg" if requested < 0 else "heal"`); plan `kind` tanımı `requested < 0` → `dmg`, `> 0` → `heal`. Sıfır istekli bağlam dışı satır `D` bölümünde `kind=heal req_sum=0` olarak çıkıyor (denendi).
+4. **[Not]** Plan "`main(argv=None)`" iskeletini istiyor (`:553` `main(argv)`); işlev bozmuyor.
+
+**Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F1-10-hasar-logu-ozet-betigi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/damage-trace-summary.py, find_r (:163-167): profil geri düşüşünde model türü "R" dönmeli. find_by_profile(stat_r, a_name, t_name, None, "R") çağır (son parametre None değil "R"). Başka dönüş yolunu değiştirme.
+2. tools/damage-trace-summary.py, run_selftest: _E geri düşüş bloğunu (:528-532) güçlendir. Üç ayrı sentetik durum kur (saldıran/hedef _E, model satırları _K, her biri 6 olay ve min_n=3): (a) ctx=R, requested -205 x6, model "R BotWP_K->BotMI_K ... dmg_avg=205.0 dmg_min=180 dmg_max=230" -> çıktıda "C kind=R a=BotWP_E t=BotMI_E skill=- n=6 meas=205.0 model=205.0 diff_pct=+0.0 verdict=OK match=profile range_viol=0" geçmeli; (b) ctx=S109510 dmg, requested -210 x6, model "K BotWP_K->BotMI_K skill=109510 Hammer Drop ... dmg_avg=210.0" -> "C kind=K ... verdict=OK match=profile"; (c) ctx=S101006 heal, requested +300 x6, saldıran BotPHD_E, model "H BotPHD_K skill=101006 Heal ... heal_instant=310" -> "C kind=H ... verdict=OK match=profile". Tam ad durumundaki mevcut match=exact assert'i kalsın. Düzeltme 1 olmadan (a) assert'inin düştüğünü kendi çalıştırmanla göster (geçici olarak geri alıp çalıştır, sonra düzeltmeyi geri koy; raporda tek satırla belirt).
+3. tools/damage-trace-summary.py, build_d_groups (:240-249): requested == 0 olan primary=0 satırlarını gruplama; sayacı "zero" ile birleştir: write_report'ta L satırındaki zero= değeri hem A tarafındaki hem D tarafındaki requested == 0 satırlarını saymalı. Selftest'e ekle: ctx "-" primary 0 requested 0 satırı D bölümünde görünmez ve L satırında zero=1 çıkar.
+4. main imzasını main(argv=None) yap; içeride argv None ise sys.argv[1:] kullan (packet-trace-summary.py iskeletiyle uyumlu); if __name__ bloğu sys.exit(main()) çağırsın.
+5. Çalıştır ve raporda göster: python3 tools/damage-trace-summary.py --selftest -> "selftest OK" rc=0; adım 2'deki (a) durumunun çıktısı (profil geri düşüşlü R satırı verdict=OK); Tur 1'deki K2 çıktısının (sentetik 4 satır) düzeltme sonrası aynı kaldığı (yalnızca C kind=R satırı etkilenebilir; fark varsa diff ile göster). Geçici dosyaları /tmp altında üret ve sil.
+6. Başka dosyaya dokunma (docs/**, GameServer/** dahil). Durum satırını UYGULANDI yap.
+```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI** (Tur 1 bulgularının tamamı giderildi; 8/8 kriter kanıtla ✔)
+- İncelenen: `bot/F1-10` @ `b93309d` (düzeltme commit'i; yalnızca `tools/damage-trace-summary.py` + plan dosyası değişti)
+- Mod: otonom (`AUTO_LOOP=1`, gece modu, entegrasyon dalı `gece/2026-10-02`): birleştirme/push yapılmadı; sunucular `[DOWN]` idi.
+- Derleme: `./tools/build.sh Release` → rc=0, `warning` satırı 0 (C++ değişikliği yok; üç exe bağlandı).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, rc=0 (Claude çalıştırdı); `_E` için `R`/`K`/`H` hüküm ve `match=profile` assert'leri `run_selftest`'te |
+| K2 bölümler | ✔ | Bağımsız sentetik log (bellekte/geçici dosya, sonra silindi): `== L ==`, `== A ==`, `== D ==`, `== C ==` sırasıyla; `L ... span_s=` ve `L note=misses_not_logged hit_rate_not_measured` var |
+| K3 `C` biçimi / varsayılanlar | ✔ | `C kind= a= t= skill= n= meas= model= diff_pct= verdict= match= range_viol=` sırası değişmedi; argümansız çalıştırma `USAGE` (rc=2) |
+| K4 dayanıklılık | ✔ | `/dev/null` → `parsed=0 bad=0`, rc=0; `/tmp/olmayan.log` → `error: cannot read log: [Errno 2]...`, rc=2; traceback yok (bozuk satır dayanıklılığı Tur 1'de doğrulandı, kod değişmedi) |
+| K5 model biçimi uyumu | ✔ | Tur 1 ile aynı alan adları (`dmg_avg`, `dmg_min/max`, `heal_instant`, `dot_tick`) |
+| K6 yalnızca stdlib / kodlama | ✔ | `import io, re, sys`; `file` → `Python script, ASCII text executable`; CR sayısı 0 |
+| K7 kapsam | ✔ | `git diff --stat gece/2026-10-02...bot/F1-10`: `tools/damage-trace-summary.py`, plan dosyası ve Claude'un Tur 1 doğrulama kayıtları (`plans/README.md`, `docs/STATUS.md`); Tur 1→2 farkı yalnızca betik + plan; `git status --short` boş |
+| K8 derleme | ✔ | rc=0, uyarı 0 |
+
+**Tur 1 bulgularının doğrulanması**
+1. `ctx=R` profil geri düşüşü (Orta): `find_r` `:167` artık `find_by_profile(..., None, "R")`. Bağımsız deneme (`BotWP_E`->`BotMI_E`, 6 olay, model `_K`): `C kind=R ... model=205.0 diff_pct=+0.0 verdict=OK match=profile range_viol=6` (model `dmg_max=200` verildiği için 205 değerlerinin 6'sı aralık dışı, doğru). `K` (`verdict=FAIL` +150, `match=profile`) ve `H` (`OK`, `match=profile`) yolları da doğru. ✔
+2. Selftest `_E` bloğu (Düşük): `R`/`K`/`H` için ayrı `verdict=OK match=profile` assert'leri eklendi; uygulayıcı düzeltme 1'i geri alıp assert'in düştüğünü raporladı (`AssertionError`, rc=1). ✔
+3. `primary=0`, `requested == 0` (Düşük): artık `D`'de görünmüyor (`D` boş); bağımsız denemede `L ... zero=1`; selftest A+D birlikte `zero=2`'yi sınıyor. ✔
+4. `main(argv=None)` + `sys.exit(main())` (Not): uygulandı. ✔
+
+**Bulgular**
+- Engelleyen bulgu yok.
+- [Not] `tools/damage-trace-summary.py` içinde `find_by_profile` K-önceliği ve `LOW_N` hükmü gerçek log gelene kadar yalnızca sentetik veriyle sınandı; T-MECH-DMG insan oturumunda (gerçek log) `--min-n` ve `--tol` değerleri gözden geçirilmeli.
