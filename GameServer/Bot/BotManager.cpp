@@ -2360,10 +2360,12 @@ void BotManager::CommandNpcs(const std::string & args)
 	// Copy the table and the counter under the lock, then format with the lock released.
 	BotCore::NpcTable copy;
 	uint32 unresolved = 0;
+	uint32 pending = 0;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		copy = s->m_npcs;
 		unresolved = s->m_npcUnresolved.load();
+		pending = (uint32)s->m_npcPending.Count();
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2386,7 +2388,11 @@ void BotManager::CommandNpcs(const std::string & args)
 		"BotManager: cmd npcs: %s sees %d npc(s) (dead %d, dropped %u, unresolved %u)",
 		s->m_charName.c_str(), copy.Count(), dead, (unsigned)copy.Overflow(), (unsigned)unresolved);
 	WriteBotLog(message);
-	WriteBotLog("BotManager: cmd npcs:   (unresolved counts the ids of the last WIZ_NPC_REGION list that the table did not know; no WIZ_REQ_NPCIN is sent yet)");
+	char note[256];
+	snprintf(note, sizeof(note),
+		"BotManager: cmd npcs:   (unresolved counts the ids of the last WIZ_NPC_REGION list that the table did not know; npcin requests %u, npcs received %u, pending %u)",
+		(unsigned)s->m_npcInRequests, (unsigned)s->m_npcInUnits, (unsigned)pending);
+	WriteBotLog(note);
 
 	for (int i = 0; i < copy.Count(); i++)
 	{
@@ -2673,6 +2679,24 @@ void BotManager::TickSessions()
 						snprintf(message, sizeof(message),
 							"BotManager: bot %s userin failed (%s)",
 							s->m_charName.c_str(), userIn.reason);
+						WriteBotLog(message);
+					}
+
+					NpcInOutcome npcIn = ActionExecutor::TickNpcIn(s, now);
+					if (npcIn.kind == NpcInOutcome::SENT)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s npcin requested %d, received %d",
+							s->m_charName.c_str(), npcIn.requested, npcIn.received);
+						WriteBotLog(message);
+					}
+					else if (npcIn.kind == NpcInOutcome::REFUSED || npcIn.kind == NpcInOutcome::FAILED)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s npcin failed (%s)",
+							s->m_charName.c_str(), npcIn.reason);
 						WriteBotLog(message);
 					}
 				}

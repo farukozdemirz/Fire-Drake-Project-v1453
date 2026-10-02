@@ -386,7 +386,7 @@ namespace BotCore
 	constexpr int      kUserInMaxIds   = 32;    // ids per WIZ_REQ_USERIN request (CLI-19, design limit) [A]
 	constexpr uint32_t kUserInMinGapMs = 1000;  // min time between two requests (CLI-19, design limit) [A]
 
-	// Copyable, lock-free list of ids a WIZ_REGIONCHANGE listed and the table did not know. The caller holds the
+	// Copyable, lock-free list of ids a WIZ_REGIONCHANGE or WIZ_NPC_REGION listed and the table did not know. The caller holds the
 	// lock; insertion order is kept.
 	class PendingIds
 	{
@@ -402,7 +402,8 @@ namespace BotCore
 
 		// Replaces the content with the ids of 'ids' that 'obs' does not know yet. Repeats are skipped; at most
 		// kObsPendingMax kept.
-		void Set(const uint16_t * ids, int n, const ObsTable & obs)
+		template <class TableT>
+		void Set(const uint16_t * ids, int n, const TableT & obs)
 		{
 			m_count = 0;
 			for (int i = 0; i < n && m_count < kObsPendingMax; i++)
@@ -417,7 +418,8 @@ namespace BotCore
 
 		// Drops the ids that 'obs' knows by now and 'selfSid'; copies up to 'cap' of the rest to 'out' in order
 		// WITHOUT removing them. Returns how many were copied.
-		int Peek(const ObsTable & obs, uint16_t selfSid, uint16_t * out, int cap)
+		template <class TableT>
+		int Peek(const TableT & obs, uint16_t selfSid, uint16_t * out, int cap)
 		{
 			int keep = 0;
 			for (int i = 0; i < m_count; i++)
@@ -742,4 +744,36 @@ namespace BotCore
 		int m_count;
 		uint32_t m_overflow;
 	};
+
+	// --- region-change NPC request (ADR-0017 Ek F4-15) ---
+
+	constexpr int      kNpcInMaxIds   = 32;    // ids per WIZ_REQ_NPCIN request (CLI-20, design limit) [A]
+	constexpr uint32_t kNpcInMinGapMs = 1000;  // min time between two requests (CLI-20, design limit) [A]
+
+	// Guard input for a WIZ_REQ_NPCIN request (CLI-20).
+	struct NpcInCheck
+	{
+		int count;               // ids the request would carry
+		bool hasLast;            // a request was sent earlier in this spawn
+		uint32_t sinceLastMs;    // since that request
+	};
+
+	enum NpcInVerdict
+	{
+		NPCIN_OK = 0,
+		NPCIN_REJECT_COUNT = 1,   // CLI-20: count < 1 or > kNpcInMaxIds (defensive; the caller already clamps)
+		NPCIN_REJECT_GAP = 2      // CLI-20: previous request < kNpcInMinGapMs ago
+	};
+
+	// Order: count, gap. Not rate limited by CLI-11 (automatic client traffic, see ADR-0017 Ek F4-15).
+	inline NpcInVerdict CheckNpcIn(const NpcInCheck & c)
+	{
+		if (c.count < 1 || c.count > kNpcInMaxIds)
+			return NPCIN_REJECT_COUNT;
+
+		if (c.hasLast && c.sinceLastMs < kNpcInMinGapMs)
+			return NPCIN_REJECT_GAP;
+
+		return NPCIN_OK;
+	}
 }
