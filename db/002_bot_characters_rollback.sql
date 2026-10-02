@@ -4,7 +4,7 @@
 --   sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -i db/002_bot_characters_rollback.sql
 --
 -- Ownership check: a bot name/account is only removed when the matching
--- BotAcc_... account lists that character as strCharID1. Otherwise the script
+-- BotAcc<PROFILE><K|E> account lists that character as strCharID1. Otherwise the script
 -- raises an error and deletes nothing (the row may belong to a real player).
 -- Only the 12 bot accounts/characters are touched (USERDATA, ACCOUNT_CHAR,
 -- WAREHOUSE); personal data tables are never read or written.
@@ -17,12 +17,12 @@ BEGIN TRANSACTION;
 
 DECLARE @bots TABLE (charName varchar(21), account varchar(21));
 INSERT INTO @bots (charName, account) VALUES
-    ('BotWP_K','BotAcc_WP_K'), ('BotWG_K','BotAcc_WG_K'),
-    ('BotPHD_K','BotAcc_PHD_K'), ('BotPHB_K','BotAcc_PHB_K'),
-    ('BotMF_K','BotAcc_MF_K'), ('BotMI_K','BotAcc_MI_K'),
-    ('BotWP_E','BotAcc_WP_E'), ('BotWG_E','BotAcc_WG_E'),
-    ('BotPHD_E','BotAcc_PHD_E'), ('BotPHB_E','BotAcc_PHB_E'),
-    ('BotMF_E','BotAcc_MF_E'), ('BotMI_E','BotAcc_MI_E');
+    ('BotWP_K','BotAccWPK'), ('BotWG_K','BotAccWGK'),
+    ('BotPHD_K','BotAccPHDK'), ('BotPHB_K','BotAccPHBK'),
+    ('BotMF_K','BotAccMFK'), ('BotMI_K','BotAccMIK'),
+    ('BotWP_E','BotAccWPE'), ('BotWG_E','BotAccWGE'),
+    ('BotPHD_E','BotAccPHDE'), ('BotPHB_E','BotAccPHBE'),
+    ('BotMF_E','BotAccMFE'), ('BotMI_E','BotAccMIE');
 
 -- A character row may only be removed when its expected bot account owns it.
 IF EXISTS (

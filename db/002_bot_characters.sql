@@ -29,12 +29,12 @@ GO
 IF EXISTS (
     SELECT 1
     FROM (VALUES
-        ('BotWP_K','BotAcc_WP_K'), ('BotWG_K','BotAcc_WG_K'),
-        ('BotPHD_K','BotAcc_PHD_K'), ('BotPHB_K','BotAcc_PHB_K'),
-        ('BotMF_K','BotAcc_MF_K'), ('BotMI_K','BotAcc_MI_K'),
-        ('BotWP_E','BotAcc_WP_E'), ('BotWG_E','BotAcc_WG_E'),
-        ('BotPHD_E','BotAcc_PHD_E'), ('BotPHB_E','BotAcc_PHB_E'),
-        ('BotMF_E','BotAcc_MF_E'), ('BotMI_E','BotAcc_MI_E')
+        ('BotWP_K','BotAccWPK'), ('BotWG_K','BotAccWGK'),
+        ('BotPHD_K','BotAccPHDK'), ('BotPHB_K','BotAccPHBK'),
+        ('BotMF_K','BotAccMFK'), ('BotMI_K','BotAccMIK'),
+        ('BotWP_E','BotAccWPE'), ('BotWG_E','BotAccWGE'),
+        ('BotPHD_E','BotAccPHDE'), ('BotPHB_E','BotAccPHBE'),
+        ('BotMF_E','BotAccMFE'), ('BotMI_E','BotAccMIE')
     ) AS b(charName, account)
     WHERE EXISTS (SELECT 1 FROM dbo.USERDATA u WHERE u.strUserID = b.charName)
       AND NOT EXISTS (
@@ -47,12 +47,12 @@ IF EXISTS (
 IF EXISTS (
     SELECT 1
     FROM (VALUES
-        ('BotWP_K','BotAcc_WP_K'), ('BotWG_K','BotAcc_WG_K'),
-        ('BotPHD_K','BotAcc_PHD_K'), ('BotPHB_K','BotAcc_PHB_K'),
-        ('BotMF_K','BotAcc_MF_K'), ('BotMI_K','BotAcc_MI_K'),
-        ('BotWP_E','BotAcc_WP_E'), ('BotWG_E','BotAcc_WG_E'),
-        ('BotPHD_E','BotAcc_PHD_E'), ('BotPHB_E','BotAcc_PHB_E'),
-        ('BotMF_E','BotAcc_MF_E'), ('BotMI_E','BotAcc_MI_E')
+        ('BotWP_K','BotAccWPK'), ('BotWG_K','BotAccWGK'),
+        ('BotPHD_K','BotAccPHDK'), ('BotPHB_K','BotAccPHBK'),
+        ('BotMF_K','BotAccMFK'), ('BotMI_K','BotAccMIK'),
+        ('BotWP_E','BotAccWPE'), ('BotWG_E','BotAccWGE'),
+        ('BotPHD_E','BotAccPHDE'), ('BotPHB_E','BotAccPHBE'),
+        ('BotMF_E','BotAccMFE'), ('BotMI_E','BotAccMIE')
     ) AS b(charName, account)
     WHERE EXISTS (SELECT 1 FROM dbo.ACCOUNT_CHAR a WHERE a.strAccountID = b.account)
       AND NOT EXISTS (
@@ -123,18 +123,18 @@ DECLARE @bots TABLE
 
 INSERT INTO @bots (profile, charName, account, nation, race, class, strong, sta, dex, intel, cha, hp, mp, skillHex)
 VALUES
-    ('WP', 'BotWP_K',  'BotAcc_WP_K',  1,  1, 106, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000004600341400),
-    ('WG', 'BotWG_K',  'BotAcc_WG_K',  1,  1, 106, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000003C3E001400),
-    ('PHD','BotPHD_K', 'BotAcc_PHD_K', 1,  4, 112, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C003E1400),
-    ('PHB','BotPHB_K', 'BotAcc_PHB_K', 1,  4, 112, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C3E001400),
-    ('MF', 'BotMF_K',  'BotAcc_MF_K',  1,  3, 110,  50,  60,  60, 160, 247,  32000, 32000, 0x00000000004634001400),
-    ('MI', 'BotMI_K',  'BotAcc_MI_K',  1,  3, 110,  50, 107,  60, 160, 200, 32000, 32000, 0x00000000003446001400),
-    ('WP', 'BotWP_E',  'BotAcc_WP_E',  2, 11, 206, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000004600341400),
-    ('WG', 'BotWG_E',  'BotAcc_WG_E',  2, 11, 206, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000003C3E001400),
-    ('PHD','BotPHD_E', 'BotAcc_PHD_E', 2, 12, 212, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C003E1400),
-    ('PHB','BotPHB_E', 'BotAcc_PHB_E', 2, 12, 212, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C3E001400),
-    ('MF', 'BotMF_E',  'BotAcc_MF_E',  2, 12, 210,  50,  60,  60, 160, 247,  32000, 32000, 0x00000000004634001400),
-    ('MI', 'BotMI_E',  'BotAcc_MI_E',  2, 12, 210,  50, 107,  60, 160, 200, 32000, 32000, 0x00000000003446001400);
+    ('WP', 'BotWP_K',  'BotAccWPK',  1,  1, 106, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000004600341400),
+    ('WG', 'BotWG_K',  'BotAccWGK',  1,  1, 106, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000003C3E001400),
+    ('PHD','BotPHD_K', 'BotAccPHDK', 1,  4, 112, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C003E1400),
+    ('PHB','BotPHB_K', 'BotAccPHBK', 1,  4, 112, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C3E001400),
+    ('MF', 'BotMF_K',  'BotAccMFK',  1,  3, 110,  50,  60,  60, 160, 247,  32000, 32000, 0x00000000004634001400),
+    ('MI', 'BotMI_K',  'BotAccMIK',  1,  3, 110,  50, 107,  60, 160, 200, 32000, 32000, 0x00000000003446001400),
+    ('WP', 'BotWP_E',  'BotAccWPE',  2, 11, 206, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000004600341400),
+    ('WG', 'BotWG_E',  'BotAccWGE',  2, 11, 206, 255, 162,  60,  50,  50, 32000, 32000, 0x00000000003C3E001400),
+    ('PHD','BotPHD_E', 'BotAccPHDE', 2, 12, 212, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C003E1400),
+    ('PHB','BotPHB_E', 'BotAccPHBE', 2, 12, 212, 120, 147,  70, 190,  50, 32000, 32000, 0x00000000003C3E001400),
+    ('MF', 'BotMF_E',  'BotAccMFE',  2, 12, 210,  50,  60,  60, 160, 247,  32000, 32000, 0x00000000004634001400),
+    ('MI', 'BotMI_E',  'BotAccMIE',  2, 12, 210,  50, 107,  60, 160, 200, 32000, 32000, 0x00000000003446001400);
 
 DECLARE @profile varchar(3), @charName varchar(21), @account varchar(21);
 DECLARE @nation tinyint, @race tinyint, @class smallint;
