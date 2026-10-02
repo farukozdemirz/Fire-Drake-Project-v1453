@@ -1015,3 +1015,101 @@ TEST_CASE("Combat_CastLand_Guard")
 	CHECK_EQ((int)BotCore::CheckCastLand(false, 1000, 0, 50, 6), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
 	CHECK_EQ((int)BotCore::CheckCastLand(true, 1000, 0, 50, 6), (int)BotCore::CAST_REJECT_NO_MANA);
 }
+
+TEST_CASE("Combat_CastTypes_Supported")
+{
+	CHECK_EQ(BotCore::CastTypesSupported(1, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
+
+	CHECK_EQ(BotCore::CastTypesSupported(0, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 9), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 2), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 5), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 4), false);
+}
+
+TEST_CASE("Combat_TypeGate_MinSince")
+{
+	CHECK_EQ(BotCore::IsGatedType(0), false);
+	CHECK_EQ(BotCore::IsGatedType(1), true);
+	CHECK_EQ(BotCore::IsGatedType(7), true);
+	CHECK_EQ(BotCore::IsGatedType(8), false);
+
+	uint32_t since = 12345;
+	BotCore::TypeStamp a[2] = { { 3, true, 500 }, { 4, true, 200 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(a, 2, since), 1);
+	CHECK_EQ((int)since, 200);
+
+	BotCore::TypeStamp b[2] = { { 3, true, 500 }, { 4, false, 0 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(b, 2, since), 1);
+	CHECK_EQ((int)since, 500);
+
+	BotCore::TypeStamp c[2] = { { 3, false, 0 }, { 4, false, 0 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(c, 2, since), 0);
+	CHECK_EQ((int)since, 0);
+
+	BotCore::TypeStamp d[2] = { { 3, true, 500 }, { 0, true, 10 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(d, 2, since), 1);
+	CHECK_EQ((int)since, 500);
+
+	BotCore::TypeStamp e[2] = { { 0, true, 10 }, { 4, true, 300 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(e, 2, since), 1);
+	CHECK_EQ((int)since, 300);
+
+	BotCore::TypeStamp f[1] = { { 3, true, 500 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(f, 1, since), 1);
+	CHECK_EQ((int)since, 500);
+}
+
+TEST_CASE("Combat_TypeGate_DualCast")
+{
+	BotCore::CastStartCheck c = {};
+	c.distanceM = 5.0f;
+	c.skillRange = 56;
+	c.distanceField = 50;
+	c.weaponRangeField = 0;
+	c.needsStanding = false;
+	c.standing = true;
+	c.mana = 1000;
+	c.msp = 30;
+	c.reCastMs = 5300;
+	c.typeGated = true;
+	c.hasSkillLast = false;
+	c.hasAnyLast = false;
+	c.actionsInWindow = 0;
+
+	BotCore::TypeStamp st[2] = { { 3, true, 5000 }, { 4, true, 400 } };
+	c.hasTypeLast = BotCore::MinGatedSince(st, 2, c.sinceTypeLastMs);
+	CHECK_EQ((int)c.hasTypeLast, 1);
+	CHECK_EQ((int)c.sinceTypeLastMs, 400);
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_TYPE_GATE);
+	CHECK_EQ((int)BotCore::CastWaitMs(c), 600);
+
+	st[1].sinceMs = 1000;
+	c.hasTypeLast = BotCore::MinGatedSince(st, 2, c.sinceTypeLastMs);
+	CHECK_EQ((int)c.sinceTypeLastMs, 1000);
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+	CHECK_EQ((int)BotCore::CastWaitMs(c), 0);
+
+	st[0].has = false;
+	st[1].type = 4;
+	st[1].has = true;
+	st[1].sinceMs = 999;
+	c.hasTypeLast = BotCore::MinGatedSince(st, 2, c.sinceTypeLastMs);
+	CHECK_EQ((int)c.hasTypeLast, 1);
+	CHECK_EQ((int)c.sinceTypeLastMs, 999);
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_TYPE_GATE);
+	CHECK_EQ((int)BotCore::CastWaitMs(c), 1);
+}

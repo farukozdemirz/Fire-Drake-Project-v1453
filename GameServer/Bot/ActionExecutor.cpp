@@ -727,9 +727,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	}
 
 	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
-	bool supportedType = (m->bType[0] == 1 || m->bType[0] == 3);
-	if (!supportedType
-		|| m->bType[1] != 0
+	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
 		|| m->sEtc != 0
@@ -839,16 +837,21 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 			now - skillIt->second).count();
 	}
 
-	uint8 type0 = m->bType[0];
-	bool typeGated = (m->iNum < 400000 && type0 >= 1 && type0 <= 7);
-	bool hasTypeLast = false;
-	uint32 sinceTypeLastMs = 0;
-	if (type0 < 8 && s->m_castTypeHas[type0])
+	// MEC-MAG-13: the same-type gate covers every type of the skill (Type3 and Type4 for a dual-typed skill).
+	bool typeGated = (m->iNum < 400000
+		&& (BotCore::IsGatedType(m->bType[0]) || BotCore::IsGatedType(m->bType[1])));
+	BotCore::TypeStamp typeStamps[2];
+	for (int i = 0; i < 2; i++)
 	{
-		hasTypeLast = true;
-		sinceTypeLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
-			now - s->m_castTypeLast[type0]).count();
+		uint8 ty = m->bType[i];
+		typeStamps[i].type = ty;
+		typeStamps[i].has = (ty < 8 && s->m_castTypeHas[ty]);
+		typeStamps[i].sinceMs = typeStamps[i].has
+			? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(now - s->m_castTypeLast[ty]).count()
+			: 0;
 	}
+	uint32 sinceTypeLastMs = 0;
+	bool hasTypeLast = BotCore::MinGatedSince(typeStamps, 2, sinceTypeLastMs);
 
 	uint32 sinceAnyLastMs = 0;
 	if (s->m_castAnyHas)
@@ -984,10 +987,14 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 
 	// Reuse timers: the bot is conservative (the server only records a timestamp on success).
 	s->m_castSkillLast[s->m_castSkillId] = now;
-	if (type0 < 8)
+	for (int i = 0; i < 2; i++)
 	{
-		s->m_castTypeHas[type0] = true;
-		s->m_castTypeLast[type0] = now;
+		uint8 ty = m->bType[i];
+		if (ty != 0 && ty < 8)
+		{
+			s->m_castTypeHas[ty] = true;
+			s->m_castTypeLast[ty] = now;
+		}
 	}
 	s->m_castAnyHas = true;
 	s->m_castAnyLast = now;

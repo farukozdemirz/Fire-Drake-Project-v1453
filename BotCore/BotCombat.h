@@ -314,6 +314,54 @@ namespace BotCore
 		return CAST_OK;
 	}
 
+	// --- dual-typed cast (ADR-0017 Ek F4-26) ---
+
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13): a single type 1 or 3, or the pair Type3 + Type4 (the server
+	// runs Type3 first and Type4 second on the same target). Every other pair stays unsupported.
+	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
+	{
+		if (type1 == 0)
+			return type0 == 1 || type0 == 3;
+
+		return type0 == 3 && type1 == 4;
+	}
+
+	// A skill type that takes part in the same-type gate (MEC-MAG-03: types 1..7).
+	inline bool IsGatedType(uint8_t type)
+	{
+		return type >= 1 && type <= 7;
+	}
+
+	// One entry per type of a skill: whether the bot effected that type earlier in this spawn and how long ago.
+	struct TypeStamp
+	{
+		uint8_t type;       // MAGIC.Type1 or MAGIC.Type2
+		bool has;
+		uint32_t sinceMs;   // meaningful only when 'has'
+	};
+
+	// Smallest "since" over the gated types that were effected before; false (sinceMs = 0) when there is none. The server
+	// refuses a cast when ANY gated type of the skill is inside the gate (MEC-MAG-13), so the smallest value decides.
+	inline bool MinGatedSince(const TypeStamp * stamps, int count, uint32_t & sinceMs)
+	{
+		bool any = false;
+		uint32_t best = 0;
+		for (int i = 0; i < count; i++)
+		{
+			if (!IsGatedType(stamps[i].type) || !stamps[i].has)
+				continue;
+
+			if (!any || stamps[i].sinceMs < best)
+			{
+				best = stamps[i].sinceMs;
+				any = true;
+			}
+		}
+
+		sinceMs = best;
+		return any;
+	}
+
 	// --- cast cancel and standing plan (ADR-0017 Ek F4-24) ---
 
 	// docs/03 CLI-03 [V]: the client cancels a cast with MAGIC_FAIL (opcode 4) and sData[3] = -100 (SKILLMAGIC_FAIL_CASTING).
