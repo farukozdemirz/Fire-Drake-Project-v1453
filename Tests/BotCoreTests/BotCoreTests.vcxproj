@@ -84,6 +84,7 @@
     <ClCompile Include="NavPathTests.cpp" />
     <ClCompile Include="NavSmoothTests.cpp" />
     <ClCompile Include="NavSegmentTests.cpp" />
+    <ClCompile Include="NavSegmentAuditTests.cpp" />
     <ClCompile Include="NavTrackTests.cpp" />
     <ClCompile Include="NavReachTests.cpp" />
     <ClCompile Include="NavRetreatTests.cpp" />
