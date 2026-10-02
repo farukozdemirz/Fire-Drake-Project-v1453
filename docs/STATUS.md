@@ -1,6 +1,6 @@
 # Bot Projesi — Güncel Durum
 
-Son güncelleme: 2026-10-02 · Güncelleyen: Claude (F2-03 planı yazıldı)
+Son güncelleme: 2026-10-02 · Güncelleyen: Claude (gece döngüsü kapanışı; sabah raporu `docs/reports/gece-2026-10-02.md`)
 Sunucu commit: `0f52027` (upstream ile aynı) · Bot kodu: henüz yok · Doküman paketi: v1.0
 Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `MAGIC_BAK_etc` yedeği var)
 
@@ -116,12 +116,15 @@ Açık teknik kararlar: ADR-0006..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
+0. **Gece döngüsü bitti (2026-10-02 05:10, elle durdurma):** sabah raporu `docs/reports/gece-2026-10-02.md` (planlar, ADR-0005/0014 gözden geçirme, test adımları, geri alma). `main`'e dokunulmadı; birleştirme ve push proje sahibinin onayında. `T-ARCH-02` F2-03 uygulanana kadar yapılamaz.
 1. **Gece modu (2026-10-02):** F1'in DeepSeek işleri bitti; F1 faz raporu taslağı `docs/phase-reports/F1-taslak.md` yazıldı (çıkış kararı kısmi: insan testleri açık, aşağıdaki bekleyen testler). F2 başladı: F2-01, F2-02 (tick altyapısı) KAPANDI, F2-03 (bot girişi/spawn: hesap/karakter ataması, `WIZ_SEL_CHAR` → `GameStart(1/2)` taklidi, `[BOT] SPAWN_ON_START`) HAZIR → sıradaki F2 planları: F2-04 bot çıkışı/despawn (S4, slotu DB kaydı bittikten sonra iade) + `Update()` ve zaman aşımı muafiyeti (S5, S8), F2-05 sabit IP (S7) ve 1000 spawn/despawn dayanıklılığı. `gece/2026-10-02`'nin `main`'e birleştirilmesi ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları; `docs/13` §4.1'e F2-01/F2-02 sonrası ini anahtarları (`[BOT] ENABLED`, `MAX_BOTS`, `TICK_MS`).
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
 
 ## Otonom döngü
+
+Son gece koşusu: 2026-10-02 04:00–05:10, 16 iterasyon, F1-08..F2-02 KAPANDI (`gece/2026-10-02`), F2-03 HAZIR; `plans/.auto-loop-stop` ile durduruldu (rapor: `docs/reports/gece-2026-10-02.md`).
 
 2026-10-01 19:00'da başlatıldı (`plans/_logs/auto-loop.log`); ilk iterasyonda F0-02 planı yazıldı. Tasarım: `plans/OTONOM_DONGU.md`, `tools/auto-loop.sh`. `--run` ön kontrolü: altyapı dosyaları commit'li + çalışma ağacı temiz. Varsayılanlar: `MAX_ITERATIONS=5`, faz sınırında dur, `claude` modeli `opus`, `opencode` modeli `opencode-go/deepseek-v4.1-flash`.
 
