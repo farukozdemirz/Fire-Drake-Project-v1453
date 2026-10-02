@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
@@ -132,3 +132,42 @@ git diff gece/2026-10-02...bot/F4-50 -- BotCore/Perception.h | grep -nE '^\+.*(w
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DÜZELTME GEREKLİ**
+- İncelenen commit: `b9674b4` (`bot/F4-50`, taban `gece/2026-10-02` @ `0dfeca1`). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı. Çalışma ağacı temiz.
+- Kapsam: 6 dosya, hepsi §4 listesinde (`Perception.h`, `PerceptionTests.cpp`, `BotSession.cpp`, `BotManager.cpp`, `check-perception-contract.py`, kendi planı). `docs/`, `AGENTS.md`, başka plan değişmedi. Commit mesajları `[F4-50] …`.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release | ✔ | Dört değişen dosya `touch` + `./tools/build.sh Release` rc=0; uyarı yalnızca eski `UpgradeHandler.cpp(634/862)` C4789 |
+| K2 Debug | ✔ | `./tools/build.sh Debug` rc=0; `UpgradeHandler` dışında uyarı/hata 0 |
+| K3 testler | ✔ | `run-tests.sh Release` ve `Debug`: `88 tests, 0 failed` (taban 84 + 4); `Perception_ParseMoveFull`, `_Obs_MoveHistory`, `_Obs_PosClassify`, `_Snap_MetaFields` `[ OK ]`; mevcut testlere dokunulmadı (diff'te yalnızca `+` satırı) |
+| K4 | ✔ | `Perception.h` eklenen satırlarda `windows.h|stdafx|GameServer|shared/|#include` yok |
+| K5a | ✔ | `RESULT: PASS`, `--selftest` `selftest OK`; araç diff'inde `UnitView` demetinden yalnızca `"name"` çıktı, `mp/cooldown/stock/inventory/invent/buff/skill/item/potion` ve `NpcView` aynı; selftest `NpcView.name` ihlal, `UnitView.name` geçer vakalarını içeriyor. (Sahte kopyada `mp`/`item` enjeksiyonu denemesi araç izni verilmediği için yapılmadı; kod okumasıyla ve selftest `mp` vakasıyla doğrulandı.) |
+| K5 AC-LRN-03 | ✔ | `GameServer/Bot` eklenen satırlarında `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` boş |
+| K6 | ✔ | `Perception.h:365` `ParseMoveFull`: `nullptr`/`len < 11` false, sonra `ByteReader`; testte 10 bayt ve `nullptr` false, `0xFFFF` → -1; `ObsTable` kapasite yolu (`Upsert`) değişmedi |
+| K7 | ✔ (not) | Eksi satırları: yalnızca `Upsert` imzası, `lastSeenMs`/`UnitView` yorumları, 3 format dizgisi + `WIZ_MOVE` dalı. Davranış kaybı yok; `ageMs` hesabı aynı; `/bot see`/`snap` yeni alanlar satır sonunda |
+| K8 | ✔ | Yeni ini/komut/paket/thread/mutex yok; `BotSession.cpp` `WIZ_MOVE` dalında ayrıştırma kilitten önce, `m_obsLock` aynı |
+| K9 | ✔ | Blob'lar LF (autocrlf), çalışma ağacı dosyaları tamamen CRLF (`1609/1609`, `418/418`, `3382/3382`, `1977/1977`); `.py` LF; eklenen satırlarda ASCII dışı yok; `git diff --check` rc=0; `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok |
+| K10 çalışma zamanı | ertelendi | Bu tur çalıştırılmadı: kod düzeltmesi `moving` anlamını değiştireceği için sunucu sınaması düzeltme turundan sonra yapılır (sunucular `[DOWN]`) |
+
+**Bulgular (önem sırasıyla)**
+
+1. **[Doğruluk, plandan sapma] `moving` bilinmeyen hızı hareketli sayıyor.** `BotCore/Perception.h:1511` (`v.moving = (u.lastSpeed != 0)`), `BotCore/Perception.h:1041` (alan yorumu), `BotCore/Perception.h:82-84` (`ClassifyPos` yorumu), `GameServer/Bot/BotManager.cpp:2354` (`bool moving = (u.lastSpeed != 0)`). Plan §3.1 `moving = speedField > 0` der; `docs/13` §5.2a "durağan birim bayatlamaz, yalnızca OUT/bölge değişimiyle düşer" der. Uygulayıcı bu sapmayı §5.3 test cümlesini geçirmek için yaptı ve raporda açıkladı (dürüstlük ✔). Sonuç: `WIZ_USER_INOUT` ile kaydı gelen ve hiç `WIZ_MOVE` göndermeyen (ayakta duran) bir oyuncu 3,1 sn sonra `POS_STALE`, 6 sn sonra `POS_LOST` olur. Sunucu hareket eden her birim için ~1,5 sn'de bir `WIZ_MOVE` yolladığından kayıttan sonra MOVE gelmemesi birimin **durağan** olduğunu gösterir; "kayıp aday" yalnızca "son paket `speed > 0` ve sonra sessizlik" için anlamlıdır. Düzeltilmezse `docs/09` §5.4 `TARGET_LOST_VIS` ("kayıp aday ≥ 3 sn") F5/F6'da ayakta duran bir hedefi yanlış düşürür. Plan §5.3'ün `Snap_MetaFields` cümlesi belirsizdi (Claude'un plan hatası: "durağan değilse" koşulu); doğru okuma bilinmeyen hız = durağan.
+2. **[Not, engel değil] `CommandSee` `moving/posState/v` hesabını `BuildSnapshot` ile ikilemiş** (`BotManager.cpp:2352-2359`). `CommandSee` snapshot kullanmadığı için kabul edilebilir; yalnız bulgu 1 düzeltilirken iki yerin aynı kalmasına dikkat.
+3. **[Not, plan hatası] `/bot see` satırında `pos=(x, z)` ile `pos=<fresh|stale|lost>` anahtarı aynı satırda iki kez geçer** (`BotManager.cpp:2365`). Plan §3.4 `pos=<fresh|stale|lost>` biçimini açıkça istedi ve K10 buna göre; değiştirilmez. Betik/ayrıştırıcı yazılırken ilk `pos=` konumdur, son `pos=` tazeliktir; `docs/16` ve STATUS'ta not edilecek (Claude).
+4. **[Not] K7 lafzı** (`^-` yalnızca yorum/imza) plan metninin zorunlu `WIZ_MOVE` ve format satırı değişiklikleri nedeniyle lafzen sağlanamaz; uygulayıcının açıklaması doğru, K7 ✔ sayıldı.
+
+**Düzeltme talimatı**
+
+```
+plans/F4-50-algi-gozlem-meta-verisi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. BotCore/Perception.h, BuildSnapshot (satır 1511): `v.moving = (u.lastSpeed != 0);` satırını `v.moving = (u.lastSpeed > 0);` yap (plan §3.1: speedField > 0). Bilinmeyen hız (-1) ve durağan (0) ikisi de "hareketli değil" sayılır.
+2. BotCore/Perception.h: UnitView.moving alan yorumunu (satır 1041) şu anlama getir: "speedField > 0; unknown speed (-1, no WIZ_MOVE since registration) counts as stationary: the server sends a WIZ_MOVE for every step of a moving unit". ClassifyPos yorumundan (satır 82-84) "an unknown speed is treated as moving (conservative, docs/13 section 5.2a)" ifadesini kaldır; yerine "moving = last WIZ_MOVE speed > 0" yaz. ClassifyPos'un gövdesine dokunma.
+3. GameServer/Bot/BotManager.cpp, CommandSee (satır 2354): `bool moving = (u.lastSpeed != 0);` satırını `bool moving = (u.lastSpeed > 0);` yap. Başka satıra dokunma.
+4. Tests/BotCoreTests/PerceptionTests.cpp, Perception_Snap_MetaFields: ilk blokta (kayıt t=0, MOVE yok, BuildSnapshot nowMs=5000) beklentileri şöyle değiştir: speedField -1, `CHECK(!v.moving)`, posState POS_FRESH (ageMs ve posAgeMs 5000 aynen kalır), vx/vz 0. Yorumu "unknown speed counts as stationary: no MOVE since registration" yap. Mevcut speed=0 bloğu aynen kalır. Üçüncü blok ekle: aynı kayıt, ardından UpdateMove(5, 10030, 10040, 0, 45, 1000); BuildSnapshot nowMs=5000 (posAge 4000) → moving true, POS_STALE; nowMs=7500 (posAge 6500) → POS_LOST. Yeni TEST_CASE ekleme (toplam 88 kalır).
+5. Derle ve sına: `./tools/build.sh Release`, `./tools/build.sh Debug`, `./tools/run-tests.sh Release` ve `Debug` (88 tests, 0 failed), `python3 tools/check-perception-contract.py` (RESULT: PASS) ve `--selftest`. Değişen dosyalar yalnızca bu üçü olmalı (Perception.h, BotManager.cpp, PerceptionTests.cpp); `git diff --check` boş.
+6. Uygulayıcı Raporu'na "Tur 2" ekle: "Plandan sapmalar" bölümünde `moving` sapmasının kaldırıldığını yaz; Durum satırını UYGULANDI yap.
+```
