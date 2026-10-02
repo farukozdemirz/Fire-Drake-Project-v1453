@@ -137,6 +137,7 @@ public:
 	std::mutex m_obsLock;                                  // guards m_obs and m_obsPending: OnPacket() may run on any thread
 	BotCore::ObsTable m_obs;                               // guarded by m_obsLock: players in view, from received packets only (Perception, ADR-0017 Ek F4-12)
 	BotCore::PendingIds m_obsPending;                      // guarded by m_obsLock: ids of the last WIZ_REGIONCHANGE the table did not know (Perception, ADR-0017 Ek F4-13)
+	BotCore::NpcTable m_npcs;                              // guarded by m_obsLock (the same mutex as m_obs): NPCs in view, from received packets only (Perception, ADR-0017 Ek F4-14)
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
@@ -157,4 +158,5 @@ public:
 	std::atomic<uint64> m_chatEcho;                        // written by OnPacket(): valid bit | chat type << 32 | uint16 sender sid of the last WIZ_CHAT received
 	std::atomic<uint32> m_obsUnresolved;                   // written by OnPacket(): ids of the last WIZ_REGIONCHANGE that were not in m_obs, the bot itself included
 	std::atomic<uint64> m_userInEcho;                      // written by OnPacket(): valid bit (63) | number of units parsed from the last WIZ_REQ_USERIN reply
+	std::atomic<uint32> m_npcUnresolved;                   // written by OnPacket(): ids of the last WIZ_NPC_REGION that were not in m_npcs
 };

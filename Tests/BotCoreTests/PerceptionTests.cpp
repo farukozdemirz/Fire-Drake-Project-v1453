@@ -538,3 +538,333 @@ TEST_CASE("Perception_CheckUserIn")
 	c.sinceLastMs = 0;
 	CHECK(BotCore::CheckUserIn(c) == BotCore::USERIN_REJECT_COUNT);
 }
+
+// Writes the NPC info record in the exact wire order the server produces.
+static void AddNpcInfo(Buf & b, uint16_t protoId, uint16_t pictureId, uint8_t type, uint32_t sellingGroup,
+	uint16_t size, uint32_t weapon1, uint32_t weapon2, const char * name, uint8_t nation, uint8_t level,
+	uint16_t x10, uint16_t z10, uint16_t y10, uint32_t gateOpen, uint8_t objectType, int8_t direction)
+{
+	b.U16(protoId);
+	b.U16(pictureId);
+	b.U8(type);
+	b.U32(sellingGroup);
+	b.U16(size);
+	b.U32(weapon1);
+	b.U32(weapon2);
+	b.Str(name);
+	b.U8(nation);
+	b.U8(level);
+	b.U16(x10);
+	b.U16(z10);
+	b.U16(y10);
+	b.U32(gateOpen);
+	b.U8(objectType);
+	b.U16(0);                                 // unknown
+	b.U16(0);                                 // unknown
+	b.U8((uint8_t)direction);
+}
+
+TEST_CASE("Perception_NpcInfo_Parse")
+{
+	Buf b;
+	AddNpcInfo(b, 5400, 700, 4, 123, 50, 111, 222, "Karus Guard Tower", 1, 90, 12740, 8900, 1234, 1, 3, 7);
+
+	BotCore::ByteReader r(b.v.data(), b.v.size());
+	BotCore::NpcObs out;
+	memset(&out, 0, sizeof(out));
+
+	CHECK(BotCore::ParseNpcInfo(r, 555, 123456, out));
+	CHECK_EQ(int(r.pos()), int(b.v.size()));
+	CHECK_EQ(int(out.id), 555);
+	CHECK_EQ(int(out.protoId), 5400);
+	CHECK_EQ(int(out.type), 4);
+	CHECK_EQ(int(out.nation), 1);
+	CHECK_EQ(int(out.level), 90);
+	CHECK_EQ(int(out.x10), 12740);
+	CHECK_EQ(int(out.z10), 8900);
+	CHECK_EQ(int(out.y10), 1234);
+	CHECK(out.gateOpen);
+	CHECK_EQ(int(out.objectType), 3);
+	CHECK(!out.dead);
+	CHECK(out.lastSeenMs == 123456);
+	CHECK(strcmp(out.name, "Karus Guard Tower") == 0);
+	for (int i = (int)strlen("Karus Guard Tower") + 1; i < (int)BotCore::kNpcNameMax; i++)
+		CHECK_EQ(int(out.name[i]), 0);
+
+	{
+		Buf c;
+		AddNpcInfo(c, 10, 20, 3, 40, 5, 6, 7, "Monster", 0, 12, 1, 2, 3, 0, 8, -1);
+		BotCore::ByteReader r2(c.v.data(), c.v.size());
+		BotCore::NpcObs o2;
+		memset(&o2, 0, sizeof(o2));
+		CHECK(BotCore::ParseNpcInfo(r2, 9, 0, o2));
+		CHECK(!o2.gateOpen);
+		CHECK_EQ(int(o2.nation), 0);
+	}
+
+	// A 31-char name fits in the 32-byte buffer (NUL included).
+	{
+		Buf c;
+		AddNpcInfo(c, 1, 2, 3, 4, 5, 6, 7, "abcdefghijklmnopqrstuvwxyz01234", 1, 2, 3, 4, 5, 0, 6, 0);
+		BotCore::ByteReader r2(c.v.data(), c.v.size());
+		BotCore::NpcObs o2;
+		memset(&o2, 0, sizeof(o2));
+		CHECK(BotCore::ParseNpcInfo(r2, 1, 0, o2));
+		CHECK_EQ(int(strlen(o2.name)), 31);
+	}
+
+	// A 32-char name does not fit.
+	{
+		Buf c;
+		AddNpcInfo(c, 1, 2, 3, 4, 5, 6, 7, "abcdefghijklmnopqrstuvwxyz012345", 1, 2, 3, 4, 5, 0, 6, 0);
+		BotCore::ByteReader r2(c.v.data(), c.v.size());
+		BotCore::NpcObs o2;
+		CHECK(!BotCore::ParseNpcInfo(r2, 1, 0, o2));
+	}
+}
+
+TEST_CASE("Perception_NpcInfo_Truncated")
+{
+	Buf full;
+	AddNpcInfo(full, 10, 20, 3, 40, 5, 6, 7, "Karus Guard Tower", 1, 90, 12740, 8900, 1234, 1, 3, 7);
+
+	for (size_t len = 0; len < full.v.size(); len++)
+	{
+		BotCore::ByteReader r(full.v.data(), len);
+		BotCore::NpcObs out;
+		CHECK(!BotCore::ParseNpcInfo(r, 1, 0, out));
+	}
+
+	{
+		BotCore::ByteReader r(nullptr, 0);
+		BotCore::NpcObs out;
+		CHECK(!BotCore::ParseNpcInfo(r, 1, 0, out));
+	}
+}
+
+TEST_CASE("Perception_ParseNpcInOut")
+{
+	const uint8_t inTypes[2] = { 1, 3 };
+	for (int i = 0; i < 2; i++)
+	{
+		Buf b;
+		b.U8(inTypes[i]);
+		b.U16(321);
+		AddNpcInfo(b, 5400, 700, 4, 123, 50, 111, 222, "Karus Guard Tower", 1, 90, 12740, 8900, 1234, 1, 3, 7);
+
+		uint8_t type = 0;
+		BotCore::NpcObs out;
+		memset(&out, 0, sizeof(out));
+		CHECK(BotCore::ParseNpcInOut(b.v.data(), b.v.size(), 777, type, out));
+		CHECK_EQ(int(type), int(inTypes[i]));
+		CHECK_EQ(int(out.id), 321);
+		CHECK_EQ(int(out.protoId), 5400);
+		CHECK(strcmp(out.name, "Karus Guard Tower") == 0);
+		CHECK(out.lastSeenMs == 777);
+	}
+
+	{
+		Buf b;
+		b.U8(2);                              // OUT: id only, 3 bytes
+		b.U16(88);
+		uint8_t type = 0;
+		BotCore::NpcObs out;
+		memset(&out, 0, sizeof(out));
+		CHECK(BotCore::ParseNpcInOut(b.v.data(), b.v.size(), 777, type, out));
+		CHECK_EQ(int(type), 2);
+		CHECK_EQ(int(out.id), 88);
+	}
+
+	{
+		Buf b;
+		b.U8(1);                              // 1 byte: too short for the id
+		uint8_t type = 0;
+		BotCore::NpcObs out;
+		CHECK(!BotCore::ParseNpcInOut(b.v.data(), b.v.size(), 0, type, out));
+	}
+
+	{
+		Buf b;
+		b.U8(1);                              // IN but the record is cut
+		b.U16(9);
+		uint8_t type = 0;
+		BotCore::NpcObs out;
+		CHECK(!BotCore::ParseNpcInOut(b.v.data(), b.v.size(), 0, type, out));
+	}
+}
+
+TEST_CASE("Perception_ParseNpcList")
+{
+	{
+		Buf b;
+		b.U16(2);                             // no marker byte before each entry
+		b.U16(10);
+		AddNpcInfo(b, 100, 1, 2, 3, 4, 5, 6, "NpcAA", 0, 10, 1000, 2000, 30, 1, 2, 3);
+		b.U16(20);
+		AddNpcInfo(b, 200, 1, 2, 3, 4, 5, 6, "NpcBB", 1, 20, 3000, 4000, 50, 0, 4, 5);
+
+		BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+		uint16_t declared = 0;
+		int n = BotCore::ParseNpcList(b.v.data(), b.v.size(), 777, list, BotCore::kNpcMaxUnits, declared);
+		CHECK_EQ(n, 2);
+		CHECK_EQ(int(declared), 2);
+		if (n == 2)
+		{
+			CHECK_EQ(int(list[0].id), 10);
+			CHECK(strcmp(list[0].name, "NpcAA") == 0);
+			CHECK_EQ(int(list[0].level), 10);
+			CHECK_EQ(int(list[1].id), 20);
+			CHECK(strcmp(list[1].name, "NpcBB") == 0);
+			CHECK_EQ(int(list[1].nation), 1);
+			CHECK(list[1].lastSeenMs == 777);
+		}
+	}
+
+	{
+		Buf b;                                // declared 5 but only 2 records present
+		b.U16(5);
+		b.U16(10);
+		AddNpcInfo(b, 100, 1, 2, 3, 4, 5, 6, "NpcAA", 0, 10, 1000, 2000, 30, 1, 2, 3);
+		b.U16(20);
+		AddNpcInfo(b, 200, 1, 2, 3, 4, 5, 6, "NpcBB", 1, 20, 3000, 4000, 50, 0, 4, 5);
+
+		BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+		uint16_t declared = 0;
+		int n = BotCore::ParseNpcList(b.v.data(), b.v.size(), 0, list, BotCore::kNpcMaxUnits, declared);
+		CHECK_EQ(n, 2);
+		CHECK_EQ(int(declared), 5);
+	}
+
+	{
+		Buf b;                                // cap 1
+		b.U16(2);
+		b.U16(10);
+		AddNpcInfo(b, 100, 1, 2, 3, 4, 5, 6, "NpcAA", 0, 10, 1000, 2000, 30, 1, 2, 3);
+		b.U16(20);
+		AddNpcInfo(b, 200, 1, 2, 3, 4, 5, 6, "NpcBB", 1, 20, 3000, 4000, 50, 0, 4, 5);
+
+		BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+		uint16_t declared = 0;
+		CHECK_EQ(BotCore::ParseNpcList(b.v.data(), b.v.size(), 0, list, 1, declared), 1);
+		CHECK_EQ(int(declared), 2);
+	}
+
+	{
+		Buf b;                                // second record cut after the id
+		b.U16(2);
+		b.U16(10);
+		AddNpcInfo(b, 100, 1, 2, 3, 4, 5, 6, "NpcAA", 0, 10, 1000, 2000, 30, 1, 2, 3);
+		b.U16(20);
+		b.U8(1);
+
+		BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+		uint16_t declared = 0;
+		CHECK_EQ(BotCore::ParseNpcList(b.v.data(), b.v.size(), 0, list, BotCore::kNpcMaxUnits, declared), 1);
+	}
+
+	{
+		BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+		uint16_t declared = 99;
+		CHECK_EQ(BotCore::ParseNpcList(nullptr, 0, 0, list, BotCore::kNpcMaxUnits, declared), 0);
+		CHECK_EQ(int(declared), 0);
+	}
+}
+
+TEST_CASE("Perception_ParseNpcMove")
+{
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3); b.U16(45);
+		uint16_t id = 0, x = 0, z = 0, y = 0;
+		CHECK(BotCore::ParseNpcMove(b.v.data(), b.v.size(), id, x, z, y));
+		CHECK_EQ(int(id), 5);
+		CHECK_EQ(int(x), 100);
+		CHECK_EQ(int(z), 200);
+		CHECK_EQ(int(y), 3);
+	}
+
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3);
+		uint16_t id = 0, x = 0, z = 0, y = 0;
+		CHECK(!BotCore::ParseNpcMove(b.v.data(), b.v.size(), id, x, z, y));
+	}
+
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3); b.U16(45); b.U8(0);
+		uint16_t id = 0, x = 0, z = 0, y = 0;
+		CHECK(BotCore::ParseNpcMove(b.v.data(), b.v.size(), id, x, z, y));
+		CHECK_EQ(int(id), 5);
+	}
+}
+
+TEST_CASE("Perception_NpcTable")
+{
+	BotCore::NpcTable table;
+	BotCore::NpcObs n;
+	memset(&n, 0, sizeof(n));
+	strcpy(n.name, "n");
+
+	for (int i = 0; i < BotCore::kNpcMaxUnits; i++)
+	{
+		n.id = (uint16_t)(100 + i);
+		CHECK(table.Upsert(n));
+	}
+	CHECK_EQ(table.Count(), BotCore::kNpcMaxUnits);
+
+	n.id = (uint16_t)(100 + BotCore::kNpcMaxUnits);   // one past capacity
+	CHECK(!table.Upsert(n));
+	CHECK_EQ(int(table.Overflow()), 1);
+
+	table.NoteDropped(3);
+	CHECK_EQ(int(table.Overflow()), 4);
+
+	n.id = 100;
+	n.level = 55;
+	CHECK(table.Upsert(n));
+	CHECK_EQ(table.Count(), BotCore::kNpcMaxUnits);
+	CHECK_EQ(int(table.Find(100)->level), 55);
+
+	table.Remove(100);
+	CHECK_EQ(table.Count(), BotCore::kNpcMaxUnits - 1);
+	CHECK(table.Find(100) == nullptr);
+	table.Remove(9999);   // unknown: harmless
+	CHECK_EQ(table.Count(), BotCore::kNpcMaxUnits - 1);
+
+	CHECK(table.UpdatePosition(101, 11, 22, 33, 900));
+	CHECK_EQ(int(table.Find(101)->x10), 11);
+	CHECK_EQ(int(table.Find(101)->z10), 22);
+	CHECK_EQ(int(table.Find(101)->y10), 33);
+	CHECK(table.Find(101)->lastSeenMs == 900);
+	CHECK(!table.UpdatePosition(9999, 1, 2, 3, 4));
+
+	CHECK(table.MarkDead(102, 901));
+	CHECK(table.Find(102)->dead);
+	CHECK(!table.MarkDead(9999, 902));
+
+	{
+		BotCore::NpcObs fresh;   // a fresh info record clears dead
+		memset(&fresh, 0, sizeof(fresh));
+		fresh.id = 102;
+		CHECK(table.Upsert(fresh));
+		CHECK(!table.Find(102)->dead);
+	}
+
+	uint16_t ids[4] = { 101, 102, 12345, 9999 };
+	CHECK_EQ(table.Retain(ids, 4), 2);   // 12345 and 9999 are unknown
+	CHECK_EQ(table.Count(), 2);
+	CHECK(table.Find(101) != nullptr);
+	CHECK(table.Find(102) != nullptr);
+
+	uint16_t dup[3] = { 100, 100, 101 };   // repeats are counted separately
+	CHECK_EQ(table.Retain(dup, 3), 2);
+	CHECK_EQ(table.Count(), 1);
+
+	CHECK_EQ(table.Retain(nullptr, 0), 0);
+	CHECK_EQ(table.Count(), 0);
+
+	table.Clear();
+	CHECK_EQ(table.Count(), 0);
+	CHECK_EQ(int(table.Overflow()), 0);
+}

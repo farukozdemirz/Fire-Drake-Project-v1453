@@ -23,7 +23,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
-		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0)
+		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -225,6 +225,64 @@ void BotSession::OnPacket(Packet & pkt)
 			m_obs.MarkDead(sid, nowMs);
 		}
 	}
+
+	// NPC perception (ADR-0017 Ek F4-14): what a client would learn about the NPCs in view. Same rules as above: only the
+	// packets the server sends to this session are read; parsing happens before the lock is taken.
+	if (opcode == WIZ_NPC_INOUT || opcode == WIZ_REQ_NPCIN || opcode == WIZ_NPC_REGION
+		|| opcode == WIZ_NPC_MOVE || opcode == WIZ_DEAD)
+	{
+		const uint8 * data = pkt.size() > 0 ? pkt.contents() : nullptr;
+		size_t len = pkt.size();
+		uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now().time_since_epoch()).count();
+
+		if (opcode == WIZ_NPC_INOUT)
+		{
+			uint8 type = 0;
+			BotCore::NpcObs npc;
+			if (BotCore::ParseNpcInOut(data, len, nowMs, type, npc))
+			{
+				std::lock_guard<std::mutex> lock(m_obsLock);
+				if (type == BotCore::kNpcInOutOut)
+					m_npcs.Remove(npc.id);
+				else
+					m_npcs.Upsert(npc);
+			}
+		}
+		else if (opcode == WIZ_REQ_NPCIN)
+		{
+			BotCore::NpcObs list[BotCore::kNpcMaxUnits];
+			uint16_t declared = 0;
+			int n = BotCore::ParseNpcList(data, len, nowMs, list, BotCore::kNpcMaxUnits, declared);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			for (int i = 0; i < n; i++)
+				m_npcs.Upsert(list[i]);
+			if (n == BotCore::kNpcMaxUnits && declared > n)
+				m_npcs.NoteDropped((uint32_t)(declared - n));
+		}
+		else if (opcode == WIZ_NPC_REGION)
+		{
+			uint16 ids[BotCore::kNpcMaxUnits * 4];
+			int n = BotCore::ParseRegionList(data, len, ids, BotCore::kNpcMaxUnits * 4);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_npcUnresolved = (uint32)m_npcs.Retain(ids, n);
+		}
+		else if (opcode == WIZ_NPC_MOVE)
+		{
+			uint16 id = 0, x10 = 0, z10 = 0, y10 = 0;
+			if (BotCore::ParseNpcMove(data, len, id, x10, z10, y10))
+			{
+				std::lock_guard<std::mutex> lock(m_obsLock);
+				m_npcs.UpdatePosition(id, x10, z10, y10, nowMs);
+			}
+		}
+		else if (opcode == WIZ_DEAD && len >= 2)
+		{
+			uint16 id = (uint16)data[0] | ((uint16)data[1] << 8);
+			std::lock_guard<std::mutex> lock(m_obsLock);
+			m_npcs.MarkDead(id, nowMs);
+		}
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -289,8 +347,10 @@ void BotSession::ResetForRespawn()
 		std::lock_guard<std::mutex> lock(m_obsLock);
 		m_obs.Clear();
 		m_obsPending.Clear();
+		m_npcs.Clear();
 	}
 	m_obsUnresolved = 0;
+	m_npcUnresolved = 0;
 	m_userInHasLast = false;
 	m_userInRequests = 0;
 	m_userInUnits = 0;
