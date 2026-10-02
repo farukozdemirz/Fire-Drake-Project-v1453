@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-51 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-06 (`NavDanger.h`, yasaklı/güvenli bölgeler), F5-07 — `KAPANDI` |
@@ -137,3 +137,39 @@ git diff --stat gece/2026-10-02-nav...bot/F5-51
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI.** İncelenen commit: `bot/F5-51` @ `7890357` (tek commit, `[F5-51]` biçiminde; taban `gece/2026-10-02-nav`). Gece modu, paralel hat `nav`: sunuculara dokunulmadı, birleştirme/push yapılmadı (birleştirmeyi döngü betiği yapar).
+- Kapsam: 4 kod/test dosyası + proje satırı + plan dosyası; hepsi §4 listesinde. `GameServer/`, `AIServer/`, `shared/`, `docs/` farkı 0. `git diff --check` boş; dört dosya ASCII + CRLF (dosya başına `crlf` satır sayısı = satır sayısı); `build/` commit edilmemiş.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release | ✔ | Değişen üç dosya `touch` edildi, `./tools/build.sh Release` rc=0; çıktıda `warning`/`error` yok (0 satır); `BotCoreTests.exe` yeniden bağlandı |
+| K2 Debug | ✔ | `touch` sonrası `./tools/build.sh Debug` rc=0; `warning`/`error` 0 satır |
+| K3 testler | ✔ | `run-tests.sh Release` ve `Debug`: `183 tests, 0 failed`. `NavArena_Synthetic`, `NavArena_Tower_Unchanged`, `NavArena_RealMap_Respawn`, `NavArena_Perf` dördü de `[ OK ]` (iki yapılandırmada); `build/nav/zone71.navgrid` mevcut, `SKIPPED` yok. Test sayısı tabanda 179 (`TEST_CASE` sayımı), şimdi 183 = +4 |
+| K4 AC-NAV-06 | ✔ | Mevcut "500 çiftte yasaklıya giriş 0" taraması `NavDangerTests.cpp`'de değişmedi (diff'te o bölgeye dokunulmadı), geçiyor; `NavArena_Tower_Unchanged` yeni 500 çiftte `found=500 violations=0`; sentetikte disk içi başlangıç→hedef yolu 0 yasaklı hücre, `ReenteredForbidden`/`leftAgain` kontrolleri yeşil |
+| K5 sayılar | ✔ | Karus `expanded=602` (≤ 2000), El Morad `expanded=2924` (≤ 6000, `Found`); `NavArena_Perf` Release `ms_p95=0.199`, `found=200/200`, `expanded_p95=710`; El Morad tekil sorgu 0,866 ms (≤ 2,0) |
+| K6 | ✔ | `git diff gece/2026-10-02-nav...bot/F5-51 --stat` yalnızca §4 dosyaları + plan; `NavPath.h` yeni satırlarında `windows.h\|stdafx\|GameServer\|shared/` yok |
+| K7 | ✔ | ASCII + CRLF (`file` ve `grep -c $'\r$'` ile), `git diff --check` rc=0 |
+| K8 | ✔ | Rapor yöntem (a)'yı, reddedilen (b)/(c)'yi gerekçesiyle ve ölçülmüş önce/sonra sayılarını içeriyor; sayılar K9 ile doğrulandı |
+| K9 | ✔ | Aşağıdaki bağımsız yeniden koşu |
+
+**K9 — bağımsız yeniden koşu** (WSL `g++ -std=c++17 -O2`, aynı `zone71.navgrid`, `AddForbidOutsideDisc(1274, 890, 60)`, varsayılan `NavCostParams`/`NavSearchParams`; taban ve dal başlıkları ayrı `git archive` kopyalarıyla; betik `/tmp`'de, commit edilmedi):
+
+| Sorgu | Taban (`gece/2026-10-02-nav`) | `bot/F5-51` | Alansız |
+|---|---|---|---|
+| Karus doğuşu → arena | Found, **4148** düğüm, len 274,794 | Found, **602** düğüm, len 278,108 | 406 düğüm, len 271,480 |
+| El Morad doğuşu → arena | **`NodeLimit`**, 20 000 düğüm | Found, **2924** düğüm, len 740,500 | 2897 düğüm, len 727,814 |
+| Arena → Karus doğuşu | `InvalidGoal` | `InvalidGoal` (değişmedi, tasarım) | Found |
+
+Uygulayıcı sayıları (602, 2924, 4148, `NodeLimit`) ve plan değerlendirme ölçümüyle birebir uyuşuyor. Yol uzunluğu alansızın 1,024× (Karus) ve 1,017× (El Morad) katı (≤ 1,15).
+
+**Kod incelemesi** (`BotCore/NavPath.h:99-111, 191, 217`): sorgu başlangıcı yasaklıysa yalnızca o sorgunun yerel `costParams` kopyasında `forbiddenPenalty = 0`; `field->params` değişmiyor, `NavCostLayer`'a bayrak eklenmedi. Girme kapısı (`!curForbidden && zones->Forbidden(nx,nz)`) ve `InvalidGoal` kuralı (`zones->Forbidden(goal) && !zones->Forbidden(start)`) satırları değişmedi, yani değişmezler (i)-(iii) korunuyor. `NavCostLayer::Forbidden` ızgara dışında ve `Init` öncesinde `false` döndürdüğü için `InvalidStart` kontrolünden önce çağrılması güvenli (`NavDanger.h:52`). Çözüm genel (yasaklı başlangıçlı her sorgu), yalnız arenaya özel değil. `NavRetreat.h` değişmedi; mevcut `NavRetreat_*` testleri geçiyor. Varsayılan `forbiddenPenalty=10` ve `[A]` ağırlıkları değişmedi: ADR eki gerekmiyor.
+
+**Bulgular** (engel değil, not):
+
+1. `Tests/BotCoreTests/NavArenaTests.cpp:250-259` `NavArena_Tower_Unchanged`: plan "geometrik asgari + en çok 2" diyordu; uygulayıcı alansız en kısa çıkışı (`plainForbidden=23`) ölçüt aldı ve ışın tabanlı `ray_best=16`'yı yalnız yazdırıyor. Sapma raporda gerekçelendirilmiş (8-komşu ızgarada disk yayı eksen ışınıyla çakışmıyor); alansız en kısa çıkış fiilen aynı ölçüt, kabul.
+2. `Tests/BotCoreTests/NavDangerTests.cpp` güncellemeleri (`NavDanger_Path_Field` 251,598→60,0 ve 176,0→16,0; `NavDanger_RealMap` start-inside maliyet 1171,853→260,137, uzunluk 292,284→257,137, yasaklı hücre 22→19; `PathCost`/`RefDijkstra` referansları `EffectiveParams` ile hizalandı): hepsi yalnızca yasaklı-başlangıç **maliyet** değerleri, §4'ün "maliyet değerine bağlı test" istisnası içinde ve raporda gerekçeli. Referans Dijkstra'nın aynı kurala hizalanması, A*'ın optimalliğini bağımsız yoldan denemeye devam ediyor (fix'ten bağımsız aynı kural, kabul).
+3. `NavArena_RealMap_Respawn` ve `NavArena_Perf` Debug'da zaman kapısı koymuyor (`#ifndef _DEBUG`); plan kapıyı yalnızca Release için istiyor. Uygun.
+4. Çalışma zamanı/sunucu kriteri bu hatta yok (kapsam dışı); arena modunun oyun içi doğuş→dönüş akışı F5-55'te doğrulanacak.
