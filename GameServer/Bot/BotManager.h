@@ -50,6 +50,8 @@ private:
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
 	void Tick(); // IOCP worker thread only
+	void RecordTick(std::chrono::steady_clock::time_point tickStart); // IOCP thread only, called from Tick()
+	void EmitPerfSample(std::chrono::steady_clock::time_point now);   // IOCP thread only
 
 	// Runtime commands (ADR-0015). All of these run on the IOCP thread, called from Tick().
 	void ProcessCommands();                       // polls ./BotCommands.txt, then drains m_commandQueue
@@ -94,4 +96,8 @@ private:
 	std::mutex m_commandLock;                // guards m_commandQueue only
 	std::vector<std::string> m_commandQueue; // filled by any thread, drained on the IOCP thread
 	std::chrono::steady_clock::time_point m_lastCommandPoll; // IOCP thread only
+
+	std::vector<uint32> m_tickUs;                             // IOCP thread only: Tick() durations (us) of the current 5 s window
+	std::chrono::steady_clock::time_point m_perfWindowStart;  // IOCP thread only
+	bool m_perfWindowOpen = false;                            // IOCP thread only
 };

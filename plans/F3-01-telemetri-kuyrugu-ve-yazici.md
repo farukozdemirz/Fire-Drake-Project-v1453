@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-02 (`KAPANDI`: `BotManager::Tick()`), F2-06 (`KAPANDI`: `BotManager` son hâli) |
@@ -298,26 +298,74 @@ file GameServer/Bot/* GameServer/proj-GameServer.vcxproj GameServer/proj-GameSer
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F3-01` (taban: `gece/2026-10-02`); uygulama commit'i (`[F3-01] Telemetri kuyrugu, yazici thread ve PERF_SAMPLE`) ve rapor+Durum commit'i bu dalda.
 - Değişen dosyalar ve neden:
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/Telemetry.h` (yeni): `TelemetryLevel`, `TelemetryEvent`, `TelemetryStats`, `Telemetry` tekili (sınırlı kuyruk, yazıcı thread, `SOFT_LIMIT=6144`, `HARD_LIMIT=8192`). Plandaki başlığa `FILE` için `#include <cstdio>` eklendi (planda istenmişti).
+  - `GameServer/Bot/Telemetry.cpp` (yeni): `Start`/`Stop`/`Emit`/`GetStats`/`WriteBatch`/`WriterLoop`/`RunSelfTest`, `JsonEscape`, `WriteTelemetryLog` (`BotManager.cpp:35-48` `WriteBotLog` kopyası). `printf` yok; yalnızca `snprintf`/`fprintf`.
+  - `GameServer/Bot/BotManager.h`: `RecordTick`/`EmitPerfSample` bildirimleri ve `m_tickUs`/`m_perfWindowStart`/`m_perfWindowOpen` üyeleri (kurucu listesine dokunulmadı).
+  - `GameServer/Bot/BotManager.cpp`: `Telemetry.h` + `<algorithm>` include; `Startup()` sonunda `Telemetry::Instance().Start()`; `Shutdown()` sonunda `Stop()`; `Tick()` başında `tickStart`, sonunda `IsEnabled(TEL_SUMMARY)` kapılı `RecordTick`; `RecordTick`/`EmitPerfSample` (5 sn pencere, p50/p95/p99/max, `PERF_SAMPLE`).
+  - `GameServer/proj-GameServer.vcxproj` (+2 satır) ve `.filters` (+6 satır): `Bot\Telemetry.cpp`/`.h` girdileri.
+- Derleme sonucu (`tools/build.sh Release` son satırlar): `Kodun üretilmesi tamamlandı` / `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. `Telemetry.cpp` ve `BotManager.cpp` uyarısız derlendi; görülen uyarılar yalnızca eski satırlardan (`Map.cpp:162` C4834, `User.cpp:2748/2763` C4834, `UpgradeHandler.cpp:634/862` C4789). `./tools/build.sh Debug` da rc=0 bitti (`...\x86-Debug\Server\GameServer.exe`).
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ Release rc=0; `Bot\` dosyalarında yeni uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F3-01` yalnızca §4'teki 6 dosya + plan; `BotManager.cpp` farkı salt ekleme (`git diff ... | grep '^-'` boş); mevcut gövdelere dokunulmadı.
+  - K4 ✔ `m_file` yalnızca `Start`/`Stop`/`WriteBatch` (yazıcı); JSON satırı yalnızca `WriteBatch`'te birleşir, `Emit` yalnızca yapı kopyalar.
+  - K5 ✔ Kilit altında yalnızca sayaç/`push_back`/`swap`/`size`/`reserve`/`m_written +=`; kilit altında `fwrite`/`snprintf` yok.
+  - K6 ✔ `SOFT_LIMIT = 6144`, `HARD_LIMIT = 8192`; yumuşakta yalnızca `droppable`, sertte tümü, ayrı sayaçlar.
+  - K7 ✔ `TELEMETRY=off`/bilinmeyen değer öncesi klasör/dosya/thread yok; `Emit` `m_running` false ise `false`; `Tick()` kancası `IsEnabled(TEL_SUMMARY)`; `Startup()` `!m_enabled` erken döner.
+  - K8 ✔ `PERF_SAMPLE` 14 alan, sıra §5.5 ile birebir; `ev`/alan adları `docs/16` §3.3 uyumlu.
+  - K9 ✔ `WriteBotLog` ve mevcut loglar değişmedi; yeni satırlar `Telemetry: ` önekli ve `Telemetry.cpp`'de; `printf` grep yalnızca `snprintf`/`fprintf` (fprintf sadece `WriteTelemetryLog`).
+  - K10 ✔ `file GameServer/Bot/*`: `ASCII text, with CRLF`; `proj-GameServer.vcxproj*`: `UTF-8 (with BOM) ... CRLF`; tab/Allman/İngilizce yorum.
+  - K11 ✔ `vcxproj +2`, `.filters +6` (yalnızca ekleme).
+  - K12 ✔ `git status --short` yalnızca izinli dosyalar (commit'lenecek); sunucu çalıştırılmadı, ini/DB değişmedi.
+- Plandan sapmalar ve gerekçeleri: Yok. (Plana uygun olarak `Telemetry.h`'ye `<cstdio>` eklendi, `<cmath>` eklenmedi çünkü `GameServer/StdAfx.h:4` zaten `<math.h>` içeriyor.)
+- Açık sorular: Çalışma zamanı doğrulaması (öz-sınama, `PERF_SAMPLE`, `TELEMETRY=off/bogus`, `ENABLED=0`, F2-05 gerilemesiz) plan §7'ye göre Claude'da; bu turda sunucu çalıştırılmadı.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar:
-- İncelenen:
-- Kriter sonuçları:
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F3-01` @ `757b870` (taban `gece/2026-10-02`; tek commit `[F3-01] Telemetri kuyrugu, yazici thread ve PERF_SAMPLE`; merge/force izi yok; çalışma ağacı temiz başladı).
+- Kriter sonuçları (12/12 ✔):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
+| K1 | ✔ | `Telemetry.cpp` ve `BotManager.cpp` touch'lanıp `./tools/build.sh Release` rc=0; çıktıda `BotManager.cpp`, `Telemetry.cpp` derlendi, `warning` satırı **0**. Not: tam yeniden derleme yapılmadı; uygulayıcının raporladığı eski uyarılar (`Map.cpp`, `User.cpp`, `UpgradeHandler.cpp`) bu turda doğrulanmadı, planın ölçütü (`Bot\` uyarısız) karşılanıyor |
+| K2 | ✔ | Aynı iki dosya touch'lanıp `./tools/build.sh Debug` rc=0, uyarı 0 |
+| K3 | ✔ | `git diff --numstat gece/2026-10-02...bot/F3-01`: `BotManager.cpp` 86/0, `BotManager.h` 6/0, `Telemetry.cpp` 378/0, `Telemetry.h` 89/0, vcxproj 2/0, filters 6/0, plan 23/6; başka dosya yok. `BotManager.cpp` farkında `-` satırı 0: değişiklik yalnızca include (`:5,:8`), `Startup()` sonu (`:268-269`), `Shutdown()` sonu (`:309`) ve `Tick()` (`:349`, `:384-385`) + yeni `RecordTick`/`EmitPerfSample` (`:388-460`); `ParseSpawnList`/`TickSessions`/`PollDespawn`/`StartSession`/`FailSession`/`BeginDespawn`/`Command*`/`ProcessCommands`/`PollCommandFile` gövdelerinde satır yok |
+| K4 | ✔ | `grep -n "m_file\|m_lock\|WriteBatch\|JsonEscape" Telemetry.cpp`: `m_file` yalnızca `Start` (`:122-130`), `Stop` (`:165-168`, yazıcı birleştikten sonra) ve `WriteBatch` (`:290-291`, yazıcı thread'i); `JsonEscape` yalnızca `WriteBatch`'ten (`:271`); JSON satırı yalnızca `WriteBatch`'te birleşir (`:256-287`); `Emit` (`:179-209`) yalnızca alanları kopyalar, dize birleştirme yok |
+| K5 | ✔ | `m_lock` dört yerde: `Emit` `:194` (sınır denetimi, sayaç, `push_back`), `GetStats` `:213` (sayaç, `size`), `WriterLoop` `:238-241` (`swap`, `reserve`), `WriteBatch` `:304-305` (`m_written +=`). Kilit altında `fwrite`/`snprintf`/`Emit` yok (`fwrite` `:290` kilit dışında, kilit `:304`'te yazıdan sonra) |
+| K6 | ✔ | `Telemetry.h:43-44` `SOFT_LIMIT = 6144`, `HARD_LIMIT = 8192`; `Telemetry.cpp:195-205`: önce sert (`m_droppedHard++`, hepsi), sonra `droppable && >= SOFT_LIMIT` (`m_droppedSoft++`), ayrı sayaçlar. Çalışma zamanı: öz-sınama `accepted 8192, soft drops 856, hard drops 952, written 8192` |
+| K7 | ✔ | `Start()` `:86-103`: `off`/bilinmeyen değer `m_level = TEL_OFF` → `:102-103` `return true`, `CreateDirectory` (`:107`) ve `fopen`/thread öncesi; `Emit` `:182` `!m_running` → `false`; `Tick()` kancası `:384` `IsEnabled(TEL_SUMMARY)`; `Start()` çağrısı `:268-269` `if (ok)` içinde, `Startup()` `:120-121` `!m_enabled` ile en başta döner. Çalışma zamanı: senaryo 3-4 (aşağıda) |
+| K8 | ✔ | `BotManager.cpp:450` biçim dizisi 14 alan, sıra planla birebir (`window_ms … dropped_hard`); `:456` `"PERF_SAMPLE"`. Çalışma zamanı: dosyadaki tüm satırlar `json.loads` geçerli, anahtar sırası her satırda aynı (`t,match,bot,ev,mode` + 14 alan) |
+| K9 | ✔ | `grep -n "printf" Telemetry.cpp`: `snprintf` ve tek `fprintf` (`:26`, `WriteTelemetryLog` içinde); `Telemetry: ` önekli sekiz log satırı yalnızca `Telemetry.cpp`'de (`:97,126,140,173,299,313,365,371`); `BotManager.cpp`'de `Telemetry: ` yok, `WriteBotLog` ve mevcut log metinleri değişmemiş (K3 farkı salt ekleme) |
+| K10 | ✔ | `file`: `Bot/*` yedisi "ASCII text, with CRLF line terminators"; vcxproj ve filters "UTF-8 (with BOM) … CRLF" (öncesi/sonrası aynı); yeni/eklenen satırlarda boşluk girintisi 0, Allman, yorumlar İngilizce |
+| K11 | ✔ | `git diff --numstat`: vcxproj 2/0, filters 6/0 (her biri komşu girintisiyle, BOM korunmuş) |
+| K12 | ✔ | Doğrulama başında ve sonunda `git status --short` boş (derleme çıktıları izlenmiyor); uygulayıcı sunucu çalıştırmamış (başta 0/3 `[DOWN]`) |
 
-- Bulgular:
-- Düzeltme talimatı:
+- Çalışma zamanı doğrulaması (Release; `GameServer.ini`'ye `[BOT]` eklendi, her senaryodan sonra yedekten geri yüklendi, md5 `d1646328…` aynı; sunucular kapatıldı, 0/3 UP):
+  1. **Öz-sınama** (`ENABLED=1, MAX_BOTS=16, TELEMETRY=summary, TELEMETRY_SELFTEST=1`): `Telemetry: level summary, writing Logs/bots/2026-10-02/live-063701.jsonl`, `Telemetry: self-test OK (accepted 8192, soft drops 856, hard drops 952, written 8192 in 130 ms)`; dosyada tam 8192 `SELFTEST` satırı, ardından `PERF_SAMPLE` (ilkinde `written 8192, dropped_soft 856, dropped_hard 952`).
+  2. **`PERF_SAMPLE`** (`SPAWN_ON_START=BotWP_K,BotMF_K,BotWP_E,BotPHD_E`, `TELEMETRY_SELFTEST=0`): ~95 sn'de 19 satır, hepsi `json.loads` geçerli; ilk pencerede `in_game=0, pool_free=15`, sonrası **`sessions=4, in_game=4, pool_free=12`**; `tick_n` 46-47 (`TICK_MS=100`, gerçek aralık ~110 ms, F2-02'den bilinen `Sleep` granülaritesi), `tick_p95_us` ≤ 408, `tick_max_us` ≤ 579 (MET-PERF-02 bütçesi 5000 µs altında), `queue_len=0`, `dropped_*=0`, `written` her satırda +1.
+  3. **Zarif kapanış** (CTRL_BREAK, aşağıdaki not 1): 9 satırlık koşu, `Telemetry: stopped, written 9, dropped soft 0, hard 0`; dosyadaki satır sayısı 9 = `written`; sunucu 15 sn'de temiz çıktı (yazıcı birleşti, takılma yok). `ENABLED=0` ile aynı yöntem 43 sn'de çıktı (mevcut kapanış süresi, telemetriyle ilgisiz).
+  4. **`TELEMETRY=off`** (`SPAWN_ON_START` 2 bot): `Logs/bots/` altında yeni dosya yok, `Telemetry:` satırı yok, iki bot `in game`, `spawn complete: 2/2`. **`TELEMETRY=bogus`:** `Telemetry: unknown level 'bogus', telemetry off`, dosya yok, `tick OK` normal.
+  5. **`ENABLED=0` (ini'ye dokunulmadan, `Logs/bots` kenara alınarak):** sunucu açıldı/kapandı, `Logs/bots/` yeniden oluşmadı, `Bot_*.log`'a yeni satır 0; ini'ye yalnızca mevcut `[BOT] ENABLED=0` eklendi (F2-01'den beri `CIni` varsayılanı yazıyor), `TELEMETRY*` yazılmadı.
+  6. **Gerilemesiz (F2-05, telemetri açık):** 4 bot, `DESPAWN_AFTER_SEC=2, RESPAWN_CYCLES=4` → `respawn cycles done: 20 spawns, 20 despawns, 0 failed, 0 stuck, 0 names left, pool free 16/16, elapsed 24 s` (F2-05 ile birebir); `PERF_SAMPLE`: 12 satır, `sessions=4`, `in_game` 0/4 arasında, `pool_free` 12→16, `tick_p95_us` ≤ 698, `tick_max_us` ≤ 881, `dropped_*=0`.
+  7. **Sağlık:** sunucu 3/3 UP, `GameServer.log` 32 → 32 satır (yeni hata yok), `FAILED`/`stuck` satırı yok (yalnızca `0 failed` özeti).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not (düşük, araç): `tools/run-servers.sh stop` (`taskkill /PID`) ile kapatılan GameServer'da `Telemetry: stopped` satırı yazılmıyor (kullanılan dört koşuda yok), yani `~CGameServerDlg` → `BotManager::Shutdown()` → `Telemetry::Stop()` yolu bu araçla tamamlanmıyor; son ≤ 100 ms olay kaybı ADR-0007'de kabul edilmiş, dosya yine tutarlı. Zarif yol `AttachConsole` + `GenerateConsoleCtrlEvent(CTRL_BREAK)` ile denendi ve `Stop()` doğru çalışıyor (KI-007'nin "olası çözüm"ü). Yeni kayıt: KI-010.
+  2. Not (düşük): öz-sınama yarışı. `Telemetry.cpp:233-234` yazıcı `m_paused.load()` false görüp `:238-239` ile kuyruğu boşaltmadan hemen önce ana thread `:320` `m_paused = true` ve ilk `Emit`'leri yaparsa, yazıcı bu olayları alır; `accepted` 8192'yi aşar ve öz-sınama yanlış `FAILED` basar. Pencere mikrosaniye mertebesinde, yalnızca `TELEMETRY_SELFTEST=1` iken; bu turda tek denemede `OK` çıktı. Düzeltme gerekmez (gerekirse `m_paused`'i yazıcı yokken `Start()`'ta kurmak yeter).
+  3. Not (düşük): `WriteTelemetryLog` `localtime`'ı (`:17`) yazıcı thread'inden (`write error` yolunda, `:299`) çağırabilir; `localtime` paylaşılan statik tampon kullanır ve `WriteBotLog` IOCP thread'inde aynı anda çağrılabilir. Etkisi en kötü hâlde yanlış gün adı; yalnızca disk hatasında. Plan `WriteBotLog`'un birebir kopyasını istediği için kabul.
+  4. Not (düşük, verimlilik): `WriterLoop` her 100 ms'de `swap` sonrası `reserve(HARD_LIMIT)` ile `8192 × sizeof(TelemetryEvent)` (yüzlerce KB) yeniden ayırıyor ve bunu `m_lock` altında yapıyor; `Emit` o sürede bekler. Plan böyle yazıyor (`reserve` izinli); ölçülen `tick_max_us` ≤ 881 olduğundan pratik etkisi görülmedi. Sonraki planlarda üretici sayısı artarsa yedek bir toplu iş vektörüyle değiş tokuş düşünülebilir.
+  5. Not: ilk `PERF_SAMPLE` penceresi `Tick()`'in ilk çağrısından başlar, bu yüzden `tick_n` 46-47 (plan ≈ 50 bekliyordu; gerçek aralık ~110 ms). F3-02+ analizlerinde `window_ms` ile birlikte okunmalı.
+  6. Not: uygulayıcı raporu dürüst: commit listesi, dosya satır sayıları, satır numaraları ve "salt ekleme" iddiası gerçekle uyuşuyor; plandan sapma yok.
+  7. Not (ortam): test koşularından kalan `C:\dev\fdp\server\Logs\bots\2026-10-02\live-*.jsonl` (4 dosya) ve yardımcı `C:\dev\fdp\f301-ctrlc.ps1` silinemedi (`rm` izin verilmedi); depo dışıdır, içerik yalnızca sayaçlardır. Sonraki "Logs/bots oluşmaz" denetimlerinden önce silinmeli (aşağıda `docs/STATUS.md` notu).
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
+
+```
+(yok)
+```

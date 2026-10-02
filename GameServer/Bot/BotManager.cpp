@@ -2,8 +2,10 @@
 #include "BotManager.h"
 #include "IBotSink.h"
 #include "BotSession.h"
+#include "Telemetry.h"
 #include "../../shared/Ini.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -263,6 +265,9 @@ bool BotManager::Startup()
 	if (ok)
 		ParseSpawnList(spawnList);
 
+	if (ok)
+		Telemetry::Instance().Start();
+
 	return ok;
 }
 
@@ -300,6 +305,8 @@ void BotManager::Shutdown()
 		delete m_timerThread;
 		m_timerThread = nullptr;
 	}
+
+	Telemetry::Instance().Stop();
 }
 
 bool BotManager::EnqueueCommand(const std::string & line)
@@ -339,6 +346,8 @@ void BotManager::Tick()
 	if (m_shuttingDown)
 		return;
 
+	std::chrono::steady_clock::time_point tickStart = std::chrono::steady_clock::now();
+
 	m_tickCount++;
 
 	if (m_tickCount == 1)
@@ -371,6 +380,83 @@ void BotManager::Tick()
 
 	ProcessCommands();
 	TickSessions();
+
+	if (Telemetry::Instance().IsEnabled(TEL_SUMMARY))
+		RecordTick(tickStart);
+}
+
+void BotManager::RecordTick(std::chrono::steady_clock::time_point tickStart)
+{
+	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+	long long us = std::chrono::duration_cast<std::chrono::microseconds>(end - tickStart).count();
+
+	if (!m_perfWindowOpen)
+	{
+		m_perfWindowOpen = true;
+		m_perfWindowStart = tickStart;
+		m_tickUs.reserve(4096);
+	}
+
+	if (m_tickUs.size() < 4096)
+		m_tickUs.push_back((uint32)us);
+
+	if (end - m_perfWindowStart >= std::chrono::milliseconds(5000))
+		EmitPerfSample(end);
+}
+
+void BotManager::EmitPerfSample(std::chrono::steady_clock::time_point now)
+{
+	size_t n = m_tickUs.size();
+	if (n == 0)
+	{
+		m_perfWindowStart = now;
+		return;
+	}
+
+	std::vector<uint32> sorted(m_tickUs);
+	std::sort(sorted.begin(), sorted.end());
+
+	size_t i50 = (size_t)ceil(0.50 * n) - 1;
+	size_t i95 = (size_t)ceil(0.95 * n) - 1;
+	size_t i99 = (size_t)ceil(0.99 * n) - 1;
+	if (i50 >= n) i50 = n - 1;
+	if (i95 >= n) i95 = n - 1;
+	if (i99 >= n) i99 = n - 1;
+
+	uint32 p50 = sorted[i50];
+	uint32 p95 = sorted[i95];
+	uint32 p99 = sorted[i99];
+	uint32 maxUs = sorted.back();
+
+	uint32 inGame = 0;
+	for (size_t i = 0; i < m_sessions.size(); i++)
+	{
+		if (m_sessions[i]->m_phase == BotSession::PHASE_IN_GAME)
+			inGame++;
+	}
+
+	size_t poolFree;
+	{
+		std::lock_guard<std::recursive_mutex> lock(g_pMain->m_socketMgr.GetLock());
+		poolFree = g_pMain->m_socketMgr.GetReservedSessionMap().size();
+	}
+
+	uint32 skipped = m_skippedTicks.load();
+	TelemetryStats st = Telemetry::Instance().GetStats();
+	long long windowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_perfWindowStart).count();
+
+	char fields[512];
+	snprintf(fields, sizeof(fields),
+		"\"window_ms\":%lld,\"tick_n\":%u,\"tick_p50_us\":%u,\"tick_p95_us\":%u,\"tick_p99_us\":%u,\"tick_max_us\":%u,\"sessions\":%u,\"in_game\":%u,\"pool_free\":%u,\"skipped_ticks\":%u,\"queue_len\":%u,\"written\":%llu,\"dropped_soft\":%llu,\"dropped_hard\":%llu",
+		windowMs, (unsigned)n, (unsigned)p50, (unsigned)p95, (unsigned)p99, (unsigned)maxUs,
+		(unsigned)m_sessions.size(), (unsigned)inGame, (unsigned)poolFree, (unsigned)skipped,
+		(unsigned)st.queueLen, (unsigned long long)st.written,
+		(unsigned long long)st.droppedSoft, (unsigned long long)st.droppedHard);
+
+	Telemetry::Instance().Emit(TEL_SUMMARY, "PERF_SAMPLE", -1, nullptr, fields, true);
+
+	m_tickUs.clear();
+	m_perfWindowStart = now;
 }
 
 void BotManager::ProcessCommands()
