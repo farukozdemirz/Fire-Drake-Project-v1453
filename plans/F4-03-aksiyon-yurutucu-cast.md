@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-02 (saldırı dilimi, guard deseni, `m_actionWindow`) — `KAPANDI`; F4-01 (hareket) — `KAPANDI` |
@@ -421,6 +421,23 @@ git diff --check gece/2026-10-02...bot/F4-03
   - `CommandCast`'te hedef adı çözümlendikten sonra kendine-cast denetimi için `target == s` erken reddi korundu (planla uyumlu).
   - `TickCast`'ta `FINISHED`/`FAILED` dönüşlerinde `reason` olarak `CastOutcome.reason` kullanıldı (`SubmitCast` zaten `const char*` sabit döndürür); plandaki tabloyla birebir.
   - Yok: `recast`/`type_gate`/`gap` durumları `CastWaitMs > 0` iken `NOTHING` döner (plan §5.4 madde 3 ile uyumlu), guard reddi yalnızca gerçek ihlalde yazılır.
+- Açık sorular: yok.
+
+### Tur 2
+
+- Durum: UYGULANDI (doğrulamaya hazır)
+- Branch / commit'ler: `bot/F4-03` (taban: `gece/2026-10-02`); önceki turlar korundu, düzeltme commit'i Tur 2 raporuyla birlikte atılır.
+- Düzeltme talimatına uyum: Doğrulama Turu 1 bulgusu 1 (Orta) giderildi. `GameServer/Bot/ActionExecutor.cpp` `RejectCast()` içindeki `switch (verdict)`'e `CAST_REJECT_OUT_OF_RANGE` için `default`'tan önce `case` eklendi: `rule = "MEC-MAG-11"`, `reason = "out_of_range"`, `value = (c.skillRange > 0) ? c.distanceM : (float)c.distanceField`, `limit = (c.skillRange > 0) ? (float)c.skillRange : (float)c.weaponRangeField`. Başka verdict'e ve başka fonksiyona dokunulmadı; başlangıç kural/sebep metinleri değişmedi. Tek satırlık İngilizce yorum eklendi.
+- Değişen dosyalar ve neden:
+  - `GameServer/Bot/ActionExecutor.cpp` (+4 satır, yalnızca ekleme): `CAST_REJECT_OUT_OF_RANGE` case'i + İngilizce yorum. Başka dosya değişmedi (`docs/**`, `BotCombat.h`, testler, `GameServer/**` dahil).
+- Derleme ve test sonuçları:
+  - `./tools/build.sh Release`: rc=0; `ActionExecutor.cpp` yeniden derlendi, bu dosya için uyarı/hata yok (`GameServer.exe` üretildi).
+  - `./tools/build.sh Debug`: rc=0; `ActionExecutor.cpp` yeniden derlendi, bu dosya için uyarı/hata yok (`GameServer.exe` üretildi).
+  - `./tools/run-tests.sh Release`: rc=0; `24 tests, 0 failed`.
+  - `./tools/run-tests.sh Debug`: rc=0; `24 tests, 0 failed`.
+  - `git diff --stat`: yalnızca `GameServer/Bot/ActionExecutor.cpp` (+4) ve bu plan dosyası (`Durum` satırı); `file GameServer/Bot/ActionExecutor.cpp` → `ASCII text, with CRLF`; `git diff --check` boş.
+- Kabul kriterleri öz-değerlendirme (düzeltme kapsamı): bulgu 1 `value`/`limit` artık plan §5.4 tablosu ve §7 S4 beklentisini karşılar (`skillRange > 0` ise metre, aksi halde `distanceField` / `weaponRangeField`). K1/K2/K3 yeniden karşılandı (rc=0, uyarı yok, 24/24). Diğer kriterler (K4–K11) bu değişiklikten etkilenmez; K12 çalışma zamanı doğrulaması Claude'a aittir.
+- Plandan sapmalar: yok (talimat birebir uygulandı; talimattaki "tek satır" yorum koda eklendi).
 - Açık sorular: yok.
 
 ---
