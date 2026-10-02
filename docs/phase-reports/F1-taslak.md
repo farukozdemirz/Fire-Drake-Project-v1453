@@ -40,9 +40,10 @@ Değerlendirilen commit: `9148336` (`gece/2026-10-02`; F1-10 birleştirmesi) · 
 | T-DATA-01 (bot giriş değerleri) | 5/6 bot girişte | GEÇTİ: HP/MP/AC/saldırı modelle birebir | `docs/04` §3.4; kalan M-I girişinin teyidi bekliyor |
 | T-MECH-CLIENT-01..04 | 4 oturum (war-r, war-skill, pot, pri-cast/mag-cast, war-combo) | GEÇTİ (kısmi: tek karakter/sınıf) | `docs/03` §13.2–13.3 |
 | T-ENV-ARENA veri ön hesabı | araç, 2 çalıştırma | GEÇTİ (veri düzeyi) | `plans/F1-08-…` Doğrulama Tur 2 |
-| **T-MECH-DMG-01..03** | — | **BEKLİYOR (insan)** | Ölçüm altyapısı hazır (F1-09, F1-10); iki istemci gerekir |
+| **T-MECH-DMG-01..03** | R: 124 vuruş | **KISMEN GEÇTİ (2026-10-02)** | R vuruşu modelle ±%1,4 (W-P→W-G 72,8/73,0; W-G→W-P 92,5/92,9; W-P→W-P 156,9/159,1); kalan: Type1 skill, Malice (-02), büyü CHA ölçeği (-03), isabet oranı |
 | **T-ENV-ARENA-01, 03** (ve 02, 04) | — | **BEKLİYOR (insan)** | `docs/STATUS.md` bekleyen testler |
-| **T-DATA-01 (M-I)**, T-DATA-02/03 | — | **BEKLİYOR (insan)** | Kuşanılabilirlik ve maks HP/MP oyunda |
+| T-DATA-01 (M-I) | 2228/6021/612/57 | **GEÇTİ (2026-10-02)** | modelle birebir |
+| **T-DATA-02/03** | — | **BEKLİYOR (insan)** | Kuşanılabilirlik ve maks HP/MP oyunda |
 | T-MECH-SKILL-*, T-MECH-BUF-*, T-POT-*, T-MECH-POT-03..05 | — | **BEKLİYOR (insan)** | Çekirdek skill başına MP/recast/menzil; buff çakışmaları; pot hareketi durdurur mu (Q-06) |
 | `war-move` (Q-02) ve ikinci priest/mage oturumu | — | **BEKLİYOR (insan)** | `docs/STATUS.md` "Sıradaki adımlar" 3 |
 
