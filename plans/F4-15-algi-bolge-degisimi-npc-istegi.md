@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-15` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-13 (`PendingIds`, `CheckUserIn`, `TickUserIn`, `m_obsLock`) — `KAPANDI` (merge `f1acc48`); F4-14 (`NpcTable`, NPC algı bloğu, `m_npcUnresolved`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -276,7 +276,53 @@ git diff --check gece/2026-10-02...bot/F4-15
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-(henüz yok)
+### Tur 1
+
+**Durum:** UYGULANDI (derleme + birim testler yeşil; çalışma zamanı doğrulaması Claude'un işi, §7)
+
+**Branch ve commit'ler:**
+- Branch: `bot/F4-15` (taban: `gece/2026-10-02`)
+- `1fe2078` `[F4-15] Bölge değişiminde WIZ_REQ_NPCIN isteği (TickNpcIn, CLI-20)`
+- `61dc0a5` `[F4-15] Yorum satırlarını plana göre daralt (K8)` (yalnızca yorum/telif daraltma; K8 farkını plana birebir uydurmak için)
+
+**Değişen dosyalar ve nedenleri (§4'teki 7 kod dosyası; yeni dosya/`vcxproj` değişikliği yok):**
+- `BotCore/Perception.h`: `PendingIds::Set`/`Peek` `template <class TableT>` yapıldı (`ObsTable` ve `NpcTable` ikisi de `Find(uint16_t)` sunar); sınıf yorumu "…WIZ_REGIONCHANGE or WIZ_NPC_REGION…" oldu. Dosya sonuna `kNpcInMaxIds` (32), `kNpcInMinGapMs` (1000), `NpcInCheck`, `NpcInVerdict`, `inline CheckNpcIn` eklendi (gövde `CheckUserIn` ile aynı; başlık yalnızca olduğu için gövde verildi).
+- `Tests/BotCoreTests/PerceptionTests.cpp`: `MakeNpc` yardımcısı + `Perception_PendingIds_Npc`, `Perception_CheckNpcIn` (dosya sonuna; mevcut testlere dokunulmadı).
+- `GameServer/Bot/BotSession.h`: `PeekNpcInBatch`/`DropNpcInBatch` bildirimleri; `m_npcInHasLast`/`m_npcInLast`/`m_npcInRequests`/`m_npcInUnits` (IOCP-yalnızca); `m_npcPending` (`m_obsLock` altında); `m_npcInEcho` atomik.
+- `GameServer/Bot/BotSession.cpp`: başlatıcı listesi; `ResetForRespawn()` (kilitli blokta `m_npcPending.Clear()`, dışında `m_npcIn*` sıfırlama); `OnPacket()` `WIZ_NPC_REGION` dalına `m_npcPending.Set(...)`, `WIZ_REQ_NPCIN` dalına tablo işlemi bittikten sonra `m_npcInEcho = (1ull<<63)|n`; iki yardımcı üye fonksiyon.
+- `GameServer/Bot/ActionExecutor.h`: `NpcInOutcome` + `TickNpcIn` bildirimi.
+- `GameServer/Bot/ActionExecutor.cpp`: dosya sonuna `TickNpcIn` (`TickUserIn`'in birebir kopyası; `selfSid` yok, `kNpcInMaxIds`, "NpcInReq"/"CLI-20"; `m_actionWindow.Record` **çağrılmaz**; `Packet(WIZ_REQ_NPCIN)`).
+- `GameServer/Bot/BotManager.cpp`: `TickSessions()` canlı bot dalında `TickNpcIn` çağrısı + `SENT`/`REFUSED`/`FAILED` günlüğü (`NOTHING` sessiz); `CommandNpcs` kilit bloğuna `pending` kopyası, açıklama satırı `snprintf` ile sayaçlı metne çevrildi.
+
+**Derleme çıktılarının son satırları:**
+- Release: `BotCoreTests.vcxproj -> …\build\bin\x86-Release\Tests\BotCoreTests.exe` / `proj-GameServer.vcxproj -> …\build\bin\x86-Release\Server\GameServer.exe` (rc=0)
+- Debug: `proj-GameServer.vcxproj -> …\build\bin\x86-Debug\Server\GameServer.exe` (rc=0)
+- Uyarılar: yalnızca mevcut `GameServer/UpgradeHandler.cpp` (C4789) ve `GameServerDlg.cpp` (C4267) satırları; değişen 5 dosyada uyarı **0**.
+
+**Kriter öz-değerlendirmesi:**
+- K1 ✔ (Release rc=0; değişen dosyalarda uyarı yok — `touch`+yeniden derleme ile doğrulandı)
+- K2 ✔ (Debug rc=0)
+- K3 ✔ (Release ve Debug `63 tests, 0 failed`; `Perception_PendingIds_Npc`, `Perception_CheckNpcIn` çıktıda; eski `Perception_PendingIds_Set`/`_PeekRemove` değişmeden geçiyor)
+- K4 ✔ (`grep` boş; include'lar yalnızca `<cstddef>/<cstdint>/<cstring>`)
+- K5 ✔ (her iki `grep` boş; `TickNpcIn` gövdesi botun `CUser`'ından yalnızca `isInGame()`, `isDead()`, `GetSocketID()` ve `HandlePacket()` okur/çağırır)
+- K6 ✔ (`m_npcPending` yalnızca `BotSession.cpp` (4 kullanım) ve `BotManager.cpp` (tek `Count()`); `Packet pkt(WIZ_REQ_NPCIN)` yalnızca `TickNpcIn`'de)
+- K7 ✔ (`ActionExecutor.cpp`'de `m_obsLock` yok; yeni `lock_guard` yalnızca `PeekNpcInBatch`/`DropNpcInBatch`; `HandlePacket()` kilit tutulmadan)
+- K8 ✔ (silinen satırlar: `Perception.h` 3 satır [sınıf yorumu 1 satır + `Set`/`Peek` imzaları], `BotManager.cpp` 1 satır [not satırı], `BotSession.cpp` 1 satır [başlatıcı]; `ActionExecutor.*`/`PerceptionTests.cpp` silme yok)
+- K9 ✔ (`TickNpcIn` gövdesinde `m_actionWindow` yok; `TickUserIn` farkta yok)
+- K10 ✔ (`GameServer/` içinde `Bot/` dışında dosya değişmedi; yeni ini anahtarı yok)
+- K11 ✔ (`git diff --stat` yalnızca 7 kod dosyası + plan; `*.vcxproj*` farkı boş)
+- K12 ✔ (`file`: hepsi ASCII + CRLF; `git diff --check` boş)
+- K13 ✔ (`BotSession.h`'de `std::mutex` 1; yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok; `Telemetry.*`/`ScenarioRunner.*`/`BotManager.h` değişmedi)
+- K14 ✔ (tüm `Check*` fonksiyonları ≥1; `CheckNpcIn`=1)
+- K15 (Claude, `/plan-dogrula` çalışma zamanı) — uygulayıcı yapmaz.
+
+**Plandan sapmalar:**
+- §5.2(b)'deki şablon yalnızca bildirim olarak yazılmıştı; `CheckNpcIn` başlık-içi (`inline`) olduğu ve birim testler onu çağırdığı için gövdesi de eklendi (`CheckUserIn` kalıbı, plan metniyle aynı mantık). Zorunluydu.
+- K6'nın parantez içi listesi `BotManager.cpp`'de `WIZ_REQ_NPCIN` dizgisini bekliyor; §5.5'teki yeni `npcs` açıklama metni bu dizgiyi içermediği için (planın kendi metni) dizi `BotManager.cpp`'den kalktı. Semantik (paket yalnızca `TickNpcIn`'de) doğru; bu bir plan metni tutarsızlığıdır, engel değil.
+- İlk commit'te iki yorum satırına plan dışı kısa açıklama eklemiştim; K8'e birebir uymak için `61dc0a5` ile geri alındı (davranış değişmedi, testler yeniden koştu: `63 tests, 0 failed`).
+
+**Açık sorular:**
+- Yok. Çalışma zamanı doğrulaması (bölge değişimi, `npcin requested/received`, `/bot npcs`, CLI-20 aralığı) §7 uyarınca Claude'a bırakıldı.
 
 ---
 
