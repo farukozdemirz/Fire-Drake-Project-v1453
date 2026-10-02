@@ -18,9 +18,11 @@ public:
 
 	void Command(const std::string & args);    // "run <name>" | "stop" | "status"
 	void Tick(std::chrono::steady_clock::time_point now);   // returns at once while idle
+	static bool LoadScript(const std::string & name, std::vector<BotCore::ScriptStep> & steps, std::string & error);
+	bool IsRunning() const { return m_running; }
+	uint32 RunId() const { return m_runId; }   // +1 per successful "run"; 0 = none yet
 
 private:
-	static bool LoadScript(const std::string & name, std::vector<BotCore::ScriptStep> & steps, std::string & error);
 	void CommandRun(const std::string & name);
 	void CommandStop();
 	void CommandStatus();
@@ -33,4 +35,5 @@ private:
 	size_t m_next;                             // index of the next step to run
 	std::chrono::steady_clock::time_point m_start;
 	uint32 m_maxLateMs;                        // largest (actual - planned) offset so far
+	uint32 m_runId;                            // see RunId()
 };
