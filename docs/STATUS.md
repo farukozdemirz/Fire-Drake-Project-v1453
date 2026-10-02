@@ -84,7 +84,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. Proje sahibi: opencode'a `plans/F1-08-arena-a-veri-dogrulamasi.md planını AGENTS.md kurallarına göre uygula.` verir; sonra `/plan-dogrula`. Paralel: Claude F1 faz sonuç raporu taslağı; proje sahibi bot girişi denemesi (T-DATA-01) ve T-MECH-DMG ölçümü.
+1. Proje sahibi: F1-08 DeepSeek'te; bitince `/plan-dogrula`. T-DATA-01 giriş doğrulaması 5/6 bot için tamam (model = oyun, `docs/04` §3.4). Sıradaki: M-I girişinin teyidi, F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci), F1 faz sonuç raporu taslağı.
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.
