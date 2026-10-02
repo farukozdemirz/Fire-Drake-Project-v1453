@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-09 (log biçimi, `DOĞRULANDI`, `gece/2026-10-02`'ye birleşti), F1-06/F1-07 (model çıktıları, `KAPANDI`) |
@@ -267,3 +267,31 @@ plans/F1-10-hasar-logu-ozet-betigi.md — Doğrulama Turu 1 düzeltmeleri. Aynı
 5. Çalıştır ve raporda göster: python3 tools/damage-trace-summary.py --selftest -> "selftest OK" rc=0; adım 2'deki (a) durumunun çıktısı (profil geri düşüşlü R satırı verdict=OK); Tur 1'deki K2 çıktısının (sentetik 4 satır) düzeltme sonrası aynı kaldığı (yalnızca C kind=R satırı etkilenebilir; fark varsa diff ile göster). Geçici dosyaları /tmp altında üret ve sil.
 6. Başka dosyaya dokunma (docs/**, GameServer/** dahil). Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI** (Tur 1 bulgularının tamamı giderildi; 8/8 kriter kanıtla ✔)
+- İncelenen: `bot/F1-10` @ `b93309d` (düzeltme commit'i; yalnızca `tools/damage-trace-summary.py` + plan dosyası değişti)
+- Mod: otonom (`AUTO_LOOP=1`, gece modu, entegrasyon dalı `gece/2026-10-02`): birleştirme/push yapılmadı; sunucular `[DOWN]` idi.
+- Derleme: `./tools/build.sh Release` → rc=0, `warning` satırı 0 (C++ değişikliği yok; üç exe bağlandı).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, rc=0 (Claude çalıştırdı); `_E` için `R`/`K`/`H` hüküm ve `match=profile` assert'leri `run_selftest`'te |
+| K2 bölümler | ✔ | Bağımsız sentetik log (bellekte/geçici dosya, sonra silindi): `== L ==`, `== A ==`, `== D ==`, `== C ==` sırasıyla; `L ... span_s=` ve `L note=misses_not_logged hit_rate_not_measured` var |
+| K3 `C` biçimi / varsayılanlar | ✔ | `C kind= a= t= skill= n= meas= model= diff_pct= verdict= match= range_viol=` sırası değişmedi; argümansız çalıştırma `USAGE` (rc=2) |
+| K4 dayanıklılık | ✔ | `/dev/null` → `parsed=0 bad=0`, rc=0; `/tmp/olmayan.log` → `error: cannot read log: [Errno 2]...`, rc=2; traceback yok (bozuk satır dayanıklılığı Tur 1'de doğrulandı, kod değişmedi) |
+| K5 model biçimi uyumu | ✔ | Tur 1 ile aynı alan adları (`dmg_avg`, `dmg_min/max`, `heal_instant`, `dot_tick`) |
+| K6 yalnızca stdlib / kodlama | ✔ | `import io, re, sys`; `file` → `Python script, ASCII text executable`; CR sayısı 0 |
+| K7 kapsam | ✔ | `git diff --stat gece/2026-10-02...bot/F1-10`: `tools/damage-trace-summary.py`, plan dosyası ve Claude'un Tur 1 doğrulama kayıtları (`plans/README.md`, `docs/STATUS.md`); Tur 1→2 farkı yalnızca betik + plan; `git status --short` boş |
+| K8 derleme | ✔ | rc=0, uyarı 0 |
+
+**Tur 1 bulgularının doğrulanması**
+1. `ctx=R` profil geri düşüşü (Orta): `find_r` `:167` artık `find_by_profile(..., None, "R")`. Bağımsız deneme (`BotWP_E`->`BotMI_E`, 6 olay, model `_K`): `C kind=R ... model=205.0 diff_pct=+0.0 verdict=OK match=profile range_viol=6` (model `dmg_max=200` verildiği için 205 değerlerinin 6'sı aralık dışı, doğru). `K` (`verdict=FAIL` +150, `match=profile`) ve `H` (`OK`, `match=profile`) yolları da doğru. ✔
+2. Selftest `_E` bloğu (Düşük): `R`/`K`/`H` için ayrı `verdict=OK match=profile` assert'leri eklendi; uygulayıcı düzeltme 1'i geri alıp assert'in düştüğünü raporladı (`AssertionError`, rc=1). ✔
+3. `primary=0`, `requested == 0` (Düşük): artık `D`'de görünmüyor (`D` boş); bağımsız denemede `L ... zero=1`; selftest A+D birlikte `zero=2`'yi sınıyor. ✔
+4. `main(argv=None)` + `sys.exit(main())` (Not): uygulandı. ✔
+
+**Bulgular**
+- Engelleyen bulgu yok.
+- [Not] `tools/damage-trace-summary.py` içinde `find_by_profile` K-önceliği ve `LOW_N` hükmü gerçek log gelene kadar yalnızca sentetik veriyle sınandı; T-MECH-DMG insan oturumunda (gerçek log) `--min-n` ve `--tol` değerleri gözden geçirilmeli.
