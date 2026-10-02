@@ -229,11 +229,11 @@ void BotSession::OnPacket(Packet & pkt)
 		}
 		else if (opcode == WIZ_MOVE)
 		{
-			uint16 sid = 0, x10 = 0, z10 = 0, y10 = 0;
-			if (BotCore::ParseMove(data, len, sid, x10, z10, y10))
+			BotCore::MoveObs move;
+			if (BotCore::ParseMoveFull(data, len, move))
 			{
 				std::lock_guard<std::mutex> lock(m_obsLock);
-				m_obs.UpdatePosition(sid, x10, z10, y10, nowMs);
+				m_obs.UpdateMove(move.sid, move.x10, move.z10, move.y10, move.speed, nowMs);
 			}
 		}
 		else if (opcode == WIZ_DEAD && len >= 2)

@@ -2349,12 +2349,25 @@ void BotManager::CommandSee(const std::string & args)
 		float uz = u.z10 / 10.0f;
 		float dist = (float)sqrt((ux - myX) * (ux - myX) + (uz - myZ) * (uz - myZ));
 		uint64 age = nowMs > u.lastSeenMs ? nowMs - u.lastSeenMs : 0;
+		uint64 posAge = nowMs > u.lastMoveMs ? nowMs - u.lastMoveMs : 0;
+		uint32 posAgeMs = posAge > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32)posAge;
+		bool moving = (u.lastSpeed > 0);
+		uint8 posState = BotCore::ClassifyPos(moving, posAgeMs);
+		float vx = 0.0f, vz = 0.0f;
+		BotCore::EstimateVelocity(u, nowMs, vx, vz);
+		char speedText[8];
+		if (u.lastSpeed < 0)
+			snprintf(speedText, sizeof(speedText), "?");
+		else
+			snprintf(speedText, sizeof(speedText), "%d", (int)u.lastSpeed);
 
 		snprintf(message, sizeof(message),
-			"BotManager: cmd see:   sid=%u %s %s nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s age=%llums",
+			"BotManager: cmd see:   sid=%u %s %s nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s age=%llums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s",
 			(unsigned)u.sid, u.name, enemy ? "enemy" : "ally", (unsigned)u.nation,
 			(unsigned)u.cls, (unsigned)u.level, ux, uz, dist,
-			u.resHpType == BotCore::kObsUserDead ? "dead" : "alive", (unsigned long long)age);
+			u.resHpType == BotCore::kObsUserDead ? "dead" : "alive", (unsigned long long)age,
+			u.name, (unsigned)posAgeMs, speedText, vx, vz,
+			posState == BotCore::POS_STALE ? "stale" : (posState == BotCore::POS_LOST ? "lost" : "fresh"));
 		WriteBotLog(message);
 	}
 }
@@ -2650,20 +2663,36 @@ void BotManager::CommandSnap(const std::string & args)
 	for (int i = 0; i < snap.enemyCount && i < kPrintMax; i++)
 	{
 		const BotCore::UnitView & u = snap.enemies[i];
+		char speedText[8];
+		if (u.speedField < 0)
+			snprintf(speedText, sizeof(speedText), "?");
+		else
+			snprintf(speedText, sizeof(speedText), "%d", (int)u.speedField);
+
 		snprintf(message, sizeof(message),
-			"BotManager: cmd snap:   enemy id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums",
+			"BotManager: cmd snap:   enemy id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s",
 			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
-			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs);
+			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs,
+			u.name, (unsigned)u.posAgeMs, speedText, u.vx, u.vz,
+			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"));
 		WriteBotLog(message);
 	}
 
 	for (int i = 0; i < snap.allyCount && i < kPrintMax; i++)
 	{
 		const BotCore::UnitView & u = snap.allies[i];
+		char speedText[8];
+		if (u.speedField < 0)
+			snprintf(speedText, sizeof(speedText), "?");
+		else
+			snprintf(speedText, sizeof(speedText), "%d", (int)u.speedField);
+
 		snprintf(message, sizeof(message),
-			"BotManager: cmd snap:   ally id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums",
+			"BotManager: cmd snap:   ally id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s",
 			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
-			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs);
+			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs,
+			u.name, (unsigned)u.posAgeMs, speedText, u.vx, u.vz,
+			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"));
 		WriteBotLog(message);
 	}
 

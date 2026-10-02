@@ -17,6 +17,35 @@ namespace BotCore
 	constexpr uint16_t kObsInOutOut = 2;    // InOutType: INOUT_OUT (1 in, 3 respawn, 4 warp, 5 summon = present)
 	constexpr uint8_t  kObsUserDead = 3;    // USER_DEAD in the m_bResHpType byte of the user info
 
+	// Observation metadata (ADR-0017 Ek F4-50, docs/13 section 5.2a).
+	constexpr int      kObsHistMax            = 4;      // position samples kept per unit (short ring)
+	constexpr uint64_t kObsSampleMinGapMs     = 400;    // identical position+speed repeats closer than this are not stored
+	constexpr uint32_t kObsSampleMaxAgeMs     = 4000;   // a newest sample older than this yields no velocity
+	constexpr uint32_t kObsEstimateMaxAheadMs = 3000;   // dead reckoning is clamped to this many ms
+	constexpr uint32_t kPosFreshMs            = 3100;   // moving unit: pos_age <= this is fresh (2 packets at the CLI-05 period) [A]
+	constexpr uint32_t kPosLostMs             = 6000;   // moving unit: pos_age > this is a lost candidate [A]
+
+	// One position sample in the short history of a unit. The ring is read oldest..newest with ObsSampleBack.
+	struct PosSample
+	{
+		uint64_t tMs;
+		uint16_t x10, z10;
+		int16_t  speed;
+	};
+
+	// Freshness of the last known position (docs/13 section 5.2a [A]).
+	enum PosState
+	{
+		POS_FRESH = 0,   // fresh, or stationary: a stopped unit never goes stale
+		POS_STALE = 1,   // moving, 3100..6000 ms
+		POS_LOST  = 2    // moving, > 6000 ms
+	};
+
+	// Observation source of a view record (docs/13 section 5.2a). F4-50 uses only the direct one.
+	constexpr uint8_t kSrcObserved = 0;   // O: direct observation from the bot's own packets
+	constexpr uint8_t kSrcTeam     = 1;   // P: relayed by a team member (later slice)
+	constexpr uint8_t kSrcEstimate = 2;   // E: derived by the bot (later slice)
+
 	struct UnitObs
 	{
 		uint16_t sid;
@@ -28,9 +57,101 @@ namespace BotCore
 		uint8_t  resHpType;           // 1 standing, 2 sitting, 3 dead (as in the user info)
 		bool     partyLeader;
 		uint8_t  invisibility;
-		uint64_t lastSeenMs;          // caller's clock (steady_clock ms) of the packet that last touched the unit
+		uint64_t lastSeenMs;          // caller's clock (steady_clock ms) of the packet that last touched the unit; "last packet", not "last seen"
+		uint64_t lastMoveMs;          // caller's clock of the last WIZ_MOVE (or the registration / respawn packet)
+		int16_t  lastSpeed;           // speed field of that WIZ_MOVE; -1 when unknown (the info record carries no speed)
+		PosSample hist[kObsHistMax];  // short ring of recent positions; read with ObsSampleBack
+		uint8_t  histCount;           // valid samples in hist (<= kObsHistMax)
+		uint8_t  histNext;            // ring write index (slot the next sample goes to)
 		char     name[kObsNameMax];   // NUL terminated
 	};
+
+	// Returns the sample 'back' steps before the newest (0 = newest, 1 = the one before it); nullptr when
+	// there is no such sample. Read only.
+	inline const PosSample * ObsSampleBack(const UnitObs & u, int back)
+	{
+		if (back < 0 || back >= (int)u.histCount || u.histCount == 0)
+			return nullptr;
+
+		int idx = (int)u.histNext - 1 - back;
+		while (idx < 0)
+			idx += kObsHistMax;
+		return &u.hist[idx];
+	}
+
+	// Freshness of the position: a stationary unit (known speed 0 or unknown speed) is always fresh; moving
+	// = last WIZ_MOVE speed > 0. A moving unit is fresh up to 3100 ms, stale up to 6000 ms, a lost candidate
+	// beyond it.
+	inline uint8_t ClassifyPos(bool moving, uint32_t posAgeMs)
+	{
+		if (!moving)
+			return POS_FRESH;
+		if (posAgeMs <= kPosFreshMs)
+			return POS_FRESH;
+		if (posAgeMs <= kPosLostMs)
+			return POS_STALE;
+		return POS_LOST;
+	}
+
+	// Velocity (m/s) from the last two samples. Zero when the last packet said speed 0 (or unknown), when the
+	// newest sample is older than 4000 ms, or when the sample interval is outside 400..4000 ms. The magnitude
+	// is capped at lastSpeed/10 * 1.1 so a stale estimate never invents speed. Read only.
+	inline void EstimateVelocity(const UnitObs & u, uint64_t nowMs, float & vx, float & vz)
+	{
+		vx = 0.0f;
+		vz = 0.0f;
+
+		if (u.lastSpeed <= 0)
+			return;
+
+		const PosSample * newest = ObsSampleBack(u, 0);
+		const PosSample * older  = ObsSampleBack(u, 1);
+		if (newest == nullptr || older == nullptr)
+			return;
+
+		if (nowMs > newest->tMs && nowMs - newest->tMs > kObsSampleMaxAgeMs)
+			return;
+
+		uint64_t dt = newest->tMs > older->tMs ? newest->tMs - older->tMs : 0;
+		if (dt < kObsSampleMinGapMs || dt > kObsSampleMaxAgeMs)
+			return;
+
+		float dtSec = dt / 1000.0f;
+		vx = (newest->x10 - older->x10) / 10.0f / dtSec;
+		vz = (newest->z10 - older->z10) / 10.0f / dtSec;
+
+		float maxV = (u.lastSpeed / 10.0f) * 1.1f;
+		float mag = std::sqrt(vx * vx + vz * vz);
+		if (mag > maxV && mag > 0.0f)
+		{
+			float scale = maxV / mag;
+			vx *= scale;
+			vz *= scale;
+		}
+	}
+
+	// Dead reckoning: the newest sample position advanced by the velocity for at most 3000 ms. Falls back to
+	// the last known position when there is no estimate. Read only.
+	inline void EstimatePosition(const UnitObs & u, uint64_t nowMs, float & x, float & z)
+	{
+		const PosSample * newest = ObsSampleBack(u, 0);
+		if (newest == nullptr)
+		{
+			x = u.x10 / 10.0f;
+			z = u.z10 / 10.0f;
+			return;
+		}
+
+		float vx = 0.0f, vz = 0.0f;
+		EstimateVelocity(u, nowMs, vx, vz);
+
+		uint64_t ahead = nowMs > newest->tMs ? nowMs - newest->tMs : 0;
+		if (ahead > kObsEstimateMaxAheadMs)
+			ahead = kObsEstimateMaxAheadMs;
+
+		x = newest->x10 / 10.0f + vx * (ahead / 1000.0f);
+		z = newest->z10 / 10.0f + vz * (ahead / 1000.0f);
+	}
 
 	// Small-endian reader over a packet payload. A read past the end zeroes the result, clears
 	// ok() and leaves the cursor at the end: it never reads out of bounds.
@@ -230,6 +351,32 @@ namespace BotCore
 		return r.ok();
 	}
 
+	// The full WIZ_MOVE payload (ADR-0017 Ek F4-50).
+	struct MoveObs
+	{
+		uint16_t sid;
+		uint16_t x10, z10, y10;
+		int16_t  speed;
+		uint8_t  echo;
+	};
+
+	// WIZ_MOVE: u16 sid, u16 x, u16 z, u16 y, i16 speed, u8 echo (x/z/y are x10). Needs 11 bytes; a short
+	// packet or a null buffer returns false without touching 'out'. Bounds safe.
+	inline bool ParseMoveFull(const uint8_t * data, size_t len, MoveObs & out)
+	{
+		if (data == nullptr || len < 11)
+			return false;
+
+		ByteReader r(data, len);
+		out.sid = r.U16();
+		out.x10 = r.U16();
+		out.z10 = r.U16();
+		out.y10 = r.U16();
+		out.speed = (int16_t)r.U16();
+		out.echo = r.U8();
+		return r.ok();
+	}
+
 	// WIZ_REGIONCHANGE: u16 count, then count x u16 sid. Writes at most 'cap' ids and returns how
 	// many were read (0 when malformed; a short trailing list just stops).
 	inline int ParseRegionList(const uint8_t * data, size_t len, uint16_t * ids, int cap)
@@ -266,8 +413,20 @@ namespace BotCore
 		uint32_t Overflow() const { return m_overflow; }
 
 		// Insert or refresh by sid; false (and Overflow()++ ) when a fresh unit is added and the table is full.
-		bool Upsert(const UnitObs & u)
+		// The registration / respawn packet seeds the position history with one sample of unknown speed.
+		bool Upsert(const UnitObs & src)
 		{
+			UnitObs u = src;
+			u.lastMoveMs = u.lastSeenMs;
+			u.lastSpeed = -1;
+			memset(u.hist, 0, sizeof(u.hist));
+			u.histCount = 1;
+			u.histNext = 1 % kObsHistMax;
+			u.hist[0].tMs = u.lastSeenMs;
+			u.hist[0].x10 = u.x10;
+			u.hist[0].z10 = u.z10;
+			u.hist[0].speed = -1;
+
 			int idx = IndexOf(u.sid);
 			if (idx >= 0)
 			{
@@ -304,6 +463,38 @@ namespace BotCore
 			m_units[idx].z10 = z10;
 			m_units[idx].y10 = y10;
 			m_units[idx].lastSeenMs = nowMs;
+			return true;
+		}
+
+		// WIZ_MOVE: updates the position and speed and appends a sample to the history ring. An identical
+		// position and speed repeated within kObsSampleMinGapMs of the last sample is not stored again.
+		bool UpdateMove(uint16_t sid, uint16_t x10, uint16_t z10, uint16_t y10, int16_t speed, uint64_t nowMs)
+		{
+			int idx = IndexOf(sid);
+			if (idx < 0)
+				return false;
+
+			UnitObs & u = m_units[idx];
+			u.x10 = x10;
+			u.z10 = z10;
+			u.y10 = y10;
+			u.lastSeenMs = nowMs;
+			u.lastMoveMs = nowMs;
+			u.lastSpeed = speed;
+
+			const PosSample * last = ObsSampleBack(u, 0);
+			if (last != nullptr && last->x10 == x10 && last->z10 == z10 && last->speed == speed
+				&& nowMs > last->tMs && nowMs - last->tMs < kObsSampleMinGapMs)
+				return true;
+
+			PosSample & s = u.hist[u.histNext];
+			s.tMs = nowMs;
+			s.x10 = x10;
+			s.z10 = z10;
+			s.speed = speed;
+			u.histNext = (uint8_t)((u.histNext + 1) % kObsHistMax);
+			if (u.histCount < kObsHistMax)
+				u.histCount++;
 			return true;
 		}
 
@@ -828,7 +1019,8 @@ namespace BotCore
 		bool         partyLeader;       // the bot's own CUser::isPartyLeader()
 	};
 
-	// One visible player. No HP, MP, name or inventory: the client never learns them (docs/14 5.2).
+	// One visible player. The name arrives with WIZ_USER_INOUT (docs/03 section 16). No HP, MP or inventory:
+	// the client never learns them (docs/14 5.2). Position metadata is derived from WIZ_MOVE only.
 	struct UnitView
 	{
 		uint16_t id;                   // socket id of the player (NOT an npc id)
@@ -842,7 +1034,14 @@ namespace BotCore
 		bool     sitting;              // resHpType == kSnapUserSit
 		bool     partyLeader;
 		uint8_t  invisibility;         // raw byte, NOT filtered
-		uint32_t ageMs;                // nowMs - lastSeenMs (0 if the packet clock is ahead), clamped to 0xFFFFFFFF
+		uint32_t ageMs;                // nowMs - lastSeenMs: age of the last packet, NOT position validity (kept as before)
+		char     name[kObsNameMax];    // NUL terminated, from the user info record
+		uint32_t posAgeMs;             // nowMs - lastMoveMs (0 if the clock is ahead), clamped to 0xFFFFFFFF
+		int16_t  speedField;           // speed field of the last WIZ_MOVE; -1 unknown, 0 stationary
+		bool     moving;               // speedField > 0; unknown speed (-1, no WIZ_MOVE since registration) counts as stationary: the server sends a WIZ_MOVE for every step of a moving unit
+		float    vx, vz;               // estimated velocity in m/s (0 when it cannot be estimated)
+		uint8_t  posState;             // POS_FRESH / POS_STALE / POS_LOST
+		uint8_t  src;                  // kSrcObserved / kSrcTeam / kSrcEstimate
 	};
 
 	// One visible NPC (monster, guard tower, gate, ...). No classification yet.
@@ -1302,8 +1501,17 @@ namespace BotCore
 			v.sitting = (u.resHpType == kSnapUserSit);
 			v.partyLeader = u.partyLeader;
 			v.invisibility = u.invisibility;
+			for (uint32_t k = 0; k < kObsNameMax; k++)
+				v.name[k] = u.name[k];
 			uint64_t age = nowMs > u.lastSeenMs ? nowMs - u.lastSeenMs : 0;
 			v.ageMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+			uint64_t posAge = nowMs > u.lastMoveMs ? nowMs - u.lastMoveMs : 0;
+			v.posAgeMs = posAge > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)posAge;
+			v.speedField = u.lastSpeed;
+			v.moving = (u.lastSpeed > 0);
+			EstimateVelocity(u, nowMs, v.vx, v.vz);
+			v.posState = ClassifyPos(v.moving, v.posAgeMs);
+			v.src = kSrcObserved;
 
 			if (u.nation != self.nation)
 			{

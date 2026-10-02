@@ -1776,3 +1776,236 @@ TEST_CASE("Perception_Team_Build")
 		CHECK_EQ(int(tv4.leaderId), int(BotCore::kTeamNone));
 	}
 }
+
+TEST_CASE("Perception_ParseMoveFull")
+{
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3); b.U16(45); b.U8(3);
+
+		BotCore::MoveObs out;
+		memset(&out, 0, sizeof(out));
+		CHECK(BotCore::ParseMoveFull(b.v.data(), b.v.size(), out));
+		CHECK_EQ(int(out.sid), 5);
+		CHECK_EQ(int(out.x10), 100);
+		CHECK_EQ(int(out.z10), 200);
+		CHECK_EQ(int(out.y10), 3);
+		CHECK_EQ(int(out.speed), 45);
+		CHECK_EQ(int(out.echo), 3);
+	}
+
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3); b.U16(45);   // 10 bytes: one short of the speed/echo tail
+
+		BotCore::MoveObs out;
+		CHECK(!BotCore::ParseMoveFull(b.v.data(), b.v.size(), out));
+	}
+
+	{
+		Buf b;
+		b.U16(5); b.U16(100); b.U16(200); b.U16(3); b.U16(0xFFFF); b.U8(3);   // speed -1 unknown
+
+		BotCore::MoveObs out;
+		memset(&out, 0, sizeof(out));
+		CHECK(BotCore::ParseMoveFull(b.v.data(), b.v.size(), out));
+		CHECK_EQ(int(out.speed), -1);
+	}
+
+	{
+		BotCore::MoveObs out;
+		CHECK(!BotCore::ParseMoveFull(nullptr, 0, out));
+	}
+}
+
+TEST_CASE("Perception_Obs_MoveHistory")
+{
+	BotCore::ObsTable table;
+	BotCore::UnitObs u = MakeUnit(7);
+	u.nation = 1;
+	u.x10 = 10000;
+	u.z10 = 10000;
+	u.lastSeenMs = 1000;
+	CHECK(table.Upsert(u));
+
+	const BotCore::UnitObs * o = table.Find(7);
+	CHECK(o != nullptr);
+	CHECK_EQ(int(o->histCount), 1);
+	CHECK(o->lastMoveMs == 1000);
+	CHECK_EQ(int(o->lastSpeed), -1);
+	CHECK_EQ(int(o->hist[0].speed), -1);
+
+	// ~4.5 m/s along +x: 67 x10 (6.7 m) every 1500 ms; registration + 4 moves wraps the 4-slot ring.
+	CHECK(table.UpdateMove(7, 10067, 10000, 100, 45, 2500));
+	CHECK(table.UpdateMove(7, 10134, 10000, 100, 45, 4000));
+	CHECK(table.UpdateMove(7, 10201, 10000, 100, 45, 5500));
+	CHECK(table.UpdateMove(7, 10268, 10000, 100, 45, 7000));
+
+	o = table.Find(7);
+	CHECK_EQ(int(o->histCount), BotCore::kObsHistMax);
+	CHECK(o->lastMoveMs == 7000);
+	CHECK_EQ(int(o->lastSpeed), 45);
+	CHECK_EQ(int(o->x10), 10268);
+
+	const BotCore::PosSample * newest = BotCore::ObsSampleBack(*o, 0);
+	const BotCore::PosSample * older = BotCore::ObsSampleBack(*o, 1);
+	CHECK(newest != nullptr && older != nullptr);
+	CHECK_EQ(int(newest->x10), 10268);
+	CHECK(newest->tMs == 7000);
+	CHECK_EQ(int(older->x10), 10201);
+	CHECK(older->tMs == 5500);
+	CHECK(BotCore::ObsSampleBack(*o, 3) != nullptr);       // the oldest of the 5 samples survives
+	CHECK_EQ(int(BotCore::ObsSampleBack(*o, 3)->x10), 10067);
+	CHECK(BotCore::ObsSampleBack(*o, 4) == nullptr);
+
+	float vx = 0.0f, vz = 0.0f;
+	BotCore::EstimateVelocity(*o, 7000, vx, vz);
+	CHECK(vx > 4.05f && vx < 4.95f);                       // ~4.5 m/s within 10%
+	CHECK(vz == 0.0f);
+
+	// The last packet said stopped: no velocity.
+	CHECK(table.UpdateMove(7, 10268, 10000, 100, 0, 8000));
+	BotCore::EstimateVelocity(*table.Find(7), 8000, vx, vz);
+	CHECK(vx == 0.0f);
+	CHECK(vz == 0.0f);
+
+	// The newest sample is older than 4000 ms: no velocity.
+	CHECK(table.UpdateMove(7, 10268, 10000, 100, 45, 10000));
+	BotCore::EstimateVelocity(*table.Find(7), 15000, vx, vz);
+	CHECK(vx == 0.0f);
+	CHECK(vz == 0.0f);
+
+	// Two samples closer than 400 ms: no velocity.
+	CHECK(table.UpdateMove(7, 10200, 10000, 100, 45, 15100));
+	CHECK(table.UpdateMove(7, 10230, 10000, 100, 45, 15200));
+	BotCore::EstimateVelocity(*table.Find(7), 15200, vx, vz);
+	CHECK(vx == 0.0f);
+	CHECK(vz == 0.0f);
+
+	// Dead reckoning advances at most 3000 ms past the newest sample.
+	BotCore::ObsTable t2;
+	BotCore::UnitObs u2 = MakeUnit(9);
+	u2.x10 = 10000;
+	u2.z10 = 10000;
+	u2.lastSeenMs = 1000;
+	CHECK(t2.Upsert(u2));
+	CHECK(t2.UpdateMove(9, 10067, 10000, 100, 45, 2500));
+
+	float ex = 0.0f, ez = 0.0f;
+	BotCore::EstimatePosition(*t2.Find(9), 2500, ex, ez);
+	CHECK(ex > 1006.6f && ex < 1006.8f);
+	CHECK(ez == 1000.0f);
+	BotCore::EstimatePosition(*t2.Find(9), 5500, ex, ez);   // 3000 ms ahead
+	float capped = ex;
+	BotCore::EstimatePosition(*t2.Find(9), 6000, ex, ez);   // 3500 ms: clamped
+	CHECK(ex > capped - 0.001f && ex < capped + 0.001f);
+}
+
+TEST_CASE("Perception_Obs_PosClassify")
+{
+	CHECK_EQ(int(BotCore::kPosFreshMs), 3100);
+	CHECK_EQ(int(BotCore::kPosLostMs), 6000);
+
+	CHECK(BotCore::ClassifyPos(true, 0) == BotCore::POS_FRESH);
+	CHECK(BotCore::ClassifyPos(true, BotCore::kPosFreshMs) == BotCore::POS_FRESH);
+	CHECK(BotCore::ClassifyPos(true, BotCore::kPosFreshMs + 1) == BotCore::POS_STALE);
+	CHECK(BotCore::ClassifyPos(true, BotCore::kPosLostMs) == BotCore::POS_STALE);
+	CHECK(BotCore::ClassifyPos(true, BotCore::kPosLostMs + 1) == BotCore::POS_LOST);
+	CHECK(BotCore::ClassifyPos(false, 60000) == BotCore::POS_FRESH);
+}
+
+TEST_CASE("Perception_Snap_MetaFields")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::NpcTable npcs;
+
+	BotCore::ObsTable obs;
+	{
+		BotCore::UnitObs u = MakeUnit(5);
+		u.nation = 2;
+		strcpy(u.name, "BotWG_E");
+		u.x10 = 10030;
+		u.z10 = 10040;
+		u.cls = 205;
+		u.level = 77;
+		u.lastSeenMs = 0;               // registration at t=0, no MOVE afterwards
+		CHECK(obs.Upsert(u));
+	}
+
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 5000, out);
+
+	CHECK_EQ(out.enemyCount, 1);
+	if (out.enemyCount == 1)
+	{
+		const BotCore::UnitView & v = out.enemies[0];
+		CHECK(strcmp(v.name, "BotWG_E") == 0);
+		CHECK_EQ(v.ageMs, 5000u);
+		CHECK_EQ(v.posAgeMs, 5000u);
+		CHECK_EQ(int(v.speedField), -1);
+		CHECK(!v.moving);                // unknown speed counts as stationary: no MOVE since registration
+		CHECK(v.posState == BotCore::POS_FRESH);
+		CHECK(v.vx == 0.0f);
+		CHECK(v.vz == 0.0f);
+		CHECK_EQ(int(v.src), int(BotCore::kSrcObserved));
+	}
+
+	// A MOVE with speed 0 makes the unit stationary: the same age is fresh.
+	{
+		BotCore::ObsTable stopped;
+		BotCore::UnitObs u = MakeUnit(5);
+		u.nation = 2;
+		strcpy(u.name, "BotWG_E");
+		u.x10 = 10030;
+		u.z10 = 10040;
+		u.lastSeenMs = 0;
+		CHECK(stopped.Upsert(u));
+		CHECK(stopped.UpdateMove(5, 10030, 10040, 0, 0, 1000));
+
+		BotCore::PerceptionSnapshot out2;
+		BotCore::BuildSnapshot(self, stopped, npcs, 6000, out2);   // pos_age 5000
+		CHECK_EQ(out2.enemyCount, 1);
+		if (out2.enemyCount == 1)
+		{
+			CHECK_EQ(out2.enemies[0].posAgeMs, 5000u);
+			CHECK_EQ(out2.enemies[0].ageMs, 5000u);
+			CHECK_EQ(int(out2.enemies[0].speedField), 0);
+			CHECK(!out2.enemies[0].moving);
+			CHECK(out2.enemies[0].posState == BotCore::POS_FRESH);
+		}
+	}
+
+	// A MOVE with speed 45 at t=1000 makes the unit moving: the position ages to stale then lost.
+	{
+		BotCore::ObsTable walked;
+		BotCore::UnitObs u = MakeUnit(5);
+		u.nation = 2;
+		strcpy(u.name, "BotWG_E");
+		u.x10 = 10030;
+		u.z10 = 10040;
+		u.lastSeenMs = 0;
+		CHECK(walked.Upsert(u));
+		CHECK(walked.UpdateMove(5, 10030, 10040, 0, 45, 1000));
+
+		BotCore::PerceptionSnapshot out3;
+		BotCore::BuildSnapshot(self, walked, npcs, 5000, out3);   // pos_age 4000
+		CHECK_EQ(out3.enemyCount, 1);
+		if (out3.enemyCount == 1)
+		{
+			CHECK_EQ(out3.enemies[0].posAgeMs, 4000u);
+			CHECK_EQ(int(out3.enemies[0].speedField), 45);
+			CHECK(out3.enemies[0].moving);
+			CHECK(out3.enemies[0].posState == BotCore::POS_STALE);
+		}
+
+		BotCore::PerceptionSnapshot out4;
+		BotCore::BuildSnapshot(self, walked, npcs, 7500, out4);   // pos_age 6500
+		CHECK_EQ(out4.enemyCount, 1);
+		if (out4.enemyCount == 1)
+		{
+			CHECK_EQ(out4.enemies[0].posAgeMs, 6500u);
+			CHECK(out4.enemies[0].moving);
+			CHECK(out4.enemies[0].posState == BotCore::POS_LOST);
+		}
+	}
+}
