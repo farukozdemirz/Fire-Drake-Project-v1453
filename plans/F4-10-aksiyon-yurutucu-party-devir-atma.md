@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-09 (`m_partyLeaveEcho`, `OnPacket()` `PARTY_REMOVE`/`PARTY_DELETE` kaydı, `RejectParty*` kalıbı) — `KAPANDI` (merge `6dc7979`); F4-08 (`m_partyJoinEcho`, `PartyOutcome`, `BotManager` test sürücüsü kalıbı) — `KAPANDI` (merge `851afdc`) |
@@ -365,3 +365,39 @@ plans/F4-10-aksiyon-yurutucu-party-devir-atma.md — Doğrulama Turu 1 düzeltme
 3. ./tools/build.sh Release ve ./tools/build.sh Debug hatasız, BotManager.cpp için uyarı yok. ./tools/run-tests.sh Release ve Debug: 41 tests, 0 failed. grep -n "GetPartyID" GameServer/Bot/*.cpp GameServer/Bot/*.h tek satır göstermeli (BotManager.cpp). git diff --check boş; BotManager.cpp ASCII + CRLF kalmalı. Çıktıları raporuna yaz. Sunucuyu çalıştırma.
 4. Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F4-10` @ `a4eca90` (düzeltme commit'i `df6e2fd`; taban `gece/2026-10-02`; gece modu, `AUTO_LOOP=1`: birleştirme/push yapılmadı). Çalışma ağacı temizdi; sunucular kapalıydı.
+- Tur 1 düzeltme talimatının kontrolü: değişiklik yalnızca `GameServer/Bot/BotManager.cpp` (`0fb3234..df6e2fd`: 7 ekleme, 4 silme); `IsSamePartyMember(CUser * leader, BotSession * target)` hedefin `m_partyInviteEcho` bit 63'üne de bakıyor (kayıt `BotSession.cpp:118`'de kurulur, `ActionExecutor.cpp:1989`/`:2143`'te kabul/ret'te temizlenir); çağrı `IsSamePartyMember(s->m_pUser, target)`; `GetPartyID` bot kodunda hâlâ tek satır (`BotManager.cpp:2088`). Başka dosya/fonksiyon değişmedi.
+- Kriter sonuçları:
+
+| # | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `tools/build.sh Release` rc=0; değişen 5 dosya için `warning`/`error` yok |
+| K2 | ✔ | `tools/build.sh Debug` rc=0; aynı dosyalarda uyarı yok |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug` rc=0, `41 tests, 0 failed`; `Combat_PartyManageCheck_Order` ve `_Boundaries` `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` |
+| K5 | ✔ | `WIZ_PARTY` yalnızca `ActionExecutor.cpp:1840,1984,2139,2238,2396` ve `BotSession.cpp:109`; party-iç yapı grep'i boş; `GetPartyID` tek satır `BotManager.cpp:2088` |
+| K6 | ✔ | `RequestPartyManage`: `bad_target`/`not_in_party` (`:2352-2362`) → `CheckPartyManage` `:2382` → `HandlePacket` `:2406` (fonksiyonda tek); paket `PARTY_PROMOTE`/`PARTY_REMOVE` + `uint16(target.id)` (`:2396`); `PARTY_DELETE` grep'i boş |
+| K7 | ✔ | sonuç yalnızca `m_partyJoinEcho`/`m_partyLeaveEcho`; `isInParty`/`isPartyLeader` guard girdisi olarak `:2359`, `:2376`; HP alanı grep'i boş |
+| K8 | ✔ | `ActionExecutor.cpp` ve `BotSession.cpp` farkında silinen satır yok; `OnPacket()` diff'i yok |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı |
+| K10 | ✔ | `diff --stat`: yalnızca §4'teki 8 dosya + plan, `STATUS.md`, `README.md`; hiçbir `.vcxproj`/`.filters` farkı yok |
+| K11 | ✔ | 8 kod dosyası `ASCII text, with CRLF line terminators`; `git diff --check` kod dosyalarında boş (uyarılar yalnızca `docs/STATUS.md`'de, Claude'un kendi dosyası) |
+| K12 | ✔ | yasaklı dizgiler ve `"mode"` anahtarı `ActionExecutor.*`'de yok |
+| K13 | ✔ | `CheckMoveStep` 2, diğer 11 guard 1 (`CheckPartyManage` dahil); önceki 39 test geçiyor |
+| K14 | ✔ | çalışma zamanı senaryo 1–8 geçti (aşağıda); Tur 1 bulgusu (bekleyen davetli) giderildi |
+
+- **Çalışma zamanı (K14, Release, AIServer bağlı, `TELEMETRY=decisions`, zone 71; `BotWP_K` #2984, `BotMF_K` #2985, `BotPHD_K` #2986, `BotWG_K` #2987):**
+  1. Kurulum: `pinvite WP MF` → `created`, `paccept MF` → `joined`, `pinvite WP PHD` → `sent`, `paccept PHD` → `joined`.
+  2. Devir: `ppromote BotWP_K BotMF_K` → `promoted` (`ACTION_RESULT` `ok:true`, `latency_us:115`); `pinvite BotMF_K BotWG_K` → `sent` (yeni lider).
+  3. **Tur 1 bulgusunun yeniden sınanması (`BotWG_K` bekleyen davetli):** `ppromote BotMF_K BotWG_K` → `refused (not_member)` (Tur 1: `failed (no_result)`); `pkick BotMF_K BotWG_K` → `refused (not_member)` (Tur 1: yanlış pozitif `kicked`); her ikisi `FAIRNESS_REJECT` `CLI-17 not_member value:0 limit:1`, `ACTION_SUBMIT` yok. `ppromote BotWG_K BotMF_K` → `refused (not_leader)` (bilinen KI-014 etkisi, Tur 1 bulgu 2 notu). Diğer guard'lar: `pkick BotWP_K BotPHD_K` → `refused (not_leader)`; `ppromote BotMF_K BotMF_K` → `refused (bad_target)`. `pdecline BotWG_K` sonrası: `ppromote BotWG_K BotMF_K` → `refused (not_in_party)`, `ppromote BotMF_K BotWG_K` → `refused (not_member)`.
+  4. Boşluk/atma: aynı dosyada `pkick BotMF_K BotPHD_K` → `kicked`, `pkick BotMF_K BotWP_K` → `refused (manage_gap)` (`value:0.00 limit:1000.00`); `pleave BotPHD_K` → `refused (not_in_party)`; `pinvite BotMF_K BotPHD_K` → `sent`, `paccept` → `joined`.
+  5. Devir geri/dağılma: `ppromote BotMF_K BotWP_K` → `promoted`; `pkick BotWP_K BotPHD_K` → `kicked`; `pkick BotWP_K BotMF_K` → `disbanded`; `pleave BotWP_K`/`pleave BotMF_K` ve `ppromote BotWP_K BotMF_K` → `refused (not_in_party)`.
+  6. İki kişilik: yeniden kurulum, `ppromote BotWP_K BotMF_K` → `promoted`; `pkick BotMF_K BotWP_K` → `disbanded`.
+  7. Komut/ömür: `ppromote BotWP_K` → kullanım satırı; `pkick Ghost BotMF_K` → `unknown or not spawned bot '?'`; `despawn all` sonrası 4 bot temiz (`names cleared yes`), `ppromote` → `not in game (phase despawned)`, `list` pool free 16/16, sunucu 3/3 UP kaldı. Sınanmadı: `RESPAWN_CYCLES=2` reddi, `TELEMETRY=summary`, `ENABLED=0`, ölü bot (`refused (dead)`); bu yollar farkta yok (Tur 1'deki gerekçe aynen geçerli).
+  8. Gerilemesiz: `sit`/`stand`, `regene` (`not_dead`), `target` (`observed ... hp 1541/1541`), `pinvite`/`paccept`/`pdecline`/`pleave` beklenen çıktıyı verdi. `PERF_SAMPLE` `tick_p95_us` normalde 9–114 (bir pencere 397); 1091–1422 µs yalnızca 4 botun toplu spawn ve despawn pencerelerinde (Tur 1'deki örüntü; bu planın kodundan bağımsız), `skipped_ticks` 0, `dropped` 0.
+- Bulgular: yok (engelleyici ya da önemli). **[Not]** `ppromote`/`pkick` bekleyen davetli *hedef* için artık doğru; bekleyen davetli *gönderen* (`ppromote BotWG_K ...`) hâlâ `not_leader` döner (`isInParty()` doğru, KI-014); paket gitmediği için zararsız.
+- Temizlik: `GameServer.ini` değişmedi (md5 `265a8e1c35ea12df46f6d006fe894d9b`); `BotCommands.txt` yok; `Logs/bots` → `Logs/bots_old_f410b`; sunucular kapatıldı (`0/3 hazır`); DB'ye dokunulmadı.
