@@ -6,6 +6,8 @@
 #include <BotCore/NavSmooth.h>
 #include <BotCore/NavTrack.h>
 #include <BotCore/NavStuck.h>
+#include <BotCore/BotMotion.h>
+#include <BotCore/Rng.h>
 
 #include <algorithm>
 #include <chrono>
@@ -1328,4 +1330,293 @@ TEST_CASE("NavStuck_SideStep_RealMap")
 
 	std::printf("NAVSTUCK real: walk=%d sidestep_h=%d sidestep_n=%d violations=%d clr2_cells=%d clr2_found=%d ms_p95=%.4f\n",
 		walk, sidestepH, sidestepN, violations, clr2Cells, clr2Found, msP95);
+}
+
+namespace
+{
+	struct F554CadenceResult
+	{
+		long packets = 0;
+		long fed = 0;
+		long alarms = 0;
+		long episodes = 0;
+		int64_t firstAlarmMs = -1;
+	};
+
+	// F5-54 packet-cadence generator. The bot intends to move at speedMps the whole time. The
+	// server position only jumps at packet instants (>= 1500 ms, +3% chance of +250 ms); between
+	// packets it is stale. feedEveryTick selects the sampling of the real binding (every 100 ms
+	// tick) versus the packet-only variant (docs/12 s13.3).
+	F554CadenceResult F554RunCadence(const NavGrid & grid, const NavStuckParams & params,
+		float speedMps, bool diagonal, int64_t durationMs, bool feedEveryTick, uint64_t seed,
+		int forcedDelayIndex, int64_t forcedDelayMs)
+	{
+		F554CadenceResult out;
+		BotCore::Rng rng(seed);
+		NavStuckDetector detector;
+		const float ux = diagonal ? 0.70710678f : 1.0f;
+		const float uz = diagonal ? 0.70710678f : 0.0f;
+		float x = 1000.0f;
+		float z = 900.0f;
+		int64_t lastPacket = 0;
+		int64_t nextPacket = (int64_t)BotCore::kMovePeriodMs;
+		int packetIndex = 0;
+		bool inAlarm = false;
+		for (int64_t t = 0; t <= durationMs; t += 100)
+		{
+			bool packet = false;
+			if (t >= nextPacket)
+			{
+				const float dist = speedMps * (float)(t - lastPacket) / 1000.0f;
+				x += dist * ux;
+				z += dist * uz;
+				lastPacket = t;
+				packet = true;
+				int64_t gap = (int64_t)BotCore::kMovePeriodMs;
+				if (rng.NextBelow(100) < 3)
+					gap += 250;
+				if (packetIndex == forcedDelayIndex)
+					gap = forcedDelayMs;
+				nextPacket = t + gap;
+				++packetIndex;
+				++out.packets;
+			}
+			if (feedEveryTick || packet)
+			{
+				++out.fed;
+				const NavStuckKind kind = detector.Observe(grid, t, x, z, true, params);
+				if (kind != NavStuckKind::None)
+				{
+					++out.alarms;
+					if (!inAlarm)
+						++out.episodes;
+					inAlarm = true;
+					if (out.firstAlarmMs < 0)
+						out.firstAlarmMs = t;
+				}
+				else
+				{
+					inAlarm = false;
+				}
+			}
+		}
+		return out;
+	}
+}
+
+TEST_CASE("NavStuckCadence_NormalWalk_NoAlarm")
+{
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+	const NavStuckParams params = BotCore::NavPacketCadenceParams();
+
+	struct Scenario { const char * name; float speed; bool diagonal; };
+	const Scenario scenarios[3] = {
+		{ "walk45", 4.5f, false },
+		{ "sprint67", 6.7f, false },
+		{ "target45", 4.5f, true }
+	};
+
+	for (int i = 0; i < 3; ++i)
+	{
+		const F554CadenceResult r = F554RunCadence(grid, params, scenarios[i].speed,
+			scenarios[i].diagonal, 600000, false, 20261003u, -1, 0);
+		std::printf("NAVSTUCK cadence normal %s: packets=%ld false_alarms=%ld first_ms=%lld\n",
+			scenarios[i].name, r.packets, r.alarms, (long long)r.firstAlarmMs);
+		CHECK_EQ(r.alarms, 0);
+		CHECK(r.packets >= 340);
+	}
+
+	// One packet delayed by 2500 ms (forced once) must not raise an alarm either.
+	const F554CadenceResult d = F554RunCadence(grid, params, 4.5f, false, 60000, false, 7u, 5, 2500);
+	std::printf("NAVSTUCK cadence normal forced_delay: packets=%ld false_alarms=%ld first_ms=%lld\n",
+		d.packets, d.alarms, (long long)d.firstAlarmMs);
+	CHECK_EQ(d.alarms, 0);
+}
+
+TEST_CASE("NavStuckCadence_DefaultsFalseAlarm")
+{
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+
+	// Fed at every tick with a late packet, the F5-09 defaults misfire; the packet-cadence preset
+	// does not (docs/12 s13.3).
+	const F554CadenceResult def = F554RunCadence(grid, NavStuckParams(), 4.5f, false, 600000, true,
+		20261003u, 50, 1750);
+	const F554CadenceResult cad = F554RunCadence(grid, BotCore::NavPacketCadenceParams(), 4.5f, false,
+		600000, true, 20261003u, 50, 1750);
+
+	std::printf("NAVSTUCK cadence defaults: packets=%ld fed=%ld false_alarms=%ld episodes=%ld first_ms=%lld\n",
+		def.packets, def.fed, def.alarms, def.episodes, (long long)def.firstAlarmMs);
+	std::printf("NAVSTUCK cadence preset: packets=%ld fed=%ld false_alarms=%ld episodes=%ld first_ms=%lld\n",
+		cad.packets, cad.fed, cad.alarms, cad.episodes, (long long)cad.firstAlarmMs);
+
+	CHECK(def.alarms >= 1);
+	CHECK_EQ(cad.alarms, 0);
+}
+
+TEST_CASE("NavStuckCadence_Stuck")
+{
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+	const NavStuckParams params = BotCore::NavPacketCadenceParams();
+
+	// Constant position: nothing before 3200 ms, NoProgress from 3200 ms on.
+	{
+		NavStuckDetector detector;
+		int64_t first = -1;
+		NavStuckKind firstKind = NavStuckKind::None;
+		for (int64_t t = 0; t <= 20000; t += 100)
+		{
+			const NavStuckKind k = detector.Observe(grid, t, 1000.0f, 900.0f, true, params);
+			if (t < 3200)
+				CHECK(k == NavStuckKind::None);
+			if (first < 0 && k != NavStuckKind::None)
+			{
+				first = t;
+				firstKind = k;
+			}
+		}
+		CHECK_EQ(first, 3200);
+		CHECK(firstKind == NavStuckKind::NoProgress);
+	}
+
+	// Slow but progressing: 1.2 m in 3.2 s -> never fires.
+	{
+		NavStuckDetector detector;
+		bool fired = false;
+		for (int64_t t = 0; t <= 20000; t += 100)
+		{
+			const float x = 1000.0f + 1.2f * (float)t / 3200.0f;
+			if (detector.Observe(grid, t, x, 900.0f, true, params) != NavStuckKind::None)
+				fired = true;
+		}
+		CHECK(!fired);
+	}
+
+	// moving = false -> None and the window is dropped.
+	{
+		NavStuckDetector detector;
+		CHECK(detector.Observe(grid, 5000, 1000.0f, 900.0f, false, params) == NavStuckKind::None);
+		CHECK_EQ(detector.Count(), 0);
+	}
+}
+
+TEST_CASE("NavStuckCadence_Oscillation")
+{
+	const NavGrid grid = MakeNav(40, 4.0f, RingEvents(40), HeightZeros(40));
+	const NavStuckParams params = BotCore::NavPacketCadenceParams();
+	const int64_t times[5] = { 0, 1500, 3000, 4500, 6000 };
+
+	// A,B,A,B,A across two cells -> Oscillation (first at the fourth packet).
+	{
+		NavStuckDetector detector;
+		int64_t first = -1;
+		NavStuckKind last = NavStuckKind::None;
+		for (int i = 0; i < 5; ++i)
+		{
+			const float x = (i % 2 == 0) ? 1000.0f : 1006.0f;
+			last = detector.Observe(grid, times[i], x, 900.0f, true, params);
+			if (i < 3)
+				CHECK(last == NavStuckKind::None);
+			if (first < 0 && last != NavStuckKind::None)
+				first = times[i];
+		}
+		CHECK_EQ(first, 4500);
+		CHECK(last == NavStuckKind::Oscillation);
+	}
+
+	// The same packets in one direction -> no alarm.
+	{
+		NavStuckDetector detector;
+		NavStuckKind last = NavStuckKind::None;
+		for (int i = 0; i < 5; ++i)
+			last = detector.Observe(grid, times[i], 1000.0f + 6.0f * (float)i, 900.0f, true, params);
+		CHECK(last == NavStuckKind::None);
+	}
+}
+
+TEST_CASE("NavGuardBlock_Rules")
+{
+	// No event at all.
+	{
+		BotCore::NavGuardBlockDetector d;
+		CHECK(!d.Blocked(0));
+		CHECK(!d.Blocked(1000));
+	}
+
+	// Only rejected packets: blocked inside the window, clear outside it.
+	{
+		BotCore::NavGuardBlockDetector d;
+		d.OnPacketRejected(1000);
+		CHECK(d.Blocked(1000));
+		CHECK(d.Blocked(4199));
+		CHECK(d.Blocked(4200));
+		CHECK(!d.Blocked(4201));
+	}
+
+	// A sent packet inside the window clears the block.
+	{
+		BotCore::NavGuardBlockDetector d;
+		d.OnPacketRejected(5000);
+		CHECK(d.Blocked(5000));
+		d.OnPacketSent(5100);
+		CHECK(!d.Blocked(5200));
+	}
+
+	// Only sent packets: never blocked.
+	{
+		BotCore::NavGuardBlockDetector d;
+		d.OnPacketSent(1000);
+		CHECK(!d.Blocked(1000));
+	}
+
+	// Time going backwards is never blocked.
+	{
+		BotCore::NavGuardBlockDetector d;
+		d.OnPacketRejected(5000);
+		CHECK(!d.Blocked(4000));
+	}
+
+	// More than the ring capacity: no overflow, still correct.
+	{
+		BotCore::NavGuardBlockDetector d;
+		for (int i = 0; i < 20; ++i)
+			d.OnPacketRejected(1000 + i);
+		CHECK(d.Blocked(1019));
+		d.OnPacketSent(1019);
+		CHECK(!d.Blocked(1019));
+	}
+}
+
+TEST_CASE("NavGuardBlock_Determinism")
+{
+	const int64_t events[5] = { 1000, 2000, 2500, 3000, 5000 };
+	const bool rejected[5] = { true, true, false, true, true };
+	const int64_t queries[7] = { 1000, 2000, 2500, 3000, 4000, 5000, 8200 };
+
+	BotCore::NavGuardBlockDetector a;
+	BotCore::NavGuardBlockDetector b;
+	for (int i = 0; i < 5; ++i)
+	{
+		if (rejected[i])
+		{
+			a.OnPacketRejected(events[i]);
+			b.OnPacketRejected(events[i]);
+		}
+		else
+		{
+			a.OnPacketSent(events[i]);
+			b.OnPacketSent(events[i]);
+		}
+	}
+
+	for (int i = 0; i < 7; ++i)
+	{
+		const bool ra = a.Blocked(queries[i]);
+		const bool rb = b.Blocked(queries[i]);
+		CHECK_EQ((int)ra, (int)rb);
+	}
+
+	// Reset returns to the initial state.
+	a.Reset();
+	CHECK(!a.Blocked(5000));
+	CHECK(!a.Blocked(1000));
 }
