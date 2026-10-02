@@ -32,3 +32,10 @@ Tek bir komut çekirdeği, iki giriş yolu:
 
 ## Doğrulama
 F2-06: `BotCommands.txt` ile `spawn`/`despawn all`/`list`/yeniden `spawn` senaryosu (`Bot_*.log` satırları); `ENABLED=0` iken dosyanın dokunulmadan kaldığı; kodda komut yürütücüsünün yalnızca `Tick()` çağrı zincirinden erişildiği (`grep`).
+
+
+## Ek (F3-02): `match` komutu (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
+
+Komut çekirdeğine iki alt komut eklenir (aynı iki giriş yolu, yalnızca IOCP thread'inde): `match start <senaryo> [seed]` ve `match end [sonuç]`. `docs/13` §10'daki `/bot start`/`/bot stop` yerine geçmez; ScenarioRunner (F3-03) bunları `scenario`/`start`/`stop` komutlarının içinden çağırır. `match` bağımsız bir komut olarak kalır ki ScenarioRunner olmadan da (ölçüm betikleri, elle testler) maç sınırları üretilebilsin. `RESPAWN_CYCLES != 0` iken diğer komutlar gibi reddedilir. Sonuçlar `Bot_*.log`'a `BotManager: cmd match ...` satırlarıyla yazılır.

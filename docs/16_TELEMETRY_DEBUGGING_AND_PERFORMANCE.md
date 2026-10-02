@@ -70,6 +70,9 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 - **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir.
 - **`SELFTEST`:** yalnızca `[BOT] TELEMETRY_SELFTEST=1` iken yazıcı/taşma öz-sınaması üretir (`i` alanı); analiz araçları yok sayar.
 - **Dosya:** `Logs/bots/<YYYY-MM-DD>/live-<HHMMSS>.jsonl`.
+- **Maç bağlamı (ADR-0007 Ek, F3-02):** `/bot match start <senaryo> [seed]` ile açılan maçta olaylar `Logs/bots/<YYYY-MM-DD>/<match>.jsonl` dosyasına `"match":"<senaryo>-<seed>-<tekrar>"` ile yazılır; `/bot match end [sonuç]` ile `MATCH_END` yazılıp dosya kapanır ve `<match>.summary.json` oluşur. Maç yokken `match` = `"-"`, dosya `live-*.jsonl`. `mode` bu aşamada hep `live`; taraf eki ve ScenarioRunner alanları F3-03'te.
+- **`MATCH_START` alanları (F3-02):** `ts_utc`, `scenario`, `seed`, `run`, `composition` (oyundaki bot adları), `in_game`. **`MATCH_END` alanları:** `ts_utc`, `duration_ms`, `result` (`completed` varsayılan, `aborted` = sunucu kapanışı), `dropped_soft`, `dropped_hard` (maç boyunca), `in_game`, `perf_samples`, `tick_p95_max_us`, `tick_max_us` (tamamlanmış 5 sn pencereleri). Ekipman seti, commit ve veri hash alanları henüz yok (F3-03/F3-06).
+- **`summary.json`:** tek satır JSON: `match`, `mode`, `file`, `start{}`, `end{}`, `lines`, `events{<ev>:<satır sayısı>}`.
 
 ## 4. Karar logu (açıklanabilirlik)
 

@@ -29,3 +29,15 @@ F3, her sonraki fazın ölçülebilir olmasını sağlar. `docs/16` olay modelin
 
 ## Doğrulama
 F3-01: öz-sınama (yazıcı duraklatılmış taşma: 856 yumuşak + 952 sert düşürme, toplam yazılan = kuyruktakiler); `PERF_SAMPLE` satırlarının her biri `python3 -m json.tool` ile geçerli; kapalıyken (`TELEMETRY=off` ve `ENABLED=0`) `Logs/bots/` oluşmaz.
+
+
+## Ek (F3-02): maç bağlamı, `<match>.jsonl` ve `summary.json` (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
+
+- **Maç sınırları kuyrukta sıralı denetim olaylarıdır** (`MATCH_START`, `MATCH_END`): tek kuyruk korunur, yazıcı thread maç dosyasına geçişi olayların üretim sırasına göre yapar (ikinci kuyruk veya üretici tarafında dosya açma yok). Denetim olayları sınır denetiminden muaftır (maç başına en çok iki).
+- **Dosya:** maç açıkken `Logs/bots/<YYYY-MM-DD>/<match>.jsonl` (maçın başladığı yerel gün); maç yokken `live-<HHMMSS>.jsonl` aynen sürer ve maç penceresindeki olaylar yalnızca maç dosyasına yazılır.
+- **Maç kimliği:** `<senaryo>-<seed>-<tekrar>`; `tekrar` süreç boyunca artan sayaçtır, aynı kimlikli dosya varsa sıradaki boş sayıya atlanır (üzerine yazma yok). `docs/16` §3.1'deki `-<taraf>` eki ScenarioRunner (F3-03) ile gelir.
+- **`summary.json`:** `<match>.summary.json` (aynı klasör), maç kapanırken yazıcı thread'i tarafından tek satır JSON olarak yazılır: `match`, `mode`, `file`, `start` (MATCH_START alanları), `end` (MATCH_END alanları), `lines`, `events` (olay türü başına satır sayısı). Maç sırasındaki düşürme sayaçları `end.dropped_soft/hard` alanındadır.
+- **Kapanış:** `Telemetry::Stop()` açık maçı `result":"aborted"` ile kapatır. Zorla sonlandırmada (KI-010, çökme) maç `MATCH_END`'siz kalabilir.
+- Geri alma: `match` komutu kullanılmazsa F3-01 davranışı; kod geri alması `Telemetry` maç bölümünün ve `BotManager::CommandMatch`'in kaldırılmasıdır.
