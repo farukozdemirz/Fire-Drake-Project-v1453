@@ -198,8 +198,17 @@ namespace BotCore
 		const int guardMax = 2 * ((ex > x ? ex - x : x - ex) + (ez > z ? ez - z : z - ez) + 4);
 		int guard = 0;
 
-		while (x != ex || z != ez)
+		// Traversal ends on the segment parameter, not on reaching the end cell. The segment is
+		// the parameter range [0,1], so a boundary crossing beyond t = 1 (plus the tiny vertex
+		// tolerance) lies off the chord; this keeps an end vertex (both axes at t = 1) from being
+		// stepped past. The mandatory end-cell-plus-far-side visit after the loop still covers the
+		// final cell and the other side of a boundary it sits on.
+		while (true)
 		{
+			const double tNext = (tMaxX < tMaxZ) ? tMaxX : tMaxZ;
+			if (tNext > 1.0 + 1e-9)
+				break;
+
 			if (++guard > guardMax)
 			{
 				// numerical safety net; never reached by a correct traversal

@@ -164,6 +164,44 @@ namespace
 			(double)cz * unit - tol, (double)(cz + 1) * unit + tol);
 	}
 
+	// True when the segment's closed square touches any cell outside the grid (sample based, like
+	// OracleBlocked). Used to validate that OutOfBounds is only reported for a chord that really
+	// leaves the grid.
+	bool OracleTouchesOutside(const NavGrid & grid, double ax, double az, double bx, double bz)
+	{
+		const int n = grid.Size();
+		const double unit = (double)grid.Unit();
+		const double dx = bx - ax;
+		const double dz = bz - az;
+		const double len = std::sqrt(dx * dx + dz * dz);
+		int steps = (int)std::ceil(len / 0.001);
+		if (steps < 1)
+			steps = 1;
+
+		for (int s = 0; s <= steps; ++s)
+		{
+			const double t = (double)s / (double)steps;
+			const double fx = (ax + dx * t) / unit;
+			const double fz = (az + dz * t) / unit;
+			const int cx = (int)std::floor(fx);
+			const int cz = (int)std::floor(fz);
+			const double rfx = fx - std::floor(fx);
+			const double rfz = fz - std::floor(fz);
+
+			if (cx < 0 || cx >= n || cz < 0 || cz >= n)
+				return true;
+			if (rfx < 1e-9 && (cx - 1 < 0 || cx - 1 >= n))
+				return true;
+			if (rfx > 1.0 - 1e-9 && (cx + 1 < 0 || cx + 1 >= n))
+				return true;
+			if (rfz < 1e-9 && (cz - 1 < 0 || cz - 1 >= n))
+				return true;
+			if (rfz > 1.0 - 1e-9 && (cz + 1 < 0 || cz + 1 >= n))
+				return true;
+		}
+		return false;
+	}
+
 	double PercentileDouble(const std::vector<double> & sorted, double p)
 	{
 		if (sorted.empty())
@@ -249,6 +287,119 @@ TEST_CASE("NavSegment_Corner")
 	CHECK(Check(edgeGrid, 20.0 - 1e-4, 18.0, 20.0 - 1e-4, 26.0) == NavSegmentVerdict::Ok);
 }
 
+TEST_CASE("NavSegment_EndVertex")
+{
+	const int n = 16;
+	const float unit = 4.0f;
+	NavGrid open = MakeNav(n, unit, RingEvents(n), HeightZeros(n));
+
+	// (32,32) is the shared corner of cells (7,7), (7,8), (8,7) and (8,8); a reach of two cells
+	// keeps both endpoints on cell corners inside the open interior.
+	const double cx = 32.0;
+	const double cz = 32.0;
+	const double reach = 8.0;
+	const int dirs[8][2] = {
+		{ 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 },
+		{ 1, 1 }, { 1, -1 }, { -1, 1 }, { -1, -1 }
+	};
+
+	auto touches = [&](const NavGrid & g, double ax, double az, double bx, double bz, int x, int z) -> bool
+	{
+		return SegmentNearCell(g, ax, az, bx, bz, x, z, 0.0);
+	};
+
+	for (int d = 0; d < 8; ++d)
+	{
+		const double ax = cx;
+		const double az = cz;
+		const double bx = cx + (double)dirs[d][0] * reach;
+		const double bz = cz + (double)dirs[d][1] * reach;
+
+		// (a) Both endpoints are cell corners and the path is in the open interior: always Ok,
+		// in both directions.
+		CHECK(Check(open, ax, az, bx, bz) == NavSegmentVerdict::Ok);
+		CHECK(Check(open, bx, bz, ax, az) == NavSegmentVerdict::Ok);
+
+		// (b) A blocked cell the chord does not touch keeps it Ok (the traversal must not wander
+		// past the end vertex); a cell sharing the corner makes it BlockedCell and is reported.
+		std::vector<uint8_t> touched((size_t)n * (size_t)n, 0);
+		for (int x = 0; x < n; ++x)
+		{
+			for (int z = 0; z < n; ++z)
+				touched[CellIndex(n, x, z)] = touches(open, ax, az, bx, bz, x, z) ? 1 : 0;
+		}
+
+		int freeX = -1;
+		int freeZ = -1;
+		for (int x = 1; x < n - 1 && freeX < 0; ++x)
+		{
+			for (int z = 1; z < n - 1; ++z)
+			{
+				if (touched[CellIndex(n, x, z)])
+					continue;
+				bool adjacent = false;
+				for (int dx = -1; dx <= 1 && !adjacent; ++dx)
+				{
+					for (int dz = -1; dz <= 1 && !adjacent; ++dz)
+					{
+						if ((dx != 0 || dz != 0) && touched[CellIndex(n, x + dx, z + dz)])
+							adjacent = true;
+					}
+				}
+				if (adjacent)
+				{
+					freeX = x;
+					freeZ = z;
+					break;
+				}
+			}
+		}
+		CHECK(freeX >= 0);
+		if (freeX >= 0)
+		{
+			std::vector<int16_t> fe = RingEvents(n);
+			fe[CellIndex(n, freeX, freeZ)] = 0;
+			NavGrid fg = MakeNav(n, unit, fe, HeightZeros(n));
+			CHECK(Check(fg, ax, az, bx, bz) == NavSegmentVerdict::Ok);
+			CHECK(Check(fg, bx, bz, ax, az) == NavSegmentVerdict::Ok);
+		}
+
+		const int cornerX[4] = { 7, 8, 7, 8 };
+		const int cornerZ[4] = { 7, 7, 8, 8 };
+		for (int k = 0; k < 4; ++k)
+		{
+			std::vector<int16_t> ce = RingEvents(n);
+			ce[CellIndex(n, cornerX[k], cornerZ[k])] = 0;
+			NavGrid cg = MakeNav(n, unit, ce, HeightZeros(n));
+			BotCore::NavSegmentResult r = BotCore::NavCheckSegment(cg, ax, az, bx, bz);
+			CHECK(r.verdict == NavSegmentVerdict::BlockedCell);
+			CHECK_EQ(r.cellX, cornerX[k]);
+			CHECK_EQ(r.cellZ, cornerZ[k]);
+
+			// (c) The verdict is symmetric in the segment direction for the mutated grid too.
+			CHECK(Check(cg, ax, az, bx, bz) == Check(cg, bx, bz, ax, az));
+		}
+	}
+
+	// (d) A chord ending 1e-10 m short of a corner must never be OutOfBounds, and any reported
+	// cell must lie inside the grid.
+	const double eps = 1e-10;
+	const double nearEnd[4][4] = {
+		{ 24.0, 32.0, 32.0 - eps, 24.0 },
+		{ 24.0, 32.0, 32.0, 24.0 - eps },
+		{ 32.0, 24.0, 24.0 + eps, 32.0 },
+		{ 24.0, 24.0, 32.0 - eps, 32.0 - eps }
+	};
+	for (int k = 0; k < 4; ++k)
+	{
+		BotCore::NavSegmentResult r = BotCore::NavCheckSegment(open,
+			nearEnd[k][0], nearEnd[k][1], nearEnd[k][2], nearEnd[k][3]);
+		CHECK(r.verdict != NavSegmentVerdict::OutOfBounds);
+		if (r.verdict == NavSegmentVerdict::BlockedCell)
+			CHECK(r.cellX >= 0 && r.cellX < n && r.cellZ >= 0 && r.cellZ < n);
+	}
+}
+
 TEST_CASE("NavSegment_Slope")
 {
 	const int n = 20;
@@ -303,62 +454,125 @@ TEST_CASE("NavSegment_Symmetry_Oracle")
 	const int n = 64;
 	const float unit = 1.0f;
 
+	// Dense grid (interior obstacles) exercises the safety direction on refused chords; the sparse
+	// grid (5%) supplies many accepted chords so the Ok direction is tested too.
 	BotCore::Rng gridRng(20261002u);
-	std::vector<int16_t> events((size_t)n * (size_t)n, 1);
+	std::vector<int16_t> dense((size_t)n * (size_t)n, 1);
+	std::vector<int16_t> sparse((size_t)n * (size_t)n, 1);
 	for (int x = 0; x < n; ++x)
 	{
 		for (int z = 0; z < n; ++z)
 		{
-			if (x == 0 || x == n - 1 || z == 0 || z == n - 1)
-				events[CellIndex(n, x, z)] = 0;
-			else if (gridRng.NextBelow(100) < 20)
-				events[CellIndex(n, x, z)] = 0;
+			const bool border = (x == 0 || x == n - 1 || z == 0 || z == n - 1);
+			dense[CellIndex(n, x, z)] = (border || gridRng.NextBelow(100) < 20) ? 0 : 1;
+			sparse[CellIndex(n, x, z)] = (border || gridRng.NextBelow(100) < 5) ? 0 : 1;
 		}
 	}
-	NavGrid grid = MakeNav(n, unit, events, HeightZeros(n));
+	NavGrid denseGrid = MakeNav(n, unit, dense, HeightZeros(n));
+	NavGrid sparseGrid = MakeNav(n, unit, sparse, HeightZeros(n));
 
 	BotCore::Rng rng(20261005u);
-	const int total = 3000;
 	int symViolations = 0;
 	int safetyViolations = 0;
-	int thinGraze = 0;
+	int thinGraze = 0;        // continuous chords: allowed at most 0.1% (conservatism bound)
+	int vertexGraze = 0;      // corner-snapped chords: opt in to touching corners, no bound
 	int excess = 0;
 	int blockedCount = 0;
+	int okCount = 0;
+	int vertexChords = 0;
+	int outOfBounds = 0;
+	int outOfBoundsBad = 0;
+	int checked = 0;
 
-	for (int q = 0; q < total; ++q)
+	auto run = [&](const NavGrid & grid, double ax, double az, double bx, double bz, bool vertex)
 	{
-		const double ax = 1.0 + rng.NextDouble() * (double)(n - 2);
-		const double az = 1.0 + rng.NextDouble() * (double)(n - 2);
-		const double bx = 1.0 + rng.NextDouble() * (double)(n - 2);
-		const double bz = 1.0 + rng.NextDouble() * (double)(n - 2);
+		++checked;
+		if (vertex)
+			++vertexChords;
 
 		BotCore::NavSegmentResult ab = BotCore::NavCheckSegment(grid, ax, az, bx, bz);
 		BotCore::NavSegmentResult ba = BotCore::NavCheckSegment(grid, bx, bz, ax, az);
 		if (ab.verdict != ba.verdict)
 			++symViolations;
 
-		const bool oracle = OracleBlocked(grid, ax, az, bx, bz);
-		if (ab.verdict == NavSegmentVerdict::Ok && oracle)
-			++safetyViolations;
-		if (ab.verdict == NavSegmentVerdict::BlockedCell)
+		if (ab.verdict == NavSegmentVerdict::Ok)
+		{
+			++okCount;
+			if (OracleBlocked(grid, ax, az, bx, bz))
+				++safetyViolations;
+		}
+		else if (ab.verdict == NavSegmentVerdict::BlockedCell)
 		{
 			++blockedCount;
+			const bool oracle = OracleBlocked(grid, ax, az, bx, bz);
 			if (!oracle)
 			{
 				if (SegmentNearCell(grid, ax, az, bx, bz, ab.cellX, ab.cellZ, 0.002))
-					++thinGraze;
+				{
+					// The closed-square rule counts a corner graze; the 0.001 m oracle sampling
+					// may step over the single contact point. Corner-snapped chords do this by
+					// construction, so only the continuous set feeds the conservatism bound.
+					if (vertex)
+						++vertexGraze;
+					else
+						++thinGraze;
+				}
 				else
+				{
 					++excess;
+				}
 			}
 		}
+		else if (ab.verdict == NavSegmentVerdict::OutOfBounds)
+		{
+			++outOfBounds;
+			if (!OracleTouchesOutside(grid, ax, az, bx, bz))
+				++outOfBoundsBad;
+		}
+	};
+
+	// Continuous random chords on the dense grid.
+	const int total = 3000;
+	for (int q = 0; q < total; ++q)
+	{
+		const double ax = 1.0 + rng.NextDouble() * (double)(n - 2);
+		const double az = 1.0 + rng.NextDouble() * (double)(n - 2);
+		const double bx = 1.0 + rng.NextDouble() * (double)(n - 2);
+		const double bz = 1.0 + rng.NextDouble() * (double)(n - 2);
+		run(denseGrid, ax, az, bx, bz, false);
 	}
 
-	std::printf("NAVSEG oracle: chords=%d blocked=%d sym=%d safety=%d graze=%d excess=%d\n",
-		total, blockedCount, symViolations, safetyViolations, thinGraze, excess);
+	// Vertex / grid-line snapped chords on the sparse grid: with unit = 1 every integer endpoint
+	// sits on a cell corner or a cell edge, and the short chords keep many verdicts Ok.
+	const int vertexTotal = 1500;
+	for (int q = 0; q < vertexTotal; ++q)
+	{
+		const double ax = (double)(int)rng.NextBelow((uint32_t)(n + 1));
+		const double az = (double)(int)rng.NextBelow((uint32_t)(n + 1));
+		double bx = ax + (double)((int)rng.NextBelow(25) - 12);
+		double bz = az + (double)((int)rng.NextBelow(25) - 12);
+		if (bx < 0.0)
+			bx = 0.0;
+		if (bx > (double)n)
+			bx = (double)n;
+		if (bz < 0.0)
+			bz = 0.0;
+		if (bz > (double)n)
+			bz = (double)n;
+		if (ax == bx && az == bz)
+			continue;
+		run(sparseGrid, ax, az, bx, bz, true);
+	}
+
+	std::printf("NAVSEG oracle: chords=%d ok=%d blocked=%d vertex_chords=%d sym=%d safety=%d graze=%d vgraze=%d excess=%d oob=%d oob_bad=%d\n",
+		checked, okCount, blockedCount, vertexChords, symViolations, safetyViolations, thinGraze, vertexGraze, excess, outOfBounds, outOfBoundsBad);
 	CHECK_EQ(symViolations, 0);
 	CHECK_EQ(safetyViolations, 0);
 	CHECK_EQ(excess, 0);
-	CHECK((thinGraze * 1000) <= total);   // conservative decisions stay at most 0.1%
+	CHECK_EQ(outOfBoundsBad, 0);      // OutOfBounds only when the chord really leaves the grid
+	CHECK(okCount >= 300);            // the sparse/snapped set exercises the Ok direction
+	CHECK(vertexChords >= 1000);      // at least 1000 corner/line snapped chords
+	CHECK((thinGraze * 1000) <= total);   // continuous conservative decisions stay at most 0.1%
 }
 
 TEST_CASE("NavSegment_RealMap_Planner")
