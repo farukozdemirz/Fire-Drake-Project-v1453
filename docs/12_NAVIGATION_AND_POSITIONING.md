@@ -143,6 +143,14 @@ Tespit: hareket halindeyken 1,5 sn boyunca yol üzerindeki ilerleme < 1 m, ya da
 
 Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ısı haritası olarak toplanır (14 §6 global deneyim).
 
+Uygulama (`BotCore/NavStuck.h`, ADR-0006 Eki F5-09, F5-09 planı `[Ö]`/`[A]`; telemetri, ısı haritası ve `NavFollower` bağlaması bu dilimde yok):
+
+- **Tespit:** `NavStuckDetector`, zaman damgalı konum örneklerinden (en çok 256, ≥ 20 ms aralıklı) iki kural: *ilerlemesizlik* = hareket halindeyken 1,5 sn'de **net yer değiştirme** < 1 m (kesin `<`; yol ilerlemesi ölçüsü bağlama planında, `[A]`) ve *salınım* = 4 sn'de aynı iki hücre arasında (sırasız çift) ≥ 3 geçiş; `NoProgress` önce denetlenir. `moving = false` pencereleri sıfırlar.
+- **Merdiven:** `NavStuckMonitor`, tespitte aşama 1'den başlayarak her aşama girişinde **bir kez** eylem döndürür (`Replan`, `SideStep`, `StepBack`, `PenalizeReplan`, `Abandon`); süre sınırları 0,5 / 1 / 1,5 / 1 sn `[O]` dolunca bir üst aşama (tespitten bırakmaya 4 sn). **Başarı** = aşama girişindeki konumdan ≥ 1 m yer değiştirme `[A]` (`recovered`, `recoverMs` = tespitten kurtarmaya, MET-NAV-02); kurtarmadan sonra 10 sn içinde yeni tespit merdivenin **bir sonraki aşamasından** başlar (4'ten sonra doğrudan bırak), aksi hâlde aşama 1 `[A]`. Eylemi yürütmek, "bir önceki yol noktası"nı bilmek ve hedefi bırakmak çağıranın işidir. Salınım bölümünde ilk sıçrama "kurtarıldı" sayılır (iyimser; `kind` ile ayrıştırılır), merdiven yine bırakmayla biter.
+- **Aşama 2 (yan adım):** `NavPickSideStep` = `NavRingCells`'ten (12 m `[A]`) ilk `Walk`, açıklık ≥ 2, `NavLineClear` ve yürüme eksenine ±45° içinde olmayan hücre; koridorda (açıklık 1) yoktur.
+- **Aşama 4 (ceza):** `NavStuckPenalties` (kapasite 32) hücre cezasını 60 sn tutar ve `NavCostLayer`'a tehlike 255 olarak işler (§4.1 maliyetinde adım ≈ 3 ×); yolu bloklamaz (tek hücrelik koridorda maliyet 180 → 196).
+- **T-NAV-04 (birim düzeyi):** gizli tek hücrelik engel önünde sanal bot aşama 2–4 kurtarmalarıyla 27,3 sn'de varır (engelsiz 21,0 sn), üç hücrelik duvarda 17,0 sn'de bırakır `[V]`.
+
 ## 11. Test senaryoları ve kabul kriterleri
 
 | Test | Amaç |
@@ -184,3 +192,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-02 | v1.0+ | §2 `danger_*`, §4.1 maliyet formülü, §7 güvenlik bölgeleri: hücre cezası modeli, yasaklı (sert, içeriden çıkış serbest) ve güvenli bayrağı, bant ilkeli tehlike, ağırlıklar `[A]` (ADR-0006 Eki F5-06, F5-06 planı) |
 | 2026-10-02 | v1.0+ | §8 güvenli geri çekilme noktası: tek geçişli sel, normalleştirilmiş puan ve ağırlıklar `[A]`, 8 m melee kuralının kesin biçimi (yaklaşmayan adım), yasaklı kuralı, `Safe` bonusu, `NoCandidate` = `last_stand` sinyali (ADR-0006 Eki F5-07, F5-07 planı) |
 | 2026-10-02 | v1.0+ | §9 formasyon ve yığılma: 8 pusula kuşatma yuvası (kullanılabilir = yuva hücresi `Walk`), yapışkan + açgözlü atama, ayrışma vektörü formülü ve kırpma `[A]`, priest ≥ 8 m seçim olarak, MET-NAV-06 ham ölçü (ADR-0006 Eki F5-08, F5-08 planı) |
+| 2026-10-02 | v1.0+ | §10 takılma tespiti ve kurtarma: net yer değiştirme tabanlı ilerlemesizlik, hücre geçişi salınımı, merdiven durum makinesi (başarı ölçütü, tırmanma belleği `[A]`), yan adım ve hücre düzeyinde 60 sn ceza (ADR-0006 Eki F5-09, F5-09 planı) |
