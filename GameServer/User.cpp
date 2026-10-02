@@ -4,6 +4,7 @@
 #include "KingSystem.h"
 #include "MagicInstance.h"
 #include "PacketTrace.h"
+#include "DamageTrace.h"
 #include "DBAgent.h"
 #include <algorithm>
 #include "../shared/DateTime.h"
@@ -1947,6 +1948,10 @@ void CUser::HpChange(int amount, Unit *pAttacker /*= nullptr*/, bool bSendToAI /
 		m_sHp = m_iMaxHp;
 	else
 		m_sHp += amount;
+
+#ifdef FDP_DAMAGE_TRACE
+	DamageTrace::LogHpChange(pAttacker, this, originalAmount, oldHP, m_sHp);
+#endif
 
 	result << m_iMaxHp << m_sHp << tid;
 

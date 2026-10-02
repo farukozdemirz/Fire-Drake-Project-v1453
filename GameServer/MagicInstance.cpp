@@ -3,6 +3,7 @@
 #include "../shared/KOSocketMgr.h"
 #include "MagicProcess.h"
 #include "MagicInstance.h"
+#include "DamageTrace.h"
 
 using std::string;
 using std::vector;
@@ -655,6 +656,10 @@ bool MagicInstance::ExecuteSkill(uint8 bType)
 {
 	if (bType == 0)
 		return false;
+
+#ifdef FDP_DAMAGE_TRACE
+	DamageTrace::Scope dmgTraceScope('S', nSkillID, pSkillCaster->GetID());
+#endif
 
 	// Implement player-specific logic before skills are executed.
 	if (pSkillCaster->isPlayer())
