@@ -94,7 +94,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 | Bölge | Tanım | Bot kuralı |
 |---|---|---|
 | Karşı ulus tower halkası | Karşı ulus kapısına ≤ 90 m (tower'lar 25–50 m halkada, arama menzili 35 m) `[V]` | Girilmez (yol planlayıcısı dışarıdan yasaklı hücreye girmez, `NavDanger.h`); hedef bu bölgeye girerse takip biter (`InvalidGoal`; bırakma kararı karar katmanında); içeride kalan bot en kısa çıkışla çıkar |
-| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge (hücre `Safe` bayrağı; puanı F5-07) |
+| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge (hücre `Safe` bayrağı; `wSafe` bonusu, §8, F5-07) |
 | Canavar alanları | Spawn dikdörtgeni + arama menzili | Yol maliyetini artırır; test arenasında bulunmaz ([15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md) §2); F5-06'da yok (ertelendi) |
 | Arena sınırı (test modu) | Senaryo tanımı | Bot arena dışına yol planlamaz (arena dairesinin dışı yasaklı: `AddForbidOutsideDisc`) |
 
@@ -110,6 +110,14 @@ safe_point(bot, mode):
      reject c if path passes within 8 m of an enemy melee
   return argmax s(c)  (None → last_stand, [11] §4.4)
 ```
+
+Uygulama (`BotCore/NavRetreat.h`, ADR-0006 Eki F5-07, F5-07 planı `[Ö]`/`[A]`):
+
+- **Tek geçişli sel:** adaylar ve yol uzunlukları botun hücresinden tek bir sınırlı Dijkstra taramasıyla bulunur (geometrik uzunluk ≤ R, sınır dahil; `EdgeOpen` kenar kuralı). Seçilen adayın yolu taramanın ebeveyn zinciridir. "Ana bileşende" koşulu ayrıca denetlenmez: sel yalnızca botun bileşenine ulaşır.
+- **Puan (normalleştirilmiş, ağırlıklar `[A]`):** `s = − wDanger·tehlike/255 − wPath·uzunluk/R + wAnchor·yakınlık + wClear·min(clearance, 3)/3 + wSafe·[Safe]` (`wDanger` 3, `wPath` 1, `wAnchor` 1,5, `wClear` 0,5, `wSafe` 1). `yakınlık = max(0, 1 − uzaklık/R)`; dayanak noktası (party: arka hat, solo: kendi kapısı) çağıran verir. `danger_static` ile `danger_dynamic` tek `NavCostLayer`'da birleşiktir (tek `wDanger`). `Safe` bayrağı (kendi tower halkası) `wSafe` bonusu verir.
+- **8 m kuralı:** bir adım, hedef hücre bir melee'ye ≤ 8 m ise ve melee'ye uzaklığı azalıyorsa yasaktır (bölgeye girilmez; bölgenin içinde başlayan bot yalnızca uzaklaşarak çıkar ve düşmanın içinden geçemez). Bölgedeki hücreler aday olamaz. Yalnızca melee tehditleri sayılır.
+- **Yasaklı bölge:** dışarıdan girilmez (F5-06 ile aynı kural), içeriden çıkış serbest; yasaklı hücre aday olamaz.
+- **Sonuç:** `Found` / `NoCandidate` (hiç aday yok → `last_stand`) / `InvalidStart`. Seçilen hücre başlangıç hücresi olabilir. Rota üzerindeki tehlike puanlanmaz (yalnızca 8 m ve yasaklı kuralları); adayın tehlikesi çok yüksekse `last_stand` sayma kararı karar katmanındadır.
 
 ## 9. Formasyon ve yığılmanın önlenmesi
 
@@ -171,3 +179,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-02 | v1.0+ | §4.2 hareketli hedef: gözlem/planlama ayrımı, hız kestirimi penceresi, öngörü geri çekilmesi, menzil halkası tanımı (ADR-0006 Eki F5-04, F5-04 planı) |
 | 2026-10-02 | v1.0+ | §4.3 ulaşılamaz hedef: bileşen tabanlı kesin tespit, `Detour` kuralı, `NodeLimit` = bilinmiyor, 1,5 sn bırakma süresi `[A]` (ADR-0006 Eki F5-05, F5-05 planı) |
 | 2026-10-02 | v1.0+ | §2 `danger_*`, §4.1 maliyet formülü, §7 güvenlik bölgeleri: hücre cezası modeli, yasaklı (sert, içeriden çıkış serbest) ve güvenli bayrağı, bant ilkeli tehlike, ağırlıklar `[A]` (ADR-0006 Eki F5-06, F5-06 planı) |
+| 2026-10-02 | v1.0+ | §8 güvenli geri çekilme noktası: tek geçişli sel, normalleştirilmiş puan ve ağırlıklar `[A]`, 8 m melee kuralının kesin biçimi (yaklaşmayan adım), yasaklı kuralı, `Safe` bonusu, `NoCandidate` = `last_stand` sinyali (ADR-0006 Eki F5-07, F5-07 planı) |
