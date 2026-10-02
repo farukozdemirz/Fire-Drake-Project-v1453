@@ -252,8 +252,7 @@ Kurallar: Yüklemede aralık dışı değer reddedilir (AC-LRN-04). `learnable: 
 | Komut | Yetki | İşlev |
 |---|---|---|
 | `/bot enable` / `/bot disable` | Konsol | Bot sistemi aç/kapa (varsayılan kapalı) |
-| `/bot scenario <yaml>` | Konsol | Senaryo yükle, botları spawn et, envanteri doldur |
-| `/bot start` / `/bot stop` | Konsol | Maç başlat/bitir, MATCH_START/END |
+| `/bot scenario run <ad>` / `stop` / `status` | Konsol / `BotCommands.txt` | `./Scenarios/<ad>.yaml`: botları spawn et → her (seed, tekrar) için maç aç/kapat → despawn (F3-03; ADR-0015 Ek; envanter doldurma henüz yok). `/bot start`/`/bot stop` bu komutla değiştirildi |
 | `/bot despawn all` | Konsol | Tüm botları güvenli çıkışla kaldır |
 | `/bot match start <senaryo> [seed]` / `/bot match end [sonuç]` | Konsol / `BotCommands.txt` | Telemetri maç bağlamı: `MATCH_START`/`MATCH_END`, `<match>.jsonl`, `summary.json` (F3-02; ADR-0015 Ek) |
 | `+bot list` | GM | Botlar, durum, profil, politika |

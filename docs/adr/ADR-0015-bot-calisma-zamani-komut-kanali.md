@@ -39,3 +39,14 @@ F2-06: `BotCommands.txt` ile `spawn`/`despawn all`/`list`/yeniden `spawn` senary
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
 
 Komut çekirdeğine iki alt komut eklenir (aynı iki giriş yolu, yalnızca IOCP thread'inde): `match start <senaryo> [seed]` ve `match end [sonuç]`. `docs/13` §10'daki `/bot start`/`/bot stop` yerine geçmez; ScenarioRunner (F3-03) bunları `scenario`/`start`/`stop` komutlarının içinden çağırır. `match` bağımsız bir komut olarak kalır ki ScenarioRunner olmadan da (ölçüm betikleri, elle testler) maç sınırları üretilebilsin. `RESPAWN_CYCLES != 0` iken diğer komutlar gibi reddedilir. Sonuçlar `Bot_*.log`'a `BotManager: cmd match ...` satırlarıyla yazılır.
+
+
+## Ek (F3-03): `scenario` komutu ve senaryo dosyası (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
+
+Komut çekirdeğine `scenario run <ad>`, `scenario stop`, `scenario status` eklenir (aynı iki giriş yolu, yalnızca IOCP thread'i). `docs/13` §10'daki `/bot scenario <yaml>` + `/bot start|stop` ikilisi yerine **tek komut ailesi** seçildi: senaryo `run` ile yüklenir **ve** başlar (ayrı "yükle, sonra başlat" adımı yok), çünkü senaryo dosyasında seed listesi ve tekrar sayısı sabittir (`docs/15` §6) ve ara durum (yüklü ama başlamamış) otomasyon için yalnızca hata yüzeyi ekler. `match start|end` bağımsız kalır; `ScenarioRunner` onları çağırır.
+
+Senaryo dosyası `./Scenarios/<ad>.yaml` (sunucu çalışma dizini; `BotCommands.txt` ile aynı kural), **YAML'ın küçük bir alt kümesi**: üst düzey `anahtar: skaler|[liste]`, harici YAML kütüphanesi yok. Tanınmayan anahtar ve girintili/iç içe yapı **hata**dır (docs/13 §5.1'deki `teams`/`arena`/`consumables` sonraki planlarda desteklenene kadar): sessizce yok sayılan bir yazım hatası `seeds`/`repeat` gibi değerlendirme protokolünü bozardı. Desteklenen anahtarlar: `scenario_id`, `zone` (yalnızca 71), `bots`, `seeds`, `repeat`, `duration_sec`. Her koşu sonunda botlar despawn edilir (konum/HP sıfırlama olmadığı için temiz başlangıç yolu budur).
+
+Alternatifler: JSON/INI senaryo biçimi (docs/13 YAML diyor; ileride tam YAML'a evrilme yolu açık kalsın diye aynı sözdizimi alt kümesi), `/bot scenario` + `/bot start` ayrı komutlar (yukarıdaki gerekçeyle reddedildi), tam YAML ayrıştırıcı (F3 için gereksiz bağımlılık/boyut). Geri alma: `ScenarioRunner.*` ve `ExecuteCommand`'daki tek dal kaldırılır.
