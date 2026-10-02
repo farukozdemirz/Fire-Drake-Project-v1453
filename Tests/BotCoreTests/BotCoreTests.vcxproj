@@ -79,6 +79,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="CombatTests.cpp" />
     <ClCompile Include="MotionTests.cpp" />
+    <ClCompile Include="NavGridTests.cpp" />
     <ClCompile Include="PerceptionTests.cpp" />
     <ClCompile Include="RngTests.cpp" />
   </ItemGroup>
