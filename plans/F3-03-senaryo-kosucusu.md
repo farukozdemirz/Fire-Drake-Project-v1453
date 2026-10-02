@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 3 "Senaryo dosyaları" ve Kapsam'daki "maç başlat/bitir") |
 | Branch | `bot/F3-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-02 (`KAPANDI`: `match start\|end`, `Telemetry::BeginMatch/EndMatch/IsMatchActive`), F2-06 (`KAPANDI`: komut çekirdeği, ADR-0015), F2-03/F2-04 (`KAPANDI`: spawn/despawn) |
@@ -250,16 +250,48 @@ file GameServer/Bot/* bots/config/*
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F3-03` — `<kısa-sha> [F3-03] …`
+- Branch / commit'ler: `bot/F3-03` (taban: `gece/2026-10-02`) — kod commit'i `58e4d0c [F3-03] ScenarioRunner: senaryo dosyasi ile spawn/mac/despawn dongusu`; rapor + `Durum: UYGULANDI` commit'i bu raporun altındadır.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ScenarioRunner.h` (yeni, CRLF): senaryo koşucusu sınıfı; `Command`/`Tick` girişleri, durum makinesi, `Scenario` yapısı.
+  - `GameServer/Bot/ScenarioRunner.cpp` (yeni, CRLF): YAML alt kümesi ayrıştırıcısı (`LoadScenario`, yardımcılar), `run/stop/status`, `PREPARE→RUNNING→CLEANUP` durum makinesi; spawn/despawn/maç için yalnızca `BotManager` API'lerini çağırır.
+  - `GameServer/Bot/BotManager.h` (CRLF): `#include "ScenarioRunner.h"`, `friend class ScenarioRunner;`, kurucuda `m_scenario(*this)`, `static bool IsKnownBotName(...)`, son üye `ScenarioRunner m_scenario;`.
+  - `GameServer/Bot/BotManager.cpp` (CRLF): `#include "ScenarioRunner.h"`, `Tick()` içinde `m_scenario.Tick(...)`, `ExecuteCommand()`'a `scenario` dalı, bilinmeyen komut metnine `scenario` eklendi, `IsKnownBotName` tanımı.
+  - `GameServer/proj-GameServer.vcxproj` / `.filters` (BOM + CRLF korundu): `ScenarioRunner.cpp` (`ClCompile`) ve `ScenarioRunner.h` (`ClInclude`) eklendi (2'şer satır / 2'şer öğe).
+  - `bots/config/scenario_smoke_2bot.yaml` (yeni, ASCII LF): §5.7'deki örnek metin aynen; yeni `bots/config/` klasörü.
+  - `plans/F3-03-senaryo-kosucusu.md`: yalnızca `Durum` satırı ve bu rapor.
+- Derleme sonucu (`./tools/build.sh Release`, `ScenarioRunner.cpp` + `BotManager.cpp` touch'lanıp yeniden derlendi; log tam gövde):
   ```
-  …
+    Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    BotManager.cpp
+    ScenarioRunner.cpp
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    Kod üretiliyor
+    0 of 13510 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    0 functions had inline decision re-evaluated but remain unchanged
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `rc=0`, `grep -n "warning\|error"` boş (tam `Release` derlemesinde yalnızca eski `GameServerDlg.cpp` 4267/4834 ve `UpgradeHandler.cpp` 4789 satırları; `Bot\` dosyalarında yeni uyarı yok). `./tools/build.sh Debug` de rc=0 (`BotManager.cpp`, `Telemetry.cpp`, `ScenarioRunner.cpp` derlendi, `Bot\` uyarısı yok).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, yeni uyarı yok; log yukarıda).
+  - K2 ✔ (Debug rc=0).
+  - K3 ✔ (`git diff --stat gece/2026-10-02...bot/F3-03` yalnızca §4'teki 7 dosya + plan; `.vcxproj` 2 satır, `.filters` 2 öğe; `BotManager.cpp` `-` satırı yalnızca bilinmeyen komut metni: `-(spawn, despawn, list, match)` → `+(... , scenario)`; `CommandSpawn` vb. gövdeler değişmedi).
+  - K4 ✔ (kurucu yalnızca üye başlatır; `Tick()` ilk satırı `STATE_IDLE` dönüşü; `CIni`/`GetInt`/`GetBool`/`GetString`/`CONF_GAME_SERVER`/`Ini.h` grep'i boş; `grep -n "ini\|CIni"` çıktısındaki `Finish`/`finished` eşleşmeleri yalnızca harf dizisi çakışması, INI okuması değil).
+  - K5 ✔ (`std::thread`/`mutex`/`lock_guard`/`condition_variable`/`CreateThread`/`Sleep`/`CUser`/`m_pUser` yok; tek grep eşleşmesi planın kendi başlık şablonundaki "IOCP thread only" yorumu).
+  - K6 ✔ (yol yalnızca `IsSafeFileStem` geçmiş addan; `fopen` yalnızca `WriteScenarioLog` :30 ve `LoadScenario` :174, `fgets` yalnızca `LoadScenario` :195; `fclose` tüm başarı/hata yollarında :35/:449).
+  - K7 ✔ (kod okuması: girinti, `-`, `:` yok, yinelenen/tanınmayan anahtar, `bots` yok/>16/yinelenen/bilinmeyen, `seeds` >32/>4294967295, `repeat` 1..100, `duration_sec` 1..3600, `zone`=71, `seeds×repeat`≤200, 4096B/64 satır/255 karakter sınırı hata ile `false`; `out` yalnızca tam başarıda atanır).
+  - K8 ✔ (yalnızca `PREPARE→RUNNING→CLEANUP` ve `PREPARE|RUNNING→CLEANUP`; `CLEANUP`→`IDLE` yalnızca tümü `DESPAWNED` veya `FAILED`/`DESPAWN_STUCK`/60 sn; `RUNNING` bot kaybı `end bot_lost`, dış `end` `match ended externally`, `Abort` yalnızca maç hâlâ aktifse `end aborted`).
+  - K9 ✔ (`CommandMatch` yalnızca `"start <id> <seed>"`, `"end completed"`, `"end bot_lost"`, `"end aborted"`; id `IsSafeId` geçmiş; seed `std::to_string(uint32)`).
+  - K10 ✔ (`Command` yalnızca `run <ad>`/`stop`/`status`, diğer her şey tek `usage`; `RESPAWN_CYCLES != 0` reddi `BotManager.cpp:555-559` değişmedi ve `scenario`'yu da kapsar).
+  - K11 ✔ (`file GameServer/Bot/*` hepsi "ASCII text, with CRLF"; yaml "ASCII text" LF; tab/Allman; `printf` grep'i yalnızca `snprintf` + `WriteScenarioLog`'taki `fprintf`).
+  - K12 ✔ (`git status --short` boş; yaml §5.7 ile aynı; sunucu çalıştırılmadı, `GameServer.ini`/DB değişmedi).
+- Plandan sapmalar ve gerekçeleri: Yok. Plandaki satır numaraları: `BotManager.h` kurucu `:44-48`, `FindSession :64`, son üye `:107`; `BotManager.cpp` include `:5`, `ExecuteCommand` `match` dalı `:571`, `Tick` `TickSessions()` `:383`, `FindSession` sonrası `:590` — hepsi küçük kaymalarla birlikte fonksiyon adıyla bulundu ve rapor edildi. `BotManager.cpp`'ye açık `#include "ScenarioRunner.h"` yazıldı (plan §5.4: "Telemetry.h gibi").
+- Açık sorular:
+  - Plan içi tutarsızlık (kod sorunu değil): K4/K5 grep desenleri düz harf araması olduğu için planın kendi belirlediği `Finish`/`finished` metinlerini ve başlık yorumundaki "IOCP thread only" ifadesini yakalıyor; gerçek INI okuması veya thread primitifi yok. Doğrulamada bu satırların yorum/ad uyuşması olduğu teyit edilebilir.
+  - `bots/config/scenario_smoke_2bot.yaml` repo `core.autocrlf=true` nedeniyle (`.gitattributes`'ta pinlenmemiş) sonraki checkout'ta CRLF'e dönüşebilir; planda LF istendiği için `.gitattributes`'a `*.yaml text eol=lf` eklenmesi gerekiyorsa bu ayrı bir plan işi (bu planın izinli dosyalarında değil).
 
 ---
 
