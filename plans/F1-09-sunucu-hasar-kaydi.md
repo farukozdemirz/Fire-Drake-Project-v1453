@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-09` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-01 (paket izleyici: aynı bayrak kalıbı), F1-06/F1-07 (ölçülecek modeller; `DOĞRULANDI`/`KAPANDI`) |
@@ -218,6 +218,91 @@ Not: sırasıyla bayraklı/bayraksız derleme arasında MSBuild komut satırı d
 ---
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
+
+### Tur 1
+
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F1-09` (taban: `gece/2026-10-02`)
+  - `28fc383` — `[F1-09] Sunucu hasar kaydi kancasi ve FDP_DAMAGE_TRACE derleme bayragi` (kod + `tools/build.sh`)
+  - Bu rapor ve `Durum: UYGULANDI` ayrı commit'lenir.
+- **Değişen dosyalar ve nedenleri:**
+  - `GameServer/DamageTrace.h` (yeni): `DamageTrace::Scope` (RAII iş parçacığı bağlamı) ve `LogHpChange` imzaları; tamamı `#ifdef FDP_DAMAGE_TRACE`.
+  - `GameServer/DamageTrace.cpp` (yeni): `thread_local` bağlam, tembel açılan `./Logs/DamageTrace_<g>_<a>_<y>.log`, tek `std::mutex`, `wall_ms` (Unix epoch) + `t_ms` (steady_clock), 20 sütunlu sekme ayraçlı satır, `fflush`; erken dönüşler (`pAttacker == nullptr`, `!pAttacker->isPlayer()`, `pTarget == nullptr`).
+  - `GameServer/User.cpp`: `#include "DamageTrace.h"`; `HpChange` içinde `m_sHp` güncellemesi ile `result <<` arasına `LogHpChange(pAttacker, this, originalAmount, oldHP, m_sHp)` kancası.
+  - `GameServer/AttackHandler.cpp`: include; `CUser::Attack` içinde `damage = GetDamage(pTarget);` öncesine R bağlamı (`Scope('R', 0, GetSocketID())`), `pTarget->HpChange` ile aynı `if` bloğunda.
+  - `GameServer/MagicInstance.cpp`: include; `ExecuteSkill` içinde `if (bType == 0) return false;` sonrasına skill bağlamı (`Scope('S', nSkillID, pSkillCaster->GetID())`), `switch (bType)` öncesi.
+  - `GameServer/proj-GameServer.vcxproj`: `FdpTraceDefs` ikinci satırı (`$(FdpTraceDefs)FDP_DAMAGE_TRACE;`), `DamageTrace.cpp`/`.h` girdileri; `PreprocessorDefinitions` satırlarına dokunulmadı.
+  - `GameServer/proj-GameServer.vcxproj.filters`: `DamageTrace.cpp`/`.h` filtreleri (`Source Files` / `Header Files`).
+  - `tools/build.sh`: `--damage-trace` için argüman döngüsü ve yeni `Usage:` satırı.
+- **`$TMPDIR` notu:** bu ortamda `TMPDIR` boş; kopyalar `/tmp/opencode/` altına alındı (`gs_plain.exe`, `gs_damage.exe`, `gs_both.exe`, `build_*.log`).
+
+**Kriter öz-değerlendirmesi**
+
+- **K1 — Release (bayraksız): geçti.** Son 10 satır:
+  ```
+  C:\...\GameServer\User.cpp(2739,34): warning C4834: [[nodiscard]] ... (bu uyarı önceden vardı; eklenen satırlardan değil)
+    ('/User.cpp' kaynak dosyası derleniyor)
+
+    Kod üretiliyor
+    93 of 13016 functions ( 0.7%) were compiled, the rest were copied from previous compilation.
+      0 functions were new in current compilation
+      128 functions had inline decision re-evaluated but remain unchanged
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  ```
+  Uyarı: 16 adet, tamamı değişmeyen eski satırlardan (`AISocket.cpp`, `DBAgent.cpp`, `EventHandler.cpp`, `GameServerDlg.cpp`, `LoginHandler.cpp`, `MagicInstance.cpp:337,1867`, `MagicProcess.cpp`, `Map.cpp`, `User.cpp:2724,2739`). `DamageTrace.cpp` ve eklenen kanca satırları uyarısız; bayraklı derlemede de aynı 16 uyarı var (yeni uyarı yok).
+- **K2 — Release `--damage-trace`: geçti.** `grep -a -c "DamageTrace_"`:
+  ```
+  /tmp/opencode/gs_plain.exe:0
+  /tmp/opencode/gs_damage.exe:1
+  ```
+  Bayraklı derleme hatasız; 16 eski uyarı, yeni uyarı yok.
+- **K3 — Release `--packet-trace --damage-trace`: geçti.** Derleme hatasız; `/tmp/opencode/gs_both.exe` içinde:
+  ```
+  grep -a -c "PacketTrace_"  gs_both.exe -> 1
+  grep -a -c "DamageTrace_"  gs_both.exe -> 1
+  ```
+- **K4 — Debug (bayraksız): geçti.** Hatasız bitti; log sonunda `DamageTrace.cpp` derlendi (bayrak kapalı, boş çeviri birimi) ve `proj-GameServer.vcxproj -> ...\x86-Debug\Server\GameServer.exe`.
+- **K5 — Bayraksız davranış değişmedi: geçti.** `git diff --name-only gece/2026-10-02...bot/F1-09 -- GameServer/` yalnızca izinli 7 dosyayı listeler. `--numstat`:
+  ```
+  5  0  GameServer/AttackHandler.cpp
+  5  0  GameServer/MagicInstance.cpp
+  5  0  GameServer/User.cpp
+  ```
+  Eklenen satırların tamamı `#include "DamageTrace.h"` veya `#ifdef FDP_DAMAGE_TRACE … #endif` bloğu.
+- **K6 — Kanca yerleri: geçti.** `grep -n`:
+  ```
+  User.cpp:1950: m_sHp += amount;
+  User.cpp:1953: DamageTrace::LogHpChange(...)
+  User.cpp:1956: result << m_iMaxHp << m_sHp << tid;
+  AttackHandler.cpp:58: DamageTrace::Scope dmgTraceScope('R', 0, GetSocketID());
+  AttackHandler.cpp:61: damage = GetDamage(pTarget);
+  AttackHandler.cpp:79: pTarget->HpChange(-damage, this);   (aynı if bloğu)
+  MagicInstance.cpp:657: if (bType == 0)
+  MagicInstance.cpp:661: DamageTrace::Scope dmgTraceScope('S', nSkillID, pSkillCaster->GetID());
+  MagicInstance.cpp:673: switch (bType)
+  ```
+- **K7 — Kayıt kapsamı: geçti.** `DamageTrace.cpp:88` erken dönüş: `if (pAttacker == nullptr || !pAttacker->isPlayer() || pTarget == nullptr) return;`. Biçim dizgesinde sekme sayısı 19, dönüşüm belirteci 20 (`fprintf` satırı 123).
+- **K8 — Gizlilik/güvenlik: geçti.** Kaydedilen alanlar yalnızca §5.4'teki 20 sütun; paket yükü/sohbet/takas/hesap/IP yok. `SanitizeName` (`\t`, ` `, `\r`, `\n` → `_`) kopyalandı. `Logs/` git'te izlenmiyor (`git ls-files Logs` boş), `Logs/` dizini oluşmadı; `git status --short` yalnızca izinli dosyaları gösterir.
+- **K9 — Kodlama: geçti.** `file`:
+  ```
+  GameServer/DamageTrace.h:     ASCII text, with CRLF
+  GameServer/DamageTrace.cpp:   ASCII text, with CRLF
+  GameServer/User.cpp:          UTF-8 (with BOM) text, with CRLF
+  GameServer/AttackHandler.cpp: ASCII text, with CRLF
+  GameServer/MagicInstance.cpp: UTF-8 (with BOM) text, with CRLF
+  tools/build.sh:               Bourne-Again shell script, ASCII text executable   (CRLF yok)
+  ```
+- **K10 — `tools/build.sh` argüman işleme: geçti.** `bash -n` hatasız. `./tools/build.sh Release --bogus` → `Unknown option: --bogus`, çıkış kodu `2` (MSBuild çalışmadı). Fark yalnızca argüman döngüsü ve `Usage:` satırı (`8 ekleme / 4 silme`); argümansız ve `--packet-trace` tek başına MSBuild komutu eskisiyle aynı.
+- **K11 — Temiz ağaç: geçti.** `git status --short` yalnızca izinli tablo dosyalarını gösterir; `build/` ve `Logs/` yok; `/tmp/opencode` kopyaları silinir.
+
+**Plandan sapmalar:** Yok. `pSkillCaster` bu noktada boş olamadığından (aynı fonksiyonda `pSkillCaster->isPlayer()` çağrılıyor) `nullptr` koruması eklenmedi; plan bunu bu durumda gerekli görmüyor.
+
+**Açık sorular:** Yok.
+
+---
+
+## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
 (henüz yok)
 
