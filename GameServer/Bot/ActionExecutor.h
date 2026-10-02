@@ -110,11 +110,12 @@ struct PartyOutcome
 	enum Kind { NOTHING, SENT, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed. SENT: "created" (PartyInvite, PARTY_CREATE confirmed by the bot's own
-	                       // leader state broadcast), "sent" (PartyInvite, PARTY_INSERT: no refusal reply), "joined" (PartyAccept).
+	                       // leader state broadcast), "sent" (PartyInvite, PARTY_INSERT: no refusal reply), "joined" (PartyAccept),
+	                       // "declined" (PartyDecline), "left"/"disbanded" (PartyLeave).
 	                       // FAILED: "refused_target" (-1), "refused_level" (-2), "refused_zone" (-3), "refused_other", "no_result".
-	                       // REFUSED: "not_in_game", "dead", "bad_target", "no_invite", or a guard verdict
-	                       // ("not_leader", "out_of_view", "invite_gap", "accept_wait", "rate")
-	int peerId;            // PartyInvite: the target's id; PartyAccept: the inviter's id; -1 = none
+	                       // REFUSED: "not_in_game", "dead", "bad_target", "no_invite", "invite_pending", "not_in_party", or a guard
+	                       // verdict ("not_leader", "out_of_view", "invite_gap", "accept_wait", "decline_wait", "leave_wait", "rate")
+	int peerId;            // PartyInvite: the target's id; PartyAccept/PartyDecline: the inviter's id; PartyLeave: -1 = none
 };
 
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
@@ -221,4 +222,17 @@ public:
 	// (m_partyInviteEcho); none -> REFUSED "no_invite" without an event. SENT "joined": the bot's own PARTY_INSERT member
 	// packet (sid == its id, flag 1) arrived. FAILED "no_result": it did not (e.g. the leader changed zone).
 	static PartyOutcome RequestPartyAccept(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// One-shot decline of the pending invitation (PARTY_PERMIT 0 through CUser::HandlePacket()) after the guard (CLI-16:
+	// >= 1 s after the invitation arrived; CLI-11). The pending invitation is the one OnPacket() recorded
+	// (m_partyInviteEcho); none -> REFUSED "no_invite" without an event. The server sends the decliner no reply (it
+	// answers the leader), so the result is SENT "declined" once the packet went out ([A]); the invitation record is consumed.
+	static PartyOutcome RequestPartyDecline(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// One-shot party leave (PARTY_REMOVE with the bot's own id through CUser::HandlePacket()) after the guard (CLI-16:
+	// >= 1 s after the bot entered the party, when known; CLI-11). Preconditions without an event: REFUSED "invite_pending"
+	// (an invitation must be accepted or declined first), "not_in_party". Result only from published replies: the bot's
+	// own PARTY_REMOVE (sid == its id) -> SENT "left"; PARTY_DELETE -> SENT "disbanded" (it led the party, or only the
+	// leader remained); neither -> FAILED "no_result".
+	static PartyOutcome RequestPartyLeave(BotSession * s, std::chrono::steady_clock::time_point now);
 };

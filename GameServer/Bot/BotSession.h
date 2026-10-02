@@ -109,6 +109,9 @@ public:
 	bool m_partyInviteHasLast;                             // IOCP thread only: m_partyInviteLast is valid for this spawn
 	std::chrono::steady_clock::time_point m_partyInviteLast;   // IOCP thread only: when the last party invitation went out
 
+	bool m_partyEnteredHasAt;                              // IOCP thread only: m_partyEnteredAt is valid (the bot created or joined a party in this spawn)
+	std::chrono::steady_clock::time_point m_partyEnteredAt;    // IOCP thread only: when the bot last created or joined a party
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
@@ -123,4 +126,5 @@ public:
 	std::atomic<uint64> m_partyInviteEcho;                 // written by OnPacket(): valid bit | inviter sid of the last PARTY_PERMIT; cleared by PartyAccept
 	std::atomic<uint64> m_partyErrorEcho;                  // written by OnPacket(): valid bit | uint16(error code) of the last PARTY_INSERT refusal (payload of 3 bytes)
 	std::atomic<uint64> m_partyJoinEcho;                   // written by OnPacket(): valid bit | sid << 8 | flag of the last PARTY_INSERT member packet
+	std::atomic<uint64> m_partyLeaveEcho;                  // written by OnPacket(): valid bit | kind << 16 | sid of the last PARTY_REMOVE (kind 1, sid = the removed member) or PARTY_DELETE (kind 2, sid 0)
 };
