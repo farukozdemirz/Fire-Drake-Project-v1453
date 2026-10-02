@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-25` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `CancelCast`, `CAST_CASTING` hareketle iptal) — `KAPANDI` |
@@ -309,16 +309,37 @@ git diff --check gece/2026-10-02...bot/F4-25
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-25` — `<kısa-sha> [F4-25] …`
+- Branch / commit'ler: `bot/F4-25` (taban: `gece/2026-10-02` @ `cf22667`); `524aaf0 [F4-25] ActionExecutor ucan Type3 skill dilimi: CASTING -> FLYING -> EFFECTING`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h` — `CastStartCheck::msp` `uint32_t`'e genişletildi (uçan cast `2 × Msp`); `CheckCastEffect`'ten sonra uçan cast bölümü eklendi: `kFlightMinMs`, `IsFlyingCast`, `CastManaNeed`, `CheckCastFly`, `CheckCastLand`.
+  - `Tests/BotCoreTests/CombatTests.cpp` — üç yeni `TEST_CASE`: `Combat_FlyingCast_Rules`, `Combat_CastFly_Guard`, `Combat_CastLand_Guard` (96 → 99 test).
+  - `GameServer/Bot/BotSession.h` — `enum CastPhase`'e `CAST_FLYING = 3`; `m_castFlyingAt` zaman damgası (`m_castCastingAt`'in yanına). `BotSession.cpp` değişmedi (varsayılan kurucu yeterli; `ResetForRespawn` zaten `CAST_IDLE`).
+  - `GameServer/Bot/ActionExecutor.h` — yalnızca yorumlar: `CastOutcome` sebeplerine `"flying"`; `BeginCast`/`TickCast` açıklamaları.
+  - `GameServer/Bot/ActionExecutor.cpp` — `RejectCast`'e `earlyLimitMs` parametresi (TOO_EARLY `limit` artık çağıran tarafından: cast süresi ya da `kFlightMinMs`); `SubmitCast`'e `sinceFlyingMs`, `type:"CastFly"`, FLYING sonuç eşlemesi, EFFECTING için `since_flying_ms`; `BeginCast` destek kuralında `m->bFlyingEffect != 0` → `(m->bFlyingEffect != 0 && !flyingCast)`; `TickCast`'te `flying` bayrağı + `c.msp` faz duyarlı (`2 × Msp` ARMED/CASTING, `Msp` FLYING) + FLYING gönderim bloğu + uçuş bekleme + `CheckCastLand`; `CancelCast` ARMED dalına `CAST_FLYING` eklendi (paketsiz `dropped`).
+- Derleme sonucu (`tools/build.sh Release` son satır):
   ```
-  …
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Yeni uyarı/hata yok; tek uyarı eski `GameServer/UpgradeHandler.cpp` C4789 (634/862). `Debug` de hatasız (`proj-GameServer.vcxproj` ve `BotCoreTests.vcxproj` bağlandı).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dosyalarda yeni uyarı 0.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `99 tests, 0 failed` (Release + Debug); üç yeni test adı çıktıda.
+  - K4 ✔ `BotCore/BotCombat.h` yalnızca `<algorithm>`/`<cstdint>`; sunucu başlığı yok; yeni `std::min/max` yok.
+  - K5 ✔ `MAGIC_FLYING` yalnızca `ActionExecutor.cpp`'de (`.h`'de geçmez, `BotManager.cpp`/`BotSession.cpp` farkta yok); `CAST_FLYING` yalnızca `ActionExecutor.cpp`/`BotSession.h`.
+  - K6 ✔ `CheckCastFly` → `SubmitCast(MAGIC_FLYING)`'den önce, `CAST_OK` dışında `RejectCast` ile dönüş; `SubmitCast(MAGIC_FLYING)` tek yerde; EFFECTING uçan seride `CheckCastLand`.
+  - K7 ✔ `BeginCast`'te `(m->bFlyingEffect != 0 && !flyingCast)`; `bType[1] != 0`, `iUseItem != 0`, `sEtc != 0`, moral koşulları silinmedi; `IsFlyingCast` `bType[0] == 3` ister (birim test).
+  - K8 ✔ Kaldırılan satırlar yalnızca planın açıkladığı satırlar (imzalar, TOO_EARLY `limit`, `bFlyingEffect` koşulu, `c.msp`, `CancelCast` koşulu, mevcut çağrı satırları); ARMED/PlanStanding/reuse zamanlayıcı satırları silinmedi.
+  - K9 ✔ `CancelCast`'te `CAST_ARMED || CAST_FLYING` → `EndCast` + `"dropped"`; CASTING paket yolu (`kCastCancelCode`) değişmedi.
+  - K10 ✔ `BotManager.cpp`/`BotSession.cpp` farkta yok; yeni ini/komut/thread yok.
+  - K11 ✔ Fark yalnızca 5 kod dosyası + plan; vcxproj'lar değişmedi; `GameServer/` içinde `Bot/` dışında dosya yok.
+  - K12 ✔ `file` çıktıları değişmedi (ASCII + CRLF); `git diff --check` boş.
+  - K13 ✔ `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok.
+  - K14 ✔ `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckCastCancel`/`CheckPotion` 1; 96 eski test hâlâ geçiyor; fairness türleri (`Move`/`Attack`/`Cast`/`CastCancel`/`Potion` …) korunmuş.
+  - K15 ✔ `check-perception-contract.py` `RESULT: PASS`, sayılar aynı (R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0).
+  - K16 — Claude'un `/plan-dogrula` çalışma zamanı (S1–S5); DeepSeek yapmaz.
+- Plandan sapmalar ve gerekçeleri: Yok. Kod, plana birebir uygulandı; `SubmitCast` parametre sırası planın uygulayıcıya bıraktığı niyetle aynı (`sinceCastingMs, sinceFlyingMs, castMs`).
+- Açık sorular: Yok. Not: çalışma zamanı MP muhasebesi (MEC-MAG-12 çift düşüm) S1'de ölçülecek; sonuç tersi çıkarsa plan §7 gereği düzeltme turu gerekir.
 
 ---
 
