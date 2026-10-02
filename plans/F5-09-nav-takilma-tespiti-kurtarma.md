@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-09` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`, `NavPathfinder`), F5-03 (`BotCore/NavSmooth.h`: `NavLineClear`), F5-04 (`BotCore/NavTrack.h`: `NavRingCells`), F5-06 (`BotCore/NavDanger.h`: `NavCostLayer`, `NavCostField`): hepsi `KAPANDI`, `gece/2026-10-02-nav` içinde (F5-08 merge `69ced3b`); bu planın testleri 129 testin üstüne eklenir |
@@ -349,16 +349,37 @@ git diff --stat gece/2026-10-02-nav...bot/F5-09
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-09` — `<kısa-sha> [F5-09] …`
+- Branch / commit'ler: `bot/F5-09` (taban `gece/2026-10-02-nav` @ `2ae9072`) — `367a92c [F5-09] Takılma tespiti ve aşamalı kurtarma: NavStuck.h + birim testleri`; ardından rapor/`Durum` commit'i
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavStuck.h` (yeni, 476 satır): `NavStuckKind`, `NavStuckParams`, `NavStuckDetector`, `NavRecoveryAction`, `NavRecoveryStep`, `NavStuckMonitor`, `NavPickSideStep`, `NavStuckPenalties`; başlık-yalnızca, saf mantık, saat yok. §5.1 kuralları birebir.
+  - `Tests/BotCoreTests/NavStuckTests.cpp` (yeni, 1331 satır): yedi test (`NavStuck_Detect_NoProgress`, `NavStuck_Detect_Oscillation`, `NavStuck_Recovery_Ladder`, `NavStuck_SideStep`, `NavStuck_Penalties`, `NavStuck_Sim`, `NavStuck_SideStep_RealMap`); Tablo 1–5 + simülasyon + gerçek harita.
+  - `BotCore/BotCore.vcxproj`: `NavStuck.h` `ClInclude` satırı (`NavFormation.h` sonrası, `Perception.h` öncesi).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: `NavStuckTests.cpp` `ClCompile` satırı (`NavFormationTests.cpp` sonrası, `PerceptionTests.cpp` öncesi).
+  - `plans/F5-09-nav-takilma-tespiti-kurtarma.md`: yalnızca `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+  NavFormationTests.cpp
+  NavStuckTests.cpp
+  Kod Üretiliyor...
+  BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `NavStuck.h`/`NavStuckTests.cpp` `touch` ile yeniden derlendi; tüm çözüm çıktısında `warning`/`error` satırı yok.
+  - K2 ✔ `--list` çıktısında yedi `NavStuck_*` adı var (K2 listesi birebir).
+  - K3 ✔ `136 tests, 0 failed`, 129 eski + 7 yeni tümü `[ OK ]`, `SKIPPED` sayısı 0; `NAVSTUCK sim control/pillar/wall3` ve `NAVSTUCK real` satırları var.
+  - K4 ✔ Harita geçici taşındığında `NavStuck_` rc=0, `NavStuck_SideStep_RealMap` `SKIPPED` yazdı, diğer altı test geçti; dosya geri kondu.
+  - K5 ✔ `tools/run-tests.sh Debug` rc=0, `136 tests, 0 failed`.
+  - K6 ✔ Tablo 1–5 ve simülasyon değerleri Release ve Debug'da geçti: pillar `reached=1 reach_ms=27300 episodes=3 abandons=0 recovered=3 max_recover_ms=700 blocked_ticks=39 stages=1,2,3,4`; wall3 `reached=0 episodes=3 abandons=1 recovered=2 max_recover_ms=700 blocked_ticks=49 stages=1,2,3,4,5`; control `reached=1 reach_ms=21000 episodes=0 blocked_ticks=0`; gerçek harita `walk=88508 sidestep_h=86017 sidestep_n=86968 violations=0 clr2_cells=66265 clr2_found=66003 ms_p95=0.0009`.
+  - K7 ✔ Saflık grep'i boş; `git diff --stat gece/2026-10-02-nav...bot/F5-09` yalnızca §4'teki dört dosya + kendi plan dosyasını gösteriyor.
+  - K8 ✔ `Nav_` 10/10, `NavPath_` 9/9, `NavSmooth_` 8/8, `NavTrack_` 10/10, `NavReach_` 8/8, `NavDanger_` 8/8, `NavRetreat_` 8/8, `NavForm_` 7/7; sayılar değişmedi (`near64 found=997 expanded_p50=306 expanded_p95=2431`, `elm_forbid=1594 … elm_safe_walk=1232`, `components=143 largest=88279 pockets=229`, `cand=2799`, `NAVFORM real walk=88508 usable8=72459 …`).
+- Plandan sapmalar ve gerekçeleri: yok. Plan §5.1/§5.2 birebir uygulandı; sayısal beklentiler prototiple aynı çıktı.
+- Açık sorular: yok.
 
 ---
 
