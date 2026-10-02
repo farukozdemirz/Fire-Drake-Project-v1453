@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 5 "Birim test çatısı") |
 | Branch | `bot/F3-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | Yok (F3-01..F3-03, F3-06 `KAPANDI`; bu plan sunucu koduna dokunmaz) |
@@ -224,10 +224,157 @@ git diff --stat gece/2026-10-02...bot/F3-05
 
 ### Tur 1
 
-*(henüz uygulanmadı)*
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F3-05` (taban: `gece/2026-10-02`); `bac4e21` (BotCore + Rng), `0d0b7b5` (BotCoreTests + sln + `tools/run-tests.sh`), bu raporu ve `Durum` satirini iceren son commit.
+- **Degisen dosyalar ve nedenleri (yalnizca §4):**
+  - `BotCore/Rng.h`, `BotCore/Rng.cpp` (yeni): `SplitMix64`, `DeriveBotSeed`, `Rng` (xoshiro256**; `NextU64/NextU32/NextBelow/NextRange/NextDouble`) §5.1'deki algoritma ve sabitlerle birebir. `Rng.cpp` yalnizca `#include "Rng.h"`.
+  - `BotCore/BotCore.vcxproj` (yeni): StaticLibrary, v142, C++17, W4, `NotUsing` PCH, iki yapilandirmada `OutDir`/`IntDir` `libs\`; `shared.vcxproj` sablonundan, `WholeProgramOptimization` yok.
+  - `Tests/BotCoreTests/MiniTest.h`, `main.cpp`, `RngTests.cpp` (yeni): tek baslikli mini cati (`TEST_CASE`/`CHECK`/`CHECK_EQ`/`REQUIRE`, `__COUNTER__` ile iki asamali benzersiz ad; `RunAll` `--list` ve ad suzgeci) ve 6 test.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (yeni): Application/Console, `BotCore` `ProjectReference`, `AdditionalIncludeDirectories=$(SolutionDir);...`.
+  - `KnightOnlineServer.sln` (degisti): yalnizca 2 `Project` blogu + 8 yapilandirma esleme satiri eklendi (silme yok; `SolutionGuid` ve diger satirlar aynen).
+  - `tools/run-tests.sh` (yeni): `[Release|Debug] [--no-build] [test-args...]`; bilinmeyen ilk arguman `exit 2`; EXE yoksa `exit 2`; testin cikis kodunu oldugu gibi dondurur.
+- **Bagimsiz on dogrulama:** §5.5'teki tum sabitlenmis degerler yazmadan once bagimsiz bir Python gerceklemesiyle yeniden hesaplandi; hepsi birebir tuttu (SplitMix64 referans vektoru; `DeriveBotSeed(7,0)=0xBCDA4680438A5951`, `(7,1)=0x1A3EAA3C25C3A340`, `(8,0)=0xFEAB185D957C5F22`; `Rng(12345)` u64/u32; `DeriveBotSeed(7,0)` u64; `NextBelow(10)` dizisi `5,8,2,2,6,6,7,3`; iki `NextDouble`; seed 99 `NextBelow(10)` kutu sayilari 9872..10141; seed 5 `NextDouble` ortalama 0,5003; seed 7 `NextRange(-5,5)` tam kapsama).
+- **Derleme ciktisi (son satirlar):**
+  - Release: `BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe` / `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`; `rc=0`.
+  - Debug: `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe` / `proj-GameServer.vcxproj -> ...\x86-Debug\Server\GameServer.exe`; `rc=0`.
+  - Kalan uyarilar yalnizca eski `GameServerDlg.cpp:816/1143/1802`; `botcore` iceren uyari 0.
+- **Kabul kriterleri oz-degerlendirmesi:**
+  - K1 ✔ Release rc=0; `grep -i warning | grep -i botcore` bos.
+  - K2 ✔ Debug rc=0; ayni uyari denetimi bos.
+  - K3 ✔ `./tools/run-tests.sh Release --no-build` rc=0, son satir `6 tests, 0 failed`; `BotCoreTests.exe` ve `libs/BotCore.lib` mevcut.
+  - K4 ✔ Debug ayni: `6 tests, 0 failed`, rc=0.
+  - K5 ✔ `grep -ci ...` = 4.
+  - K6 ✔ `0xE220A8397B1DCDAF` -> `...DAE` yapilip yeniden derlendi: rc=1, `...\Tests\BotCoreTests\RngTests.cpp(10): CHECK_EQ(...) failed` satiri ve `6 tests, 1 failed`; pin geri alindi, K3 tekrar rc=0. Deneme commit edilmedi.
+  - K7 ✔ `--list` 6 ad rc=0; `Rng_NextBelow` -> `1 tests, 0 failed`; `NoSuchTest` -> rc=2.
+  - K8 ✔ `windows.h|stdafx|GameServer|shared/|winsock` ve `rand(` grep'leri bos.
+  - K9 ✔ `git diff --stat gece/2026-10-02...bot/F3-05` yalnizca §4'teki 9 dosya; `GameServer/`, `AIServer/`, `LogInServer/`, `shared/`, `Scripting/` farki yok; sln farki salt ekleme (`^-` satiri yok).
+  - K10 ✔ `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `tools/run-tests.sh` ASCII+LF (`file` ile).
+  - K11 ✔ GameServer kaynak/proje farki yok; bot sistemi/ini dosyalarina dokunulmadi.
+  - K12 ✔ `time ./tools/run-tests.sh Release --no-build` ≈ 0,04 sn.
+- **Plandan sapmalar:** Yok. K6 denemesi disinda hicbir test gevsetilmedi.
+- **Notlar / acik sorular:** Yok. (Bilgi: MSVC `__FILE__`'i tam yol olarak basar; K6'nin istedigi `RngTests.cpp(` ifadesi satirin icinde `...\Tests\BotCoreTests\RngTests.cpp(10):` seklinde gecer.)
+
+### Tur 2
+
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F3-05` (taban: `gece/2026-10-02`); bu tur: `Tests/BotCoreTests/MiniTest.h` (CHECK_EQ duzeltmesi) + bu rapor ve `Durum` satirini iceren commit.
+- **Degisen dosyalar ve nedenleri (yalnizca §4):**
+  - `Tests/BotCoreTests/MiniTest.h` (§4): `CHECK_EQ` makrosu (:151-160) duzeltildi. Her operand artik tam bir kez degerlendiriliyor: `const auto & minitest_a_ = (a); const auto & minitest_b_ = (b);` ile yerel baglara alinip karsilastirma ve mesaj ayni baglardan yaziliyor (`<< minitest_a_ << " != " << minitest_b_`). `do { ... } while (0)` sarmalayicisi, tab girinti ve CRLF korundu; makro adi/imzasi degismedi. `CHECK` ve `REQUIRE`'a dokunulmadi. Baslangicta `git status` temizdi.
+  - Duzeltme talimatindaki kalip, okunurluk icin satirlara bolunerek ayni semantikle yazildi (Allman/tab stili).
+- **Duzeltme kaniti (K6 tekrari; gecici, commit edilmedi):** `RngTests.cpp:10` pin'i gecici olarak `0xE220A8397B1DCDAFull` -> `0xE220A8397B1DCDAEull` yapildi; `./tools/run-tests.sh Release` (yeniden derleyerek) calistirildi. Cikti (ilgili satirlar):
+  ```
+  Tests\BotCoreTests\RngTests.cpp(10): CHECK_EQ(BotCore::SplitMix64(state), 0xE220A8397B1DCDAEull) failed: 16294208416658607535 != 16294208416658607534
+  [FAIL] Rng_SplitMix64_ReferenceVector
+  [ OK ] Rng_DeriveBotSeed_Pinned
+  [ OK ] Rng_Xoshiro_Pinned
+  [ OK ] Rng_Determinism
+  [ OK ] Rng_NextBelow
+  [ OK ] Rng_NextDouble_And_NextRange
+  6 tests, 1 failed
+  ```
+  Beklenenin aynen gerceklesti: yalnizca satir 10 basarisiz; satir 11 ve 12 basarisiz OLMADI (zincirleme hata yok); rc=1; `6 tests, 1 failed`; mesajdaki "gercek" deger `16294208416658607535` (0xE220A8397B1DCDAF'nin ondaligi). Pin geri alindi: `git diff Tests/BotCoreTests/RngTests.cpp` bos. Deneme commit edilmedi.
+- **Derleme ciktisi (son satirlar):**
+  - Release (`./tools/build.sh Release`, rc=0): `BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib`; `RngTests.cpp` (yeniden derlendi); `BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe`; `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`.
+  - Debug (`./tools/build.sh Debug`, rc=0): `BotCore.vcxproj -> ...\build\bin\x86-Debug\libs\BotCore.lib`; `RngTests.cpp`, `main.cpp` (yeniden derlendi); `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe`.
+  - `grep -i warning | grep -i botcore` her iki derlemede de bos.
+- **Test cikisi:**
+  ```
+  ./tools/run-tests.sh Release --no-build
+  [ OK ] Rng_SplitMix64_ReferenceVector
+  [ OK ] Rng_DeriveBotSeed_Pinned
+  [ OK ] Rng_Xoshiro_Pinned
+  [ OK ] Rng_Determinism
+  [ OK ] Rng_NextBelow
+  [ OK ] Rng_NextDouble_And_NextRange
+  6 tests, 0 failed
+  RC=0
+
+  ./tools/run-tests.sh Debug --no-build
+  ... (ayni 6 [ OK ])
+  6 tests, 0 failed
+  RC=0
+  ```
+- **Kabul kriterleri oz-degerlendirmesi (yeniden calistirilan):**
+  - K1 ✔ Release rc=0; `grep -i warning | grep -i botcore` bos.
+  - K2 ✔ Debug rc=0; ayni denetim bos.
+  - K3 ✔ `Release --no-build` rc=0, son satir `6 tests, 0 failed`.
+  - K4 ✔ `Debug --no-build` rc=0, `6 tests, 0 failed`.
+  - K5 ✔ `grep -ci ...` = 4.
+  - K6 ✔ (bkz. Duzeltme kaniti) yalnizca satir 10 basarisiz, satir 11/12 gecti, rc=1, mesajda gercek deger `16294208416658607535`; pin geri alindi.
+  - K7 ✔ `--list` 6 ad rc=0; `Rng_NextBelow` -> `1 tests, 0 failed` rc=0; `NoSuchTest` -> `no tests matched` rc=2.
+  - K8 ✔ `windows.h|stdafx|GameServer|shared/|winsock` ve `rand(` grep'leri bos.
+  - K9 ✔ Calisma agacinda yalnizca §4'teki `Tests/BotCoreTests/MiniTest.h` degisti; `KnightOnlineServer.sln` farki salt ekleme (`^-` satiri yok).
+  - K10 ✔ `MiniTest.h` ASCII + CRLF (`file`).
+  - K11 ✔ Sunucu kaynak/proje farki yok; bot sistemi/ini dosyalarina dokunulmadi.
+  - K12 ✔ `time Release --no-build` = 0,044 sn.
+- **Plandan sapmalar:** Yok. Duzeltme talimatindaki makro govdesi yalnizca bicimsel olarak satirlara bolundu (semantik birebir).
+- **Notlar / acik sorular:** Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-*(henüz doğrulanmadı)*
+### Tur 1 — 2026-10-02
+
+- **Karar:** **DÜZELTME GEREKLİ** (12 kriterin 12'si yazıldığı gibi karşılandı; ancak test çatısında bir doğruluk hatası var: `CHECK_EQ` başarısızlık yolunda operandı yeniden değerlendiriyor)
+- **İncelenen commit:** `b135cf1` (`bot/F3-05`, taban `gece/2026-10-02` = `a6928b0`; 3 commit, mesajlar `[F3-05] …` biçiminde, merge/force izi yok, `build/` izlenmiyor)
+- **Kapsam:** `git diff --stat gece/2026-10-02...bot/F3-05` yalnızca §4'teki 9 dosya + plan dosyası; `GameServer/ AIServer/ LogInServer/ shared/ Scripting/ docs/ AGENTS.md CLAUDE.md .claude/` farkı yok; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişti; `.sln` farkı salt ekleme (`^-` satırı yok).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0; `Rng.cpp`, `RngTests.cpp`, `main.cpp` `touch` ile zorla yeniden derlendi (artımlı atlama yok); `grep -i warning \| grep -i botcore` boş; hata 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, aynı üç dosya derlendi, aynı denetim boş |
+| K3 | ✔ | `run-tests.sh Release --no-build` rc=0, son satır `6 tests, 0 failed`; `BotCoreTests.exe` (1077760 B) ve `libs/BotCore.lib` (13498 B) var |
+| K4 | ✔ | `run-tests.sh Debug --no-build` rc=0, `6 tests, 0 failed` |
+| K5 | ✔ | `grep -ci …` = 4 (`RngTests.cpp`) |
+| K6 | ✔ (bulguyla) | `0xE220…DAF`→`…DAE` yapıldı, yeniden derlendi: rc=1, `…\RngTests.cpp(10): CHECK_EQ(…) failed`, `6 tests, 1 failed`; dosya geri alındı (`git diff` boş), tekrar `6 tests, 0 failed` rc=0. **Ama çıktı Bulgu 1'i ortaya çıkardı** |
+| K7 | ✔ | `--list` 6 ad rc=0; `Rng_NextBelow` → `1 tests, 0 failed` rc=0; `NoSuchTest` → `no tests matched` rc=2; `run-tests.sh Bogus` → kullanım, rc=2 |
+| K8 | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|winsock` ve `rand(` grep'leri boş |
+| K9 | ✔ | bkz. Kapsam |
+| K10 | ✔ | `file`: `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `run-tests.sh` ASCII, CRLF yok (LF) |
+| K11 | ✔ | sunucu kaynak/proje farkı yok (K9); `GameServer.exe` bağlandı, hata yok |
+| K12 | ✔ | `time run-tests.sh Release --no-build` = 0,040 sn |
+
+**Algoritma denetimi:** `Rng.cpp` §5.1 ile satır satır eşleşiyor (SplitMix64 sabitleri, xoshiro256** sırası/kaydırmaları, `Rotl` k=7/45 için tanımsız kaydırma yok, `NextBelow` reddetmeli örnekleme, `NextRange` `uint32_t` aritmetiği, `NextDouble` 2^-53). Pinlerin hepsi çalıştırmada tuttu. `.vcxproj` farkı (`BotCore` ↔ `BotCoreTests`) planın §5.6 listesiyle birebir.
+
+**Bulgular (önem sırasıyla)**
+
+1. **[Orta] `CHECK_EQ` başarısızlık yolunda `(a)`'yı ikinci kez değerlendiriyor** — `Tests/BotCoreTests/MiniTest.h:154` (koşul) ve `:157` (mesaj: `<< (a) << " != " << (b)`). Yan etkili ifadelerde (`rng.NextU64()`, `BotCore::SplitMix64(state)`; mevcut testlerin hemen hepsi böyle) başarısızlık mesajı **yanlış "gerçek" değeri** basar ve rng/durum fazladan ilerlediği için sonraki pinler **zincirleme** başarısız olur. Kanıt (K6 çıktısı): satır 10'da beklenen `…DAE` (=16294208416658607534), gerçek ilk çıktı 16294208416658607535 olduğu halde mesaj `7960286522194355700` (= ikinci çıktı `0x6E78…65F4`) yazıyor; satır 11 ve 12 de, hiçbir hata olmamasına rağmen, kayan durum yüzünden başarısız görünüyor. Çıkış kodu ve `failed` sayısı doğru olduğundan hata yakalanıyor, ama çatının amacı (bir gerileme olduğunda güvenilir tanı) bozuluyor; sonraki tüm BotCore testleri bu çatıyı kullanacak. Plan §5.3 "başarısızlıkta iki değeri yazar" diyor: yazılan değer gerçek değer olmalı.
+2. **[Not]** Başarısızlık satırı metni plan §5.3'teki `CHECK(expr) basarisiz` yerine İngilizce `failed` (`:157`); K6'nın istediği `RngTests.cpp(` ifadesi MSVC `__FILE__` tam yol bastığı için satır içinde geçiyor, satır başında değil. Engel değil; düzeltme gerektirmez.
+3. **[Not]** `MiniTest.h` 172 satır (planda "~100"); işlev fazlası yok, yalnızca biçim (Allman, boş satırlar). Engel değil.
+4. **[Not]** `./tools/run-servers.sh status` çıktısında `GameServer.exe pid=4336 (yol okunamadı)` notu var; üç sunucu `[DOWN]`, derleme `GameServer.exe`'yi yazabildi (kilit yok). Bu planla ilgisi yok.
+
+**Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F3-05-botcore-birim-test-catisi.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. Tests/BotCoreTests/MiniTest.h, CHECK_EQ makrosu (:151-160): her operandı tam bir kez değerlendir. Gövdeyi şu kalıba çevir: "const auto & minitest_a_ = (a); const auto & minitest_b_ = (b); if (!(minitest_a_ == minitest_b_)) { std::ostringstream minitest_oss_; minitest_oss_ << "CHECK_EQ(" #a ", " #b ") failed: " << minitest_a_ << " != " << minitest_b_; ::minitest::ReportFailure(__FILE__, __LINE__, minitest_oss_.str()); }" (do { ... } while (0) sarmalayıcısı, tab girinti ve CRLF kalsın; makro adları ve imzaları değişmesin). CHECK ve REQUIRE zaten ifadeyi bir kez değerlendiriyor, onlara dokunma.
+2. Düzeltmeyi kanıtla (K6 denemesinin tekrarı): RngTests.cpp'de 0xE220A8397B1DCDAFull pin'ini geçici olarak ...DAEull yap, ./tools/run-tests.sh Release çalıştır. Beklenen: yalnızca satır 10 başarısız (satır 11 ve 12 başarısız OLMAMALI), rc=1, "6 tests, 1 failed", ve satır 10 mesajında "gerçek" değer 16294208416658607535 (0xE220A8397B1DCDAF'nin ondalığı) olmalı. Çıktının ilgili satırlarını raporuna yapıştır. Sonra pin'i geri al (git diff Tests/BotCoreTests/RngTests.cpp boş olmalı); bu deneme commit edilmez.
+3. Plan §6 K1..K12'yi yeniden çalıştır; en azından: ./tools/build.sh Release ve ./tools/build.sh Debug (BotCore/BotCoreTests uyarısı 0), ./tools/run-tests.sh Release --no-build ve Debug --no-build -> "6 tests, 0 failed" rc=0. Çıktıyı raporda göster.
+4. Başka dosyaya dokunma (RngTests.cpp'yi yalnızca adım 2'nin geçici denemesi için değiştir ve geri al; docs/**, GameServer/** dahil). Durum satırını UYGULANDI yap.
+```
+
+### Tur 2 — 2026-10-02
+
+- **Karar:** **DOĞRULANDI** (12/12 kriter kanıtla karşılandı; Tur 1 bulgusu giderildi)
+- **İncelenen commit:** `87fb1ef` (`bot/F3-05`, taban `gece/2026-10-02`; Tur 2 kod değişikliği yalnızca `c1beed3`: `Tests/BotCoreTests/MiniTest.h` +4/−2, başka dosya yok; `87fb1ef` yalnızca plan raporu)
+- **Çalışma ağacı:** başlangıçta temiz; sunucular `[DOWN]`; `Rng.cpp`, `RngTests.cpp`, `main.cpp` `touch` ile zorla yeniden derlendi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0, `error` 0, `grep -i warning \| grep -i botcore` boş; `BotCore.lib`, `RngTests.cpp`, `main.cpp`, `BotCoreTests.exe` derlendi |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, aynı denetim boş |
+| K3 | ✔ | `run-tests.sh Release --no-build` rc=0, `6 tests, 0 failed`; `BotCoreTests.exe` (1077760 B) ve `libs/BotCore.lib` (13498 B) var |
+| K4 | ✔ | `run-tests.sh Debug --no-build` rc=0, `6 tests, 0 failed` |
+| K5 | ✔ | `grep -ci …` = 4 |
+| K6 | ✔ | `0xE220…DAF`→`…DAE`, yeniden derlendi: rc=1, yalnızca `RngTests.cpp(10): CHECK_EQ(…) failed: 16294208416658607535 != 16294208416658607534` ve `6 tests, 1 failed`; satır 11/12 başarısız OLMADI (zincirleme hata yok; "gerçek" değer artık doğru). `git checkout` ile geri alındı, `git status` temiz, yeniden derleme sonrası `6 tests, 0 failed` rc=0 |
+| K7 | ✔ | `--list` 6 ad rc=0; `Rng_NextBelow` → `1 tests, 0 failed`; `NoSuchTest` → `no tests matched` rc=2; `run-tests.sh Bogus` rc=2 |
+| K8 | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|winsock`, `rand(` ve `random_device` grep'leri boş |
+| K9 | ✔ | `git diff --stat gece/2026-10-02...bot/F3-05`: §4'teki 9 dosya + plan, `docs/STATUS.md`, `plans/README.md` (önceki doğrulama turunun kayıtları); `GameServer/ AIServer/ LogInServer/ shared/ Scripting/` farkı yok; `.sln` farkında `^-` satırı yok |
+| K10 | ✔ | `file`: `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `run-tests.sh` ASCII, LF |
+| K11 | ✔ | sunucu kaynak/proje farkı yok (K9); bot sistemi/ini dosyalarına dokunulmadı |
+| K12 | ✔ | `time run-tests.sh Release --no-build` = 0,039 sn |
+
+**Tur 1 düzeltme denetimi:** `MiniTest.h:151-162` `CHECK_EQ` artık `const auto & minitest_a_ = (a); const auto & minitest_b_ = (b);` ile her operandı tam bir kez değerlendiriyor; karşılaştırma ve mesaj aynı bağlardan; `do { } while (0)`, tab, CRLF korunmuş; `CHECK`/`REQUIRE` değişmedi. Geçici bağlar `const auto &` ile ömür uzatımlı; `W4` altında yeni uyarı yok. Uygulayıcı raporundaki çıktı iddiaları (K6 satırları, `6 tests, 1 failed`, 16294208416658607535) bağımsız çalıştırmada birebir tuttu.
+
+**Bulgular:** Engelleyici yok. Notlar (engel değil): (1) başarısızlık metni plan §5.3'teki `basarisiz` yerine İngilizce `failed`; (2) `MiniTest.h` ~174 satır (planda ~100), yalnızca biçim; (3) `Rng_Determinism` tohumu 123 (plan "aynı tohum" der, sabit belirtmez), sorun değil; (4) `run-servers.sh status` `GameServer.exe pid=4336 (yol okunamadı)` notu bu planla ilgisiz. Gece modu: birleştirme ve push döngü betiğinde, yapılmadı.
