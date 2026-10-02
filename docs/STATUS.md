@@ -1,6 +1,6 @@
 # Bot Projesi — Güncel Durum
 
-Son güncelleme: 2026-10-01 · Güncelleyen: Claude
+Son güncelleme: 2026-10-02 · Güncelleyen: Claude
 Sunucu commit: `0f52027` (upstream ile aynı) · Bot kodu: henüz yok · Doküman paketi: v1.0
 Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `MAGIC_BAK_etc` yedeği var)
 
@@ -53,7 +53,8 @@ Liste: `plans/README.md`.
 | F1-05 Bot ekipman/ağırlık raporu | KAPANDI | `bot/F1-05` (taban: `main`); `plans/F1-05-bot-ekipman-agirlik-raporu.md`; DeepSeek botları DB'ye uygular ve raporu çalıştırır |
 | F1-06 Hasar modeli ve başlangıç HP | KAPANDI | `bot/F1-06` (taban: `main`); `plans/F1-06-hasar-modeli-ve-baslangic-hp.md`; DeepSeek `tools/stat-model.py` yazar, `db/002` Hp/Mp = 32000 yeniden uygular |
 | F1-07 Büyü ve heal modeli | KAPANDI | `bot/F1-07` (taban: `main`); `plans/F1-07-buyu-ve-heal-modeli.md`; DeepSeek `tools/spell-model.py` yazar, DB'ye yazılmaz |
-| F1-08 Arena A veri doğrulaması | DOĞRULANDI | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; Tur 2'de doğrulandı, otonom döngü olduğu için `main`'e birleştirilmedi (etkileşimli `/plan-dogrula` veya proje sahibi birleştirir) |
+| F1-08 Arena A veri doğrulaması | KAPANDI | `bot/F1-08` (taban: `main`); `plans/F1-08-arena-a-veri-dogrulamasi.md`; Tur 2'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); `main`'e birleştirme proje sahibinde |
+| F1-09 Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`) | HAZIR | `bot/F1-09` (taban: `gece/2026-10-02`); `plans/F1-09-sunucu-hasar-kaydi.md`; DeepSeek yalnızca bayraklı kanca ve `build.sh --damage-trace` yazar; log özet betiği F1-10'da; çalışma zamanı ölçümü insan oturumunda (T-MECH-DMG) |
 
 ## Son doğrulamalar
 
@@ -97,7 +98,7 @@ Açık teknik kararlar: ADR-0005..0008, ilgili fazda verilecek.
 
 ## Sıradaki adımlar
 
-1. F1-08 DOĞRULANDI ama `main`'e birleştirilmedi (otonom döngü): etkileşimli `/plan-dogrula` ya da proje sahibi `git switch main && git merge --no-ff bot/F1-08 && git push origin main`. Sonra Claude: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları. Paralel: Claude F1 faz sonuç raporu taslağı ve F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci); proje sahibi bot girişi denemesi: T-DATA-01 girişi 5/6 bot için tamam (model = oyun, `docs/04` §3.4), kalan M-I girişinin teyidi, sonra T-MECH-DMG ölçümü.
+1. F1-08 `gece/2026-10-02`'ye birleşti; `main`'e birleştirme ve push proje sahibinde (`git switch main && git merge --no-ff gece/2026-10-02 && git push origin main`, sabah). F1-09 (sunucu hasar kaydı) HAZIR, ardından F1-10 (log özet/karşılaştırma betiği, `tools/damage-trace-summary.py`) ve F1 faz raporu taslağı; F1'in DeepSeek'in yapabileceği işleri bununla biter, kalanlar insan testi (T-MECH-*, T-ENV-ARENA-*), gece modunda F2'ye geçilir. Claude'un bekleyen doküman işi: `docs/15` §2.4 eksen güncellemesi (A için `angle=15`), §2.3 pay tanımı notu (spawn payı = monster + soldier_npc + monument + gate), `docs/03` MEC-ZON-03 doğrulandı notu ve zone 71 otomatik taşıma yolları. Paralel: Claude F1 faz sonuç raporu taslağı ve F1-09 planı (sunucu tarafı hasar kaydı, T-MECH-DMG ölçümü için iki istemci); proje sahibi bot girişi denemesi: T-DATA-01 girişi 5/6 bot için tamam (model = oyun, `docs/04` §3.4), kalan M-I girişinin teyidi, sonra T-MECH-DMG ölçümü.
 2. Push: `main` her plan DOĞRULANDI olduğunda otomatik birleştirilir ve push'lanır (kalıcı izin, 2026-10-02).
 3. Proje sahibi, ikinci insan oturumu (priest/mage hazır olunca): `pri-cast`, `mag-cast` ve iptal senaryoları (CLI-03, Q-01), `war-combo` (CLI-02), `war-move` (Q-02), `tools/trace-session.sh prepare` … `finish` (`docs/15` §4.2.1).
 4. Proje sahibi, arena doğrulaması (T-ENV-ARENA-01..04, Q-11): arena A'da canavar/tower gözlemi; protokolü Claude yazar.

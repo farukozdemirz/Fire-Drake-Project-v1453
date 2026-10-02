@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-08` (taban: `main`) |
 | Bağımlı olduğu planlar | F0 (KABUL_EDILDI), F1-02 (ölçülen hız: 4,5 m/s yürüyüş, 6,7 m/s sprint) |
