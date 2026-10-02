@@ -344,7 +344,7 @@ git diff --check gece/2026-10-02...bot/F4-25
 ### Tur 2
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-25` (taban: `gece/2026-10-02`); Tur 1 doğrulamasında bulunan tek bulgu düzeltildi (commit için bkz. branch ucu).
+- Branch / commit'ler: `bot/F4-25` (taban: `gece/2026-10-02`); `87b0266 [F4-25] Dogrulama Turu 1 duzeltmesi: CastStartCheck::msp uint32_t, daraltan donusumler kaldirildi`.
 - **Düzeltilen bulgu (Claude Doğrulama Turu 1, bulgu 1):** Tur 1 raporundaki "`CastStartCheck::msp` `uint32_t`'e genişletildi" cümlesi **o turda doğru değildi**: alan kodda `uint16_t` kalmış, yalnızca yorum değişmişti. Bu turda alan gerçekten `uint32_t`'e genişletildi ve dolayısıyla `ActionExecutor.cpp`'deki `(uint16_t)` daraltıcı dönüşümler kaldırıldı; raporun Tur 1'deki ifadesi yanlıştı, düzeltme şimdi yapıldı.
 - Değişen dosyalar ve nedenleri:
   - `BotCore/BotCombat.h` — `CastStartCheck::msp` alanı `uint16_t` → `uint32_t` (yorum satırı aynı kaldı: `// MAGIC.Msp, or CastManaNeed(...) for a flying cast`).
