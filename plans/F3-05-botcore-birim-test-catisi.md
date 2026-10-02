@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 5 "Birim test çatısı") |
 | Branch | `bot/F3-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | Yok (F3-01..F3-03, F3-06 `KAPANDI`; bu plan sunucu koduna dokunmaz) |
@@ -353,3 +353,28 @@ plans/F3-05-botcore-birim-test-catisi.md — Doğrulama Turu 1 düzeltmeleri. Ay
 3. Plan §6 K1..K12'yi yeniden çalıştır; en azından: ./tools/build.sh Release ve ./tools/build.sh Debug (BotCore/BotCoreTests uyarısı 0), ./tools/run-tests.sh Release --no-build ve Debug --no-build -> "6 tests, 0 failed" rc=0. Çıktıyı raporda göster.
 4. Başka dosyaya dokunma (RngTests.cpp'yi yalnızca adım 2'nin geçici denemesi için değiştir ve geri al; docs/**, GameServer/** dahil). Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- **Karar:** **DOĞRULANDI** (12/12 kriter kanıtla karşılandı; Tur 1 bulgusu giderildi)
+- **İncelenen commit:** `87fb1ef` (`bot/F3-05`, taban `gece/2026-10-02`; Tur 2 kod değişikliği yalnızca `c1beed3`: `Tests/BotCoreTests/MiniTest.h` +4/−2, başka dosya yok; `87fb1ef` yalnızca plan raporu)
+- **Çalışma ağacı:** başlangıçta temiz; sunucular `[DOWN]`; `Rng.cpp`, `RngTests.cpp`, `main.cpp` `touch` ile zorla yeniden derlendi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0, `error` 0, `grep -i warning \| grep -i botcore` boş; `BotCore.lib`, `RngTests.cpp`, `main.cpp`, `BotCoreTests.exe` derlendi |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, aynı denetim boş |
+| K3 | ✔ | `run-tests.sh Release --no-build` rc=0, `6 tests, 0 failed`; `BotCoreTests.exe` (1077760 B) ve `libs/BotCore.lib` (13498 B) var |
+| K4 | ✔ | `run-tests.sh Debug --no-build` rc=0, `6 tests, 0 failed` |
+| K5 | ✔ | `grep -ci …` = 4 |
+| K6 | ✔ | `0xE220…DAF`→`…DAE`, yeniden derlendi: rc=1, yalnızca `RngTests.cpp(10): CHECK_EQ(…) failed: 16294208416658607535 != 16294208416658607534` ve `6 tests, 1 failed`; satır 11/12 başarısız OLMADI (zincirleme hata yok; "gerçek" değer artık doğru). `git checkout` ile geri alındı, `git status` temiz, yeniden derleme sonrası `6 tests, 0 failed` rc=0 |
+| K7 | ✔ | `--list` 6 ad rc=0; `Rng_NextBelow` → `1 tests, 0 failed`; `NoSuchTest` → `no tests matched` rc=2; `run-tests.sh Bogus` rc=2 |
+| K8 | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|winsock`, `rand(` ve `random_device` grep'leri boş |
+| K9 | ✔ | `git diff --stat gece/2026-10-02...bot/F3-05`: §4'teki 9 dosya + plan, `docs/STATUS.md`, `plans/README.md` (önceki doğrulama turunun kayıtları); `GameServer/ AIServer/ LogInServer/ shared/ Scripting/` farkı yok; `.sln` farkında `^-` satırı yok |
+| K10 | ✔ | `file`: `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `run-tests.sh` ASCII, LF |
+| K11 | ✔ | sunucu kaynak/proje farkı yok (K9); bot sistemi/ini dosyalarına dokunulmadı |
+| K12 | ✔ | `time run-tests.sh Release --no-build` = 0,039 sn |
+
+**Tur 1 düzeltme denetimi:** `MiniTest.h:151-162` `CHECK_EQ` artık `const auto & minitest_a_ = (a); const auto & minitest_b_ = (b);` ile her operandı tam bir kez değerlendiriyor; karşılaştırma ve mesaj aynı bağlardan; `do { } while (0)`, tab, CRLF korunmuş; `CHECK`/`REQUIRE` değişmedi. Geçici bağlar `const auto &` ile ömür uzatımlı; `W4` altında yeni uyarı yok. Uygulayıcı raporundaki çıktı iddiaları (K6 satırları, `6 tests, 1 failed`, 16294208416658607535) bağımsız çalıştırmada birebir tuttu.
+
+**Bulgular:** Engelleyici yok. Notlar (engel değil): (1) başarısızlık metni plan §5.3'teki `basarisiz` yerine İngilizce `failed`; (2) `MiniTest.h` ~174 satır (planda ~100), yalnızca biçim; (3) `Rng_Determinism` tohumu 123 (plan "aynı tohum" der, sabit belirtmez), sorun değil; (4) `run-servers.sh status` `GameServer.exe pid=4336 (yol okunamadı)` notu bu planla ilgisiz. Gece modu: birleştirme ve push döngü betiğinde, yapılmadı.
