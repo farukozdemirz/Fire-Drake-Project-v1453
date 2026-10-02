@@ -499,3 +499,47 @@ TEST_CASE("Combat_TargetHpCheck_SwitchAndFirst")
 	CHECK_EQ((int)BotCore::kViewDistance, 48);
 	CHECK_EQ((int)BotCore::kViewRegionRadius, 1);
 }
+
+static BotCore::RegeneCheck OkRegene()
+{
+	BotCore::RegeneCheck c;
+	c.sinceDeadMs = 5000;
+	c.actionsInWindow = 0;
+	return c;
+}
+
+TEST_CASE("Combat_RegeneCheck_Order")
+{
+	BotCore::RegeneCheck c = OkRegene();
+	c.sinceDeadMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_REJECT_WAIT);
+
+	c = OkRegene();
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_REJECT_RATE);
+
+	c = OkRegene();
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_OK);
+
+	c = OkRegene();
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_OK);
+}
+
+TEST_CASE("Combat_RegeneCheck_Boundaries")
+{
+	BotCore::RegeneCheck c = OkRegene();
+	c.sinceDeadMs = 2999;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_REJECT_WAIT);
+
+	c = OkRegene();
+	c.sinceDeadMs = 3000;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_OK);
+
+	c = OkRegene();
+	c.sinceDeadMs = 0;
+	CHECK_EQ((int)BotCore::CheckRegene(c), (int)BotCore::REGENE_REJECT_WAIT);
+
+	CHECK_EQ((int)BotCore::kRegeneMinDeadMs, 3000);
+}

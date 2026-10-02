@@ -403,4 +403,33 @@ namespace BotCore
 
 		return TARGETHP_OK;
 	}
+
+	// --- respawn slice (ADR-0017 Ek F4-07) ---
+
+	constexpr uint32_t kRegeneMinDeadMs = 3000;   // docs/03 CLI-14: the death screen and the respawn button take a human at least this long [A] (unmeasured)
+
+	struct RegeneCheck
+	{
+		uint32_t sinceDeadMs;     // since the bot's death was first noticed
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum RegeneVerdict
+	{
+		REGENE_OK = 0,
+		REGENE_REJECT_WAIT = 1,   // CLI-14 (respawn requested before kRegeneMinDeadMs after the death)
+		REGENE_REJECT_RATE = 2    // CLI-11
+	};
+
+	// Guard rule for a respawn request. The caller has already checked that the bot is dead. Order: wait, rate.
+	inline RegeneVerdict CheckRegene(const RegeneCheck & c)
+	{
+		if (c.sinceDeadMs < kRegeneMinDeadMs)
+			return REGENE_REJECT_WAIT;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return REGENE_REJECT_RATE;
+
+		return REGENE_OK;
+	}
 }

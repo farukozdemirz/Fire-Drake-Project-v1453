@@ -103,6 +103,9 @@ public:
 	bool m_hpReqHasLast;                                   // IOCP thread only: m_hpReqLast is valid for this spawn
 	std::chrono::steady_clock::time_point m_hpReqLast;     // IOCP thread only: when the last WIZ_TARGET_HP request went out
 
+	bool m_deadSeen;                                       // IOCP thread only: the bot was seen dead and m_deadSince is valid
+	std::chrono::steady_clock::time_point m_deadSince;     // IOCP thread only: when its death was first noticed (TickSessions or the first regene request)
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
@@ -112,4 +115,5 @@ public:
 	std::atomic<uint64> m_stateEcho;                       // written by OnPacket(): own WIZ_STATE_CHANGE broadcast, see BotSession.cpp
 	std::atomic<uint64> m_targetHpEcho;                    // written by OnPacket(): valid bit | echo << 16 | tid of the last WIZ_TARGET_HP reply
 	std::atomic<uint64> m_targetHpValues;                  // written by OnPacket() BEFORE m_targetHpEcho: hp << 32 | maxHp
+	std::atomic<uint64> m_regeneEcho;                      // written by OnPacket(): valid bit | x << 32 | z << 16 | y (all x10) of the last WIZ_REGENE reply
 };

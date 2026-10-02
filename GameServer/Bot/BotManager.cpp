@@ -634,10 +634,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandStance(args, false);
 	else if (_stricmp(verb.c_str(), "target") == 0)
 		CommandTarget(args);
+	else if (_stricmp(verb.c_str(), "regene") == 0)
+		CommandRegene(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1798,6 +1800,54 @@ void BotManager::CommandTarget(const std::string & args)
 	WriteBotLog(message);
 }
 
+void BotManager::CommandRegene(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd regene: usage: regene <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd regene: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd regene: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	RegeneOutcome outcome = ActionExecutor::RequestRegene(s, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == RegeneOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd regene: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == RegeneOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd regene: %s respawned at (%.1f, %.1f)",
+			s->m_charName.c_str(), outcome.x, outcome.z);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd regene: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
 void BotManager::ParseSpawnList(const std::string & list)
 {
 	if (list.empty())
@@ -2017,6 +2067,8 @@ void BotManager::TickSessions()
 			{
 				if (s->m_pUser->isDead())
 				{
+					if (!s->m_deadSeen) { s->m_deadSeen = true; s->m_deadSince = now; }
+
 					if (s->m_moveActive)
 					{
 						ActionExecutor::AbandonMove(s);
@@ -2028,6 +2080,8 @@ void BotManager::TickSessions()
 				}
 				else
 				{
+					s->m_deadSeen = false;
+
 					MoveOutcome outcome = ActionExecutor::TickMove(s, now);
 					if (outcome.kind == MoveOutcome::ARRIVED)
 					{
