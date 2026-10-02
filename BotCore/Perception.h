@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 
 namespace BotCore
 {
@@ -775,5 +776,172 @@ namespace BotCore
 			return NPCIN_REJECT_GAP;
 
 		return NPCIN_OK;
+	}
+
+	// --- perception snapshot (ADR-0017 Ek F4-16) ---
+
+	constexpr int     kSnapMaxUnits = 32;   // enemies / allies kept per list (nearest first), design limit
+	constexpr int     kSnapMaxNpcs  = 32;   // npcs kept (nearest first), design limit
+	constexpr uint8_t kSnapUserSit  = 2;    // USER_SITDOWN in the res/hp type byte of the user info
+
+	// The bot's own state (read from its own session by the caller; the contract allows it).
+	struct SelfState
+	{
+		uint16_t sid;
+		uint8_t  nation;
+		uint16_t cls;
+		uint8_t  level;
+		float    x, z;                 // world position
+		int32_t  hp, maxHp, mp, maxMp;
+		bool     dead;
+		bool     sitting;
+	};
+
+	// One visible player. No HP, MP, name or inventory: the client never learns them (docs/14 5.2).
+	struct UnitView
+	{
+		uint16_t id;                   // socket id of the player (NOT an npc id)
+		uint8_t  nation;
+		uint8_t  race;
+		uint16_t cls;
+		uint8_t  level;
+		float    x, z;                 // x10 / 10 as sent on the wire
+		float    dist;                 // to SelfState x, z
+		bool     dead;                 // resHpType == kObsUserDead
+		bool     sitting;              // resHpType == kSnapUserSit
+		bool     partyLeader;
+		uint8_t  invisibility;         // raw byte, NOT filtered
+		uint32_t ageMs;                // nowMs - lastSeenMs (0 if the packet clock is ahead), clamped to 0xFFFFFFFF
+	};
+
+	// One visible NPC (monster, guard tower, gate, ...). No classification yet.
+	struct NpcView
+	{
+		uint16_t id;                   // npc id (NOT a socket id)
+		uint16_t protoId;
+		uint8_t  type;
+		uint8_t  nation;
+		uint8_t  level;
+		float    x, z;
+		float    dist;
+		bool     dead;
+		bool     gateOpen;
+		uint32_t ageMs;
+	};
+
+	struct PerceptionSnapshot
+	{
+		uint64_t tMs;                          // nowMs the snapshot was built for
+		SelfState self;
+		UnitView enemies[kSnapMaxUnits];       // nation != self.nation, nearest first
+		int      enemyCount;                   // entries filled (<= kSnapMaxUnits)
+		int      enemyTotal;                   // all enemies in the table (>= enemyCount)
+		UnitView allies[kSnapMaxUnits];        // nation == self.nation, self excluded, nearest first
+		int      allyCount;
+		int      allyTotal;
+		NpcView  npcs[kSnapMaxNpcs];           // nearest first
+		int      npcCount;
+		int      npcTotal;                     // all npcs in the table
+	};
+
+	// Inserts 'v' into arr[0..count) keeping (dist, id) ascending; at capacity the farthest entry is dropped
+	// (v itself when it sorts last). Both view types have 'dist' and 'id'.
+	template <class V, int CAP>
+	inline void SnapInsertNearest(V * arr, int & count, const V & v)
+	{
+		int pos = count;
+		for (int i = 0; i < count; i++)
+		{
+			if (v.dist < arr[i].dist || (v.dist == arr[i].dist && v.id < arr[i].id))
+			{
+				pos = i;
+				break;
+			}
+		}
+
+		if (pos >= CAP)
+			return;
+
+		int limit = count < CAP ? count : CAP - 1;
+		for (int i = limit; i > pos; i--)
+			arr[i] = arr[i - 1];
+		arr[pos] = v;
+		if (count < CAP)
+			count++;
+	}
+
+	// Zeroes 'out', copies 'self', then fills the lists from the two tables (read only). Players: the entry whose sid
+	// equals self.sid is skipped; nation != self.nation goes to enemies, the rest to allies; dead and sitting players are
+	// kept (flags). Npcs: every table entry, dead ones included. Each list keeps the kSnap* nearest by (dist, id)
+	// ascending (ties: lower id first); *Total counts everything seen, so Total > Count means entries were dropped.
+	// dist = sqrt((x - self.x)^2 + (z - self.z)^2) in float. Fully deterministic, no allocation, no clock.
+	inline void BuildSnapshot(const SelfState & self, const ObsTable & obs, const NpcTable & npcs,
+		uint64_t nowMs, PerceptionSnapshot & out)
+	{
+		memset(&out, 0, sizeof(out));
+		out.tMs = nowMs;
+		out.self = self;
+
+		for (int i = 0; i < obs.Count(); i++)
+		{
+			const UnitObs & u = obs.At(i);
+			if (u.sid == self.sid)
+				continue;
+
+			UnitView v;
+			memset(&v, 0, sizeof(v));
+			v.id = u.sid;
+			v.nation = u.nation;
+			v.race = u.race;
+			v.cls = u.cls;
+			v.level = u.level;
+			v.x = u.x10 / 10.0f;
+			v.z = u.z10 / 10.0f;
+			float dx = v.x - self.x;
+			float dz = v.z - self.z;
+			v.dist = std::sqrt(dx * dx + dz * dz);
+			v.dead = (u.resHpType == kObsUserDead);
+			v.sitting = (u.resHpType == kSnapUserSit);
+			v.partyLeader = u.partyLeader;
+			v.invisibility = u.invisibility;
+			uint64_t age = nowMs > u.lastSeenMs ? nowMs - u.lastSeenMs : 0;
+			v.ageMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+
+			if (u.nation != self.nation)
+			{
+				out.enemyTotal++;
+				SnapInsertNearest<UnitView, kSnapMaxUnits>(out.enemies, out.enemyCount, v);
+			}
+			else
+			{
+				out.allyTotal++;
+				SnapInsertNearest<UnitView, kSnapMaxUnits>(out.allies, out.allyCount, v);
+			}
+		}
+
+		for (int i = 0; i < npcs.Count(); i++)
+		{
+			const NpcObs & n = npcs.At(i);
+
+			NpcView v;
+			memset(&v, 0, sizeof(v));
+			v.id = n.id;
+			v.protoId = n.protoId;
+			v.type = n.type;
+			v.nation = n.nation;
+			v.level = n.level;
+			v.x = n.x10 / 10.0f;
+			v.z = n.z10 / 10.0f;
+			float dx = v.x - self.x;
+			float dz = v.z - self.z;
+			v.dist = std::sqrt(dx * dx + dz * dz);
+			v.dead = n.dead;
+			v.gateOpen = n.gateOpen;
+			uint64_t age = nowMs > n.lastSeenMs ? nowMs - n.lastSeenMs : 0;
+			v.ageMs = age > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)age;
+
+			out.npcTotal++;
+			SnapInsertNearest<NpcView, kSnapMaxNpcs>(out.npcs, out.npcCount, v);
+		}
 	}
 }

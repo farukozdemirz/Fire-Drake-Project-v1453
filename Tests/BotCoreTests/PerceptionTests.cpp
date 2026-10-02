@@ -954,3 +954,252 @@ TEST_CASE("Perception_CheckNpcIn")
 	c.sinceLastMs = 0;
 	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
 }
+
+static BotCore::SelfState MakeSelf()
+{
+	BotCore::SelfState s;
+	memset(&s, 0, sizeof(s));
+	s.sid = 1;
+	s.nation = 1;
+	s.x = 1000.0f;
+	s.z = 1000.0f;
+	s.hp = s.maxHp = 5000;
+	s.mp = s.maxMp = 3000;
+	return s;
+}
+
+TEST_CASE("Perception_Snapshot_Split")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	{
+		BotCore::UnitObs u = MakeUnit(1);       // the bot itself: skipped
+		u.nation = 1;
+		u.x10 = 10000;
+		u.z10 = 10000;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(2);       // ally, dist 5
+		u.nation = 1;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(3);       // enemy, dist 10
+		u.nation = 2;
+		u.cls = 205;
+		u.level = 77;
+		u.race = 12;
+		u.partyLeader = true;
+		u.invisibility = 3;
+		u.resHpType = 3;                        // dead
+		u.x10 = 10060;
+		u.z10 = 10080;
+		u.lastSeenMs = 4750;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(4);       // enemy, dist 50, sitting
+		u.nation = 2;
+		u.resHpType = 2;                        // sitting
+		u.x10 = 10300;
+		u.z10 = 10400;
+		u.lastSeenMs = 6000;                    // ahead of the snapshot clock
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 5000, out);
+
+	CHECK_EQ(out.tMs, (uint64_t)5000);
+	CHECK_EQ(int(out.self.sid), 1);
+	CHECK_EQ(out.self.hp, 5000);
+	CHECK_EQ(out.enemyCount, 2);
+	CHECK_EQ(out.enemyTotal, 2);
+	CHECK_EQ(out.allyCount, 1);
+	CHECK_EQ(out.allyTotal, 1);
+	CHECK_EQ(out.npcCount, 0);
+
+	CHECK_EQ(int(out.enemies[0].id), 3);
+	CHECK(out.enemies[0].dist == 10.0f);
+	CHECK_EQ(int(out.enemies[0].cls), 205);
+	CHECK_EQ(int(out.enemies[0].level), 77);
+	CHECK_EQ(int(out.enemies[0].race), 12);
+	CHECK(out.enemies[0].partyLeader);
+	CHECK_EQ(int(out.enemies[0].invisibility), 3);   // raw byte, not filtered
+	CHECK(out.enemies[0].dead);
+	CHECK(!out.enemies[0].sitting);
+	CHECK_EQ(out.enemies[0].ageMs, 250u);
+
+	CHECK_EQ(int(out.enemies[1].id), 4);
+	CHECK(out.enemies[1].dist == 50.0f);
+	CHECK(out.enemies[1].sitting);
+	CHECK(!out.enemies[1].dead);
+	CHECK_EQ(out.enemies[1].ageMs, 0u);
+
+	CHECK_EQ(int(out.allies[0].id), 2);
+	CHECK(out.allies[0].dist == 5.0f);
+	CHECK(out.allies[0].x == 1003.0f);
+	CHECK(out.allies[0].z == 1004.0f);
+
+	// ageMs is clamped to 32 bits when the packet clock is far behind.
+	{
+		BotCore::ObsTable old;
+		BotCore::UnitObs u = MakeUnit(9);
+		u.nation = 2;
+		u.x10 = 10000;
+		u.z10 = 10000;
+		u.lastSeenMs = 0;
+		old.Upsert(u);
+
+		BotCore::PerceptionSnapshot clip;
+		BotCore::BuildSnapshot(self, old, npcs, 0x100000000ULL + 5, clip);
+		CHECK_EQ(clip.enemyCount, 1);
+		CHECK_EQ(clip.enemies[0].ageMs, 0xFFFFFFFFu);
+	}
+}
+
+TEST_CASE("Perception_Snapshot_OrderCap")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	for (int i = 0; i < 40; i++)   // added far to near: i=0 -> dist 40, i=39 -> dist 1
+	{
+		BotCore::UnitObs u = MakeUnit((uint16_t)(100 + i));
+		u.nation = 2;
+		u.x10 = (uint16_t)(10000 + 10 * (40 - i));
+		u.z10 = 10000;
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.enemyTotal, 40);
+	CHECK_EQ(out.enemyCount, 32);
+	CHECK(out.enemies[0].dist == 1.0f);
+	CHECK_EQ(int(out.enemies[0].id), 139);
+	CHECK(out.enemies[31].dist == 32.0f);
+	CHECK_EQ(int(out.enemies[31].id), 108);
+	for (int i = 0; i < out.enemyCount - 1; i++)
+		CHECK(out.enemies[i].dist < out.enemies[i + 1].dist);
+
+	// A second call with empty tables reuses (and clears) the same output.
+	BotCore::ObsTable emptyObs;
+	BotCore::NpcTable emptyNpcs;
+	BotCore::BuildSnapshot(self, emptyObs, emptyNpcs, 2000, out);
+	CHECK_EQ(out.enemyCount, 0);
+	CHECK_EQ(out.enemyTotal, 0);
+}
+
+TEST_CASE("Perception_Snapshot_TieAndNation")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	{
+		BotCore::UnitObs u = MakeUnit(20);      // enemy (nation 2), dist 5
+		u.nation = 2;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(10);      // enemy (nation 2), dist 5
+		u.nation = 2;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(30);      // ally (nation 1)
+		u.nation = 1;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.enemyCount, 2);
+	CHECK_EQ(int(out.enemies[0].id), 10);       // tie on dist: lower id first
+	CHECK_EQ(int(out.enemies[1].id), 20);
+	CHECK_EQ(out.allyCount, 1);
+	CHECK_EQ(int(out.allies[0].id), 30);
+
+	// Classification follows the bot's own nation.
+	self.nation = 2;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+	CHECK_EQ(out.enemyCount, 1);
+	CHECK_EQ(int(out.enemies[0].id), 30);
+	CHECK_EQ(out.allyCount, 2);
+	CHECK_EQ(int(out.allies[0].id), 10);
+	CHECK_EQ(int(out.allies[1].id), 20);
+}
+
+TEST_CASE("Perception_Snapshot_Npcs")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+	BotCore::NpcTable npcs;
+
+	for (int i = 0; i < 40; i++)   // added far to near: i=0 -> dist 40, i=39 -> dist 1
+	{
+		BotCore::NpcObs n = MakeNpc((uint16_t)(10001 + i));
+		n.x10 = (uint16_t)(10000 + 10 * (40 - i));
+		n.z10 = 10000;
+		npcs.Upsert(n);
+	}
+
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.npcTotal, 40);
+	CHECK_EQ(out.npcCount, 32);
+	CHECK(out.npcs[0].dist == 1.0f);
+	CHECK_EQ(int(out.npcs[0].id), 10040);
+	CHECK(out.npcs[31].dist == 32.0f);
+	CHECK_EQ(int(out.npcs[31].id), 10009);
+	for (int i = 0; i < out.npcCount - 1; i++)
+		CHECK(out.npcs[i].dist < out.npcs[i + 1].dist);
+
+	// A small NPC with all view fields set; a dead NPC stays in the list.
+	BotCore::NpcTable one;
+	{
+		BotCore::NpcObs n = MakeNpc(20001);
+		n.protoId = 5400;
+		n.type = 62;
+		n.nation = 1;
+		n.level = 60;
+		n.x10 = 10030;
+		n.z10 = 10040;
+		n.dead = true;
+		n.gateOpen = true;
+		n.lastSeenMs = 900;                     // nowMs 1000 -> age 100
+		one.Upsert(n);
+	}
+
+	BotCore::PerceptionSnapshot small;
+	BotCore::BuildSnapshot(self, obs, one, 1000, small);
+
+	CHECK_EQ(small.npcCount, 1);
+	CHECK_EQ(int(small.npcs[0].id), 20001);
+	CHECK_EQ(int(small.npcs[0].protoId), 5400);
+	CHECK_EQ(int(small.npcs[0].type), 62);
+	CHECK_EQ(int(small.npcs[0].nation), 1);
+	CHECK_EQ(int(small.npcs[0].level), 60);
+	CHECK(small.npcs[0].dead);
+	CHECK(small.npcs[0].gateOpen);
+	CHECK(small.npcs[0].dist == 5.0f);
+	CHECK_EQ(small.npcs[0].ageMs, 100u);
+	CHECK_EQ(small.enemyTotal, 0);
+	CHECK_EQ(small.allyTotal, 0);
+}
