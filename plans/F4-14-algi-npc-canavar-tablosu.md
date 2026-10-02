@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `03a5e72`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-14` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ByteReader`, `ParseRegionList`, `ObsTable`, `OnPacket()` algı bloğu, `m_obsLock`) — `KAPANDI` (merge `dcd8f80`); F4-13 (`PendingIds`, `m_obsPending`) — `KAPANDI` (merge `f1acc48`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
