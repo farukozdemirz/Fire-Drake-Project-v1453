@@ -499,4 +499,65 @@ namespace BotCore
 
 		return PARTYACCEPT_OK;
 	}
+
+	// --- party decline / leave slice (ADR-0017 Ek F4-09) ---
+
+	constexpr uint32_t kPartyDeclineMinMs = 1000;   // docs/03 CLI-16: reading the invitation popup and clicking decline takes a human at least this long [A] (unmeasured)
+	constexpr uint32_t kPartyLeaveMinMs = 1000;     // docs/03 CLI-16: a human needs at least this long between entering a party and leaving it [A] (unmeasured)
+
+	struct PartyDeclineCheck
+	{
+		uint32_t sinceInviteMs;   // since the invitation reached the bot
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PartyDeclineVerdict
+	{
+		PARTYDECLINE_OK = 0,
+		PARTYDECLINE_REJECT_WAIT = 1,   // CLI-16 (declined before kPartyDeclineMinMs after the invitation arrived)
+		PARTYDECLINE_REJECT_RATE = 2    // CLI-11
+	};
+
+	// Guard rule for declining an invitation. The caller has already checked that an invitation is pending. Order: wait, rate.
+	inline PartyDeclineVerdict CheckPartyDecline(const PartyDeclineCheck & c);
+
+	struct PartyLeaveCheck
+	{
+		bool hasEntered;          // the bot created or joined a party in this spawn (the entry time is known)
+		uint32_t sinceEnteredMs;  // since that entry
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PartyLeaveVerdict
+	{
+		PARTYLEAVE_OK = 0,
+		PARTYLEAVE_REJECT_WAIT = 1,   // CLI-16 (leaving before kPartyLeaveMinMs after entering the party)
+		PARTYLEAVE_REJECT_RATE = 2    // CLI-11
+	};
+
+	// Guard rule for leaving a party. The caller has already checked that the bot is in a party with no invitation pending.
+	// Order: wait (only when the entry time is known), rate.
+	inline PartyLeaveVerdict CheckPartyLeave(const PartyLeaveCheck & c);
+
+	inline PartyDeclineVerdict CheckPartyDecline(const PartyDeclineCheck & c)
+	{
+		if (c.sinceInviteMs < kPartyDeclineMinMs)
+			return PARTYDECLINE_REJECT_WAIT;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return PARTYDECLINE_REJECT_RATE;
+
+		return PARTYDECLINE_OK;
+	}
+
+	inline PartyLeaveVerdict CheckPartyLeave(const PartyLeaveCheck & c)
+	{
+		if (c.hasEntered && c.sinceEnteredMs < kPartyLeaveMinMs)
+			return PARTYLEAVE_REJECT_WAIT;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return PARTYLEAVE_REJECT_RATE;
+
+		return PARTYLEAVE_OK;
+	}
 }

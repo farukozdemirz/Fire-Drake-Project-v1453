@@ -658,3 +658,76 @@ TEST_CASE("Combat_PartyAcceptCheck")
 
 	CHECK_EQ((int)BotCore::kPartyAcceptMinMs, 1000);
 }
+
+TEST_CASE("Combat_PartyDeclineCheck")
+{
+	BotCore::PartyDeclineCheck c;
+	c.sinceInviteMs = 999;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_REJECT_WAIT);
+
+	c.sinceInviteMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_OK);
+
+	c.sinceInviteMs = 0;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_REJECT_WAIT);
+
+	c.sinceInviteMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_REJECT_WAIT);
+
+	c.sinceInviteMs = 1000;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_REJECT_RATE);
+
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyDecline(c), (int)BotCore::PARTYDECLINE_OK);
+
+	CHECK_EQ((int)BotCore::kPartyDeclineMinMs, 1000);
+}
+
+TEST_CASE("Combat_PartyLeaveCheck_Order")
+{
+	BotCore::PartyLeaveCheck c;
+	c.hasEntered = true;
+	c.sinceEnteredMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_WAIT);
+
+	c.sinceEnteredMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_RATE);
+
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_OK);
+
+	c.hasEntered = false;
+	c.sinceEnteredMs = 0;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_OK);
+
+	c.hasEntered = false;
+	c.sinceEnteredMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_RATE);
+}
+
+TEST_CASE("Combat_PartyLeaveCheck_Boundaries")
+{
+	BotCore::PartyLeaveCheck c;
+	c.hasEntered = true;
+	c.sinceEnteredMs = 999;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_WAIT);
+
+	c.sinceEnteredMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_OK);
+
+	CHECK_EQ((int)BotCore::kPartyLeaveMinMs, 1000);
+
+	c.sinceEnteredMs = 1000;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_OK);
+
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_RATE);
+}

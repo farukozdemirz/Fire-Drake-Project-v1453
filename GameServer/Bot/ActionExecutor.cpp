@@ -1885,6 +1885,12 @@ PartyOutcome ActionExecutor::RequestPartyInvite(BotSession * s, const PartyInvit
 			reason = "no_result";
 			failed = true;
 		}
+
+		if (created)
+		{
+			s->m_partyEnteredHasAt = true;
+			s->m_partyEnteredAt = now;
+		}
 	}
 	else
 	{
@@ -2012,6 +2018,8 @@ PartyOutcome ActionExecutor::RequestPartyAccept(BotSession * s, std::chrono::ste
 	{
 		out.kind = PartyOutcome::SENT;
 		out.reason = "joined";
+		s->m_partyEnteredHasAt = true;
+		s->m_partyEnteredAt = now;
 	}
 	else
 	{
@@ -2019,5 +2027,261 @@ PartyOutcome ActionExecutor::RequestPartyAccept(BotSession * s, std::chrono::ste
 		out.reason = "no_result";
 	}
 	out.peerId = inviter;
+	return out;
+}
+
+// --- party decline / leave slice (ADR-0017 Ek F4-09) ---
+
+// Maps a party decline guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PartyOutcome RejectPartyDecline(BotSession * s, CUser * user, BotCore::PartyDeclineVerdict verdict,
+	const BotCore::PartyDeclineCheck & c, int peerId)
+{
+	const char * rule = "CLI-16";
+	const char * reason = "decline_wait";
+	float value = (float)c.sinceInviteMs;
+	float limit = (float)BotCore::kPartyDeclineMinMs;
+
+	if (verdict == BotCore::PARTYDECLINE_REJECT_RATE)
+	{
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "PartyDecline", rule, reason, value, limit);
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::REFUSED;
+	out.reason = reason;
+	out.peerId = peerId;
+	return out;
+}
+
+// Maps a party leave guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PartyOutcome RejectPartyLeave(BotSession * s, CUser * user, BotCore::PartyLeaveVerdict verdict,
+	const BotCore::PartyLeaveCheck & c)
+{
+	const char * rule = "CLI-16";
+	const char * reason = "leave_wait";
+	float value = (float)c.sinceEnteredMs;
+	float limit = (float)BotCore::kPartyLeaveMinMs;
+
+	if (verdict == BotCore::PARTYLEAVE_REJECT_RATE)
+	{
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "PartyLeave", rule, reason, value, limit);
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::REFUSED;
+	out.reason = reason;
+	out.peerId = -1;
+	return out;
+}
+
+PartyOutcome ActionExecutor::RequestPartyDecline(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	PartyOutcome out;
+	out.kind = PartyOutcome::NOTHING;
+	out.reason = "ok";
+	out.peerId = -1;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// The pending invitation is the one OnPacket() recorded; none -> refuse without an event.
+	uint64 inv = s->m_partyInviteEcho.load();
+	if ((inv & (1ull << 63)) == 0)
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "no_invite";
+		return out;
+	}
+	int inviter = (int)(inv & 0xFFFF);
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	uint64 invMs = s->m_partyInviteAtMs.load();
+	uint32 sinceInviteMs = nowMs >= invMs ? (uint32)(nowMs - invMs) : 0;
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	BotCore::PartyDeclineCheck c;
+	c.sinceInviteMs = sinceInviteMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::PartyDeclineVerdict verdict = BotCore::CheckPartyDecline(c);
+	if (verdict != BotCore::PARTYDECLINE_OK)
+		return RejectPartyDecline(s, user, verdict, c, inviter);
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyDecline\",\"inviter\":" + std::to_string(inviter);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 sub-opcode + u8 permit (PartyHandler.cpp:28-31).
+	Packet pkt(WIZ_PARTY, uint8(PARTY_PERMIT));
+	pkt << uint8(0);
+
+	s->m_castSelfId = user->GetID();
+	s->m_partyInviteEcho = 0;   // the invitation is consumed
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+
+	// The server sends the decliner no reply (it answers the leader), so the result is only "the packet went out" ([A]).
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyDecline\""
+			+ ",\"ok\":true"
+			+ ",\"reason\":\"declined\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"inviter\":" + std::to_string(inviter);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	out.kind = PartyOutcome::SENT;
+	out.reason = "declined";
+	out.peerId = inviter;
+	return out;
+}
+
+PartyOutcome ActionExecutor::RequestPartyLeave(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	PartyOutcome out;
+	out.kind = PartyOutcome::NOTHING;
+	out.reason = "ok";
+	out.peerId = -1;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// Preconditions (no event): an invitation must be accepted or declined first, and the bot must be in a party.
+	if ((s->m_partyInviteEcho.load() & (1ull << 63)) != 0)
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "invite_pending";
+		return out;
+	}
+	if (!user->isInParty())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_party";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	uint32 sinceEnteredMs = 0;
+	if (s->m_partyEnteredHasAt)
+		sinceEnteredMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_partyEnteredAt).count();
+
+	BotCore::PartyLeaveCheck c;
+	c.hasEntered = s->m_partyEnteredHasAt;
+	c.sinceEnteredMs = sinceEnteredMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::PartyLeaveVerdict verdict = BotCore::CheckPartyLeave(c);
+	if (verdict != BotCore::PARTYLEAVE_OK)
+		return RejectPartyLeave(s, user, verdict, c);
+
+	// Leader is only a telemetry field; it is read before the request and never used for the result.
+	bool asLeader = user->isPartyLeader();
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyLeave\",\"as_leader\":" + (asLeader ? "true" : "false");
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 sub-opcode + u16 member id (PartyHandler.cpp:38-40).
+	Packet pkt(WIZ_PARTY, uint8(PARTY_REMOVE));
+	pkt << uint16(user->GetID());
+
+	s->m_castSelfId = user->GetID();
+	s->m_partyLeaveEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+
+	// Result only from published replies: the bot's own PARTY_REMOVE (kind 1, sid == its id) or a disband broadcast (kind 2).
+	uint64 l = s->m_partyLeaveEcho.load();
+	bool gotRemove = (l & (1ull << 63)) != 0
+		&& ((l >> 16) & 0xFF) == 1
+		&& (int)(l & 0xFFFF) == (int)user->GetID();
+	bool gotDelete = (l & (1ull << 63)) != 0
+		&& ((l >> 16) & 0xFF) == 2;
+	bool ok = gotRemove || gotDelete;
+	const char * reason = gotRemove ? "left" : (gotDelete ? "disbanded" : "no_result");
+
+	if (ok)
+		s->m_partyEnteredHasAt = false;
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyLeave\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (ok)
+	{
+		out.kind = PartyOutcome::SENT;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = PartyOutcome::FAILED;
+		out.reason = reason;
+	}
+	out.peerId = -1;
 	return out;
 }

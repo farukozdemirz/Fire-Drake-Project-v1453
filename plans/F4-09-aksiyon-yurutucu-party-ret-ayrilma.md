@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-09` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-08 (`PartyOutcome`, `m_partyInviteEcho`/`m_partyInviteAtMs` kayıtları, `OnPacket()` `WIZ_PARTY` bloğu, `RejectParty*` kalıbı) — `KAPANDI` (merge `851afdc`); F4-07, F4-01 — `KAPANDI` |
@@ -289,35 +289,65 @@ git diff --check gece/2026-10-02...bot/F4-09
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-09` — `<kısa-sha> [F4-09] …`
+- Branch / commit'ler: `bot/F4-09` — `6b31acb [F4-09] PartyDecline/PartyLeave dilimi: guard, aksiyonlar ve komutlar` (+ bu rapor/Durum commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `kPartyDeclineMinMs`/`kPartyLeaveMinMs`, `PartyDeclineCheck`/`PartyDeclineVerdict`/`CheckPartyDecline`, `PartyLeaveCheck`/`PartyLeaveVerdict`/`CheckPartyLeave` (yalnızca ekleme; `#include` değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_PartyDeclineCheck`, `Combat_PartyLeaveCheck_Order`, `Combat_PartyLeaveCheck_Boundaries` (dosya sonuna ekleme).
+  - `GameServer/Bot/ActionExecutor.h`: `PartyOutcome::reason` yorumu genişletildi; `RequestPartyDecline`/`RequestPartyLeave` bildirimleri.
+  - `GameServer/Bot/ActionExecutor.cpp`: F4-08'in `created`/`joined` başarı dallarına party giriş zamanı; dosya sonuna `RejectPartyDecline`/`RejectPartyLeave` + `RequestPartyDecline`/`RequestPartyLeave` (tamamı ekleme; `grep '^-'` boş).
+  - `GameServer/Bot/BotSession.h/.cpp`: `m_partyEnteredHasAt`/`m_partyEnteredAt`, `m_partyLeaveEcho`; başlatıcı listesi, `ResetForRespawn()`, `OnPacket()` `WIZ_PARTY` bloğuna `else if` (PARTY_REMOVE/PARTY_DELETE) ve yorum satırları eklendi.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandPartyDecline`/`CommandPartyLeave`; `pdecline`/`pleave` fiil dağıtımı ve `unknown command` listesi.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `Release`/`Debug` rc=0; `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp`, `BotCombat.h` için uyarı yok (yalnızca eski `GameServerDlg.cpp:816/1143/1802` uyarıları).
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔ (`39 tests, 0 failed`, Release+Debug; üç yeni ad çıktıda), K4 ✔ (grep'ler boş; `#include` yalnızca `<algorithm>`/`<cstdint>`), K5 ✔ (`WIZ_PARTY` yalnızca `ActionExecutor.cpp` 4 satır + `BotSession.cpp` 1; sunucu party sembol grep'i boş), K6 ✔ (`PARTY_DELETE`/`PARTY_PROMOTE` grep'i boş; `HandlePacket` her fonksiyonda tek; guard sırası plana uygun), K7 ✔ (`isInParty`/`isPartyLeader` yalnızca 1816/1817 + 2200/2226, hepsi `HandlePacket`'tan önce; `m_sHp` vb. yok), K8 ✔ (`ActionExecutor.cpp` `-` boş; `BotSession.cpp` `-` yalnızca başlatıcı listesi satırı), K9 ✔ (`BotManager.cpp` `-` yalnızca `unknown command` satırı), K10 ✔ (tam olarak §4'teki 8 dosya; dört vcxproj farkı boş; `Bot/` dışında GameServer dosyası yok), K11 ✔ (`file` hepsi ASCII+CRLF; `git diff --check` boş), K12 ✔ (`printf`/`Sleep`/`mutex`/`rand(`/`SByte`/`DByte` yok; `\"mode\"` yok), K13 ✔ (tüm `Check*` sayaçları beklenen; `39 tests, 0 failed`). K14 çalışma zamanı Claude'da.
+- Plandan sapmalar ve gerekçeleri: `ActionExecutor.cpp`'de `RequestPartyInvite`'ın `if (created)` gövdesi süslü parantezsiz tek satır olduğundan, giriş zamanı atamaları (`m_partyEnteredHasAt`/`m_partyEnteredAt`) mevcut `if/else` bloğunun hemen ardından ayrı bir `if (created) { ... }` bloğuyla eklendi. Böylece plandaki "başka satır değişmez / yalnızca ekleme" (K8) şartı korunurken davranış birebir aynı kaldı (atamalar yalnızca `created` iken yapılır). `RequestPartyAccept`'ta `joined` dalı süslü olduğundan atamalar doğrudan dalın içine eklendi.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-09` @ `<sha>`
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F4-09` @ `5dd0177` (uygulama commit'i `6b31acb`; taban `gece/2026-10-02`; gece modu, `AUTO_LOOP=1`: birleştirme/push yapılmadı). Çalışma ağacı temizdi; sunucular kapalıydı (`0/3 hazır`).
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `tools/build.sh Release` rc=0; log'da `warning` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0; log'da `warning` 0 |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug`: `39 tests, 0 failed`; `Combat_PartyDeclineCheck`, `Combat_PartyLeaveCheck_Order`, `Combat_PartyLeaveCheck_Boundaries` `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>` (`:6`), `<cstdint>` (`:7`); eklenen satırlarda `std::min/max` yok |
+| K5 | ✔ | `WIZ_PARTY` yalnızca `ActionExecutor.cpp:1840` (F4-08), `:1984`, `:2139`, `:2238` ve `BotSession.cpp:108`; sunucu party sembolleri deseni (`PartyRequest\|PartyInsert\|...\|StateChangeServerDirect`) `Bot/*.cpp,*.h` içinde boş |
+| K6 | ✔ | `RequestPartyDecline`: `no_invite` (`:2110`) → `CheckPartyDecline` `:2125` → `!= OK` erken dönüş → `HandlePacket` `:2146`; `RequestPartyLeave`: `invite_pending`/`not_in_party` (`:2197`, `:2203`) → `CheckPartyLeave` `:2221` → erken dönüş → `HandlePacket` `:2245`; her fonksiyonda tek `HandlePacket`; paketler `PARTY_PERMIT`+`uint8(0)` ve `PARTY_REMOVE`+`uint16(user->GetID())`; `PARTY_DELETE\|PARTY_PROMOTE` `ActionExecutor.cpp`'de boş. Çalışma zamanı: reddedilen `decline_wait`/`leave_wait`/`rate` durumlarında JSONL'de `ACTION_SUBMIT` yok |
+| K7 | ✔ | `isInParty`/`isPartyLeader` yalnızca `:1816-1817` (F4-08), `:2200`, `:2226`, üçü de `HandlePacket`'tan önce; ayrılma sonucu yalnızca `m_partyLeaveEcho`'dan (`:2252-2262`); `m_sHp\|m_iMaxHp\|GetHealth\|GetMaxHealth` boş |
+| K8 | ✔ | `ActionExecutor.cpp` silinen satır yok (yalnızca ekleme); `BotSession.cpp` silinen tek satır başlatıcı listesindeki `m_partyInviteAtMs(0)...m_partyJoinEcho(0)` satırı (sona `,` + `m_partyLeaveEcho(0)` eklendi); `OnPacket()` mevcut dalları aynı |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı; `Tick()`/`TickSessions()`/`BuildStatusLines()`/`BeginDespawn()`/ini okuma farkta yok |
+| K10 | ✔ | `diff --stat`: §4'teki 8 dosya + plan dosyası; dört `.vcxproj`/`.filters` farkı boş; `Bot/` dışında dosya yok |
+| K11 | ✔ | `file`: 8 dosya `ASCII text, with CRLF line terminators`; `git diff --check` rc=0 |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(\|SByte\|DByte` ve `\"mode\"` `ActionExecutor.*`'de boş |
+| K13 | ✔ | `CheckMoveStep` 2; `CheckAttack`/`CheckCastStart`/`CheckPotion`/`CheckStance`/`CheckTargetHp`/`CheckRegene`/`CheckPartyInvite`/`CheckPartyAccept` 1'er; `EmitFairnessReject` tipleri `Cast`/`Potion`/`State`/`TargetHp`/`Regene`/`PartyInvite`/`PartyAccept` + yeni `PartyDecline`/`PartyLeave`; önceki 36 test geçiyor |
+| K14 | ✔ | Çalışma zamanı §7 senaryoları 1–7 geçti (aşağıda; sınanmayanlar notlarda) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- **Çalışma zamanı (K14, Release, AIServer bağlı, `TELEMETRY=decisions`, zone 71; `BotWP_K` #2984 lider, `BotMF_K` #2985, `BotPHD_K` #2986, `BotWG_K` #2987; komut dosyaları `/tmp/cmd.sh` ile, dosyalar arası ≥ 1,3 sn):**
+  1. Ret: `pinvite BotWP_K BotMF_K` → `created`; aynı dosyada `pdecline BotMF_K` → `refused (decline_wait)`, `FAIRNESS_REJECT` `CLI-16 decline_wait value:1.00 limit:1000.00`, `PartyDecline` `ACTION_SUBMIT` yok; sonraki dosyada `pdecline` → `declined invitation of #2984`, `ACTION_SUBMIT` (`inviter:2984`) → `ACTION_RESULT` (`ok:true`, `reason:"declined"`, `latency_us:62`); tekrar → `refused (no_invite)`, JSONL'de olay yok. **Dolaylı kanıt:** ardından `pinvite BotWP_K BotMF_K` → `created` (`failed (refused_target)` değil: KI-014 bot tarafında çözüldü) ve `paccept BotMF_K` → `joined`.
+  2. Üye ayrılması (3 üyeli): `pinvite WP PHD` → `sent`; `paccept BotPHD_K` + aynı dosyada `pleave BotPHD_K` → `refused (leave_wait)` (`CLI-16 leave_wait value:0.00 limit:1000.00`, JSONL'de `ACTION_SUBMIT` yok); `pleave BotMF_K` → `left` (`as_leader:false`, `ok:true`, `latency_us:32`); tekrar → `refused (not_in_party)`, olay yok. **Dolaylı kanıt:** `pinvite WP MF` → `sent`, `paccept` → `joined`; `BotPHD_K` hâlâ üyeydi, `pleave BotPHD_K` → `left`.
+  3. İki kişilik party: `pleave BotMF_K` → `disbanded` (`ACTION_RESULT` `reason:"disbanded"`); `pleave BotWP_K` → `refused (not_in_party)`.
+  4. Lider: WP + MF + PHD; `pleave BotWP_K` → `disbanded` (`as_leader:true`, `latency_us:51`); `pleave BotMF_K`, `pleave BotPHD_K` → ikisi `refused (not_in_party)` (MEC-PTY-03).
+  5. Ön koşul/guard: `pinvite WP WG` (kabulsüz) → `pleave BotWG_K` → `refused (invite_pending)`, olay yok; `pdecline BotWG_K` → `declined invitation of #2984`; `pleave BotPHD_K` (party'siz) → `refused (not_in_party)`; **CLI-11:** aynı dosyada altı `target` + `pleave BotWP_K` (party'de, eski giriş) → `refused (rate)`, `FAIRNESS_REJECT` `CLI-11 rate value:6.00 limit:6.00`. Ölü bot sınanmadı (bkz. not 2).
+  6. Ömür/komut: `despawn BotMF_K` sonrası `pleave`/`pdecline BotMF_K` → `not in game (phase despawned)`; `pdecline Ghost`/`pleave Ghost` → `unknown or not spawned bot '?'`; argümansız ve fazla argümanlı iki komut → kullanım satırı (tek satır); lider `BotWP_K` ve üye `BotMF_K` `despawn` edildi: sunucu çökmedi, `GameServer.log` 32→32 satır, AIServer bağlı, `list` doğru.
+  7. Gerilemesiz: `sit`/`stand` (`sat down`/`stood up`), `regene` (`refused (not_dead)`), `target` (altı ardışık `observed ... hp`), `pinvite`/`paccept` önceki çıktıyı verdi; `PERF_SAMPLE` `tick_p95_us` 92 ve 326 (≤ 1 ms; `tick_p99_us` 2,3 ms tek örnek, `skipped_ticks` 0); sunucu 3/3 UP.
+- Bulgular: yok (engelleyici bulgu yok). Notlar:
+  1. **[Not] Sapma kabul edildi:** `RequestPartyInvite`'ta `created` giriş zamanı atamaları (`ActionExecutor.cpp:1889-1893`) `if (created) reason = "created"; else {...}` zincirinin ardında ayrı bir `if (created)` bloğu olarak eklendi (planın "iki satır ekleme" ifadesi dalın içindeydi, ama dal süslüsüz tek satır olduğundan K8'in "yalnızca ekleme" şartı bunu gerektiriyordu). Davranış aynı; üslup olarak ileride iki dalı birleştirmek mümkün.
+  2. **[Not] Sınanmadı:** öldürülerek ölü bot (`pdecline`/`pleave` → `refused (dead)`; kod `RequestPartyAccept`'taki `isDead()` dalıyla aynı), `RESPAWN_CYCLES=2` reddi (bu planda `ExecuteCommand` reddine dokunulmadı), `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanı (yeni kod yalnızca komutla ve `PHASE_IN_GAME` oturumunda erişilir; `Tick()`/ini okuma farkta yok).
+  3. **[Not]** `SENT "declined"` `[A]`: sunucu reddedene paket yollamaz; ret işlendiği yalnızca dolaylı (hedefin yeniden davet edilebilmesi) kanıtlandı. `Send_PartyMember` cevaplarının ayrılan botun kendi alıcısına geldiği teyit edildi (`left`/`disbanded` üç farklı yolda üretildi; `no_result` hiç görülmedi) `[V]`.
+  4. **[Not]** İnsan testleri bekliyor: `T-ARCH-14` (gerçek istemcide ret/ayrılma görünürlüğü) ve `T-PARTY-02` (CLI-16 alt sınırları, liderin ayrılırken kullandığı alt-opcode) `docs/STATUS.md` "Proje sahibi testleri".
+- Temizlik: `GameServer.ini` değişmedi (md5 `265a8e1c35ea12df46f6d006fe894d9b`, doğrulama öncesi aynı); `BotCommands.txt` tüketildi; `Logs/bots` → `Logs/bots_old_f409`; sunucular kapatıldı (`0/3 hazır`); dört bot satırı hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000`, `Loyalty=1000` geri yazıldı (4 satır; kişisel veri tablosu okunmadı).
+- Birleştirme: gece modu, döngü betiği `gece/2026-10-02`'ye birleştirir; bu oturumda birleştirme/push yapılmadı.

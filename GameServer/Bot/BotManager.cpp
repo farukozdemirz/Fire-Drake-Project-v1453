@@ -640,10 +640,14 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandPartyInvite(args);
 	else if (_stricmp(verb.c_str(), "paccept") == 0)
 		CommandPartyAccept(args);
+	else if (_stricmp(verb.c_str(), "pdecline") == 0)
+		CommandPartyDecline(args);
+	else if (_stricmp(verb.c_str(), "pleave") == 0)
+		CommandPartyLeave(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1974,6 +1978,100 @@ void BotManager::CommandPartyAccept(const std::string & args)
 	else
 		snprintf(message, sizeof(message),
 			"BotManager: cmd paccept: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandPartyDecline(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd pdecline: usage: pdecline <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pdecline: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pdecline: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	PartyOutcome outcome = ActionExecutor::RequestPartyDecline(s, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == PartyOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pdecline: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == PartyOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pdecline: %s declined invitation of #%d", s->m_charName.c_str(), outcome.peerId);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pdecline: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandPartyLeave(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd pleave: usage: pleave <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pleave: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pleave: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	PartyOutcome outcome = ActionExecutor::RequestPartyLeave(s, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == PartyOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pleave: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == PartyOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pleave: %s %s", s->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pleave: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 
