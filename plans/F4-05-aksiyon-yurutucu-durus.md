@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-04 (pot dilimi, `m_castSelfId` kalıbı) — `KAPANDI`; F4-03 (`BeginCast`) — `KAPANDI`; F4-02 (`m_actionWindow`, `BeginAttack`) — `KAPANDI`; F4-01 (`BeginMove`) — `KAPANDI` |
@@ -284,16 +284,37 @@ git diff --check gece/2026-10-02...bot/F4-05
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-05` — `<kısa-sha> [F4-05] …`
-- Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+- Branch / commit'ler: `bot/F4-05` (taban: `gece/2026-10-02`) — `ccf8b29 [F4-05] StateSit durus dilimi: WIZ_STATE_CHANGE, CLI-13 guard, sit/stand komutlari` (kod + plan Durum); bu rapor/Durum commit'i ayrı.
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/BotCombat.h`: `kStanceToggleMinMs`, `StanceCheck`, `StanceVerdict`, `CheckStance` (yalnızca ekleme, mevcut içerik/`#include` değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_StanceCheck_Order` ve `Combat_StanceCheck_StandIgnoresBusy` (yalnızca ekleme).
+  - `GameServer/Bot/ActionExecutor.h`: `StanceOutcome`; `ActionExecutor::SetStance` bildirimi; `Move/Attack/CastOutcome` `reason` yorumlarına `"sitting"` (yalnızca yorum).
+  - `GameServer/Bot/ActionExecutor.cpp`: üç `Begin*` içine `isDead()` sonrası `sitting` ön koşulu; `RejectStance` + `SetStance` (gerçek `WIZ_STATE_CHANGE` tip 1 + `HandlePacket`, sonuç yalnızca `m_stateEcho` yayınından, CLI-13 guard).
+  - `GameServer/Bot/BotSession.h/.cpp`: `m_stanceHasLast`, `m_stanceLast`, `m_stateEcho`; başlatıcı listesi + `ResetForRespawn()`; `OnPacket()`'e `WIZ_STATE_CHANGE` sonuç bloğu (ekleme).
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandStance` bildirimi/uygulaması, `sit`/`stand` fiil dağıtımı, "unknown command" listesi, `list` satırına `sit=`.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Bot dosyaları yeniden derlendiğinde uyarı 0; tam yeniden derlemede yalnızca eski satırlar (`GameServerDlg.cpp` C4834/C4267, `UpgradeHandler.cpp` C4789). `tools/build.sh Debug`: rc=0. `tools/run-tests.sh Release` ve `Debug`: `28 tests, 0 failed` (iki yeni test dahil).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; BotCombat.h/ActionExecutor.cpp/BotSession.cpp/BotManager.cpp/CombatTests.cpp için uyarı 0.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `28 tests, 0 failed` (Release+Debug); iki yeni test adı çıktıda.
+  - K4 ✔ `grep windows.h|stdafx|GameServer|shared/` BotCombat.h'de eşleşme yok; `#include` yalnızca `<algorithm>`, `<cstdint>`.
+  - K5 ✔ `WIZ_STATE_CHANGE` yalnızca `ActionExecutor.cpp:1360` (paket) ve `BotSession.cpp:62` (okuma); `StateChange`/`StateChangeServerDirect` çağrısı yok; `m_bResHpType` yalnızca okuma, `m_bResHpType\s*=[^=]` boş.
+  - K6 ✔ `CheckStance` (`ActionExecutor.cpp:1346`) `HandlePacket` (`:1367`) öncesinde; `STANCE_OK` dışında `RejectStance` ile erken dönüş; duruşta tek `HandlePacket(pkt)` (`SetStance`).
+  - K7 ✔ `"sitting"` üç yerde (`:187` Move, `:314` Attack, `:694` Cast), hepsi `isDead()` sonrası; `BeginPotion`'da yok.
+  - K8 ✔ `BotSession.cpp` diff'inde `-` yalnızca `m_castSelfId(-1), m_castEcho(0)` başlatıcı satırı; `OnPacket()`'in mevcut blokları değişmedi.
+  - K9 ✔ `BotManager.cpp` diff'inde `-` yalnızca "unknown command" mesajı ve `BuildStatusLines` biçim satırı (2 satır); `Startup/Tick/TickSessions` akışı değişmedi.
+  - K10 ✔ `git diff --stat` yalnızca §4'teki 8 dosya + plan; vcxproj dosyaları değişmedi; `Bot/` dışında değişen yok.
+  - K11 ✔ `file`: tüm değişen dosyalar ASCII + CRLF, BOM yok (öncesiyle aynı); `git diff --check` temiz.
+  - K12 ✔ `ActionExecutor.*` içinde `printf/Sleep/lock_guard/mutex/CreateThread/rand(` yok.
+  - K13 ✔ `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckPotion` ≥ 1; `EmitFairnessReject` türleri `"Move"/"Attack"/"Cast"/"Potion"` + yeni `"State"`; önceki 26 test geçiyor.
+  - K14: Claude'a ait (çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: yok.
+- Açık sorular: yok.
 
 ---
 
