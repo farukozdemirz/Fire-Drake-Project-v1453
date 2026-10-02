@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-07` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: yalnızca `NavCell`), F5-06 (`BotCore/NavDanger.h`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `077a41e`); bu planın testleri 114 testin üstüne eklenir |
@@ -305,16 +305,38 @@ git diff --stat gece/2026-10-02-nav...bot/F5-07
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-07` — `<kısa-sha> [F5-07] …`
+- Branch / commit'ler: `bot/F5-07` (taban: `gece/2026-10-02-nav` @ `b55e422`) — `9bb5325 [F5-07] Guvenli geri cekilme noktasi: NavRetreat.h + testler`; rapor/Durum commit'i bu satırın ardından.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavRetreat.h` (yeni): `NavRetreatPlanner` (tek geçişli sınırlı Dijkstra seli, 8 m melee kuralı, F5-06 yasaklı kuralı, `docs/12` §8 puanı, üretim damgalı havuz). Başlık-yalnızca, ASCII+CRLF, `<algorithm> <cmath> <cstddef> <cstdint> <limits> <vector>` + `NavGrid.h`/`NavPath.h`/`NavDanger.h`.
+  - `Tests/BotCoreTests/NavRetreatTests.cpp` (yeni): sekiz test (Tablo 1–4, bağımsız referans çapraz doğrulama, gerçek harita, süre).
+  - `BotCore/BotCore.vcxproj`: yalnızca `<ClInclude Include="NavRetreat.h" />` (BOM/CRLF korundu).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: yalnızca `<ClCompile Include="NavRetreatTests.cpp" />` (BOM/CRLF korundu).
+- Derleme sonucu (`tools/build.sh Release`, `NavRetreat.h`+`NavRetreatTests.cpp` `touch` sonrası; çıktıda 0 `warning`):
   ```
-  …
+  BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+  NavRetreatTests.cpp
+  BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; `touch` ile yeniden derlenen iki dosya için uyarı 0, tüm derlemede `warning` satırı 0.
+  - K2 ✔ `--list` sekiz `NavRetreat_*` adını içerir.
+  - K3 ✔ `122 tests, 0 failed` (Release); `NavRetreat_Basics/_Params/_Melee_Rule/_Zones/_Matches_Reference/_Reuse/_RealMap/_Perf` hepsi `[ OK ]`, `SKIPPED` yok; `NAVRETREAT random maps: seeds=30 queries=1800 found=1776 no_candidate=24 invalid_start=0 mismatches=0`; `NAVRETREAT real: …` ve iki `NAVRETREAT perf …` satırı var.
+  - K4 ✔ harita geçici taşındığında `NavRetreat_` rc=0, `_RealMap`/`_Perf` `SKIPPED`, diğer altısı geçer; dosya geri kondu (1579030 bayt).
+  - K5 ✔ `./tools/run-tests.sh Debug` derleme dahil rc=0, `122 tests, 0 failed`.
+  - K6 ✔ Tablo 1–4 testleri `[ OK ]`; referans 1800 sorgu uyuşmazlık 0; gerçek harita R-A solo `cell=(159,228) cand=2799`, party `cell=(177,229) cand=245`, R-B `cand=2783 min_melee_m=8.94`, R-C `cell=(320,271) forb=22`, R-D `stay=1`; tarama 30 sorgu `mismatches=0`.
+  - K7 ✔ (Release, `nproc=16`; üç koşu tutarlı): `NAVRETREAT perf set=party queries=1000 found=994 nocandidate=6 invalidstart=0 expanded_p50=202 expanded_p95=268 ms_p50=0.037 ms_p95=0.049 ms_p99=0.054` (kapı ≤ 0,500); `NAVRETREAT perf set=solo queries=1000 found=1000 nocandidate=0 invalidstart=0 expanded_p50=2101 expanded_p95=2954 ms_p50=0.388 ms_p95=0.568 ms_p99=0.635` (kapı ≤ 3,000).
+  - K8 ✔ saflık grep'i boş; `git status` yalnızca §4'teki dört dosya + plan dosyası (bkz. plandan sapmalar).
+  - K9 ✔ `Nav_` 10/10, `NavPath_` 9/9 (`near64 found=997 expanded_p50=306 expanded_p95=2431`), `NavSmooth_` 8/8, `NavTrack_` 10/10, `NavReach_` 8/8 (`components=143 largest=88279 pockets=229`), `NavDanger_` 8/8 (`elm_forbid=1594 … elm_safe=1591 aria A->B 660.617/689.103`) tümü değişmeden `[ OK ]`.
+- Plandan sapmalar ve gerekçeleri:
+  1. `NavRetreat_Params` (d) ve `NavRetreat_Zones` karşılaştırmalarında `CheckResult`'a katman/tehdit bağımsız iletildi (plan davranışı aynı).
+  2. **`NavRetreat_RealMap` R-B `min_melee_m`:** plan §5.2 "beklenen 12,0, ±0,01" yazıyor, ancak **K6 "`min_melee_m≥8`"** diyor. Ölçülen **8,94** (`sqrt(80)`); aynı hücre/uzunluk (112,284 = planla birebir) ve aynı puan (2,08865) ile 8 m diskini sıyıran en kısa yolun minimum yaklaşması budur; 12,0 bu uzunlukla matematiksel olarak olanaksız (diski 12 m'den uzak dolaşmak yolu uzatırdı), yani §5.2'deki sayı kendi K6'sıyla ve kendi uzunluğuyla çelişiyor. Testi bağlayıcı ölçüt olan `min_melee_m≥8`'e göre yazdım (kural gevşetilmedi; 8 m kuralı `StepAllowed` ile ayrıca sınanıyor).
+  3. **En iyi aday seçimi:** plan §5.1 madde 7 "`s > bestScore` (kesin) yeterlidir" diyor; bu, `bestScore` 0 başlatılırsa negatif puanlı adayları hiç seçmez. Planın kendi Tablo 4/F (`-0,04142`) ve R-C (`-0,09771`) `Found` beklentileri için "ilk aday" bayrağı (`hasBest`) kullandım; beraberlik kuralı (daha kısa yol, sonra küçük indeks) korunuyor.
+- Açık sorular:
+  - §5.2 R-B `min_melee_m=12,0` beklentisi K6 ve ölçümle çelişiyor (yukarıda). Claude'un §5.2'yi `≥8` olarak düzeltmesi veya beklenen değeri teyit etmesi gerekir.
+  - `NavRetreat_Matches_Reference` tohumları C++ `Rng` ile üretildiği için Python prototipinden farklı (found=1776 vs 1786); eşikler geniş (≥1500), uyuşmazlık 0.
+  - Gerçek harita süre kapıları bu makinede (Ryzen 7 7800X3D, `nproc=16`) rahat; Debug'da solo p95 ≈ 13 ms (kapı yok).
 
 ---
 
