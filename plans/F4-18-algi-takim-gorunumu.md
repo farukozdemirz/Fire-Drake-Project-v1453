@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-18` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-17 (`SelfState` genişletme, `FillSelfExtras`, `/bot snap`) — `KAPANDI` (merge `6f66164`); F4-16 (`PerceptionSnapshot`, `BuildSnapshot`) — `KAPANDI`; F4-12 (`ObsTable`, `OnPacket()` gözlem kalıbı) — `KAPANDI`; F4-08..F4-10 (party aksiyonları: üyelik oluşturmak için) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -396,6 +396,28 @@ git diff --check gece/2026-10-02...bot/F4-18
 
 - Açık sorular:
   - Yok. (K5'in `OnPacket` alt komutundaki CRLF kaynaklı sed artefaktı yukarıda açıklandı; doğrulamada `tr -d '\r'` eklenmesi ya da blok satır aralığının doğrudan verilmesi yeterli olacaktır.)
+
+### Tur 2
+
+- Durum: UYGULANDI
+
+- Branch / commit'ler: `bot/F4-18` (taban: `gece/2026-10-02`); düzeltme commit'i `f824c15` (`[F4-18] Party üye adı u16 uzunluklu okunuyor (düzeltme)`), ardından bu rapor + `Durum: UYGULANDI` commit'i (henüz atılmadı; rapordan sonra). Push edilmedi.
+
+- Değişen dosyalar ve neden:
+  - `BotCore/Perception.h` (+9/−1): `ParsePartyEvent` `kPartyInsert` dalında üye adı artık `uint16_t nameLen = r.U16();` + uzunluk sınırı (`nameLen > kObsNameMax - 1` → false) + bayt bayt `r.U8()` ile okunuyor ve `m.name[nameLen] = '\0'` ile kapatılıyor; eski 1 baytlık `r.Str(m.name, kObsNameMax)` çağrısı ve onu saran `if` kaldırıldı. Başlık yorumuna "Member name = u16 length + bytes (ByteBuffer default, no SByte())." cümlesi eklendi. Alan sırası ve dalın geri kalanı değişmedi. Yeni include/ByteReader değişikliği yok.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+64/−1): `AddPartyMember` adı `b.U16((uint16_t)strlen(name))` + her karakter için `b.U8(...)` ile yazıyor (`Buf::Str` kullanılmıyor, `Buf`'a yeni yöntem eklenmedi). `Perception_Party_ParseMember` içine (yeni `TEST_CASE` açmadan) dört blok eklendi: (a) elle yazılmış 25 baytlık gerçek sunucu paketi (tüm alanlar + 24 baytlık kesik kopya → false), (b) ad uzunluğu 0 → true ve ad `""`, (c) 23 karakterlik ad → true, 24 karakterlik ad → false, (d) `nameLen = 0xFFFF` → false. Var olan vakalar (flag 0/2, 3 baytlık ret, kesik, nullptr) olduğu gibi kaldı.
+  - `plans/F4-18-algi-takim-gorunumu.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0.
+  - `Perception.h` ve `PerceptionTests.cpp` `touch` edilip her iki yapılandırmada yeniden derlendi; bu iki dosya için **uyarı yok** (derleme günlüklerinde eşleşen `warning`/`error` satırı 0; yalnızca plan dışı eski `UpgradeHandler.cpp` C4789 uyarıları).
+  - `./tools/run-tests.sh Release` ve `Debug`: `76 tests, 0 failed`; `Perception_Party_ParseMember`, `Perception_Party_ParseOthers`, `Perception_Team_Table`, `Perception_Team_Leader`, `Perception_Team_Build` çıktıda; önceki 71 test değişmeden geçti (toplam 76 korundu).
+
+- Kabul kriterleri öz-değerlendirme (istenen dört doğrulama): build Release ✔, build Debug ✔, test Release ✔ (76/0), test Debug ✔ (76/0); iki dosya uyarısız derlendi ✔; `file` çıktısı ASCII + CRLF ✔; `git diff --check` boş ✔; `git diff gece/2026-10-02...bot/F4-18 -- BotCore/Perception.h Tests/BotCoreTests/PerceptionTests.cpp GameServer/Bot/BotSession.h GameServer/Bot/BotSession.cpp | grep '^-' | grep -v '^---'` **boş** ✔ (düzeltme sonrası commit `f824c15` ile). `BotManager.cpp` farkındaki tek `-` satırı hâlâ izinli `(only these two assignments)` yorum satırıdır. K14 (çalışma zamanı) Claude'a ait; yapılmadı.
+
+- Plandan sapmalar: Yok. (Talimattaki `raw[0..23]` kesik paket denemesi `len = 24` ile, `nameLen = 0xFFFF` denemesi ardından iki bayt ile uygulandı.)
+
+- Açık sorular: Yok.
 
 ---
 
