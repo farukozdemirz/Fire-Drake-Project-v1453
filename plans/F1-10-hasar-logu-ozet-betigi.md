@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-09 (log biçimi, `DOĞRULANDI`, `gece/2026-10-02`'ye birleşti), F1-06/F1-07 (model çıktıları, `KAPANDI`) |
@@ -146,12 +146,46 @@ git status --short
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-10` (taban: `gece/2026-10-02`); `79f3b19` "Hasar logu ozet ve model karsilastirma betigi"; rapor + `Durum` commit'i bu satırdan sonra.
 - Değişen dosyalar ve neden:
-- Kabul kriterleri öz-değerlendirme:
+  - `tools/damage-trace-summary.py` (yeni): planın istediği tek araç; `L`/`A`/`D`/`C` bölümleri ve `--selftest`.
+  - `plans/F1-10-hasar-logu-ozet-betigi.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Doğrulama (adım 1): `GameServer/DamageTrace.cpp:123` `fprintf` (20 sütun), `ctx` üretimi `:111-117`; `GameServer/User.cpp:1871` `originalAmount`, kanca `:1953`; `tools/stat-model.py:467` `write_report`, `R` biçimi `:494`, `K` biçimi `:512`; `tools/spell-model.py:479` `write_report`, `M` biçimi `:532-533`, `H` biçimi `:566-567`. Kayma yok.
+
+- Kabul kriterleri öz-değerlendirme (komut çıktıları):
+  - **K1 ✔** `python3 tools/damage-trace-summary.py --selftest` → `selftest OK`, `rc=0`.
+  - **K2 ✔** Sentetik 4 satırlık log (`/tmp` altında üretildi, sonra silindi) ile:
+    ```
+    == L ==
+    L files=1 lines=5 parsed=5 bad=0 span_s=0.4 filtered=0 zero=0
+    L note=misses_not_logged hit_rate_not_measured
+    == A ==
+    A ctx=R kind=dmg a=BotWP_K t=BotMI_K n=2 req_avg=205.0 req_min=200 req_max=210 app_avg=175.0 app_ratio=0.854 a_hit=50-50 t_ac=100-100 lethal=0
+    A ctx=S101006 kind=heal a=BotPHD_K t=BotWP_K n=1 req_avg=300.0 req_min=300 req_max=300 app_avg=300.0 app_ratio=1.000 a_hit=50-50 t_ac=100-100 lethal=0
+    A ctx=S109510 kind=dmg a=BotWP_K t=BotMI_K n=1 req_avg=250.0 req_min=250 req_max=250 app_avg=100.0 app_ratio=0.400 a_hit=50-50 t_ac=100-100 lethal=1
+    == D ==
+    D a=BotWP_K t=BotMI_K kind=dmg n=1 req_sum=-80 req_avg=80.0 ctx_seen=-
+    == C ==
+    C kind=R a=BotWP_K t=BotMI_K skill=- n=2 meas=205.0 model=205.0 diff_pct=+0.0 verdict=LOW_N match=exact range_viol=0
+    C kind=H a=BotPHD_K t=BotWP_K skill=101006 n=1 meas=300.0 model=310.0 diff_pct=-3.2 verdict=LOW_N match=exact range_viol=-
+    C kind=K a=BotWP_K t=BotMI_K skill=109510 n=1 meas=250.0 model=210.0 diff_pct=+19.0 verdict=LOW_N match=exact range_viol=-
+    ```
+    `grep -c "^== "` = **4** (başlık sırası L, A, D, C).
+  - **K3 ✔** C satır alanları `kind= a= t= skill= n= meas= model= diff_pct= verdict= match= range_viol=` sırasıyla; `--tol`/`--min-n` varsayılanları 15 ve 5 (kullanım satırı `--tol PCT ... (default 15)`, `--min-n N ... (default 5)`; kod `options = {"tol": 15.0, "min_n": 5, ...}`).
+  - **K4 ✔** Boş dosya → `parsed=0 bad=0`, `rc=0`; yalnızca bozuk satırlı dosya → `lines=2 parsed=0 bad=2`, `rc=0`; olmayan yol → `error: cannot read log: [Errno 2] ...`, `rc=2`. Hiçbirinde traceback yok.
+  - **K5 ✔** `grep` ile `tools/damage-trace-summary.py:357,359` `heal_instant`/`dmg_avg`; model tarafı `stat-model.py:494,512` ve `spell-model.py:532,566` ile aynı alan adları.
+  - **K6 ✔** `file tools/damage-trace-summary.py` → `Python script, ASCII text executable`; CRLF yok (`grep -c $'\r'` = 0); içe aktarımlar yalnızca `io`, `re`, `sys`.
+  - **K7 ✔** `git status --short` temiz; `git diff --stat gece/2026-10-02...bot/F1-10` yalnızca `plans/F1-10-...md` ve `tools/damage-trace-summary.py`; `/tmp/f110_*` geçici dosyaları silindi.
+  - **K8 ✔** `./tools/build.sh Release` → `rc=0`; son satırlar: `proj-LogInServer.vcxproj -> ...LogInServer.exe`, `proj-GameServer.vcxproj -> ...GameServer.exe`, `proj-AIServer.vcxproj -> ...AIServer.exe`.
+
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - Yok. Plan dışı dosyaya dokunulmadı; sunucu/DB/`docs/**` değişmedi.
+  - Küçük uygulama tercihleri: (a) `L` satırında `filtered` ve `zero` alanları taban satırın sonuna eklendi (plan bu iki alanı "L satırına ekle" dediği için); (b) modele karşılık gelmeyen C satırlarında `model`/`diff_pct` alanları `-` olarak basılır (hüküm `NO_MODEL`).
+  - `--selftest` içinde `_E` profil geri düşüşü, `K` boşluklu skill adı, `lethal`/`app_ratio` ve `ctx=- / primary=0` → `D` ayrıca assert edilir; planın istediği maddelerin tamamı kapsanır.
+
+- Açık sorular: Yok. `docs/15` §4.1 T-MECH-DMG ölçümü insan oturumu; F1-10 sonuç yorumu gerçek log geldiğinde yapılır.
 
 ---
 
