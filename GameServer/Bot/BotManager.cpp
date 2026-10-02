@@ -2080,10 +2080,13 @@ void BotManager::CommandPartyLeave(const std::string & args)
 }
 
 // Test driver: the party panel lists who is in the leader's party. Until the Perception slice, membership is read
-// from the two bot sessions (guard input only, never a result).
-static bool IsSamePartyMember(CUser * leader, CUser * target)
+// from the two bot sessions (guard input only, never a result). The server counts an invitee as a party member
+// before it accepts (PartyHandler.cpp:154-155, KI-014), so a pending invitation record disqualifies the target.
+static bool IsSamePartyMember(CUser * leader, BotSession * target)
 {
-	return leader->isInParty() && target->isInParty() && leader->GetPartyID() == target->GetPartyID();
+	return leader->isInParty() && target->m_pUser->isInParty()
+		&& leader->GetPartyID() == target->m_pUser->GetPartyID()
+		&& (target->m_partyInviteEcho.load() & (1ull << 63)) == 0;
 }
 
 void BotManager::CommandPartyManage(const std::string & args, bool kick)
@@ -2151,7 +2154,7 @@ void BotManager::CommandPartyManage(const std::string & args, bool kick)
 	// Test driver: the target and its membership come straight from the two bot sessions; the Perception slice
 	// replaces this source, not PartyMemberTarget.
 	PartyMemberTarget tv = { (int16)target->m_pUser->GetSocketID(),
-		IsSamePartyMember(s->m_pUser, target->m_pUser) };
+		IsSamePartyMember(s->m_pUser, target) };
 	PartyOutcome outcome = kick
 		? ActionExecutor::RequestPartyKick(s, tv, now)
 		: ActionExecutor::RequestPartyPromote(s, tv, now);
