@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-20` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`) — `KAPANDI` (merge `66342b7`); F3-03 (`ScenarioRunner` kalıbı) — `KAPANDI`; F4-01..F4-18 (betiğin sürdüğü komutlar) — `KAPANDI` |
@@ -294,20 +294,36 @@ file GameServer/Bot/ScriptRunner.h GameServer/Bot/ScriptRunner.cpp bots/config/s
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-20` @ `<sha>`
+- Karar: DOĞRULANDI (gece modu, `AUTO_LOOP=1`; birleştirme/push yok, birleştirmeyi döngü betiği yapar)
+- İncelenen: `gece/2026-10-02...bot/F4-20` @ `c8225a8` (kod `ae00bde`). Çalışma ağacı temiz.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `ScriptRunner.cpp` ve `BotManager.cpp` `touch` edilip `build.sh Release` rc=0; günlükte `ScriptRunner.cpp`/`BotManager.cpp` satırı var, bu iki dosyaya atıf yapan `warning` 0; kalan 2 uyarı eski `UpgradeHandler.cpp:634,862` (C4789) |
+| K2 | ✔ | `run-tests.sh` son satır `82 tests, 0 failed`, rc 0 |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-20`: 8 dosya (7 izinli + plan); `BotCore/`, `Tests/`, `ScenarioRunner.*`, `ActionExecutor.*`, `BotSession.*`, `Telemetry.*`, `ChatHandler.cpp`, `docs/` yok |
+| K4 | ✔ | `BotManager.*` farkında `-` satırı tam 2: kurucu başlatıcı (`BotManager.h:59`) ve bilinmeyen-komut mesajı (`BotManager.cpp:665`); gerisi `+` (`script` dalı `:622-623`, `Tick()` kancası `:430`) |
+| K5 | ✔ | `Tick` ilk deyimi `if (!m_running) return;` (`ScriptRunner.cpp:178-179`); kurucu yalnızca üye başlatır (`:62-65`); `CIni`/`.ini`/`GetPrivateProfile` grep'i boş; `fopen` tam 2 satır (`:21` günlük, `:76` `LoadScript`) |
+| K6 | ✔ | yol yalnızca `"./Scripts/" + name + ".txt"` (`:75`), önce `IsSafeFileStem` (`:69`); `fopen` (`:76`) ile `fclose` (`:85`) arasında `return` yok (`fread` sonra doğrudan `fclose`) |
+| K7 | ✔ | yasak-sözcük grep'i yalnızca `snprintf` çağrılarını ve `WriteScriptLog` içindeki tek `fprintf` (`:25`) gösteriyor; `Sleep`/`thread`/`rand` yok |
+| K8 | ✔ | üç `Emit` (`:173,:211,:281`), hepsi `TEL_DECISIONS`, `bot=-1`, `name=nullptr`, droppable `false`; alan adları planla aynı; çalışma zamanında JSONL satırlarında doğrulandı (65 satır, hepsi geçerli JSON) |
+| K9 | ✔ | `m_mgr.ExecuteCommand(` tek yerde (`:213`); `ActionExecutor`/`BotFairnessGuard`/`HandlePacket` grep'i boş |
+| K10 | ✔ | betik §5.5 metniyle aynı (`od -c`), blob ASCII; çalışma ağacında `ASCII text, with CRLF line terminators`; çalışma zamanında `smoke` olarak yüklendi: `loaded (7 step(s), last offset 6000 ms)` |
+| K11 | ✔ | iki kaynak + betik çalışma ağacında `ASCII text, with CRLF line terminators` (depoda blob LF, `core.autocrlf=true` ve mevcut dosyalarla aynı düzen); `git diff --check` boş; `vcxproj`/`filters` farkı yalnızca eklenen 2+6 satır, BOM (`UTF-8 with BOM`) öncesi/sonrası aynı |
+| K12 | ✔ | çalışma zamanı S1-S6 geçti (aşağıda) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Çalışma zamanı (`Release`; `GameServer.ini` S5/S6 için geçici değiştirilip yedekten geri yüklendi: md5 öncesi/sonrası `265a8e1c35ea12df46f6d006fe894d9b`; üç sunucu `[UP]`, `AI=bağlı`; iş bitince `run-servers.sh stop` → `0/3`; test betikleri ve `BotCommands.*` silindi; `Logs/bots/` eski klasörlerine dokunulmadı). Komutlar `BotCommands.txt` ile verildi, gözlem `Logs/Bot_2_10_2026.log` ve `Logs/bots/2026-10-02/live-184432.jsonl`:
+  1. **S1 ✔.** `spawn BotWP_K,BotWP_E` → ikisi `in_game` → `script run smoke`: `loaded (7 step(s), last offset 6000 ms)`; yedi `step i/7` satırı artan `+offset` (0, 500, 1000, 3000, 4500, 5000, 6000), `late` 0..99 ms (`TICK_MS`=100 mertebesi, hiç negatif/erken yok); `finished smoke: completed, 7/7 step(s) in 6016 ms (max late 99 ms)`. JSONL: 1 `SCRIPT_START` (`steps=7,duration_ms=6000`), 7 `SCRIPT_STEP`, 1 `SCRIPT_END` (`steps_run=7,max_late_ms=99`); `sit`/`stand` adımları `ACTION_SUBMIT`/`ACTION_RESULT` (`StateSit`, `applied`) üretti, aynı `t` damgasıyla `SCRIPT_STEP`'ten hemen sonra.
+  2. **S2 ✔.** `longrun` (10 adım) çalışırken `script run smoke` → `refused (already running (longrun))`; `script status` → `longrun step 4/10 done, 3303 ms elapsed, next in 697 ms`; `script stop` 7. adımdan sonra → `stopped after 7/10 step(s); running bot actions are not cancelled (use 'stop all' / 'attack all off')`, `finished ... stopped, 7/10`; ardından 10 sn adım 8-10 çalışmadı; `SCRIPT_END result=stopped steps_run=7 steps_total=10`; sonra `script status` → `idle`.
+  3. **S3 ✔.** Sunucu açıkken botsuz: `bad_verb.txt` (2. satırda `spawn`) → `refused (bad_verb.txt:2: bad verb)`; `nofile` → `refused (cannot open ./Scripts/nofile.txt)`; `../x` → `refused (bad script name)`; 8201 baytlık dosya → `refused (big.txt: file too large)`; azalan ofset → `refused (order.txt:2: offsets must not decrease)`; hiçbirinde `step`/`finished` satırı, `SCRIPT_START` yok; `script` (argümansız) → usage satırı; boşta `script status` → `idle`, `script stop` → `no script running`.
+  4. **S4 ✔.** `fair` (`1000 sit`, `1200 stand`): `sit` uygulandı, `stand` → `refused (toggle)`; JSONL `FAIRNESS_REJECT rule=CLI-13 reason=toggle value=110.00 limit=1000.00`; betik reddedilen adımdan sonra devam edip `completed, 4/4` oldu.
+  5. **S5 ✔.** `TELEMETRY=summary`: `warning (telemetry below 'decisions': ACTION_* and FAIRNESS_REJECT events are not recorded)` satırı, betik yine `completed, 7/7`; yeni `live-*.jsonl`'de `SCRIPT_` satırı 0; `script` argümansız → usage.
+  6. **S6 ✔.** `RESPAWN_CYCLES=2`: `script run smoke` ve `script status` → `cmd rejected (RESPAWN_CYCLES is active)` (mevcut kapı, `scenario status` da aynı). `ENABLED=0`: `BotCommands.txt` yazıldı, 15 sn sonra dosya yerinde, `Bot_*.log`'a 0 yeni satır, `Logs/bots/` dosya sayısı değişmedi. `PERF_SAMPLE` karşılaştırması yapılmadı (kriter değil).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `ScriptRunner.cpp` `Tick()` her adımda `Telemetry::EscapeJson(m_name)` ile `std::string` kurar; yalnızca betik koşarken ve adım başına bir kez, ihmal edilebilir.
+  2. Not: `RESPAWN_CYCLES` etkinken `script status`/`script stop` da reddedilir (tüm `/bot` komutları gibi, mevcut davranış); betik zaten bu durumda çalışamaz.
+  3. Not: `late` en çok 106 ms görüldü; ölçüm `TICK_MS`=100 çözünürlüğüyle uyumlu, tick uzun sürerse artabilir (plan §8'de belirtildi).
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).

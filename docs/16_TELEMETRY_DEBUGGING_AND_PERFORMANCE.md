@@ -59,13 +59,14 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 | `NAV_STUCK` / `NAV_RECOVERY` | Takılma tespiti / kurtarma aşaması | konum, aşama, süre, sonuç |
 | `TEST_TELEPORT` | Test kurtarma teleportu | **eval modunda olması maçı geçersiz kılar** |
 | `POLICY_LOAD` / `POLICY_ROLLBACK` | Politika yüklendi/geri alındı | sürümler, gerekçe |
+| `SCRIPT_START` / `SCRIPT_STEP` / `SCRIPT_END` | Betik (`/bot script run`, F4-20) başlayınca / her adım çalıştırılırken (komuttan hemen önce) / bitince veya durdurulunca; `bot:-1`, `name` yok | `SCRIPT_START`: `script`, `steps`, `duration_ms`; `SCRIPT_STEP`: `script`, `step` (1 tabanlı), `line`, `offset_ms`, `late_ms` (gerçek − planlanan, ≥ 0), `verb`; `SCRIPT_END`: `script`, `result` (`completed`/`stopped`), `steps_run`, `steps_total`, `elapsed_ms`, `max_late_ms`. Sonraki `ACTION_*`/`FAIRNESS_REJECT` olayları aynı `t` damgasıyla adıma bağlanır |
 | `PERF_SAMPLE` | Periyodik (5 sn) | tick süreleri, kuyruk uzunluğu, bot sayısı |
 
 ### 3.3 Uygulama notları (ADR-0007, F3-01)
 
 - **Alan kuralı:** Uygulanabilir olmayan ortak alanlar yazılmaz (alan yok = geçerli değil): `role`, `policy` yalnızca rol profili olan botlarda; `name` yalnızca bot olaylarında; `bot` sistem olaylarında `-1`. Maç bağlamı yokken (`ScenarioRunner` gelene kadar, F3-03) `match` = `"-"`, `mode` = `"live"`.
 - **`t`:** `steady_clock` zamanı, milisaniye (süreç içi karşılaştırma için; duvar saati yalnızca `MATCH_START/END`).
-- **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
+- **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `SCRIPT_*`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
 - **Düşürülebilir olaylar:** `PERF_SAMPLE`, `DECISION` (kuyruk yumuşak sınırı aşılınca düşer); diğerleri yalnızca sert sınırda düşer. Düşürme sayaçları `PERF_SAMPLE` kaydındaki `dropped_soft`/`dropped_hard` alanlarındadır.
 - **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir.
 - **`SELFTEST`:** yalnızca `[BOT] TELEMETRY_SELFTEST=1` iken yazıcı/taşma öz-sınaması üretir (`i` alanı); analiz araçları yok sayar.
