@@ -51,6 +51,14 @@ public:
 	uint16 m_slotId;                                       // IOCP thread only, kept for log lines after m_pUser is cleared
 	uint32 m_despawnCount;                                 // IOCP thread only, completed despawns (slot returned)
 
+	bool m_moveActive;                                     // IOCP thread only: a walk is in progress (ActionExecutor)
+	float m_moveTargetX;                                   // IOCP thread only
+	float m_moveTargetZ;                                   // IOCP thread only
+	int16 m_moveSpeed;                                     // IOCP thread only: speed field of the walk (packet speed while walking)
+	std::chrono::steady_clock::time_point m_moveLastSent;  // IOCP thread only: when the last WIZ_MOVE went out
+	uint32 m_actionSeq;                                    // IOCP thread only: per-spawn counter used as decision_id
+	uint32 m_movePackets;                                  // IOCP thread only: WIZ_MOVE packets sent in the current walk
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
