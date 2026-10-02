@@ -56,7 +56,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 - Maliyet = mesafe × (1 + `w_danger`·danger + `w_clear`·max(0, 2 − clearance)) + eğim cezası.
 - Sezgisel: octile mesafe (kabul edilebilir).
 - İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama (bu dilimde yok: F5-02 yalnızca `NodeLimit` = "bilinmiyor" döndürür, "ulaşılamaz" değil; ADR-0006).
-- Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse ara noktalar atlanır.
+- Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse (her adım `EdgeOpen`; kanonik yön, simetrik) ara noktalar atlanır; açgözlü, en çok `P-NAV-SMOOTH-LOOKAHEAD` = 64 yol hücresi ileri `[A]` (`BotCore/NavSmooth.h`, ADR-0006 Eki F5-03, F5-03 planı). Bresenham `supercover` değildir (bilinen sınırlama, takılma ölçümüyle yeniden değerlendirilir).
 - AIServer `CPathFind`'ın sezgisel ve yürünebilirlik hataları (MB-11) bu uygulamaya **taşınmaz**.
 
 ### 4.2 Hareketli hedef
@@ -167,3 +167,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.0+ | §4.1 ve §11 T-NAV-03: `NodeLimit` anlamı ve sorgu dağılımı notu (ADR-0006, F5-02 planı) |
+| 2026-10-02 | v1.0+ | §4.1 yol düzleştirme: `EdgeOpen` tabanlı Bresenham görünürlüğü, açgözlü ayıklama ve `P-NAV-SMOOTH-LOOKAHEAD` `[A]` (ADR-0006 Eki F5-03, F5-03 planı) |

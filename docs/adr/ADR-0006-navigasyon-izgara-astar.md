@@ -41,3 +41,12 @@ Ek bulgular `[V]`: (a) Ana bileşendeki 88 508 hücrenin 229'u eğim kenarlarıy
 
 ## Doğrulama
 F5-02: `NavPath_*` birim testleri (Dijkstra ile maliyet eşitliği, köşe kesme yok, düğüm sınırı, gerçek harita arena A → B maliyeti ≈ 660,6 m, cep hedefi `NoPath`), `NAVPATH T-NAV-03` satırları (Release p95 ≤ 2 ms kapısı yalnızca ≤ 64 hücre kümesinde).
+
+## Ek F5-03: Yol düzleştirme (otonom döngüde Claude kararı — gözden geçirilmeli)
+Tarih: 2026-10-02 · Plan: `plans/F5-03-nav-yol-duzlestirme.md` · Dayanak: `docs/12` §4.1 ("hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse ara noktalar atlanır").
+
+1. **Görünürlük tanımı:** `NavLineClear(a, b)` = `a`→`b` tamsayı Bresenham yürüyüşünün her adımı `NavGrid::EdgeOpen`'dır. Yürünebilirlik, eğim ve köşe kesmeme kuralı tek yerde (`EdgeOpen`) kalır; düzleştirilmiş her doğru parçası A*'ın da yürüyebileceği geçerli bir hücre yürüyüşüdür ve uzunluğu `NavOctile`'dir (bu, mülkiyet testinin dayanağı).
+2. **Kanonik yön:** Bresenham beraberlik anları yöne bağımlı olduğundan `a`/`b` sözlük sırasına (önce `x`, sonra `z`) çevrilir; `NavLineClear` simetriktir.
+3. **Algoritma:** açgözlü, her çıpadan en uzak görünür yol hücresi (geriye doğru ilk görünür), `P-NAV-SMOOTH-LOOKAHEAD` = 64 yol hücresi `[A]` ile sınırlı; en kötü durum maliyeti sınırlı ve belirlenimli. Sonuç girdinin alt dizisidir (ilk/son korunur); Öklid uzunluğu A* maliyetinden büyük olamaz.
+4. **Doğrulama (prototip `[V]`, 2026-10-02):** arena A→B 150 hücre / 660,617 m → 13 ara nokta / 635,787 m; `near64` yollarında ortalama 55 → 6 ara nokta, uzunluk oranı 0,9575; düzleştirme `EdgeOpen` çağrısı p95 ≈ 2 600.
+5. **Bilinen sınırlama `[A]`:** Bresenham `supercover` değildir (hücre sınırından tam geçen doğrunun öbür tarafı yalnızca çapraz adımın köşe kuralıyla denetlenir), 4 m ızgara ve gövde genişliği yok. `supercover` ya da güvenlik payı (clearance ≥ 2 hücre koşulu) MET-NAV-01/T-NAV-04 takılma ölçümü kötü çıkarsa yeni karar konusudur (R-09 ile aynı tetik).
