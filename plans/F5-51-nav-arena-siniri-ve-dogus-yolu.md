@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-51 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-06 (`NavDanger.h`, yasaklı/güvenli bölgeler), F5-07 — `KAPANDI` |
@@ -103,13 +103,36 @@ git diff --stat gece/2026-10-02-nav...bot/F5-51
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (Release ve Debug derleme rc=0; `183 tests, 0 failed`; dört yeni `NavArena_*` testi `[ OK ]`, harita mevcut, `SKIPPED` yok).
+- Branch / commit'ler: `bot/F5-51` (taban `gece/2026-10-02-nav`). Commit'ler bu raporla birlikte atılır (kod + test + rapor).
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/NavPath.h` (seçilen yöntem **(a)**): `NavPathfinder::Find` içinde sorgu başlangıcı yasaklıysa (`zones->Forbidden(start)`), o sorgu için `costParams = field->params` kopyasında `forbiddenPenalty = 0` yapılır; ağırlıklı dalın iki `NavCellPenalty` çağrısı `costParams` kullanır. "Yasaklıya dışarıdan girilemez" kapısı (`!curForbidden && zones->Forbidden(nx,nz)`) ve "başlangıç yasaklı değilken yasaklı hedef `InvalidGoal`" kuralı değişmedi; yalnızca yasaklı **başlangıç** sorgusunun ceza değeri değişti.
+  - `Tests/BotCoreTests/NavArenaTests.cpp` (yeni): dört test.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: tek `ClCompile` satırı.
+  - `Tests/BotCoreTests/NavDangerTests.cpp`: yalnızca yasaklı başlangıç maliyetine bağlı beklenen değerler (§3.1 istisnası). `PathCost` ve `RefDijkstra` referansları da aynı kurala hizalandı (`EffectiveParams`).
+- Seçilen yöntem ve reddedilenler: **(a)** uygulandı — yasaklı başlangıçta yasaklı cezası 0. **(b)** (yalnız `forbiddenPenalty` küçültme) reddedildi: plan ön bilgisi ve bağımsız ölçüm ceza 1,0'da El Morad'ı 16 250 düğümde bırakıyor. **(c)** (arena sınırı için ayrı bayrak) reddedildi: yöntem genel olmalı (tower halkası içinde yakalanan bot dahil); ayrı bayrak yalnız arena sınırında işe yarar ve `NavCostLayer`'a ikinci bir bayrak biti eklerdi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0, `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (`NavPath.h`, `NavArenaTests.cpp`, `NavDangerTests.cpp` yeniden derlendi). Test: `./tools/run-tests.sh Release` → `183 tests, 0 failed`; `Debug` → `183 tests, 0 failed`.
+- Ölçülen önce/sonra (bağımsız WSL `g++ -O2` yeniden üretimi, `HeuristicLab` ile aynı hesap, NodeLimit 20 000, zone 71, R=60, `build/nav/zone71.navgrid`):
+  - Karus doğuşu `(346,273)` → arena `(318,222)`: ceza 10 (önce) **4148** düğüm `Found`; ceza 0 (sonra) **602** `Found`; alansız kontrol **602**.
+  - El Morad doğuşu `(158,231)` → arena: ceza 10 (önce) **`NodeLimit`** (2 000'de kesildi); ceza 0 (sonra) **2924** `Found`; alansız kontrol **2924**.
+  - Birim testi `NavArena_RealMap_Respawn` (Win32 Release, aynı sorgular): Karus `expanded=602` `len=278,108` (`plain_len=271,480`), El Morad `expanded=2924` `len=740,500` (`plain_len=727,814`); her ikisi `Found`, düğüm ≤ 6000/2000, yol diske girdikten sonra dışarı çıkmıyor, uzunluk alansızın ≤ 1,15 katı.
+  - `NavArena_Perf`: 200 jitter'lı doğuş→arena sorgusu `found=200`, `ms_p50=0,161` `ms_p95=0,209` `expanded_p95=710` (Release, kapı ≤ 2,0 ms).
 - Kabul kriterleri öz-değerlendirme:
+  - K1: ✔ Release rc=0, değişen dosyalarda yeni uyarı yok.
+  - K2: ✔ Debug rc=0, yeni uyarı yok.
+  - K3: ✔ Release ve Debug `183 tests, 0 failed`; dört yeni `NavArena_*` testi `[ OK ]`; harita mevcut (`SKIPPED` yok); mevcut `Nav*` testleri geçer; test sayısı 179 → 183 (+4).
+  - K4: ✔ Mevcut "500 çiftte yasaklıya giriş 0" testi değişmeden geçer (`violations=0`); `NavArena_Tower_Unchanged` yeni 500 çiftte de `violations=0`.
+  - K5: ✔ Karus 602 ≤ 2000, El Morad 2924 ≤ 6000, `ms_p95=0,209` ≤ 2,0 Release.
+  - K6: ✔ `BotCore/NavPath.h` yeni satırlarında `windows.h|stdafx|GameServer|shared/` yok; `GameServer`/`shared`/`AIServer` farkı 0 (yalnız §4 dosyaları).
+  - K7: ✔ Tüm dosyalar ASCII + CRLF (dosya kodlamaları/BOM korundu); `git diff --check` boş.
+  - K8: ✔ Bu rapor yöntemi (a), reddedilen (b)/(c) ve ölçülmüş önce/sonra düğüm sayılarını içerir.
+  - K9 (Claude): bağımsız yeniden koşu bekliyor.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - `NavArena_RealMap_Respawn`'da "düğüm ≤ 6000 / ≤ 2000 / `ms` ≤ 2,0" kabulü tuttu; plan metnindeki "düğüm ≤ 6000" El Morad için geçerli, Karus için daha sıkı (≤ 2000) kabul edildi (K5).
+  - `NavArena_Tower_Unchanged`'de "yasaklı hücre sayısı geometrik asgari + en çok 2": düz kenarlı 8-komşu ızgarada disk yayı düz bir eksen ışınıyla birebir çakışmadığından mesafe düz kenar boyunca döner; bu yüzden asgari, **alansız en kısa çıkış** (`plainForbidden=23` düğüm) ile ölçüldü ve `+2` toleransı korundu. Işın tabanlı `ray_best=16` yalnız tanı için yazdırılır.
+  - `NavDangerTests.cpp` beklenen değerleri (yasaklı başlangıç yolu) güncellendi; §3.1'in izin verdiği "yalnızca maliyet değerine bağlı test güncellemesi" kapsamında.
+  - `NavDanger_RealMap` start-inside ölçümü: maliyet 1171,853 → **260,137**, uzunluk 292,284 → **257,137**, yasaklı hücre 22 → **19** (yol değişti, maliyet artık geometrik varyant).
+- Açık sorular: yok. (ADR-0006 Eki F5-06'daki `[A]` ağırlıkları ve varsayılan `forbiddenPenalty=10` **değiştirilmedi**; değişen yalnız yasaklı başlangıç sorgusunda cezanın sıfırlanmasıdır.)
 
 ---
 

@@ -143,18 +143,31 @@ namespace
 		return length;
 	}
 
+	// F5-51: when the route starts inside a forbidden region, NavPathfinder zeros the forbidden
+	// penalty for the whole query (the forbidden cells can only be a prefix). Mirror that here.
+	BotCore::NavCostParams EffectiveParams(const BotCore::NavGrid & grid, const BotCore::NavCostLayer * layer,
+		const BotCore::NavCostParams & params, BotCore::NavCell start)
+	{
+		BotCore::NavCostParams effective = params;
+		if (layer != nullptr && layer->Size() == grid.Size() && layer->Forbidden(start.x, start.z))
+			effective.forbiddenPenalty = 0.0f;
+		return effective;
+	}
+
 	float PathCost(const BotCore::NavGrid & grid, const BotCore::NavCostLayer * layer,
 		const BotCore::NavCostParams & params, const std::vector<BotCore::NavCell> & cells)
 	{
 		float cost = 0.0f;
 		const float unit = grid.Unit();
+		const BotCore::NavCostParams effective = cells.empty()
+			? params : EffectiveParams(grid, layer, params, cells.front());
 		for (size_t i = 0; i + 1 < cells.size(); ++i)
 		{
 			const int dx = cells[i + 1].x - cells[i].x;
 			const int dz = cells[i + 1].z - cells[i].z;
 			const float step = (dx != 0 && dz != 0) ? (unit * std::sqrt(2.0f)) : unit;
-			const float pa = BotCore::NavCellPenalty(grid, layer, params, cells[i].x, cells[i].z);
-			const float pb = BotCore::NavCellPenalty(grid, layer, params, cells[i + 1].x, cells[i + 1].z);
+			const float pa = BotCore::NavCellPenalty(grid, layer, effective, cells[i].x, cells[i].z);
+			const float pb = BotCore::NavCellPenalty(grid, layer, effective, cells[i + 1].x, cells[i + 1].z);
 			cost += step * (1.0f + 0.5f * (pa + pb));
 		}
 		return cost;
@@ -212,6 +225,10 @@ namespace
 		if (start == goal)
 			return 0;
 
+		// F5-51: zero the forbidden penalty when the start is forbidden (see EffectiveParams).
+		const BotCore::NavCostParams effective = zones
+			? EffectiveParams(grid, layer, params, start) : params;
+
 		const float unit = grid.Unit();
 		std::vector<float> dist((size_t)n * (size_t)n, 1.0e30f);
 		std::priority_queue<DijkstraItem, std::vector<DijkstraItem>, DijkstraWorse> open;
@@ -241,7 +258,7 @@ namespace
 
 			const int cx = top.idx / n;
 			const int cz = top.idx % n;
-			const float penCur = BotCore::NavCellPenalty(grid, layer, params, cx, cz);
+			const float penCur = BotCore::NavCellPenalty(grid, layer, effective, cx, cz);
 			const bool curForbidden = zones && layer->Forbidden(cx, cz);
 			for (int k = 0; k < 8; ++k)
 			{
@@ -255,7 +272,7 @@ namespace
 					continue;
 				const int nIdx = nx * n + nz;
 				const float step = (dx != 0 && dz != 0) ? (unit * std::sqrt(2.0f)) : unit;
-				const float penNb = BotCore::NavCellPenalty(grid, layer, params, nx, nz);
+				const float penNb = BotCore::NavCellPenalty(grid, layer, effective, nx, nz);
 				const float nd = top.dist + step * (1.0f + 0.5f * (penCur + penNb));
 				if (nd < dist[(size_t)nIdx])
 				{
@@ -919,7 +936,7 @@ TEST_CASE("NavDanger_Path_Field")
 
 		pf.Find(grid, Cell(20, 20), Cell(35, 20), sp, out, &field);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 251.598f) <= 0.1f);
+		CHECK(std::fabs(out.cost - 60.0f) <= 0.01f);   // F5-51: start forbidden -> penalty 0, geometric
 		CHECK(ForbiddenOnPath(layer, out.cells) > 0);
 		CHECK(!ReenteredForbidden(layer, out.cells));
 
@@ -927,7 +944,7 @@ TEST_CASE("NavDanger_Path_Field")
 		CHECK(out.status == BotCore::NavPathStatus::Found);
 		CHECK_EQ((int)out.cells.size(), 5);
 		CHECK_EQ(ForbiddenOnPath(layer, out.cells), 5);
-		CHECK(std::fabs(out.cost - 176.0f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 16.0f) <= 0.01f);   // F5-51: both inside -> geometric
 
 		pf.Find(grid, Cell(5, 20), Cell(20, 20), sp, out, &field);
 		CHECK(out.status == BotCore::NavPathStatus::InvalidGoal);
@@ -1209,6 +1226,7 @@ TEST_CASE("NavDanger_RealMap")
 	float crossPlain = 0.0f;
 	float crossField = 0.0f;
 	float startInsideCost = 0.0f;
+	float startInsideLen = 0.0f;
 	int startInsideForb = 0;
 	int ringPairs = 0;
 	int ringFound = 0;
@@ -1293,11 +1311,12 @@ TEST_CASE("NavDanger_RealMap")
 
 		pf.Find(grid, s, a, sp, out, &fElm);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 1171.853f) <= 0.5f);
-		CHECK(std::fabs(out.length - 292.284f) <= 0.1f);
 		startInsideCost = out.cost;
+		startInsideLen = out.length;
 		startInsideForb = ForbiddenOnPath(elm, out.cells);
-		CHECK_EQ(startInsideForb, 22);
+		CHECK(std::fabs(out.cost - 260.137f) <= 0.5f);   // F5-51: forbidden prefix penalty 0
+		CHECK(std::fabs(out.length - 257.137f) <= 0.1f);
+		CHECK_EQ(startInsideForb, 19);
 		CHECK(!ReenteredForbidden(elm, out.cells));
 		bool left = false;
 		bool prefix = true;
@@ -1427,9 +1446,9 @@ TEST_CASE("NavDanger_RealMap")
 		CHECK(plainCross >= 100);
 	}
 
-	std::printf("NAVDANGER real: elm_forbid=%d elm_forbid_walk=%d elm_safe=%d elm_safe_walk=%d; arena A->B cost=%.3f default=%.3f; cross plain=%.3f field=%.3f; start-inside cost=%.3f forb=%d; ring sweep pairs=%d found=%d no_path=%d node_limit=%d plain_cross=%d violations=%d\n",
+	std::printf("NAVDANGER real: elm_forbid=%d elm_forbid_walk=%d elm_safe=%d elm_safe_walk=%d; arena A->B cost=%.3f default=%.3f; cross plain=%.3f field=%.3f; start-inside cost=%.3f len=%.3f forb=%d; ring sweep pairs=%d found=%d no_path=%d node_limit=%d plain_cross=%d violations=%d\n",
 		elmForbid, elmForbidWalk, elmSafe, elmSafeWalk, 660.617f, arenaDefault, crossPlain, crossField,
-		startInsideCost, startInsideForb, ringPairs, ringFound, ringNoPath, ringNodeLimit, plainCross, violations);
+		startInsideCost, startInsideLen, startInsideForb, ringPairs, ringFound, ringNoPath, ringNodeLimit, plainCross, violations);
 }
 
 TEST_CASE("NavDanger_Perf")

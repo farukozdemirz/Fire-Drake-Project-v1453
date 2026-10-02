@@ -96,6 +96,20 @@ namespace BotCore
 			if (weighted && field->layer != nullptr && field->layer->Size() == n)
 				zones = field->layer;
 
+			// F5-51: a query STARTING inside a forbidden region (arena-outside bound, caught inside
+			// the enemy tower ring) only ever crosses forbidden cells as a prefix: leaving the
+			// region is free and re-entering is blocked below. Charging forbiddenPenalty there
+			// inflates every prefix step while the octile heuristic stays at unit cost, so A*
+			// expands ~11x more nodes and can hit NodeLimit (El Morad spawn -> arena). Drop the
+			// forbidden penalty for such a query; the danger/clearance terms are unchanged.
+			NavCostParams costParams;
+			if (weighted)
+			{
+				costParams = field->params;
+				if (zones != nullptr && zones->Forbidden(start.x, start.z))
+					costParams.forbiddenPenalty = 0.0f;
+			}
+
 			if (!grid.Walk(start.x, start.z))
 			{
 				out.status = NavPathStatus::InvalidStart;
@@ -174,7 +188,7 @@ namespace BotCore
 				const int cx = top.idx / n;
 				const int cz = top.idx % n;
 				const float gcur = m_g[(size_t)top.idx];
-				const float penCur = weighted ? NavCellPenalty(grid, zones, field->params, cx, cz) : 0.0f;
+				const float penCur = weighted ? NavCellPenalty(grid, zones, costParams, cx, cz) : 0.0f;
 				const bool curForbidden = weighted && zones != nullptr && zones->Forbidden(cx, cz);
 				for (int k = 0; k < 8; ++k)
 				{
@@ -200,7 +214,7 @@ namespace BotCore
 						const int nz = cz + dz;
 						if (zones != nullptr && !curForbidden && zones->Forbidden(nx, nz))
 							continue;   // may not ENTER a forbidden cell from outside
-						const float penNb = NavCellPenalty(grid, zones, field->params, nx, nz);
+						const float penNb = NavCellPenalty(grid, zones, costParams, nx, nz);
 						ng = gcur + step * (1.0f + 0.5f * (penCur + penNb));
 					}
 
