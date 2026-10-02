@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-08` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-07 (`OnPacket()` ekleme kalıbı, `Regene` iskeleti) — `KAPANDI`; F4-06 (`RegionDelta` görüş denetimi, `TargetHpTarget` test sürücüsü kalıbı) — `KAPANDI`; F4-05 (`m_stateEcho` kullanımı) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -339,13 +339,43 @@ git diff --check gece/2026-10-02...bot/F4-08
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-08` (taban: `gece/2026-10-02`); uygulama commit'i `234880f` (8 dosya); rapor/durum commit'i bu turda.
 - Değişen dosyalar ve nedenleri:
+  - `BotCore/BotCombat.h`: `kPartyInviteGapMs`, `kPartyAcceptMinMs`, `PartyInviteCheck`/`PartyInviteVerdict`/`CheckPartyInvite`, `PartyAcceptCheck`/`PartyAcceptVerdict`/`CheckPartyAccept` eklendi (saf mantık, `CheckRegene`'den sonra). Yalnızca ekleme; `#include`'lar ve mevcut içerik değişmedi.
+  - `Tests/BotCoreTests/CombatTests.cpp`: üç `TEST_CASE` eklendi (`Combat_PartyInviteCheck_Order`, `Combat_PartyInviteCheck_Boundaries`, `Combat_PartyAcceptCheck`; toplam 33 → 36).
+  - `GameServer/Bot/ActionExecutor.h`: `PartyInviteTarget`, `PartyOutcome` ve `RequestPartyInvite`/`RequestPartyAccept` bildirimleri eklendi.
+  - `GameServer/Bot/ActionExecutor.cpp`: dosya sonuna party dilimi eklendi (`RejectPartyInvite`, `RejectPartyAccept`, iki aksiyon). Mevcut hareket/saldırı/cast/pot/duruş/hedef HP/`Regene` kodu değişmedi.
+  - `GameServer/Bot/BotSession.h`: `m_partyInviteHasLast`/`m_partyInviteLast` (IOCP) ve dört atomik kayıt (`m_partyInviteAtMs`, `m_partyInviteEcho`, `m_partyErrorEcho`, `m_partyJoinEcho`).
+  - `GameServer/Bot/BotSession.cpp`: başlatıcı listesi + `ResetForRespawn()` + `OnPacket()`'e ekleme bloğu. Mevcut `WIZ_SEL_CHAR`/`WIZ_ATTACK`/`WIZ_MAGIC_PROCESS`/`WIZ_STATE_CHANGE`/`WIZ_TARGET_HP`/`WIZ_REGENE` blokları değişmedi.
+  - `GameServer/Bot/BotManager.h`: `CommandPartyInvite`/`CommandPartyAccept` bildirimleri.
+  - `GameServer/Bot/BotManager.cpp`: `pinvite`/`paccept` fiil dağıtımı, iki komut ve `unknown command` listesi. `Startup()`/`Tick()`/`TickSessions()`/`BuildStatusLines()`/`BeginDespawn()` ve ini okuma değişmedi.
 - Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; son satır: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`.
+  - `./tools/build.sh Debug` rc=0; son satır: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`.
+  - Değişen dosyalarda uyarı yok (`BotCombat.h`, `ActionExecutor.*`, `BotSession.*`, `BotManager.*`, `CombatTests.cpp`); kalan uyarılar eski satırlarda (`Map.cpp`, `User.cpp`, `GameServerDlg.cpp:1143/1802`, `UpgradeHandler.cpp`).
+  - `./tools/run-tests.sh Release` ve `Debug`: `36 tests, 0 failed` (rc=0); üç yeni test adı çıktıda.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, ilgili dosyalarda uyarı yok).
+  - K2 ✔ (Debug rc=0).
+  - K3 ✔ (36 test, üç yeni ad, Release+Debug yeşil).
+  - K4 ✔ (`windows.h`/`stdafx`/`GameServer`/`shared/` eşleşmesi yok; `#include` yalnızca `<algorithm>`, `<cstdint>`; `std::min`/`std::max` yok).
+  - K5 ✔ (`WIZ_PARTY` yalnızca `ActionExecutor.cpp:1840/1978` ve `BotSession.cpp:104`; doğrudan party çağrısı/kalıntı deseni boş — iki yorum satırı "sunucu" sözcüğü kullanacak biçimde yeniden yazıldı, aşağıya bakınız).
+  - K6 ✔ (kod okuması: iki fonksiyonda `HandlePacket(pkt)` bir kez; guard `HandlePacket`'tan önce; `PARTYINVITE_OK`/`PARTYACCEPT_OK` dışında erken dönüş; `no_invite` kontrolü önce).
+  - K7 ✔ (`isInParty`/`isPartyLeader` yalnızca `ActionExecutor.cpp:1816-1817`, guard girdisi; `m_sHp`/`m_iMaxHp`/`GetHealth`/`GetMaxHealth` bu fonksiyonlarda yok; sonuç yalnızca `m_partyErrorEcho`/`m_stateEcho`/`m_partyJoinEcho`/`m_partyInviteEcho`'dan).
+  - K8 ✔ (`BotSession.cpp` eksi satır yalnızca başlatıcı listesinin bilinçli satırı).
+  - K9 ✔ (`BotManager.cpp` eksi satır yalnızca `unknown command` mesajı).
+  - K10 ✔ (`git diff --stat` yalnızca 8 dosya; proje/filtre/`BotCore.vcxproj`/`BotCoreTests.vcxproj` farkı boş; `GameServer/` içinde `Bot/` dışı dosya değişmedi).
+  - K11 ✔ (`file`: 8 dosya ASCII+CRLF; `git diff --check` boş).
+  - K12 ✔ (`printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(`/`SByte`/`DByte` eşleşmesi yok).
+  - K13 ✔ (`CheckMoveStep`=2, diğer guard'lar ≥1; 36 test geçiyor; `EmitFairnessReject` tipleri `Move`/`Attack`/`Cast`/`Potion`/`State`/`TargetHp`/`Regene` + yeni `PartyInvite`/`PartyAccept`).
+  - K14: Claude'un çalışma zamanı doğrulaması (bu turda yapılmadı).
 - Plandan sapmalar ve gerekçeleri:
+  - §5.4'teki iki yorum satırı `PartyProcess()`/`PartyInsert()` adlarını içeriyordu; K5'in doğrudan-çağrı grep'ini temiz tutmak için yorumlar sunucu adı geçmeyecek biçimde yeniden yazıldı (`"the same bound the server applies..."`, `"The server sends the existing members first..."`). Kod davranışı ve planın özü değişmedi.
+  - `RejectPartyAccept` de `peerId` = davet eden sid döndürür (plan bunu açıkça yazmıyordu; `RejectPartyInvite` kalıbıyla tutarlılık için).
+  - `pinvite` hedefi bot oturumu bulunamazsa plan beklenen `unknown or not spawned bot '<ad|?>'` biçimi kullanıldı; hedefin kendi oturumu `s` ile aynıysa `RequestPartyInvite` içindeki `bad_target` reddi uygulanır (komut katmanı ayrıca engellemez).
 - Açık sorular:
+  - Yok (bloke eden). Not: `Send()`'in `WIZ_PARTY`/`WIZ_STATE_CHANGE` cevaplarını bot alıcısına ilettiği varsayımı `[A]`; çalışma zamanında Claude teyit edecek (plan §8-c). İnsan testleri T-ARCH-13 ve T-PARTY-01 bekliyor.
 
 ---
 
