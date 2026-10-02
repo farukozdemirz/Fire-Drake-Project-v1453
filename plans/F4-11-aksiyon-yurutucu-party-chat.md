@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `ca677c0`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-11` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-10 (`RequestPartyManage` iskeleti, `m_actionWindow`, `OnPacket()` kayıt kalıbı) — `KAPANDI` (merge `3e0e985`); F4-08/F4-09 (`isInParty()` ön koşulu, `m_partyInviteEcho` "bekleyen davet" kaydı) — `KAPANDI` |
