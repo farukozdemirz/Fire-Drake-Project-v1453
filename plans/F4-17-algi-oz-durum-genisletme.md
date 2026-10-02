@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-17` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-16 (`PerceptionSnapshot`, `SelfState`, `/bot snap`) — `KAPANDI` (merge `bee4fe4`); F4-04 (pot dilimi, `BeginPotion`, `PotionWaitMs`) — `KAPANDI`; F4-03 (cast dilimi, `m_castSkillLast`, `CastRecastMs`, `kCastGapMs`) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |

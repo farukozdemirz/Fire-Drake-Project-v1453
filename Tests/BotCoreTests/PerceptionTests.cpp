@@ -1203,3 +1203,119 @@ TEST_CASE("Perception_Snapshot_Npcs")
 	CHECK_EQ(small.enemyTotal, 0);
 	CHECK_EQ(small.allyTotal, 0);
 }
+
+TEST_CASE("Perception_Self_Remaining")
+{
+	CHECK_EQ(BotCore::SnapRemainingSec(100, 40), 60u);
+	CHECK_EQ(BotCore::SnapRemainingSec(40, 100), 0u);
+	CHECK_EQ(BotCore::SnapRemainingSec(100, 100), 0u);
+	CHECK_EQ(BotCore::SnapRemainingSec(4000000000000LL, 0), 0xFFFFFFFFu);
+
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 1000), 1500u);
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 2500), 0u);
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 9999999999ULL), 0u);
+	CHECK_EQ(BotCore::SnapRemainingMs(0, 0), 0u);
+}
+
+TEST_CASE("Perception_Self_AddBuff")
+{
+	BotCore::SelfState s = MakeSelf();
+
+	CHECK(BotCore::SelfAddBuff(s, 1001, 3, true, 20));
+	CHECK(BotCore::SelfAddBuff(s, 1002, 5, false, 7));
+	CHECK(BotCore::SelfAddBuff(s, 1003, 8, true, 1));
+	CHECK_EQ(s.buffCount, 3);
+	CHECK_EQ(s.buffTotal, 3);
+	CHECK_EQ(int(s.buffs[0].skillId), 1001);
+	CHECK_EQ(int(s.buffs[0].buffType), 3);
+	CHECK(s.buffs[0].isBuff);
+	CHECK_EQ(s.buffs[0].remainingSec, 20u);
+	CHECK_EQ(int(s.buffs[1].skillId), 1002);
+	CHECK_EQ(int(s.buffs[1].buffType), 5);
+	CHECK(!s.buffs[1].isBuff);
+	CHECK_EQ(s.buffs[1].remainingSec, 7u);
+	CHECK_EQ(int(s.buffs[2].skillId), 1003);
+	CHECK_EQ(s.buffs[2].remainingSec, 1u);
+
+	CHECK(!BotCore::SelfAddBuff(s, 1004, 1, true, 0));   // expired: ignored
+	CHECK_EQ(s.buffCount, 3);
+	CHECK_EQ(s.buffTotal, 3);
+
+	for (int i = 3; i < BotCore::kSnapMaxBuffs; i++)
+		CHECK(BotCore::SelfAddBuff(s, (uint32_t)(2000 + i), 1, true, 10));
+	CHECK_EQ(s.buffCount, BotCore::kSnapMaxBuffs);
+	CHECK_EQ(s.buffTotal, BotCore::kSnapMaxBuffs);
+
+	CHECK(!BotCore::SelfAddBuff(s, 3001, 1, true, 10));
+	CHECK(!BotCore::SelfAddBuff(s, 3002, 1, true, 10));
+	CHECK_EQ(s.buffCount, BotCore::kSnapMaxBuffs);
+	CHECK_EQ(s.buffTotal, BotCore::kSnapMaxBuffs + 2);
+	CHECK_EQ(int(s.buffs[0].skillId), 1001);             // the first entries are unchanged
+	CHECK_EQ(s.buffs[0].remainingSec, 20u);
+}
+
+TEST_CASE("Perception_Self_AddCooldown")
+{
+	BotCore::SelfState s = MakeSelf();
+
+	CHECK(BotCore::SelfAddCooldown(s, 110518, 3000));
+	CHECK(BotCore::SelfAddCooldown(s, 110519, 100));
+	CHECK_EQ(s.cooldownCount, 2);
+	CHECK_EQ(s.cooldownTotal, 2);
+	CHECK_EQ(int(s.cooldowns[0].skillId), 110518);
+	CHECK_EQ(s.cooldowns[0].remainingMs, 3000u);
+	CHECK_EQ(int(s.cooldowns[1].skillId), 110519);
+	CHECK_EQ(s.cooldowns[1].remainingMs, 100u);
+
+	CHECK(!BotCore::SelfAddCooldown(s, 110520, 0));      // expired: ignored
+	CHECK_EQ(s.cooldownCount, 2);
+	CHECK_EQ(s.cooldownTotal, 2);
+
+	for (int i = 2; i < BotCore::kSnapMaxCooldowns; i++)
+		CHECK(BotCore::SelfAddCooldown(s, (uint32_t)(200000 + i), 500));
+	CHECK_EQ(s.cooldownCount, BotCore::kSnapMaxCooldowns);
+	CHECK_EQ(s.cooldownTotal, BotCore::kSnapMaxCooldowns);
+
+	CHECK(!BotCore::SelfAddCooldown(s, 300001, 500));
+	CHECK(!BotCore::SelfAddCooldown(s, 300002, 500));
+	CHECK_EQ(s.cooldownCount, BotCore::kSnapMaxCooldowns);
+	CHECK_EQ(s.cooldownTotal, BotCore::kSnapMaxCooldowns + 2);
+	CHECK_EQ(int(s.cooldowns[0].skillId), 110518);       // the first entries are unchanged
+}
+
+TEST_CASE("Perception_Snapshot_SelfExtras")
+{
+	BotCore::SelfState self = MakeSelf();
+	self.hpPotStock = 12;
+	self.mpPotStock = 7;
+	self.potWaitMs = 1500;
+	self.castGapWaitMs = 90;
+	CHECK(BotCore::SelfAddBuff(self, 106500, 4, true, 30));
+	CHECK(BotCore::SelfAddCooldown(self, 110518, 2500));
+	CHECK(BotCore::SelfAddCooldown(self, 110519, 800));
+
+	BotCore::ObsTable obs;
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1234, out);
+
+	CHECK_EQ(out.self.hpPotStock, 12u);
+	CHECK_EQ(out.self.mpPotStock, 7u);
+	CHECK_EQ(out.self.potWaitMs, 1500u);
+	CHECK_EQ(out.self.castGapWaitMs, 90u);
+	CHECK_EQ(out.self.buffCount, 1);
+	CHECK_EQ(out.self.buffTotal, 1);
+	CHECK_EQ(int(out.self.buffs[0].skillId), 106500);
+	CHECK_EQ(int(out.self.buffs[0].buffType), 4);
+	CHECK(out.self.buffs[0].isBuff);
+	CHECK_EQ(out.self.buffs[0].remainingSec, 30u);
+	CHECK_EQ(out.self.cooldownCount, 2);
+	CHECK_EQ(out.self.cooldownTotal, 2);
+	CHECK_EQ(int(out.self.cooldowns[0].skillId), 110518);
+	CHECK_EQ(out.self.cooldowns[0].remainingMs, 2500u);
+	CHECK_EQ(int(out.self.cooldowns[1].skillId), 110519);
+	CHECK_EQ(out.self.cooldowns[1].remainingMs, 800u);
+	CHECK_EQ(out.enemyCount, 0);
+	CHECK_EQ(out.allyCount, 0);
+	CHECK_EQ(out.npcCount, 0);
+}

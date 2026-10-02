@@ -2413,6 +2413,57 @@ void BotManager::CommandNpcs(const std::string & args)
 	}
 }
 
+// Fills the own-state extras of the snapshot (docs/14 5.1/5.2: the bot's own bag, buffs and timers are allowed).
+// IOCP thread only. Reads nothing that belongs to another player.
+static void FillSelfExtras(BotSession * s, CUser * me, std::chrono::steady_clock::time_point now,
+	BotCore::SelfState & self)
+{
+	for (uint8 i = INVENTORY_INVENT; i < INVENTORY_INVENT + HAVE_MAX; i++)
+	{
+		_ITEM_DATA * item = me->GetItem(i);
+		if (item == nullptr || item->nNum == 0 || item->sCount == 0)
+			continue;
+
+		uint8 kind = ActionExecutor::PotKindOf(me, item->nNum);
+		if (kind == 1)
+			self.hpPotStock += item->sCount;
+		else if (kind == 2)
+			self.mpPotStock += item->sCount;
+	}
+
+	BotCore::PotionCheck c;
+	memset(&c, 0, sizeof(c));
+	c.hasLast = s->m_potHasLast;
+	if (c.hasLast)
+		c.sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(now - s->m_potLast).count();
+	self.potWaitMs = BotCore::PotionWaitMs(c);
+
+	if (s->m_castAnyHas)
+	{
+		uint64 since = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(now - s->m_castAnyLast).count();
+		self.castGapWaitMs = BotCore::SnapRemainingMs(BotCore::kCastGapMs, since);
+	}
+
+	for (const auto & kv : s->m_castSkillLast)
+	{
+		_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(kv.first);
+		if (m == nullptr)
+			continue;
+
+		uint64 since = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(now - kv.second).count();
+		BotCore::SelfAddCooldown(self, kv.first, BotCore::SnapRemainingMs(BotCore::CastRecastMs(m->sReCastTime), since));
+	}
+
+	{
+		std::lock_guard<std::recursive_mutex> lock(me->m_buffLock);
+		for (const auto & kv : me->m_buffMap)
+		{
+			BotCore::SelfAddBuff(self, kv.second.m_nSkillID, kv.second.m_bBuffType, kv.second.m_bIsBuff,
+				BotCore::SnapRemainingSec((int64_t)kv.second.m_tEndTime, (int64_t)UNIXTIME));
+		}
+	}
+}
+
 void BotManager::CommandSnap(const std::string & args)
 {
 	std::vector<std::string> words;
@@ -2470,6 +2521,7 @@ void BotManager::CommandSnap(const std::string & args)
 	self.maxMp = me->GetMaxMana();
 	self.dead = me->isDead();
 	self.sitting = (me->m_bResHpType == USER_SITDOWN);
+	FillSelfExtras(s, me, std::chrono::steady_clock::now(), self);
 
 	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -2486,6 +2538,37 @@ void BotManager::CommandSnap(const std::string & args)
 		snap.self.hp, snap.self.maxHp, snap.self.mp, snap.self.maxMp,
 		snap.self.dead ? "dead" : "alive", snap.self.sitting ? "sitting" : "standing");
 	WriteBotLog(message);
+
+	snprintf(message, sizeof(message),
+		"BotManager: cmd snap:   stock hp_pot=%u mp_pot=%u wait pot=%ums cast_gap=%ums",
+		(unsigned)snap.self.hpPotStock, (unsigned)snap.self.mpPotStock,
+		(unsigned)snap.self.potWaitMs, (unsigned)snap.self.castGapWaitMs);
+	WriteBotLog(message);
+
+	snprintf(message, sizeof(message),
+		"BotManager: cmd snap:   buffs %d (total %d), cooldowns %d (total %d)",
+		snap.self.buffCount, snap.self.buffTotal, snap.self.cooldownCount, snap.self.cooldownTotal);
+	WriteBotLog(message);
+
+	const int kPrintMaxSelf = 10;
+
+	for (int i = 0; i < snap.self.buffCount && i < kPrintMaxSelf; i++)
+	{
+		const BotCore::BuffView & b = snap.self.buffs[i];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   buff skill=%u type=%u %s remain=%us",
+			(unsigned)b.skillId, (unsigned)b.buffType, b.isBuff ? "buff" : "debuff", (unsigned)b.remainingSec);
+		WriteBotLog(message);
+	}
+
+	for (int i = 0; i < snap.self.cooldownCount && i < kPrintMaxSelf; i++)
+	{
+		const BotCore::CooldownView & cd = snap.self.cooldowns[i];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   cooldown skill=%u remain=%ums",
+			(unsigned)cd.skillId, (unsigned)cd.remainingMs);
+		WriteBotLog(message);
+	}
 
 	snprintf(message, sizeof(message),
 		"BotManager: cmd snap:   enemies %d (total %d), allies %d (total %d), npcs %d (total %d)",
