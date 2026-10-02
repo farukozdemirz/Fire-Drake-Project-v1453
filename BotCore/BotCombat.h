@@ -254,4 +254,52 @@ namespace BotCore
 
 		return CAST_OK;
 	}
+
+	// --- potion slice (ADR-0017 Ek F4-04) ---
+
+	constexpr uint32_t kPotCooldownMs = 2500;   // docs/03 CLI-06: HP and MP pots share ~2.5 s (measured 2504..2665 ms; HP->MP 2540 ms) [A: shared timer]
+
+	// Supported pots: the server's per-skill recast (MAGIC.ReCastTime, 0.1 s units) never exceeds the shared timer,
+	// so no per-skill bookkeeping is needed. Longer-recast items are out of scope (unsupported_item).
+	inline bool PotSupported(uint16_t reCastTime)
+	{
+		return CastRecastMs(reCastTime) <= kPotCooldownMs;
+	}
+
+	struct PotionCheck
+	{
+		uint32_t stock;           // count of the pot item in the bot's own bag
+		bool hasLast;             // any pot packet was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that packet
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PotionVerdict
+	{
+		POT_OK = 0,
+		POT_REJECT_NO_STOCK = 1,   // CLI-06 (no item in the bag; MB-01 pots included)
+		POT_REJECT_COOLDOWN = 2,   // CLI-06 (shared 2.5 s timer)
+		POT_REJECT_RATE = 3        // CLI-11
+	};
+
+	// Milliseconds until the shared pot timer allows the next pot; 0 = now. Stock and rate are not timing waits.
+	inline uint32_t PotionWaitMs(const PotionCheck & c)
+	{
+		return (c.hasLast && c.sinceLastMs < kPotCooldownMs) ? kPotCooldownMs - c.sinceLastMs : 0;
+	}
+
+	// Guard rule for a pot packet. Order: no stock, cooldown, rate.
+	inline PotionVerdict CheckPotion(const PotionCheck & c)
+	{
+		if (c.stock < 1)
+			return POT_REJECT_NO_STOCK;
+
+		if (c.hasLast && c.sinceLastMs < kPotCooldownMs)
+			return POT_REJECT_COOLDOWN;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return POT_REJECT_RATE;
+
+		return POT_OK;
+	}
 }

@@ -272,3 +272,72 @@ TEST_CASE("Combat_CastEffect")
 	CHECK_EQ((int)BotCore::CheckCastEffect(false, 0, 10, 6), (int)BotCore::CAST_REJECT_TOO_EARLY);
 	CHECK_EQ((int)BotCore::CheckCastEffect(false, 1080, 10, 6), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
 }
+
+static BotCore::PotionCheck OkPot()
+{
+	BotCore::PotionCheck c;
+	c.stock = 1;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 0;
+	return c;
+}
+
+TEST_CASE("Combat_PotCheck_Order")
+{
+	BotCore::PotionCheck c = OkPot();
+	c.stock = 0;
+	c.hasLast = true;
+	c.sinceLastMs = 2499;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_REJECT_NO_STOCK);
+
+	c = OkPot();
+	c.hasLast = true;
+	c.sinceLastMs = 2499;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_REJECT_COOLDOWN);
+
+	c = OkPot();
+	c.hasLast = true;
+	c.sinceLastMs = 2500;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_OK);
+
+	c = OkPot();
+	c.hasLast = false;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_OK);
+
+	c = OkPot();
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_REJECT_RATE);
+
+	c = OkPot();
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPotion(c), (int)BotCore::POT_OK);
+}
+
+TEST_CASE("Combat_PotWait")
+{
+	BotCore::PotionCheck c = OkPot();
+	c.hasLast = false;
+	CHECK_EQ((int)BotCore::PotionWaitMs(c), 0);
+
+	c = OkPot();
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	CHECK_EQ((int)BotCore::PotionWaitMs(c), 2500);
+
+	c.sinceLastMs = 1000;
+	CHECK_EQ((int)BotCore::PotionWaitMs(c), 1500);
+
+	c.sinceLastMs = 2500;
+	CHECK_EQ((int)BotCore::PotionWaitMs(c), 0);
+
+	c.sinceLastMs = 9000;
+	CHECK_EQ((int)BotCore::PotionWaitMs(c), 0);
+
+	CHECK_EQ(BotCore::PotSupported(20), true);
+	CHECK_EQ(BotCore::PotSupported(25), true);
+	CHECK_EQ(BotCore::PotSupported(26), false);
+	CHECK_EQ(BotCore::PotSupported(150), false);
+	CHECK_EQ(BotCore::PotSupported(0), true);
+}

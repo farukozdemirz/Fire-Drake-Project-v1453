@@ -626,10 +626,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandAttack(args);
 	else if (_stricmp(verb.c_str(), "cast") == 0)
 		CommandCast(args);
+	else if (_stricmp(verb.c_str(), "pot") == 0)
+		CommandPot(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -820,10 +822,11 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 			snprintf(mp, sizeof(mp), "-");
 
 		snprintf(message, sizeof(message),
-			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d casting=%d mp=%s",
+			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d casting=%d mp=%s pot=%d",
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount,
 			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load(),
-			hp, s->m_attackActive ? 1 : 0, s->m_castPhase != BotSession::CAST_IDLE ? 1 : 0, mp);
+			hp, s->m_attackActive ? 1 : 0, s->m_castPhase != BotSession::CAST_IDLE ? 1 : 0, mp,
+			s->m_potActive ? 1 : 0);
 		out.push_back(message);
 	}
 }
@@ -1517,6 +1520,148 @@ void BotManager::CommandCast(const std::string & args)
 	WriteBotLog(message);
 }
 
+void BotManager::CommandPot(const std::string & args)
+{
+	static const char * kUsage =
+		"BotManager: cmd pot: usage: pot <bot> <item id> [count] | pot <bot|all> off";
+
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() == 2 && _stricmp(words[1].c_str(), "off") == 0)
+	{
+		if (_stricmp(words[0].c_str(), "all") == 0)
+		{
+			uint32 stopped = 0, notPotting = 0;
+			for (size_t i = 0; i < m_sessions.size(); i++)
+			{
+				BotSession * s = m_sessions[i];
+				if (s->m_phase != BotSession::PHASE_IN_GAME)
+					continue;
+
+				char message[224];
+				if (s->m_potActive)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd pot: %s stopped after %u use(s)",
+						s->m_charName.c_str(), (unsigned)s->m_potSent);
+					ActionExecutor::EndPotion(s);
+					stopped++;
+				}
+				else
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd pot: %s not potting", s->m_charName.c_str());
+					notPotting++;
+				}
+				WriteBotLog(message);
+			}
+
+			char summary[128];
+			snprintf(summary, sizeof(summary),
+				"BotManager: cmd pot all: %u stopped, %u not potting",
+				(unsigned)stopped, (unsigned)notPotting);
+			WriteBotLog(summary);
+			return;
+		}
+
+		BotSession * s = FindSession(words[0].c_str());
+		if (s == nullptr)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd pot: unknown or not spawned bot '%s'",
+				IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+			WriteBotLog(message);
+			return;
+		}
+
+		if (s->m_phase != BotSession::PHASE_IN_GAME)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd pot: %s not in game (phase %s)",
+				s->m_charName.c_str(), PhaseName(s->m_phase));
+			WriteBotLog(message);
+			return;
+		}
+
+		char message[224];
+		if (s->m_potActive)
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd pot: %s stopped after %u use(s)",
+				s->m_charName.c_str(), (unsigned)s->m_potSent);
+			ActionExecutor::EndPotion(s);
+		}
+		else
+		{
+			snprintf(message, sizeof(message),
+				"BotManager: cmd pot: %s not potting", s->m_charName.c_str());
+		}
+		WriteBotLog(message);
+		return;
+	}
+
+	if (words.size() < 2 || words.size() > 3)
+	{
+		WriteBotLog(kUsage);
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pot: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pot: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	long itemId = 0;
+	if (!ParseIntStrict(words[1], itemId) || itemId < 1 || itemId > 2147483647L)
+	{
+		WriteBotLog(kUsage);
+		return;
+	}
+
+	long count = 1;
+	if (words.size() == 3)
+	{
+		if (!ParseIntStrict(words[2], count) || count < 1 || count > 20)
+		{
+			WriteBotLog(kUsage);
+			return;
+		}
+	}
+
+	PotionOutcome outcome = ActionExecutor::BeginPotion(s, (uint32)itemId, (uint32)count, now);
+
+	char message[256];
+	if (outcome.kind == PotionOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pot: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pot: %s using %ld (%ld use(s))",
+			s->m_charName.c_str(), itemId, count);
+	WriteBotLog(message);
+}
+
 void BotManager::ParseSpawnList(const std::string & list)
 {
 	if (list.empty())
@@ -1883,6 +2028,39 @@ void BotManager::TickSessions()
 						}
 					}
 				}
+
+				if (s->m_potActive)
+				{
+					if (s->m_pUser->isDead())
+					{
+						ActionExecutor::EndPotion(s);
+						char message[192];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s pot stopped (dead)", s->m_charName.c_str());
+						WriteBotLog(message);
+					}
+					else
+					{
+						PotionOutcome pot = ActionExecutor::TickPotion(s, now);
+						if (pot.kind == PotionOutcome::FINISHED)
+						{
+							char message[256];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s pot finished (%s) after %u use(s), %u ok",
+								s->m_charName.c_str(), pot.reason,
+								(unsigned)s->m_potSent, (unsigned)s->m_potOk);
+							WriteBotLog(message);
+						}
+						else if (pot.kind == PotionOutcome::REFUSED || pot.kind == PotionOutcome::FAILED)
+						{
+							char message[224];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s pot stopped (%s)",
+								s->m_charName.c_str(), pot.reason);
+							WriteBotLog(message);
+						}
+					}
+				}
 			}
 			break;
 
@@ -1955,6 +2133,7 @@ void BotManager::BeginDespawn(BotSession * s, std::chrono::steady_clock::time_po
 	ActionExecutor::AbandonMove(s);
 	ActionExecutor::EndAttack(s);
 	ActionExecutor::EndCast(s);
+	ActionExecutor::EndPotion(s);
 	// Socket::Disconnect() does nothing without a socket, so run what a real disconnect runs:
 	// OnDisconnect() removes the account/character names, takes the bot out of its region
 	// and queues WIZ_LOGOUT (LogOut() sets m_deleted until the DB thread has saved the bot).
