@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-14` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ByteReader`, `ParseRegionList`, `ObsTable`, `OnPacket()` algı bloğu, `m_obsLock`) — `KAPANDI` (merge `dcd8f80`); F4-13 (`PendingIds`, `m_obsPending`) — `KAPANDI` (merge `f1acc48`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -286,16 +286,41 @@ git diff --check gece/2026-10-02...bot/F4-14
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-14` — `<kısa-sha> [F4-14] …`
+- Branch / commit'ler: `bot/F4-14` (taban: `gece/2026-10-02`) — `9d51ae8 [F4-14] Perception dilim 3: NPC/canavar/kule gozlem tablosu (WIZ_REQ_NPCIN/WIZ_NPC_INOUT/WIZ_NPC_MOVE/WIZ_NPC_REGION/WIZ_DEAD) + /bot npcs`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/Perception.h` (+246): yalnızca ekleme; dosya sonuna `// --- NPC observation (ADR-0017 Ek F4-14) ---` bölümü: `kNpcMaxUnits/kNpcNameMax/kNpcInOutOut`, `NpcObs`, `ParseNpcInfo`, `ParseNpcInOut`, `ParseNpcList`, `ParseNpcMove`, `NpcTable`. Yeni `#include` yok; mevcut satırlar değişmedi.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+330): yalnızca ekleme; dosya-yerel `AddNpcInfo` + altı `TEST_CASE` (`Perception_NpcInfo_Parse`, `Perception_NpcInfo_Truncated`, `Perception_ParseNpcInOut`, `Perception_ParseNpcList`, `Perception_ParseNpcMove`, `Perception_NpcTable`). Mevcut testler değişmedi.
+  - `GameServer/Bot/BotSession.h` (+2): `BotCore::NpcTable m_npcs` (`m_obsLock` altında, ikinci mutex yok) ve `std::atomic<uint32> m_npcUnresolved`. `m_obsLock` yorumu plan gereği değişmedi.
+  - `GameServer/Bot/BotSession.cpp` (+62/−1): başlatıcıya `m_npcUnresolved(0)`; `ResetForRespawn()` kilitli bloğa `m_npcs.Clear()`, ardına `m_npcUnresolved = 0`; `OnPacket()` sonuna ayrı NPC algı bloğu. Mevcut algı bloğuna dokunulmadı (tek `−` satırı başlatıcı listesi).
+  - `GameServer/Bot/BotManager.h` (+1): `CommandNpcs` bildirimi.
+  - `GameServer/Bot/BotManager.cpp` (+84/−1): `npcs` fiili dağıtımı, "unknown command" listesine `npcs`, `CommandNpcs` (kilidi erken bırakır, günlük kilit dışında, botun kendi `m_pUser`'ından yalnızca `GetX()`/`GetZ()`).
+  - `plans/F4-14-algi-npc-canavar-tablosu.md` (Durum + bu rapor).
+- Derleme sonucu (`tools/build.sh Release`, son satırlar):
   ```
-  …
+  PerceptionTests.cpp
+  ...
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ...
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `BotCore/Perception.h`, `Tests/BotCoreTests/PerceptionTests.cpp`, `GameServer/Bot/BotSession.cpp`, `GameServer/Bot/BotManager.cpp` için uyarı çıktısı yok (kalan uyarılar yalnızca eski `GameServerDlg.cpp`/`UpgradeHandler.cpp` satırlarında). `tools/run-tests.sh Release` ve `Debug`: `61 tests, 0 failed`; altı yeni test adı çıktıda.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, dört dosyada uyarı yok — ilk derlemede test verisindeki `uint16` taşması C4305/C4309 verdi, `127400/89000` → `12740/8900` yapıldı; ikinci derleme temiz)
+  - K2 ✔ (Debug rc=0)
+  - K3 ✔ (Release+Debug `61 tests, 0 failed`, altı test adı göründü)
+  - K4 ✔ (grep'ler boş; `#include` yalnızca üç standart başlık)
+  - K5 ✔ (BotSession.cpp sözleşme grep'i boş; `CommandNpcs` yalnızca `me->GetX()`/`me->GetZ()`, yasak grep boş)
+  - K6 ✔ (`m_npcs` yalnızca `OnPacket()`/`ResetForRespawn()`/`CommandNpcs`; kilit bloğu yalnızca iki kopya; `ParseNpcInfo` NUL sonrasını sıfırlar)
+  - K7 ✔ (BotSession.cpp tek `−`: başlatıcı satırı; BotManager.cpp tek `−`: "unknown command" satırı; Perception.h/Tests `−` yok)
+  - K8 ✔ (`Startup/Tick/TickSessions/BuildStatusLines/BeginDespawn/CommandSee` değişmedi; `GameServer/` içinde `Bot/` dışı dosya değişmedi)
+  - K9 ✔ (diffstat yalnızca §4'teki 6 dosya + plan; vcxproj farkı boş)
+  - K10 ✔ (`file` hepsi ASCII + CRLF; `git diff --check` boş)
+  - K11 ✔ (`std::mutex` sayısı `BotSession.h`'de 1; yeni `printf/Sleep/CreateThread/rand(` yok; `ActionExecutor/Telemetry/ScenarioRunner` değişmedi)
+  - K12 ✔ (14 guard'ın hepsi ≥ 1; önceki 55 test hâlâ geçiyor)
+  - K13 Claude'a ait (çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: Yalnızca test verisi: `Perception_NpcInfo_*` / `Perception_ParseNpcInOut` kayıtlarında konum değerleri (plan bağlamındaki örnek `127400/89000`) `uint16_t` parametresine sığmadığı için C4305/C4309 uyarısı verdi; aynı alan düzenini koruyarak `12740/8900` (gerçek `x10` ölçeği) yapıldı. Kod/alan düzeni değişmedi.
+- Açık sorular: yok.
+
 
 ---
 
