@@ -489,10 +489,15 @@ while true; do
 			continue
 		fi
 		ensure_servers_stopped
+		BR="$(plan_branch "$PLAN_PATH")"
+		if [ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null; then
+			switch_to "$BR" || log "  UYARI: $BR dalina gecilemedi"
+		fi
 		state "Claude dogruluyor"
-		log "  -> claude -p /plan-dogrula (log: $STEP_LOG)"
+		log "  -> claude -p /plan-dogrula (dal: $(git branch --show-current), log: $STEP_LOG)"
 		run_claude "/plan-dogrula $PLAN_PATH" "$STEP_LOG" || log "  claude (dogrulama) sifir olmayan cikis kodu; Durum kontrol ediliyor."
 		ensure_servers_stopped
+		if $NIGHT; then switch_to "$INTEGRATION_BRANCH" || log "  UYARI: entegrasyon dalina donulemedi"; fi
 		log "  dogrulama sonrasi durum: $(plan_durum "$PLAN_PATH")"
 		;;
 	TASLAK | REDDEDİLDİ | *)
