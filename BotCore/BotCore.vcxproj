@@ -71,6 +71,7 @@
   <ItemGroup>
     <ClInclude Include="BotCombat.h" />
     <ClInclude Include="BotMotion.h" />
+    <ClInclude Include="NavGrid.h" />
     <ClInclude Include="Perception.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
