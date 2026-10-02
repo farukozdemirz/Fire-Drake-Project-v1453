@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-25` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `CancelCast`, `CAST_CASTING` hareketle iptal) — `KAPANDI` |
@@ -422,3 +422,28 @@ plans/F4-25-aksiyon-yurutucu-ucan-skill.md — Doğrulama Turu 1 düzeltmeleri. 
 4. BotCombat.h, ActionExecutor.cpp ve CombatTests.cpp dosyalarını touch edip `./tools/build.sh Release` ve `./tools/build.sh Debug` çalıştır (uyarı çıktısı boş olmalı), `./tools/run-tests.sh Release` ve `Debug` çalıştır (99 tests, 0 failed), `git diff --check` boş olmalı, `file` çıktısı ASCII + CRLF kalmalı.
 5. Uygulayıcı Raporu'na "Tur 2" ekle: Tur 1'deki "CastStartCheck::msp uint32_t'e genişletildi" cümlesinin o turda doğru olmadığını, şimdi yapıldığını açıkça yaz; derleme ve test çıktısının son satırlarını yapıştır. Planın Durum satırını UYGULANDI yap. Başka dosyaya dokunma.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-25` @ `d368e2f` (düzeltme kod commit'i `87b0266`). Gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push yapılmadı, birleştirmeyi döngü betiği yapar. Çalışma ağacı temiz; sunucular kapalı (0/3).
+- Tur 1 bulgu 1 kontrolü: `BotCore/BotCombat.h:160` `uint32_t msp;` (yorum aynı); `GameServer/Bot/ActionExecutor.cpp:866-867` `(uint16_t)` dönüşümleri yok, ikinci kolda genişletici `(uint32_t)m->sMsp`; `Tests/BotCoreTests/CombatTests.cpp:967` `(uint16_t)` yok, `CastManaNeed(40000, true) == 80000` ile `mana = 79999 ⇒ CAST_REJECT_NO_MANA`, `80000 ⇒ CAST_OK` eklendi (yeni `TEST_CASE` yok). Tur 1 → Tur 2 farkı (`f1165ac..bot/F4-25`) kod tarafında yalnızca bu üç dosya (+11/−3); başka kod dosyası değişmedi.
+- Kriter sonuçları (Tur 1 tablosu geçerli; değişenler yeniden koşuldu):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | beş dosya `touch` edilip `./tools/build.sh Release` rc=0, `warning`/`error` satırı yok |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, `warning`/`error` satırı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `99 tests, 0 failed` |
+| K4, K5, K7, K8, K9, K10, K11, K13, K14 | ✔ | Tur 1 kanıtı geçerli; Tur 2 farkı bu kriterlerin kapsadığı satırlara dokunmuyor (`git diff f1165ac..bot/F4-25 -- BotCore GameServer Tests` yalnızca `msp` tipi, `c.msp` ataması ve test satırları); `BotManager.cpp`/`BotSession.cpp`/vcxproj farkı yok |
+| K6 | ✔ | Tur 1 kanıtı geçerli (`CheckCastFly` → tek `SubmitCast(MAGIC_FLYING)`; uçan seride `CheckCastLand`); `c.msp` artık `uint32_t`, `ActionExecutor.cpp:934`/`:973` karşılaştırmaları genişlemeden geçiyor |
+| K12 | ✔ | `file`: beş dosya `ASCII text, with CRLF line terminators`; `git diff --check gece/2026-10-02...bot/F4-25` boş |
+| K15 | ✔ | `check-perception-contract.py` `RESULT: PASS`; diff'te yeni `m_pUser` yok |
+| K16 | ✔ (Static orb ve `no_mana` hariç) | Çalışma zamanı S1-S5 Tur 1'de `9ca912f` üzerinde geçti; Tur 2 yalnızca tip genişletme (davranış değişmez), bu yüzden yeniden koşulmadı |
+| Plan §5.1 madde 1 | ✔ | `uint32_t msp` kodda |
+
+- Bulgular:
+  1. **Not:** Static orb `110751` bot karakterinde sunucuca reddediliyor (skill ağacı puanı, KI-016, Tur 1 bulgu 2); bu planın hatası değil, kapsam dışı.
+  2. **Not:** `kFlightMinMs = 1000` tek ölçüme dayanır `[A]`; gerçek istemci ölçümü T-CAST-FLY-01 (proje sahibi testi, isteğe bağlı).
+  3. **Not:** Uygulayıcı Tur 2 raporu Tur 1'deki yanlış ifadeyi açıkça düzeltiyor; Tur 2 iddiaları (derleme, 99 test, kapsam, `git diff --stat` 3 dosya) doğrulandı.
+- Birleştirme: gece modu, döngü betiği `gece/2026-10-02`'ye `--no-ff` birleştirir; `main`'e ve `origin`'e dokunulmadı.
