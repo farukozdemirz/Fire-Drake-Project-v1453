@@ -122,7 +122,7 @@ Kaynak: `docs/reports/degerlendirme-2026-10-02.md`. Bu planlar F4/F5 döngüleri
 | [F4-52](F4-52-algi-skill-olay-halkasi.md) | `Perception` dilim 10 — görülen skill olayları (`WIZ_MAGIC_PROCESS` bölge yayını) olay halkası | F4 | HAZIR | `bot/F4-52` (taban: `gece/2026-10-02`) |
 | [F4-53](F4-53-algi-gozlenen-durum-tablosu.md) | `Perception` dilim 11 — gözlenen buff/debuff/heal tablosu (skill olaylarından, tahmin sınıfı `E`) | F4 | TASLAK | `bot/F4-53` (taban: `gece/2026-10-02`) |
 | [F4-54](F4-54-algi-tek-yonlu-gorus-teshisi.md) | Gözlem tablosunda tek yönlü görüş (KI-DEG-01): sayaçlı teşhis ve kök neden düzeltmesi (iki turlu) | F4 | HAZIR | `bot/F4-54` (taban: `gece/2026-10-02`) |
-| [F5-50](F5-50-nav-kiris-yurunebilirlik-denetimi.md) | Kiriş (paket adımı) yürünebilirlik denetimi `BotCore/NavSegment.h` (CLI-08, muhafazakâr süpercover + eğim) | F5 | HAZIR | `bot/F5-50` (taban: `gece/2026-10-02-nav`) |
+| [F5-50](F5-50-nav-kiris-yurunebilirlik-denetimi.md) | Kiriş (paket adımı) yürünebilirlik denetimi `BotCore/NavSegment.h` (CLI-08, muhafazakâr süpercover + eğim) | F5 | DOĞRULANDI | `bot/F5-50` (taban: `gece/2026-10-02-nav`) |
 | [F5-51](F5-51-nav-arena-siniri-ve-dogus-yolu.md) | Arena sınırı ve doğuş yolu: yasaklı bölgeden başlayan A* çöküşü (`NodeLimit`) | F5 | HAZIR | `bot/F5-51` (taban: `gece/2026-10-02-nav`) |
 | [F5-52](F5-52-nav-hedef-hiz-kestirimi-paket-sikligi.md) | Hareketli hedef hız kestirimi gerçek `WIZ_MOVE` sıklığıyla (1,5 sn) çalışsın | F5 | DOĞRULANDI | `bot/F5-52` (taban: `gece/2026-10-02-nav`) |
 | [F5-53](F5-53-nav-sorgu-butcesi-ve-onbellek.md) | Çoklu bot yol sorgusu: tick bütçesi, adil kuyruk, faz kaydırma, yol önbelleği `BotCore/NavBudget.h` | F5 | HAZIR | `bot/F5-53` (taban: `gece/2026-10-02-nav`) |
