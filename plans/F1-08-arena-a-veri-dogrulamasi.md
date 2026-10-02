@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-08` (taban: `main`) |
 | Bağımlı olduğu planlar | F0 (KABUL_EDILDI), F1-02 (ölçülen hız: 4,5 m/s yürüyüş, 6,7 m/s sprint) |
@@ -509,3 +509,35 @@ plans/F1-08-arena-a-veri-dogrulamasi.md — Doğrulama Turu 1 düzeltmeleri. Ayn
 6. Raporda K5'i şu şekilde düzelt (her atıfı depoda açıp kontrol et; emin olmadığını "doğrulanamadı" yaz): (a) "grep -rn -a ZONE_RONARK_LAND GameServer shared" çıktısını iki listeye ayır: zone 71 (ZONE_RONARK_LAND) ve ZONE_RONARK_LAND_BASE (73) eşleşmeleri; GameServer/GameServerDlg.cpp:2677 (TempleEventKickOutUser, Chaos Dungeon seviye >= 70 -> zone 71) zone 71 listesine ve (d)'ye ekle. (b) respawn atfını düzelt: AttackHandler.cpp:138-142 dalı yalnızca GetZoneID() <= ZONE_ELMORAD veya açık savaş zone'u içindir; zone 71 AttackHandler.cpp:158-165 -> CUser::GetStartPosition (GameServer/User.cpp:3729-3761) kullanır; m_sBind ile canlı bind nesnesi varsa AttackHandler.cpp:125-131 önceliklidir (bunu "(1380,1090) bind yokken" diye nitele). (c) CharacterMovementHandler.cpp:508-509 PlayerRankingProcess'tir; warp listesi için CharacterMovementHandler.cpp:260-263 ve GameServer/User.cpp:4326-4331 yaz; Map.cpp:109-120 satırını kaldır ya da zone 71'e etkisini dosya:satır ile göster. (d) CharacterMovementHandler.cpp:260-263 reddinin m_byBattleZoneType != ZONE_ARDREAM koşuluna, KickOutZoneUsers çağrısının ise m_byBattleZoneType == 0 koşuluna bağlı olduğunu yaz.
 7. Başka dosyaya dokunma (docs/** dahil; docs/appendix/data/ronark_zone_data_notes.md Claude tarafından düzeltildi). Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI** (Tur 1'deki üç engelin üçü de giderildi; yeni bulgu yok)
+- İncelenen: `bot/F1-08` @ `6e9f0fe` (düzeltme commit'i `166b1d3`; yalnızca `tools/arena-report.py` + plan dosyası)
+- Mod: otonom (`AUTO_LOOP=1`): birleştirme/push yapılmadı. Komut: `git switch main && git merge --no-ff bot/F1-08 && git push origin main` (etkileşimli oturumda).
+- Derleme: — (yalnızca Python aracı; C++ değişikliği yok).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `--selftest` | ✔ | `selftest OK`, çıkış 0 (Claude çalıştırdı). (d) artık `axis_candidate`'ı sentetik entry'lerle sınıyor (`p1_walk`, cluster %89, line 0.97, dh 2.1, confined None → False; hepsi geçerken True) |
+| K2 çıktı eksiksiz | ✔ | Araç yeniden çalıştırıldı: çıkış 0, 69 satır; SPAWN/GRID/AXIS/PATH/CHECK var; `AXIS_BEST` A: `angle=15`, B: `angle=135` |
+| K3 anchor | ✔ | Tur 1'den değişmedi: Tur 1 sürümü (`33bd26d`) ve Tur 2 sürümü yan yana çalıştırıldı; CHECK dışındaki tüm satırlar (SPAWN_SUMMARY'deki yeni alan hariç) **birebir aynı** |
+| K4 CHECK | ✔ | `min_margin_spawn` A calc=143,8 / doc=144 / diff −0,2; B 159,8 / 160 / −0,2; kule A −0,2, B −0,5. Hiçbiri 5 m'yi aşmaz. Açıklama düzeltilmiş (Karus Commander / Shaula; `SPAWN_MARGIN_CLASSES` = `arena_candidates.py:29` kümesi); `nearest` sıralaması `margin`'e göre (`tools/arena-report.py:319`) belirtilmiş |
+| K5 kod okuması | ✔ | Her atıf depoda açıldı (aşağıda). `grep -n -a ZONE_RONARK_LAND` çıktısı zone 71 / `_BASE` (73) diye doğru ayrılmış; `GameServerDlg.cpp:2677` eklenmiş; MEC-ZON-03 doğrulandı |
+| K6 yalnızca izinli tablolar | ✔ | `grep FROM\|JOIN`: `K_NPCPOS`, `K_MONSTER`, `K_NPC` (58-60), `START_POSITION` (66). `INSERT\|UPDATE\|DELETE\|DROP` boş; `git diff --stat main...bot/F1-08 -- docs/appendix/tools` boş |
+| K7 kapsam | ✔ | Tur 2 farkı (`7565fc7..bot/F1-08`): yalnızca `tools/arena-report.py` ve plan dosyası; `file`: ASCII, CR sayısı 0; `git status --short` temiz; commit'ler `[F1-08] ...` |
+| K8 Claude doğrulaması | ✔ | Tur 1'de yapıldı (PATH bağımsız Dijkstra, `START_POSITION` canlı satır); Tur 2'de araç değişikliği yalnızca SPAWN_SUMMARY/CHECK/süzgeç ayrımı, diff ile kanıtlandı |
+
+**Kod okuması atıf kontrolü (K5):**
+- `AttackHandler.cpp:125-131` bind dalı, `:137-142` ulus/savaş dalı (`GetZoneID() <= ZONE_ELMORAD` veya açık savaş zone'u), `:160-162` `else` → `GetStartPosition`; `User.cpp:3729-3761` `sKarusX + myrand(0, bRangeX)`: doğru. Zone 71 `else` dalına düşer.
+- `CharacterMovementHandler.cpp:260-263` (`isWarOpen() && m_byBattleZoneType != ZONE_ARDREAM`), `:508-509` = `PlayerRankingProcess`, `User.cpp:4326-4333` warp listesi süzgeci: doğru.
+- `GameServerDlg.cpp:2069-2075` (`m_byBattleZoneType == 0` iken `KickOutZoneUsers`), `:2994-3027`, `:2658-2694` (`TempleEventKickOutUser`, `:2677` seviye ≥ 70 → zone 71), `:700` Bifrost bitişi: doğru.
+- `Map.cpp:112` (`isWarZone()` koşulu), `Unit.cpp:1100-1102` (`ZF_WAR_ZONE` yok), `Map.h:54`: zone 71'de `Map.cpp` savaş portal dalı çalışmaz; doğru.
+- `CharacterSelectionHandler.cpp:177-186` savaş açıkken zone 71 girişinde `NativeZoneReturn` + `Disconnect` (GM hariç): doğru.
+
+**Bulgular (hepsi not, engel değil)**
+1. [Not] Tur 2 (a) bölümünde `GameServerDlg.cpp:2677` "(d) maddesine de eklenir" diye yazılmış ama Tur 2'deki (d) başlığı yalnızca koşul bağlarını içeriyor. Sonuç: Tur 1'deki "(d) zone 71'de periyodik ışınlama yok" cümlesi Tur 2 (a)'daki `TempleEventKickOutUser` bulgusuyla **değiştirilmiş** sayılır. Zone 71'e otomatik taşıma yolları: Bifrost bitişi (zone 31 → 71, `GameServerDlg.cpp:700`) ve Chaos Dungeon çıkışı (seviye ≥ 70, `:2677`); ikisi de zone 71'deki oyuncuları değil, **dışarıdan gelenleri** etkiler. `docs/15`/`docs/03` güncellemesinde bu iki yol birlikte yazılacak.
+2. [Not] Tur 1'deki "gerçek respawn (1380,1090)" ifadesi Tur 2'de "bind nesnesi yokken" diye nitelendi; geçerli.
+3. [Not] A için yalnızca `angle=15` süzgeci geçiyor (eksen uçları (1307,8; 899,1) ve (1240,2; 880,9); `dh=0,83`, `confined_path_m=70,6`). Eksen kararı Claude'un `docs/15` §2.4 güncellemesinde.
+
+Düzeltme gerekmiyor.
