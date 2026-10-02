@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-02` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`, `tools/nav-export.py`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`) |
@@ -228,17 +228,39 @@ git diff --stat gece/2026-10-02-nav...bot/F5-02
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-02` — `<kısa-sha> [F5-02] …`
+- Branch / commit'ler: `bot/F5-02` (taban: `gece/2026-10-02-nav`, açılış HEAD `4a69748`) — `a1df693 [F5-02] Izgara A* yol bulucu (BotCore/NavPath.h) ve NavPath testleri`; plan güncellemesi ayrı commit.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavPath.h` (yeni): `NavCell`, `NavPathStatus`, `NavSearchParams`, `NavPathResult`, `NavOctile`, `NavPathfinder`; ikili yığın + tembel silme, damga tabanlı düğüm havuzu (sorgu başına temizleme yok), belirlenimli beraberlik (küçük `f`, büyük `g`, küçük `idx`), komşuluk yalnızca `NavGrid::EdgeOpen`; maliyet yalnızca yatay mesafe; `Generation` taşarsa damgalar sıfırlanır.
+  - `Tests/BotCoreTests/NavPathTests.cpp` (yeni): §5.2'deki dokuz test; test içi bağımsız Dijkstra (`ReferenceCost`) ve `PathIsValid`; gerçek harita sorguları ve T-NAV-03 performans testi.
+  - `BotCore/BotCore.vcxproj` (değişti): yalnızca `<ClInclude Include="NavPath.h" />` (BOM + CRLF korundu).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (değişti): yalnızca `<ClCompile Include="NavPathTests.cpp" />` (BOM + CRLF korundu).
+  - `plans/F5-02-nav-astar-yol-bulma.md` (değişti): `Durum` satırı + bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar; `NavPath` geçen uyarı yok):
   ```
-  …
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    NavPathTests.cpp
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- `NAVPATH` satırları (K3/K7, aynen): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `./tools/build.sh Release` rc=0; tam çıktıda `warning` satırı yok.
+  - K2 ✔ `--list` dokuz `NavPath_*` adını içeriyor.
+  - K3 ✔ rc=0; `80 tests, 0 failed`; dokuz yeni test `[ OK ]`; `SKIPPED` yok; `NAVPATH arena A->B: cost=660.617 …` ve üç `NAVPATH T-NAV-03 set=…` satırı var.
+  - K4 ✔ `zone71.navgrid` geçici taşınınca `NavPath_` rc=0; iki gerçek harita testi `SKIPPED` yazdı, yedi test geçti; dosya geri kondu.
+  - K5 ✔ `./tools/run-tests.sh Debug` rc=0; `80 tests, 0 failed`; uyarı yok.
+  - K6 ✔ `NavPath_MatchesDijkstra [ OK ]`; `pairs=240 found=238` (`n > 0`).
+  - K7 ✔ Release `set=near64` `found=997` (≥ 950) ve `ms_p95=0.536` (≤ 2.000). Ölçüm makinesi: AMD Ryzen 7 7800X3D, `nproc=16`.
+  - K8 ✔ `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavPath.h` boş; `git diff --stat` yalnızca §4'teki dört kod dosyası + plan; `GameServer/`, `AIServer/`, `shared/`, `docs/` ve `NavGrid.h` değişmedi.
+  - K9 ✔ `Nav_` rc=0; on test `[ OK ]`; `NAVGRID real map: n=513 main=88508 …`.
+- `NAVPATH` satırları (K3/K7, Release; aynen):
+  ```
+  NAVPATH arena A->B: cost=660.617 expanded=3160 cells=150
+  NAVPATH T-NAV-03 set=near64 queries=1000 found=997 nopath=1 nodelimit=2 expanded_p50=306 expanded_p95=2431 ms_p50=0.075 ms_p95=0.536 ms_p99=0.981
+  NAVPATH T-NAV-03 set=far150 queries=1000 found=997 nopath=1 nodelimit=2 expanded_p50=1454 expanded_p95=5990 ms_p50=0.374 ms_p95=1.547 ms_p99=2.587
+  NAVPATH T-NAV-03 set=global queries=1000 found=943 nopath=1 nodelimit=56 expanded_p50=4758 expanded_p95=20000 ms_p50=1.309 ms_p95=5.532 ms_p99=6.130
+  ```
+- Plandan sapmalar ve gerekçeleri: `NavGrid.h`'e dokunulmadı (K7 kapısı ilk denemede tuttu). `NavOctile`/test içi mutlak değer `std::abs` yerine elle (koşullu işaret) hesaplandı; planın başlık listesine (`<cstdlib>` eklemeden) sadık kalmak için. Bunun dışında algoritma, testler ve proje kayıtları plana birebir uyar.
+- Açık sorular: Yok.
 
 ---
 
