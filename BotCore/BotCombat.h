@@ -560,4 +560,47 @@ namespace BotCore
 
 		return PARTYLEAVE_OK;
 	}
+
+	// --- party promote / kick slice (ADR-0017 Ek F4-10) ---
+
+	constexpr uint32_t kPartyManageGapMs = 1000;   // docs/03 CLI-17: a human needs at least this long between two leader actions (promote / kick) [A] (unmeasured)
+
+	struct PartyManageCheck
+	{
+		bool isLeader;            // the bot leads its party (own state; false when it leads nothing)
+		bool targetInParty;       // the target is a member of the bot's party (the party panel lists the members)
+		bool hasLast;             // a promote or kick was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that action
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PartyManageVerdict
+	{
+		PARTYMANAGE_OK = 0,
+		PARTYMANAGE_REJECT_LEADER = 1,   // CLI-17 (only the party leader promotes or kicks)
+		PARTYMANAGE_REJECT_MEMBER = 2,   // CLI-17 (the target is not in the bot's party; the server does not check this for a kick, KI-015)
+		PARTYMANAGE_REJECT_GAP = 3,      // CLI-17 (second leader action before kPartyManageGapMs)
+		PARTYMANAGE_REJECT_RATE = 4      // CLI-11
+	};
+
+	// Guard rule for a promote or a kick. The caller has already checked that the bot is in a game, alive, in a party,
+	// and that the target is another valid player. Order: leader, member, gap (only when a previous action is known), rate.
+	inline PartyManageVerdict CheckPartyManage(const PartyManageCheck & c);
+
+	inline PartyManageVerdict CheckPartyManage(const PartyManageCheck & c)
+	{
+		if (!c.isLeader)
+			return PARTYMANAGE_REJECT_LEADER;
+
+		if (!c.targetInParty)
+			return PARTYMANAGE_REJECT_MEMBER;
+
+		if (c.hasLast && c.sinceLastMs < kPartyManageGapMs)
+			return PARTYMANAGE_REJECT_GAP;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return PARTYMANAGE_REJECT_RATE;
+
+		return PARTYMANAGE_OK;
+	}
 }

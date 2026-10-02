@@ -731,3 +731,67 @@ TEST_CASE("Combat_PartyLeaveCheck_Boundaries")
 	c.actionsInWindow = 6;
 	CHECK_EQ((int)BotCore::CheckPartyLeave(c), (int)BotCore::PARTYLEAVE_REJECT_RATE);
 }
+
+TEST_CASE("Combat_PartyManageCheck_Order")
+{
+	BotCore::PartyManageCheck c;
+	c.isLeader = false;
+	c.targetInParty = false;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_LEADER);
+
+	c.isLeader = true;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_MEMBER);
+
+	c.targetInParty = true;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_GAP);
+
+	c.sinceLastMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_RATE);
+
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_OK);
+
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_OK);
+
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_RATE);
+}
+
+TEST_CASE("Combat_PartyManageCheck_Boundaries")
+{
+	BotCore::PartyManageCheck c;
+	c.isLeader = true;
+	c.targetInParty = true;
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_GAP);
+
+	c.sinceLastMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_OK);
+
+	CHECK_EQ((int)BotCore::kPartyManageGapMs, 1000);
+
+	c.sinceLastMs = 1000;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_OK);
+
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_RATE);
+
+	c.isLeader = false;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_LEADER);
+
+	c.isLeader = true;
+	c.targetInParty = false;
+	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_MEMBER);
+}

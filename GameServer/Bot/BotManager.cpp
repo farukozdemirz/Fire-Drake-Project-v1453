@@ -644,10 +644,14 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandPartyDecline(args);
 	else if (_stricmp(verb.c_str(), "pleave") == 0)
 		CommandPartyLeave(args);
+	else if (_stricmp(verb.c_str(), "ppromote") == 0)
+		CommandPartyManage(args, false);
+	else if (_stricmp(verb.c_str(), "pkick") == 0)
+		CommandPartyManage(args, true);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -2072,6 +2076,100 @@ void BotManager::CommandPartyLeave(const std::string & args)
 	else
 		snprintf(message, sizeof(message),
 			"BotManager: cmd pleave: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+// Test driver: the party panel lists who is in the leader's party. Until the Perception slice, membership is read
+// from the two bot sessions (guard input only, never a result). The server counts an invitee as a party member
+// before it accepts (PartyHandler.cpp:154-155, KI-014), so a pending invitation record disqualifies the target.
+static bool IsSamePartyMember(CUser * leader, BotSession * target)
+{
+	return leader->isInParty() && target->m_pUser->isInParty()
+		&& leader->GetPartyID() == target->m_pUser->GetPartyID()
+		&& (target->m_partyInviteEcho.load() & (1ull << 63)) == 0;
+}
+
+void BotManager::CommandPartyManage(const std::string & args, bool kick)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	const char * verb = kick ? "pkick" : "ppromote";
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() != 2)
+	{
+		char message[128];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: usage: %s <bot> <target bot>", verb, verb);
+		WriteBotLog(message);
+		return;
+	}
+
+	const std::string & name = words[0];
+	const std::string & targetName = words[1];
+
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: unknown or not spawned bot '%s'",
+			verb, IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s not in game (phase %s)",
+			verb, s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	BotSession * target = FindSession(targetName.c_str());
+	if (target == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: unknown or not spawned bot '%s'",
+			verb, IsKnownBotName(targetName) ? targetName.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (target->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: target %s not in game (phase %s)",
+			verb, target->m_charName.c_str(), PhaseName(target->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Test driver: the target and its membership come straight from the two bot sessions; the Perception slice
+	// replaces this source, not PartyMemberTarget.
+	PartyMemberTarget tv = { (int16)target->m_pUser->GetSocketID(),
+		IsSamePartyMember(s->m_pUser, target) };
+	PartyOutcome outcome = kick
+		? ActionExecutor::RequestPartyKick(s, tv, now)
+		: ActionExecutor::RequestPartyPromote(s, tv, now);
+
+	char message[256];
+	if (outcome.kind == PartyOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s refused (%s)", verb, s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == PartyOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s %s %s",
+			verb, s->m_charName.c_str(), outcome.reason, target->m_charName.c_str());
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s failed (%s)", verb, s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 

@@ -112,6 +112,9 @@ public:
 	bool m_partyEnteredHasAt;                              // IOCP thread only: m_partyEnteredAt is valid (the bot created or joined a party in this spawn)
 	std::chrono::steady_clock::time_point m_partyEnteredAt;    // IOCP thread only: when the bot last created or joined a party
 
+	bool m_partyManageHasLast;                             // IOCP thread only: m_partyManageLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_partyManageLast;   // IOCP thread only: when the last party promote / kick went out
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
