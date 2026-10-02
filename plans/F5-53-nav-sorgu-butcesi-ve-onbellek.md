@@ -43,7 +43,16 @@ Hedef takipçi (`NavFollower`) her 500 ms'de yeniden planlar; hepsinin aynı tic
    - `int Pending() const`, `int64_t OldestWaitMs(int64_t nowMs) const`, `void Cancel(uint16_t botId)` (bot ölünce/despawn), `void Clear()`.
 2. `NavPathCache` (sabit kapasite `kNavCacheCap = 64`, LRU): anahtar `(startCell, goalCell, fieldVersion)`; `Find(key, nowMs, NavPathResult-benzeri hafif görünüm)`, `Put(key, cells, length, nowMs)`, TTL `ttlMs` (varsayılan 30000), `Invalidate(fieldVersion)`; hücre dizisi **kopyalanır** (kapasite başına en çok 512 hücre; daha uzun yol önbelleğe yazılmaz).
 3. `inline int NavReplanPhaseMs(int slot, int intervalMs = 500, int phases = 5)` = `(slot mod phases) × (intervalMs / phases)` (negatif `slot` güvenli).
-4. Birim testleri ve gerçek harita ölçüm testi (§5.3).
+4. **Ertelenen sorgu sözleşmesi** (proje sahibi kararı 2026-10-02: sorgular ertelendiğinde botların bekleme, takip ve mevcut yolu kullanma davranışı doğrulanır): `enum class NavDeferAction { FollowPlan, Hold }` ve `inline NavDeferAction NavWhileDeferred(bool hasPlan, int64_t planAgeMs, float targetDriftM, const NavDeferParams &)` (`NavDeferParams { int planMaxAgeMs = 5000; float driftMaxM = 15.0f; }`, `[A]`). Davranış tablosu (çağıran bu sözleşmeyi uygular, test eder):
+
+| Durum | Davranış |
+|---|---|
+| Plan var, taze (yaş ≤ `planMaxAgeMs` ve hedef kayması ≤ `driftMaxM`) | **mevcut yolu izlemeye devam** (durma yok, düz hedef adımı yok) |
+| Plan var, bayat (yaş veya kayma aşıldı) | **dur** (`speed = 0` paketi) ve bekle; telemetri `NAV_DEFER` `stale` |
+| Plan yok (ilk sorgu) | **dur** ve bekle (rastgele yürüme/düz hedef adımı yok) |
+| Bekleme `maxWaitMs`'yi aştı | zamanlayıcı öncelik verir (sıranın başı) |
+
+5. Birim testleri ve gerçek harita ölçüm testleri (§5.3); `tools/nav-measure/nav_measure.cpp`'ye `budget-scheduled` bölümü (zamanlayıcısız ve zamanlayıcılı karşılaştırma; kalıcı, yeniden çalıştırılabilir ölçüm).
 
 **Kapsam dışı**
 
@@ -58,6 +67,7 @@ Hedef takipçi (`NavFollower`) her 500 ms'de yeniden planlar; hepsinin aynı tic
 | `Tests/BotCoreTests/NavBudgetTests.cpp` | yeni | |
 | `BotCore/BotCore.vcxproj` | değiştir | tek `ClInclude` satırı |
 | `Tests/BotCoreTests/BotCoreTests.vcxproj` | değiştir | tek `ClCompile` satırı |
+| `tools/nav-measure/nav_measure.cpp` | değiştir | yalnızca yeni `budget-scheduled` bölümü (mevcut bölümlere dokunulmaz) |
 
 Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
 
@@ -71,6 +81,8 @@ Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
    - `NavBudget_Scheduler_Cost`: `ReportCost` EWMA'ya girer; pahalı sorgu (4 ms) sonrası aynı tick'te başka sorgu seçilmez ama bütçeyi aşan **tek** sorgu yine çalışır; `Cancel`/`Clear` istekleri siler.
    - `NavBudget_Cache`: ekleme/bulma, TTL (30000 ms sınırı: 30000'de bulunur, 30001'de yok), LRU (65. giriş en eskiyi atar), `Invalidate`, 512 hücreden uzun yol yazılmaz, kopya bağımsız.
    - `NavBudget_ReplanPhase`: 5 ardışık slot için 0/100/200/300/400 ms, `slot 5 → 0`, negatif slot güvenli; 16 bot için en çok 4 bot aynı fazda.
+   - `NavBudget_Deferred_Contract`: `NavWhileDeferred` tablosu: plan taze → `FollowPlan`; yaş 5001 ms → `Hold`; kayma 15,1 m → `Hold`; plan yok → `Hold`; sınır değerleri (5000 ms, 15,0 m) `FollowPlan`.
+   - `NavBudget_Deferred_Chase_Sim` (harita yoksa `SKIPPED`): 16 takipçi bot, her biri bağımsız hareketli bir hedefi izler (hedef 4,5 m/s, her 6–10 sn'de rastgele yön değişimi, tohum sabit), 120 sn sanal süre, 100 ms tick; takipçi planın ara noktalarını 4,5 m/s (sprint 6,7) ile izler, yeni plan gelince geçer; iki mod: (A) zamanlayıcısız (her sorgu anında) ve (B) zamanlayıcılı + `NavWhileDeferred` davranışı. Her mod için satır: `plan_wait_p50/p95/max_ms` (istek → plan), `time_without_plan_pct`, `deferred_ticks`, `hold_ticks`, `follow_stale_ticks`, `dist_mean/p95_m` (takipçi-hedef). **Kabul (B): `plan_wait_max ≤ 1100 ms`, `plan_wait_p95 ≤ 800 ms`, plansız süre yüzdesi ≤ %3, hiçbir takipçi bayat planla `FollowPlan` ile **sürmez** (`follow_stale_ticks = 0`), `dist_mean` (B) ≤ 1,25 × `dist_mean` (A)**; bekleyen botun yönünü rastgele değiştirmesi (jitter) yok (`hold` sırasında konum değişimi 0).
    - `NavBudget_RealMap_Load` (harita yoksa `SKIPPED`): `NavPathfinder` + `NavFollower` ile 16 bot, her biri 500 ms aralıkla near64 hedef takibi, **60 sn sanal süre** (100 ms tick = 600 tick), iki mod: (A) zamanlayıcısız, fazsız (hepsi `Update`'i her tick çağırır; en kötü durum) ve (B) zamanlayıcılı (bütçe 1,5 ms, fazlı). Her modda tick başına nav süresi (gerçek `steady_clock`), `tick_sum p50/p95/p99/max` ve en uzun yol bekleme süresi satır olarak yazdırılır. **Kabul (Release): (B) `tick_sum p95 ≤ 2.0 ms` ve `p99 ≤ 4.5 ms`, en uzun bekleme ≤ 1100 ms; (B) p95, (A) p95'inden en az %30 düşük.**
 4. Derleme ve test (§7).
 
@@ -78,11 +90,13 @@ Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
 
 - [ ] K1: `./tools/build.sh Release` rc=0, yeni dosyalar için uyarı yok
 - [ ] K2: `./tools/build.sh Debug` rc=0, uyarı yok
-- [ ] K3: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; altı yeni test adı `[ OK ]` (gerçek harita testi kabul koşusunda harita **var**); mevcut testler geçer
+- [ ] K3: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; sekiz yeni test adı `[ OK ]` (altı temel + `NavBudget_Deferred_Contract`, `NavBudget_Deferred_Chase_Sim`) (gerçek harita testi kabul koşusunda harita **var**); mevcut testler geçer
 - [ ] K4: `BotCore/NavBudget.h`'te `windows.h|stdafx|GameServer|shared/` grep'i boş; dinamik bellek yok (`new|malloc` yok; `std::vector` yalnızca önbellek hücre dizilerinde, kapasite sınırlı), global/static durum yok
 - [ ] K5: AC-NAV-07 ölçümü Release'te (B) modu için §5.3 eşiklerini karşılar; satır çıktısı raporda; MSVC Release değeri raporlanır (Claude ayrıca WSL `g++` ile çapraz kontrol eder)
 - [ ] K6: ilerleme garantisi ve `maxWaitMs` öncelik testleri geçer (başlık: açlık yok)
 - [ ] K7: `git diff --stat gece/2026-10-02-nav...bot/F5-53` yalnızca §4; `GameServer/`, `shared/`, `docs/` farkı 0; ASCII + CRLF; `git diff --check` boş
+- [ ] K7a: ertelenen sorgu davranışı (`NavBudget_Deferred_Chase_Sim`) yukarıdaki (B) eşiklerini karşılar; satır çıktıları raporda; `tools/nav-measure.sh budget-scheduled` aynı sayıları üretir (kalıcı araç)
+- [ ] K7b: **oyun içi** 16 bot tick/yol bütçesi (MSVC Release, gerçek `BotManager` tick'i, `PERF_SAMPLE` nav payı) ve ertelenen botların gerçek davranışı **bu planda kapanmaz**: F5-55 (T-NAV-11) ve `docs/reports/degerlendirme-takip.md` satırında `BEKLİYOR` kalır
 - [ ] K8: Uygulayıcı Raporu `NavPathfinder` bot başına (≈ 4,2 MB) vs paylaşılan örnek için **ölçüm notu** içerir (karar F5-55'te)
 
 ## 7. Doğrulama komutları

@@ -1,32 +1,85 @@
-# ADR-0031-DEG: Senaryo kazanma kuralı (değerlendirme ajanında Claude kararı — gözden geçirilmeli)
+# ADR-0031-DEG: Senaryo kazanma kuralları: `killdiff_timed` ve ayrı tür `wipe_first`
 
-Durum: ÖNERİLDI (arka plan değerlendirme ajanı kabul etti; proje sahibi gözden geçirecek)
-Tarih: 2026-10-02 · Karar veren: Claude (değerlendirme ajanı, soru sorulamadı)
-İlgili: docs/15 §6b; docs/16 MET-OUT-01/05; F8; `docs/reports/degerlendirme-2026-10-02.md` DEG-24
+Durum: KABUL (proje sahibi, 2026-10-02: "respawn içeren süreli maçlarda kill farkı; ilk takımın tamamen ölmesiyle biten maçlar ayrı senaryo türü; ±2/±1 örneklerle kesinleşsin; eşikler yapılandırılabilir")
+Tarih: 2026-10-02 · Karar veren: proje sahibi (ilk taslak: Claude değerlendirme ajanı)
+İlgili: docs/15 §6b; docs/16 MET-OUT-01/05; F8; `docs/reports/degerlendirme-2026-10-02.md` DEG-24, `…-ek.md` madde 2
 
 ## Bağlam
 
-- `ScenarioRunner` (F3-03) süre dolunca maçı `completed` kapatır (`MATCH_END.result` yalnızca `completed`/`aborted`); `MET-OUT-01` "senaryo hedefine göre" der ama hedef tanımsızdı. Süre dolması takımın kazandığı anlamına gelmez.
-- Ronark'ta ölen bot ≥ 3 sn sonra yeniden doğabilir (CLI-14), bu yüzden "tüm takım aynı anda ölü" nadirdir.
-- Hasar/isabet zarı ve sunucu rastgeleliği tek maçı gürültülü yapar; tekrar ve SPRT ile değerlendirilir (docs/14 §8).
+- `ScenarioRunner` (F3-03) süre dolunca maçı `completed` kapatır; `MATCH_END.result` yalnızca `completed`/`aborted`'tir; `MET-OUT-01` "senaryo hedefine göre" der ama hedef tanımsızdı. Süre dolması kazanma değildir.
+- Ronark'ta ölen bot ≥ 3 sn sonra yeniden doğabilir (CLI-14): respawn açıkken "tüm takım aynı anda ölü" nadirdir; respawn kapalıyken anlamlıdır.
+- Sunucu rastgeleliği tek maçı gürültülü yapar; değerlendirme tekrar + taraf değişimi + SPRT ile yapılır.
 
-## Karar
+## Karar: iki ayrı senaryo türü + ölçüm modu
 
-`win_rule` senaryo anahtarı: **`killdiff_timed`** (EVAL varsayılanı), `first_death` (1v1), `timed_score` (yalnız ölçüm). `killdiff_timed`: süre ilk hasardan (`engage`) işler (EVAL-8v8 300 sn); bitişte kill farkı ≥ +2 galibiyet, ≤ −2 yenilgi, |fark| ≤ 1 berabere (0,5); erken bitiş: WIPE veya fark ≥ takım büyüklüğü; hasar hiç olmazsa `invalid` (`NO_ENGAGE`). Kill = yalnız bot–bot PvP `DEATH`. `MATCH_END.result` ∈ `win_a|win_b|draw|invalid`.
+### Ortak tanımlar
+
+- **Kill:** maç içinde, bir takımın üyesinin diğer takımın üyesini öldürmesi (`DEATH` olayında öldüren = rakip takım botu). Canavar/kule/bilinmeyen kaynak/intihar sayılmaz.
+- `K_A`, `K_B`: A ve B takımının kill sayıları. `fark = K_A − K_B` (tamsayı).
+- **Başlangıç (`engage`):** maçtaki ilk hasar olayı. Süre `engage` anından işler. `engage_timeout_sec` (varsayılan 60) içinde hasar yoksa maç **geçersiz** (`invalid`, neden `NO_ENGAGE`).
+- Sonuç kodu `MATCH_END.result` ∈ `win_a` | `win_b` | `draw` | `invalid` | `no_result` (yalnız `timed_score`). Kazanma oranına `draw` 0,5, `invalid` payda dışı (MET-OUT-01).
+
+### Tür 1 — `killdiff_timed` (respawn **açık**; EVAL varsayılanı)
+
+Parametreler (senaryo dosyasında, yoksa varsayılan): `duration_sec` (EVAL-8v8: 300; 2v2..5v5: 120), `win_margin` (varsayılan **2**), `early_end_margin` (varsayılan **0 = kapalı**).
+
+| Kural | Sonuç |
+|---|---|
+| `fark >= win_margin` | **`win_a`** (A galip, B mağlup) |
+| `fark <= −win_margin` | **`win_b`** (B galip, A mağlup) |
+| `\|fark\| < win_margin` | **`draw`** (varsayılan `win_margin = 2`: fark −1, 0, +1) |
+| `early_end_margin > 0` ve `\|fark\| >= early_end_margin` | süre dolmadan o anda bitir, yukarıdaki kuralla sonuçlandır |
+| `duration_sec` dolunca | yukarıdaki kural (süre dolması kendiliğinden kazanma değildir) |
+
+Örnekler (8v8, 300 sn, `win_margin = 2`):
+
+| K_A | K_B | fark | Sonuç | Neden |
+|---|---|---|---|---|
+| 14 | 11 | +3 | `win_a` | ≥ +2 |
+| 10 | 8 | +2 | `win_a` | sınır dahil (≥ 2) |
+| 9 | 8 | +1 | `draw` | \|fark\| < 2 |
+| 8 | 8 | 0 | `draw` | eşit |
+| 8 | 9 | −1 | `draw` | \|fark\| < 2 |
+| 7 | 9 | −2 | `win_b` | ≤ −2 |
+| 3 | 12 | −9 | `win_b` | |
+| 0 | 0 | 0 | `draw` (hasar vardı) / `invalid` (`NO_ENGAGE`, hasar hiç yoktu) | |
+
+`win_margin = 3` ile aynı maçlar: (14, 11) +3 `win_a`; (10, 8) +2 `draw`; (7, 9) −2 `draw`. Küçük takım (2v2, 120 sn, margin 2): (3, 1) `win_a`; (2, 1) `draw`.
+
+### Tür 2 — `wipe_first` (ilk tam yok oluşla biten; respawn **kapalı**)
+
+Parametreler: `duration_sec` (varsayılan 300), `respawn` (varsayılan **off**: ölen bot `WIZ_REGENE` göndermez, ölü kalır; `on` verilirse tür anlamını yitirir ve doğrulama reddeder), `resurrection` (varsayılan off).
+
+| Durum | Sonuç |
+|---|---|
+| Bir takımın **tüm** üyeleri ölü (canlı sayısı 0), diğerinin canlısı var | diğer takım galip (`win_a`/`win_b`), maç o anda biter |
+| Her iki takım da aynı tick (≤ 100 ms) içinde 0 canlıya iner | `draw` |
+| Süre dolunca wipe yok | **canlı üye sayısı** fazla olan galip; eşitse `draw` |
+| 1v1 | tür özel durumu: ilk ölen kaybeder (`wipe_first` ve boyut 1) |
+
+Örnekler (8v8): B'nin son botu ölür, A'da 3 canlı → `win_a`; süre dolar, A 4 canlı B 2 canlı → `win_a`; A 3 / B 3 → `draw`; iki takımın son botları aynı tick'te ölür → `draw`.
+
+### Tür 3 — `timed_score` (yalnız ölçüm)
+
+Kazanan ilan edilmez (`no_result`); kill/death, hasar, heal metrikleri raporlanır. Mekanik/davranış testleri (T-WAR/T-PRI/T-MAG) için.
+
+### Yapılandırılabilirlik ve pilot kalibrasyonu
+
+Eşikler kodda sabit değildir; senaryo anahtarları: `win_rule`, `duration_sec`, `win_margin` (1..8), `early_end_margin` (0 veya ≥ `win_margin`), `engage_timeout_sec`, `respawn`. Değerler `MATCH_START` olayına yazılır (tekrar edilebilirlik). **Pilot:** `baseline-v1` aynı-aynıya, 20 maç (taraf değişimli): `fark` dağılımı (ortalama, standart sapma) ve beraberlik oranı raporlanır; hedef beraberlik oranı %15–35 (daha yüksekse `win_margin` düşürülür, daha düşükse artırılır). Değişiklik bu ADR'ye ek (pilot tablosuyla) olarak yazılır; kod değişmez.
 
 ## Değerlendirilen alternatifler
 
-| Alternatif | Artılar | Eksiler | Neden seçilmedi |
+| Alternatif | Artılar | Eksiler | Neden |
 |---|---|---|---|
-| İlk takımın tamamen ölmesi (tek başına) | Basit | Yeniden doğuşla nadir, çoğu maç sonuçsuz | Ölçülemez sonuç |
-| İlk N kill | Kısa maç | Seed gürültüsüne aşırı duyarlı, ilk patlama ödüllenir | Gürültülü |
-| Süre sonunda kill farkı (seçilen) | Respawn'la uyumlu, her maç sonuç verir | Eşik/beraberlik bandı tasarım değeri `[Ö]` | — |
-| Alan kontrolü | Hedef odaklı | Arena A'da kontrol noktası yok, ek mekanik | Kapsam dışı |
+| Yalnız "ilk takımın tamamen ölmesi" | Basit | Respawn açıkken nadir/ölçülemez | Ayrı tür olarak (`wipe_first`, respawn kapalı) tutuldu |
+| İlk N kill | Kısa maç | Seed gürültüsüne duyarlı | Seçilmedi |
+| Süre sonunda kill farkı (seçilen, `killdiff_timed`) | Respawn'la uyumlu, her maç sonuç verir | Eşik tasarım değeri | Seçildi, eşikler yapılandırılabilir |
+| Alan kontrolü | Hedef odaklı | Arena A'da kontrol noktası yok | Kapsam dışı |
 
 ## Sonuçlar
 
-Olumlu: `completed ≠ win`; MET-OUT-01 hesaplanabilir; WIPE/EVAL-WIPE senaryosu tanımlı. Olumsuz: Eşik (±2, beraberlik ±1) başlangıç hipotezi; F6/F7 pilot koşularında kalibre edilir (ADR güncellemesi). Geri alma: `win_rule` anahtarı; eski davranış `timed_score`.
+Olumlu: `completed ≠ win`; MET-OUT-01 hesaplanabilir; WIPE ve süreli türler ayrı ölçüm yapar. Olumsuz: `wipe_first` için bot yürütücüsüne "respawn kapalı" modu gerekir (F8 planı); eşikler pilotla kalibre edilmeli. Geri alma: `win_rule: timed_score`.
 
 ## Doğrulama
 
-F8 planında `ScenarioRunner` `win_rule` birim/entegrasyon testi; ilk 20 tekrarlı koşuda `invalid` oranı ≤ %10 (T-IGT-EVAL-01).
+F8 planında `ScenarioRunner` `win_rule` birim/entegrasyon testi (yukarıdaki örnek tabloları birim test vektörü olarak); ilk 20 tekrarlı pilotta `invalid` ≤ %10 ve beraberlik oranı raporu (T-IGT-EVAL-01).

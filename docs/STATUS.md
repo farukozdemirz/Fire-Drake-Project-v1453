@@ -312,6 +312,8 @@ Son gece koşusu: 2026-10-02 04:00–05:10 (16 iterasyon, F1-08..F2-02 KAPANDI),
 
 Kaynak: bu dosyanın önceki bölümleri ve `docs/phase-reports/`; durum sütunları kayıtlara göredir, yeniden doğrulanmadı. Faz kabulü yalnızca proje sahibindedir.
 
+**Kalıcı takip (plan hazır → kod uygulandı → oyun içinde doğrulandı, ayrı sütunlar):** [`docs/reports/degerlendirme-takip.md`](reports/degerlendirme-takip.md); kapanış kuralı: yalnızca doküman veya birim testi geçti diye "doğrulandı" yazılmaz. Proje sahibi kararları sonrası ek rapor: [`docs/reports/degerlendirme-2026-10-02-ek.md`](reports/degerlendirme-2026-10-02-ek.md); kalıcı ölçüm araçları `tools/nav-measure.sh`, `tools/nav-segment-check.py`.
+
 | Faz | Planlar | Çalışma zamanı kanıtı | Açık insan testleri / eksikler | Faz kabulü |
 |---|---|---|---|---|
 | F0 | F0-01, F0-02 KAPANDI | T-ENV-01/02 | — | KABUL_EDILDI (2026-10-02) |
