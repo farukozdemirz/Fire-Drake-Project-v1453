@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `851afdc`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-08` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-07 (`OnPacket()` ekleme kalıbı, `Regene` iskeleti) — `KAPANDI`; F4-06 (`RegionDelta` görüş denetimi, `TargetHpTarget` test sürücüsü kalıbı) — `KAPANDI`; F4-05 (`m_stateEcho` kullanımı) — `KAPANDI`; F4-01 — `KAPANDI` |
