@@ -326,9 +326,11 @@ def write_cli_sections(records, out):
 
     out.write("== CLI-02 skill ile R arasi ==\n")
     attack_times = [row["t"] for row in attacks]
-    effecting_times = [row["t"] for row in effecting]
+    effecting_times = [row["t"] for row in effecting if row["skill"] < 490000]
     magic_attack_gaps = []
     for row in effecting:
+        if row["skill"] >= 490000:
+            continue
         t = first_after(attack_times, row["t"])
         if t is not None:
             magic_attack_gaps.append(t - row["t"])

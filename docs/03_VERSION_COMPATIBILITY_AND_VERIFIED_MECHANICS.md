@@ -414,7 +414,39 @@ Kaynak: `tools/trace-session.sh collect war-r` kaydı (sunucuya varış zamanı,
 | CLI-12 | `WIZ_SPEEDHACK_CHECK` | Yine **10,0 sn** (p50 10001–10003 ms) dört kayıtta | Üç oturumda tutarlı |
 | Q-18 | `WIZ_TARGET_HP` | Hedef seçiliyken **2,0 sn** (`msg-cancel`: p50 2001 ms); `pri-cast` (hedefsiz) 0 | Önceki bulguyla tutarlı |
 
+**Warrior kombo ve hızlı R oturumu (2026-10-02) `[V]` (tek karakter, 3 kayıt):**
+
+| Kimlik | Ölçüm | Sonuç | Yorum |
+|---|---|---|---|
+| CLI-01 | Hızlı R (`war-r-fast`, 39 vuruş) ve kombo R'ler | Aralık **en az 1640 ms**, p50 1642; hızlı basış aralığı kısaltmıyor | R aralığı istemci tarafında **silah `Delay × 10 ms`**'ye kilitli (`Delay=164`); bot için gerçek-zaman alt sınırı bu |
+| T-MECH-CLIENT-02 | `WIZ_ATTACK.distance` | 19 (hedef silah menzilinde), 10, 7, 2 (yaklaştıkça) | Alan **hedefe mesafe × 10 (0,1 m)**; silah `Range=20` = 2,0 m; `delaytime=174` (= `Delay+10`) ve `type=1, result=1` sabit |
+| CLI-02 | Skill ile R arası kilit (`war-combo`, 21 R, 36 skill, potlar çıkarıldı) | Skill → sonraki R **en az 61 ms** (p5 165–215); R → sonraki skill **en az 62 ms** (p5 ~208) | **Karşılıklı kilit yok**; R ve skill bağımsız zamanlayıcılarda. `docs/03` §13'teki "skill sonrası 0,3 sn R yok" başlangıç değeri **gereksiz** (aşağıdaki özete bak) |
+| CLI-04 | Type1 skill 106560 sword dancing, kombo içinde | Ardışık aralık **en az 889 ms**, çoğu 0,97–1,07 sn | Saf tekrarda (`war-skill`) en az 1303 ms görülmüştü: alt sınır skill'e değil oyuncunun basış temposuna bağlı görünüyor; istemci alt sınırı ≤ 889 ms. Sunucu tip kapısı saniyede 1 (MEC-MAG-03) |
+| CLI-04 | Type1 skill 106557 sword aura (`war-skill2`, 20 kullanım) | **1317–1680 ms** (p50 1394) | Saf tekrar tempoları 1,3–1,4 sn |
+| CLI-06 | Pot kombo/hızlı R sırasında | HP pot en kısa **2510–2530 ms**, HP+MP karışık en kısa 2629 ms | `pot` kaydıyla (2504 ms) tutarlı: **~2,5 sn** ortak bekleme |
+| CLI-11 | Aksiyon hızı (R + skill + pot) | Saniyede en fazla **3** aksiyon (`ACTIONS max=3`) | İnsan tavanı ~3/sn; planlanan bot tavanı 6/sn rahat |
+| CLI-05 | Sprint (`106001`) | Sprint sonrası `speed=67` (13 paket); yürüyüş `speed=45` | Sprint süresince 6,7 m/s, aksi 4,5 m/s |
+
 **Paket düzeni düzeltmesi (§14):** Gerçek istemci `WIZ_MAGIC_PROCESS` paketini **21 bayt** gönderiyor (`u8 opcode, u32 skill, i16 caster, i16 target, i16 data[6]`); sunucu 7. alanı okuyamadığı için 0 sayıyor (`shared/ByteBuffer.h:110-116`, taşan okuma `0` döner). Pot ve skill paketlerinde bu oturumda yalnızca `opcode 3` (EFFECTING) görüldü, `CASTING` (opcode 1) yok; `caster` ve `target` 0 idi. Cast süreli skill'lerin `CASTING → EFFECTING` zamanlaması (CLI-03) hâlâ ölçülmedi.
+
+### 13.3 Ölçülmüş CLI özeti (F1 insan oturumları, 2026-10-02) `[V]`
+
+Bot adalet korumasının (F4) kullanacağı **ölçülmüş** değerler; tek karakter/sınıf, dört oturum (ayrıntı §13.2). Muhafazakâr başlangıç değerleri (§13 tablosu) bununla güncellenir:
+
+| Kimlik | Ölçülmüş kural | Başlangıç değerine göre |
+|---|---|---|
+| CLI-01 | R aralığı = `silah.Delay × 10 ms` gerçek zamanda (alt sınır), `delaytime = Delay + 10`, `distance` = hedefe mesafe × 10 | Doğrulandı (başlangıç formülüyle aynı) |
+| CLI-02 | **R ile skill arasında kilit yok**; her biri kendi zamanlayıcısında (en az ~60 ms komşu aksiyon) | **"Skill sonrası 0,3 sn R yok" kaldırılır** |
+| CLI-03 | Cast skill'inde CASTING → EFFECTING = `CastTime × 100 ms + 70–90 ms`; uçan alan büyüsünde CASTING → FLYING `+cast`, EFFECTING mermi varınca (~1 sn uçuş) | Doğrulandı + 70–90 ms eklenir; uçuş fazı eklenir |
+| CLI-04 | Cast skill döngüsü `CastTime×100 + ~70 + ~140 ms`; Type1 skill alt sınır ~0,9–1,0 sn, saf tekrar tempo ~1,3–1,4 sn; sunucu tip kapısı ≥ 1 sn | `ReCastTime` (0,1 sn) tek başına yeterli değil; istemci tempoları ekleniyor |
+| CLI-05 | Yürüyüş `speed=45` (4,5 m/s); sprint `speed=67` (6,7 m/s); sürekli hareketli periyodik konum paketi ~1,5 sn'de bir; durma `speed=0` | Ölçüldü; `[A]` kalktı |
+| CLI-06 | HP ve MP potları ortak **~2,5 sn** bekleme | 2,0 sn başlangıç değeri **2,5 sn'ye çıkar** |
+| CLI-11 | Gözlenen insan tavanı saniyede 3 aksiyon | 6/sn güvenlik tavanı korunur (insanı aşmaz) |
+| CLI-12 | `WIZ_SPEEDHACK_CHECK` her **10,0 sn**, yük `u8 bayrak + f32` istemci saniyesi | Ölçüldü |
+| Cast iptali | `MAGIC_PROCESS opcode 4` (MAGIC_FAIL) `sData[3] = -100`, **hareketten 5–8 ms önce** | Yeni kural: bot cast'i iptal ederken önce opcode 4 gönderir |
+| Q-18 | `WIZ_TARGET_HP` hedef seçiliyken 2,0 sn'de bir | Ölçüldü |
+
+Kapsam sınırı: Tek karakter, tek silah (`Delay=164`), tek oturum günü. Farklı silah gecikmeleri ve ek skill'ler için `Delay × 10 ms` kuralı ve skill tempoları ikinci bir karakterle doğrulanabilir.
 
 ## 14. Bot aksiyonları için paketler `[D]`
 
