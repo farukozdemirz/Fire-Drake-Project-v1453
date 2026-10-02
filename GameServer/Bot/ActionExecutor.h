@@ -200,7 +200,8 @@ public:
 	// Validates and arms a cast series of 'count' cycles of skill 'skillId'; sends nothing yet (the same Tick()'s
 	// TickCast() does). 'targetName' empty = self. REFUSED (nothing armed): "not_in_game", "dead",
 	// "bad_skill" (unknown id, other class, level too low, count < 1), "unsupported_skill" (see 5.4 rules;
-	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25), "bad_target" (moral does not match the target kind).
+	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25; single Type3 + Type4 (dual-typed) skills are
+	// supported, ADR-0017 Ek F4-26), "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 
@@ -209,6 +210,8 @@ public:
 	// SENT: a packet went out and the series continues ("casting" = CASTING accepted, "flying" = FLYING accepted,
 	// "effected"/"missed"/"srv_fail" = one cycle finished). FINISHED: last cycle done. REFUSED: guard rejected, series
 	// dropped. FAILED: handler produced no result / dead caster / unknown skill, series dropped.
+	// dual-typed: the EFFECTING echo comes from the Type4 part (code = duration), "missed" is never reported,
+	// no echo = "no_result".
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 
