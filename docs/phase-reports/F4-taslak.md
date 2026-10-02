@@ -3,6 +3,8 @@
 Tarih: 2026-10-02 · Hazırlayan: Claude (otonom gece döngüsü) · Onaylayan: — (bekliyor)
 Değerlendirilen commit: `671c1f6` (`gece/2026-10-02`; F4-23 birleştirmesi) · Sunucu commit: `0f52027` + F1-01/F1-09 kancaları (bayrakla kapalı) + F2–F4 bot kodu (`[BOT] ENABLED=0` varsayılan) · DB özeti: yerel `FDP_kn_online`; 12 bot karakteri `db/002` ile kurulu
 
+> **GÜNCELLEME (2026-10-02, ADR-0018):** F4 kapsamı genişletildi; §3'teki ertelenen aksiyon desteği dilimleri (F4-24 ve sonrası) bitmeden F4 tamamlanmış sayılmaz. Aşağıdaki "DeepSeek'in yapabileceği F4 işleri bitti" ifadesi bu güncellemeden önceki durumdur.
+
 > **Durum: TASLAK.** DeepSeek'in yapabileceği F4 işleri bitti (F4-01..F4-23 `KAPANDI`). Faz kabulü için kalan işler: (a) **insan istemcisi testleri** (T-ARCH-05, 13..17, T-REGENE-01, T-PARTY-01..03, T-PERC-01), (b) **ölçüm maddeleri** (§3, §5): F3'ten devreden "`decisions` seviyesinde 16 bot telemetri ek maliyeti" ve "telemetri açık/kapalı tick farkı", (c) "T-MECH-SKILL'in bot tarafından yeniden çalıştırılması" (§3). Bu rapor `KABUL_EDILDI` önermez: çıkış kararı §10'da **kısmi**. F1, F2 ve F3 kabulü de verilmedi (gece modu sıra sapması, §6).
 
 ## 1. Amaç (`docs/17` §2'den)

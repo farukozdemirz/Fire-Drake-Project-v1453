@@ -185,6 +185,35 @@ switch_to() { # $1 = dal
 	git switch "$1" >>"$MAIN_LOG" 2>&1
 }
 
+# Claude kullanim limiti ("You've hit your session limit · resets 8:20pm") dolunca: reset saatine
+# kadar uyur (deneme hakki harcamaz, stop dosyasi beklerken kontrol edilir). 0 = beklendi, 1 = beklenmedi.
+LIMIT_WAIT_TOTAL=0
+wait_for_limit_reset() { # $1 = claude cikti logu
+	local t target now secs waited=0
+	t="$(grep -oiE 'resets [0-9]{1,2}(:[0-9]{2})? ?[ap]m' "$1" | head -1 | sed -E 's/^resets //I')"
+	now=$(date +%s)
+	if [ -n "$t" ] && target=$(date -d "$t" +%s 2>/dev/null); then
+		[ "$target" -le "$now" ] && target=$((target + 86400))
+		secs=$((target - now + 120))
+	else
+		secs=1800
+	fi
+	[ "$secs" -gt 21600 ] && secs=21600
+	if [ $((LIMIT_WAIT_TOTAL + secs)) -gt $((8 * 3600)) ]; then
+		log "  kullanim limiti: toplam bekleme siniri (8 sa) asildi."
+		return 1
+	fi
+	LIMIT_WAIT_TOTAL=$((LIMIT_WAIT_TOTAL + secs))
+	log "  claude kullanim limiti doldu; sifirlanma (${t:-bilinmiyor}) icin ${secs}s bekleniyor."
+	state "kullanim limiti bekleniyor (${t:-?})"
+	while [ "$waited" -lt "$secs" ]; do
+		stop_requested && return 1
+		sleep 30
+		waited=$((waited + 30))
+	done
+	return 0
+}
+
 # Gecici API hatalarinda (rate limit, overload) bekleyip yeniden dener.
 run_claude() { # $1 = prompt, $2 = log dosyasi
 	local attempt=1 rc start dur
@@ -201,6 +230,9 @@ run_claude() { # $1 = prompt, $2 = log dosyasi
 		rc=$?
 		dur=$(($(date +%s) - start))
 		if [ $rc -eq 0 ]; then return 0; fi
+		if grep -qiE "hit your (session |usage |weekly )?limit|session limit|usage limit reached" "$2" && wait_for_limit_reset "$2"; then
+			continue
+		fi
 		if [ $rc -eq 124 ] || [ $rc -eq 137 ]; then
 			log "  claude zaman asimina ugradi (${CLAUDE_TIMEOUT_SEC}s)."
 			return $rc
