@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-07` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-06 (hedef HP dilimi, `OnPacket()` ekleme kalıbı, `m_actionWindow`) — `KAPANDI`; F4-05 (`SetStance` iskeleti) — `KAPANDI`; F4-02 (ölen botu üreten `attack` serisi) — `KAPANDI`; F4-01 — `KAPANDI` |
