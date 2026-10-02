@@ -67,7 +67,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 
 ### 4.3 Ulaşılamayan hedef
 
-`unreachable` koşulları: A* başarısız; yol uzunluğu > 3 × düz mesafe ve > 120 m; ya da hedef engelli bir cepte (farklı bileşen). Bu durumda hedef `TARGET_UNREACHABLE` ile 3 sn içinde bırakılır ([09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §5.4, MET-NAV-04).
+`unreachable` koşulları (`BotCore/NavReach.h`, ADR-0006 Eki F5-05, F5-05 planı): (1) hedefin rol halkasında botun bileşeniyle bağlı hiç `Walk` hücresi yok. Bileşen, `EdgeOpen` ile bağlı 8 komşulu hücre kümesidir (eğim cepleri dahil); iki hücre farklı bileşendeyse A* `NoPath` verir, bu A* çalıştırılmadan bilinir. Halkada hiç `Walk` hücresi yoksa da (hedef suda/duvarda/dış bantta) ulaşılamazdır. (2) Planlanan yolun A* maliyeti > 3 × düz mesafe **ve** > 120 m (`Detour`; düz mesafe bot hücre merkezi ile hedef hücre merkezi arası). A*'ın `NodeLimit` vermesi ya da ilk 3 halka adayının başarısız olması ulaşılamaz **değil**, "bilinmiyor"dur (yanlış "ulaşılamaz" geçerli hedefi bıraktırır). Ulaşılamaz yargısı kesintisiz `holdMs` = 1,5 sn `[A]` sürerse hedef `TARGET_UNREACHABLE` ile bırakılır: tespitten bırakmaya 1,5 sn (MET-NAV-04 ≤ 3 sn); başka bir yargı seriyi sıfırlar. Bırakma kararı ve olayı karar katmanındadır ([09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §5.4); `BotCore` yalnızca yargıyı ve "vadesi geldi" bilgisini üretir.
 
 ## 5. Görüş hattı (LoS) ile yürünebilirliğin ayrılması
 
@@ -169,3 +169,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-02 | v1.0+ | §4.1 ve §11 T-NAV-03: `NodeLimit` anlamı ve sorgu dağılımı notu (ADR-0006, F5-02 planı) |
 | 2026-10-02 | v1.0+ | §4.1 yol düzleştirme: `EdgeOpen` tabanlı Bresenham görünürlüğü, açgözlü ayıklama ve `P-NAV-SMOOTH-LOOKAHEAD` `[A]` (ADR-0006 Eki F5-03, F5-03 planı) |
 | 2026-10-02 | v1.0+ | §4.2 hareketli hedef: gözlem/planlama ayrımı, hız kestirimi penceresi, öngörü geri çekilmesi, menzil halkası tanımı (ADR-0006 Eki F5-04, F5-04 planı) |
+| 2026-10-02 | v1.0+ | §4.3 ulaşılamaz hedef: bileşen tabanlı kesin tespit, `Detour` kuralı, `NodeLimit` = bilinmiyor, 1,5 sn bırakma süresi `[A]` (ADR-0006 Eki F5-05, F5-05 planı) |
