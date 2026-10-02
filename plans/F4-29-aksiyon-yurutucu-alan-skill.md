@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-29` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `m_castTargetId`) — `KAPANDI`; F4-26 (`{3, 4}` çifti, iki tipli kapı) — `KAPANDI`; F4-28 (`{4, 0}` tek tipli Type4) — `KAPANDI` (merge `dc61d7d`) |
@@ -252,11 +252,36 @@ git diff --check gece/2026-10-02...bot/F4-29
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
-- Değişen dosyalar ve nedenleri:
+- Durum: UYGULANDI (Release/Debug derleme rc=0, iki birim testi `[ OK ]`, toplam 106 test, 0 failed).
+- Branch / commit'ler: `bot/F4-29` (taban `gece/2026-10-02`). Kod + `Durum` commit'i: `c6d686b` "`[F4-29]` Alan skill dilimi: Moral 10, hedef noktasi -1, victims sayaci" (6 kod dosyası + plan `Durum` satırı). Bu rapor ayrı commit'lenir.
+- Değişen dosyalar ve nedenleri (yalnızca §4'teki 6 dosya):
+  - `BotCore/BotCombat.h`: `CastTypesSupported` bölümünden sonra `--- area cast ---` bölümü: `kMoralAreaEnemy = 10`, `IsAreaMoral`, `CastMoralSupported` (1/2/7/8 + uçmayan 10), `CastTargetIdField`, `CastCoordField`. Yeni include yok (`<algorithm>`, `<cstdint>` mevcut).
+  - `Tests/BotCoreTests/CombatTests.cpp`: dosya sonuna `Combat_CastMoral_Supported` ve `Combat_AreaCast_Fields` (104 → 106). İkincisi CLI-07 menzil (`55.9` OK / `56.0` OUT_OF_RANGE), alan-self (`0.0` OK) ve `mana` 199 → `NO_MANA` (`Msp` 200) sınırlarını da kapsar.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` moral koşulu `CastMoralSupported`'a taşındı; `TickCast`'te `area`/`sent` (hedef kimliği alanda `-1`), `sData[0..2]` üç satırı `CastCoordField`, üç `SubmitCast` çağrısı `sent, area`, `m_castTargetId = sent.id`; `SubmitCast` imzasına `bool area`, sayaç sıfırlama/okuma ve `ACTION_RESULT`'a koşullu `victims` (yalnızca `area && opcode == MAGIC_EFFECTING`, `code` ile `latency_us` arasında).
+  - `GameServer/Bot/ActionExecutor.h`: `CastTarget`, `BeginCast`, `TickCast` yorumları (alan davranışı, CLI-07, MEC-MAG-16, `victims`).
+  - `GameServer/Bot/BotSession.h`: `std::atomic<uint32> m_castEchoVictims` bildirimi (`m_castEcho` yanına).
+  - `GameServer/Bot/BotSession.cpp`: ctor `m_castEchoVictims(0)`; `OnPacket()` `WIZ_MAGIC_PROCESS` bloğunda `victimId = read<int16>(7)` ve `op == MAGIC_EFFECTING && victimId != -1` iken `m_castEchoVictims++` (yankı `if`'inin içinde, `caster == m_castSelfId` zaten koşulda).
 - Derleme sonucu:
-- §5.3 kod okuma doğrulamaları (satırlarla):
+  - `./tools/build.sh Release`: rc=0; son satırlar `All 14050 functions were compiled...`, `Kodun üretilmesi tamamlandı`, `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`. Değişen altı dosyada uyarı yok; yalnızca önceden var olan iki `UpgradeHandler.cpp` C4789 uyarısı.
+  - `./tools/build.sh Debug`: rc=0; `proj-GameServer.vcxproj -> ...\x86-Debug\Server\GameServer.exe`, `BotCoreTests.vcxproj -> ...\x86-Debug\Tests\BotCoreTests.exe`.
+  - `./tools/run-tests.sh Release` ve `Debug`: `106 tests, 0 failed`; `Combat_CastMoral_Supported` ve `Combat_AreaCast_Fields` `[ OK ]`.
+- §5.3 kod okuma doğrulamaları (satırlarla, commit sonrası):
+  - `BeginCast`: `ActionExecutor.cpp:730-737`; eski `m->bMoral != MORAL_SELF ...` ifadesi kalmadı (`grep` boş), `bad_target` bloğu (`wantedSelf`/`wantedTarget`, `:751-759`) değişmedi.
+  - `TickCast`: `:811-817` `area`/`sent`; `:896-899` `sData[0..2]` `CastCoordField`; `:917` CASTING, `:959` FLYING, `:1000` EFFECTING `SubmitCast(s, user, ..., sent, area, sData, ...)`; `m_castTargetId = sent.id` `:923` ve `:965`.
+  - `SubmitCast`: `:585-587` imza `..., const CastTarget & target, bool area, const int16 sData[3], ...`; `:615` `m_castEchoVictims = 0`; `:626` `victims` okuma; `:666` koşullu `victims` alanı.
+  - `BotSession.cpp`: `:25` ctor; `:76` `victimId`; `:84` artırma. `BotSession.h:166` bildirim.
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar:
-- Açık sorular:
+  - K1 ✔ (Release rc=0, değişen dosyalarda uyarı yok), K2 ✔ (Debug rc=0).
+  - K3 ✔ (iki yapılandırmada da 106 test, 0 failed; iki yeni test `[ OK ]`).
+  - K4 ✔ (`grep` boş; include yalnızca `<algorithm>`/`<cstdint>`; `std::min/max` eklenmedi).
+  - K5 ✔ (`CastMoralSupported` `BeginCast`'te; eski ifade yok; `bad_target` değişmedi).
+  - K6 ✔ (üç `SubmitCast` çağrısı `sent`+`area`; `m_castTargetId = sent.id` iki yerde; `sData` üç satırı `CastCoordField`; alan dışı birim testleri geçiyor).
+  - K7 ✔ (`m_castEchoVictims` başlıkta 1, `BotSession.cpp` 2, `ActionExecutor.cpp` 2; `victims` yalnızca `area && opcode == MAGIC_EFFECTING` koşulunda).
+  - K8 ✔ (yeni ini/komut/thread yok; `Emit(` eklenmedi; `BotManager.cpp`/`Telemetry.*`/`tools/` değişmedi; `victims` mevcut `ACTION_RESULT` satırına koşullu alan).
+  - K9 ✔ (`git diff --stat gece/2026-10-02...bot/F4-29` yalnızca 6 dosya + plan; proje dosyaları değişmedi).
+  - K10 ✔ (altı dosya ASCII + CRLF; `git diff --check` boş).
+  - K11 ✔ (`CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckCastFly`/`CheckCastLand`/`CheckCastCancel`/`CheckPotion` ≥ 1; önceki 104 test geçiyor).
+  - K12 ✔ (`tools/check-perception-contract.py` `RESULT: PASS`, ihlal 0; yeni kod yalnızca kendi alınan paketinden sayıyor).
+  - K13: Claude'un çalışma zamanı doğrulaması (S1–S6).
+- Plandan sapmalar: yok. (Küçük not: `ActionExecutor.h` `CastTarget` yorumuna alan cümlesi eklendi; `int16 id` alan yorumu plan gereği değiştirilmedi. `RESPAWN` davranışı için sayaç sıfırlama eklenmedi; plan gereği `SubmitCast` her paketten önce sıfırlar.)
+- Açık sorular: yok; plan ile kod çelişmedi. Doğrulamada dikkat: alan yayını `m_skillEvents` halkasında (F4-52) hızlı dolar ve `victims` direnç/engelli kurbanı da sayar (§8-c/d, bilinen sınır, plan gereği).
