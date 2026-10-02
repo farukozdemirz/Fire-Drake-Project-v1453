@@ -61,9 +61,64 @@ VERDICT_NOTE = (
     "is a tick_n-weighted estimate and is informational only."
 )
 
+ACT_GATE_PCT = 1      # docs/17 F4 acceptance: invalid actions <= 1 % on scripted runs
+ACT_LIMIT_PCT = 2     # docs/16 MET-ACT-02: <= 2 %
+SRV_INVALID_REASONS = ("srv_fail", "handler_noop")   # plus every reason starting with "refused_"
+
+ACT_NOTE = (
+    "Invalid = ACTION_RESULT ok=false with reason srv_fail, handler_noop or "
+    "refused_*; no_result (no server confirmation) and guard rejections are "
+    "not counted. PASS <= 1 % (F4 gate), WARN <= 2 % (MET-ACT-02), FAIL "
+    "above. All action types are included."
+)
+
+FAIR_NOTE = (
+    "Informational. Rejects never reach the server. \"Violations that reached "
+    "the server = 0\" is not measurable from telemetry (verify by code "
+    "review)."
+)
+
+SCRIPT_NOTE = (
+    "Counts are attributed by file order between SCRIPT_START and SCRIPT_END "
+    "(approximate: follow-up results of the last step may land after "
+    "SCRIPT_END)."
+)
+
 
 def is_int(value):
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def add_bot(info, record):
+    """Records a non-negative integer bot id for the MET-FAIR-01 estimate."""
+    bot = record.get("bot")
+    if is_int(bot) and bot >= 0:
+        info["bots"].add(bot)
+
+
+def classify_action_result(ok, reason):
+    """Maps one ACTION_RESULT to ok / invalid / no_result / other."""
+    if ok is True:
+        return "ok"
+    if ok is False:
+        if isinstance(reason, str) and (reason in SRV_INVALID_REASONS
+                                        or reason.startswith("refused_")):
+            return "invalid"
+        if reason == "no_result":
+            return "no_result"
+        return "other"
+    return "other"
+
+
+def act_verdict(submit, invalid):
+    """PASS <= 1 % (F4 gate), WARN <= 2 % (MET-ACT-02), FAIL above."""
+    if submit == 0:
+        return "NO_DATA"
+    if invalid * 100 <= submit * ACT_GATE_PCT:
+        return "PASS"
+    if invalid * 100 <= submit * ACT_LIMIT_PCT:
+        return "WARN"
+    return "FAIL"
 
 
 def extract_perf_window(record):
@@ -110,10 +165,19 @@ def load_file(path):
         "test_teleport": False,
         "mode": "-",
         "warnings": [],
+        "act_submit": {},
+        "act_result": {},
+        "act_reasons": {},
+        "fair": {"count": 0, "by": {}},
+        "bots": set(),
+        "t_first": None,
+        "t_last": None,
+        "scripts": [],
     }
     previous_t = None
     monotonic_warned = False
     perf_index = 0
+    open_script = None
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         for lineno, raw in enumerate(handle, 1):
             if not raw.strip():
@@ -153,6 +217,94 @@ def load_file(path):
             info["event_counts"][event] = \
                 info["event_counts"].get(event, 0) + 1
 
+            if is_int(t_value):
+                if info["t_first"] is None or t_value < info["t_first"]:
+                    info["t_first"] = t_value
+                if info["t_last"] is None or t_value > info["t_last"]:
+                    info["t_last"] = t_value
+
+            if event == "ACTION_SUBMIT":
+                action_type = record.get("type")
+                if not isinstance(action_type, str):
+                    action_type = "?"
+                info["act_submit"][action_type] = \
+                    info["act_submit"].get(action_type, 0) + 1
+                add_bot(info, record)
+                if open_script is not None:
+                    open_script["submit"] += 1
+            elif event == "ACTION_RESULT":
+                action_type = record.get("type")
+                if not isinstance(action_type, str):
+                    action_type = "?"
+                label = classify_action_result(record.get("ok"),
+                                               record.get("reason"))
+                bucket = info["act_result"].setdefault(
+                    action_type,
+                    {"ok": 0, "invalid": 0, "no_result": 0, "other": 0})
+                bucket[label] += 1
+                if label != "ok":
+                    reason = record.get("reason")
+                    if not isinstance(reason, str):
+                        reason = "?"
+                    key = (action_type, reason, label)
+                    info["act_reasons"][key] = \
+                        info["act_reasons"].get(key, 0) + 1
+                add_bot(info, record)
+                if open_script is not None:
+                    if label == "invalid":
+                        open_script["invalid"] += 1
+                    elif label == "no_result":
+                        open_script["no_result"] += 1
+            elif event == "FAIRNESS_REJECT":
+                action_type = record.get("type")
+                if not isinstance(action_type, str):
+                    action_type = "?"
+                rule = record.get("rule")
+                if not isinstance(rule, str):
+                    rule = "?"
+                reason = record.get("reason")
+                if not isinstance(reason, str):
+                    reason = "?"
+                info["fair"]["count"] += 1
+                key = (action_type, rule, reason)
+                info["fair"]["by"][key] = info["fair"]["by"].get(key, 0) + 1
+                add_bot(info, record)
+                if open_script is not None:
+                    open_script["rejects"] += 1
+            elif event == "SCRIPT_START":
+                if open_script is not None:
+                    open_script["result"] = "NO_END"
+                open_script = {
+                    "script": record.get("script"),
+                    "steps": record.get("steps"),
+                    "duration_ms": record.get("duration_ms"),
+                    "start_t": t_value,
+                    "end_t": None,
+                    "result": None,
+                    "steps_run": None,
+                    "steps_total": None,
+                    "elapsed_ms": None,
+                    "max_late_ms": None,
+                    "steps_seen": 0,
+                    "submit": 0,
+                    "invalid": 0,
+                    "no_result": 0,
+                    "rejects": 0,
+                }
+                info["scripts"].append(open_script)
+            elif event == "SCRIPT_STEP":
+                if open_script is not None:
+                    open_script["steps_seen"] += 1
+            elif event == "SCRIPT_END":
+                if open_script is not None:
+                    open_script["result"] = record.get("result")
+                    open_script["steps_run"] = record.get("steps_run")
+                    open_script["steps_total"] = record.get("steps_total")
+                    open_script["elapsed_ms"] = record.get("elapsed_ms")
+                    open_script["max_late_ms"] = record.get("max_late_ms")
+                    open_script["end_t"] = t_value
+                    open_script = None
+
             if event == "MATCH_START":
                 if info["match_start"] is None:
                     info["match_start"] = record
@@ -173,6 +325,34 @@ def load_file(path):
                         "perf sample %d skipped (missing field)" % perf_index)
                 else:
                     info["perf_windows"].append(window)
+
+    if open_script is not None:
+        open_script["result"] = "NO_END"
+        open_script["steps_run"] = open_script["steps_seen"]
+
+    base = os.path.basename(path)
+    for action_type in sorted(info["act_submit"]):
+        submitted = info["act_submit"][action_type]
+        bucket = info["act_result"].get(action_type, {})
+        resulted = sum(bucket.values())
+        if submitted != resulted:
+            info["warnings"].append(
+                "%s: ACTION_SUBMIT/ACTION_RESULT differ for %s (%d vs %d)"
+                % (base, action_type, submitted, resulted))
+    other_count = 0
+    for bucket in info["act_result"].values():
+        other_count += bucket.get("other", 0)
+    if other_count > 0:
+        info["warnings"].append(
+            "%s: %d ACTION_RESULT with unknown ok/reason"
+            % (base, other_count))
+    for script in info["scripts"]:
+        if script["end_t"] is not None and script["steps_run"] is not None \
+                and script["steps_run"] != script["steps_seen"]:
+            info["warnings"].append(
+                "%s: script %s steps_run %s != SCRIPT_STEP %d"
+                % (base, script["script"], script["steps_run"],
+                   script["steps_seen"]))
     return info
 
 
@@ -382,6 +562,105 @@ def build_perf_row(name, windows):
     return row
 
 
+def build_action_row(name, info):
+    """Builds one MET-ACT-02 row for a file, or None when it has no actions."""
+    submit = sum(info["act_submit"].values())
+    counts = {"ok": 0, "invalid": 0, "no_result": 0, "other": 0}
+    result = 0
+    for bucket in info["act_result"].values():
+        for key in counts:
+            counts[key] += bucket.get(key, 0)
+        result += sum(bucket.values())
+    if submit == 0 and result == 0:
+        return None
+    invalid_pct = None
+    if submit > 0:
+        invalid_pct = round(counts["invalid"] * 100.0 / submit, 2)
+    return {
+        "file": name,
+        "submit": submit,
+        "result": result,
+        "ok": counts["ok"],
+        "invalid": counts["invalid"],
+        "no_result": counts["no_result"],
+        "other": counts["other"],
+        "invalid_pct": invalid_pct,
+        "verdict": act_verdict(submit, counts["invalid"]),
+    }
+
+
+def build_action_total(rows):
+    """Sums MET-ACT-02 rows; verdict is recomputed from the totals."""
+    submit = sum(row["submit"] for row in rows)
+    invalid = sum(row["invalid"] for row in rows)
+    invalid_pct = None
+    if submit > 0:
+        invalid_pct = round(invalid * 100.0 / submit, 2)
+    return {
+        "file": "(total)",
+        "submit": submit,
+        "result": sum(row["result"] for row in rows),
+        "ok": sum(row["ok"] for row in rows),
+        "invalid": invalid,
+        "no_result": sum(row["no_result"] for row in rows),
+        "other": sum(row["other"] for row in rows),
+        "invalid_pct": invalid_pct,
+        "verdict": act_verdict(submit, invalid),
+    }
+
+
+def build_fair_row(name, info):
+    """Builds one MET-FAIR-01 row for a file, or None when it has none."""
+    count = info["fair"]["count"]
+    if count <= 0:
+        return None
+    in_game_max = 0
+    for window in info["perf_windows"]:
+        if window["in_game"] > in_game_max:
+            in_game_max = window["in_game"]
+    bots = max(len(info["bots"]), in_game_max)
+    span_s = None
+    if info["t_first"] is not None and info["t_last"] is not None:
+        span_s = (info["t_last"] - info["t_first"]) / 1000.0
+    bot_hours = None
+    if bots > 0 and span_s is not None and span_s > 0:
+        bot_hours = bots * span_s / 3600.0
+    rate = None
+    if bot_hours:
+        rate = round(count / bot_hours, 2)
+    return {
+        "file": name,
+        "rejects": count,
+        "bots": bots,
+        "span_s": span_s,
+        "bot_hours_est": round(bot_hours, 4) if bot_hours is not None else None,
+        "rejects_per_bot_hour_est": rate,
+    }
+
+
+def build_script_rows(name, info):
+    """Builds one Scripts row per SCRIPT_START..SCRIPT_END run of a file."""
+    rows = []
+    for script in info["scripts"]:
+        steps_total = script["steps_total"]
+        if steps_total is None:
+            steps_total = script["steps"]
+        rows.append({
+            "file": name,
+            "script": script["script"],
+            "steps_total": steps_total,
+            "steps_run": script["steps_run"],
+            "result": script["result"],
+            "elapsed_ms": script["elapsed_ms"],
+            "max_late_ms": script["max_late_ms"],
+            "submit": script["submit"],
+            "invalid": script["invalid"],
+            "no_result": script["no_result"],
+            "rejects": script["rejects"],
+        })
+    return rows
+
+
 def display_names(paths):
     """Maps each path to a short name; collisions get the parent folder."""
     counts = {}
@@ -412,6 +691,11 @@ def gather(paths):
     files = []
     matches = []
     perf = []
+    actions = []
+    fairness = []
+    scripts = []
+    action_reason_totals = {}
+    fairness_reason_totals = {}
     totals = {}
     ignored = 0
     warnings = []
@@ -434,15 +718,49 @@ def gather(paths):
         if match_row is not None:
             matches.append(match_row)
         perf.append(build_perf_row(name, info["perf_windows"]))
+        action_row = build_action_row(name, info)
+        if action_row is not None:
+            actions.append(action_row)
+        fair_row = build_fair_row(name, info)
+        if fair_row is not None:
+            fairness.append(fair_row)
+        scripts.extend(build_script_rows(name, info))
+        for key, count in info["act_reasons"].items():
+            action_reason_totals[key] = \
+                action_reason_totals.get(key, 0) + count
+        for key, count in info["fair"]["by"].items():
+            fairness_reason_totals[key] = \
+                fairness_reason_totals.get(key, 0) + count
         for event, count in info["event_counts"].items():
             totals[event] = totals.get(event, 0) + count
         ignored += info["ignored_selftest"]
         warnings.extend(info["warnings"])
 
+    if len(actions) > 1:
+        actions.append(build_action_total(actions))
+
+    action_reasons = [
+        {"type": key[0], "reason": key[1], "class": key[2], "count": count}
+        for key, count in sorted(
+            action_reason_totals.items(),
+            key=lambda item: (-item[1], item[0][0], item[0][1], item[0][2]))
+    ]
+    fairness_reasons = [
+        {"type": key[0], "rule": key[1], "reason": key[2], "count": count}
+        for key, count in sorted(
+            fairness_reason_totals.items(),
+            key=lambda item: (-item[1], item[0][0], item[0][1], item[0][2]))
+    ]
+
     report = {
         "files": files,
         "matches": matches,
         "perf": perf,
+        "actions": actions,
+        "action_reasons": action_reasons,
+        "fairness": fairness,
+        "fairness_reasons": fairness_reasons,
+        "scripts": scripts,
         "events": totals,
         "ignored_selftest": ignored,
         "warnings": warnings,
@@ -540,6 +858,95 @@ def render_markdown(report):
     out.append(VERDICT_NOTE)
     out.append("")
 
+    out.append("## MET-ACT-02 (invalid actions)")
+    out.append("| file | submit | result | ok | invalid | no_result | other | "
+               "invalid_pct | verdict |")
+    out.append("|---|---|---|---|---|---|---|---|---|")
+    if report["actions"]:
+        for row in report["actions"]:
+            out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+                       % (format_cell(row["file"]), format_cell(row["submit"]),
+                          format_cell(row["result"]), format_cell(row["ok"]),
+                          format_cell(row["invalid"]),
+                          format_cell(row["no_result"]),
+                          format_cell(row["other"]),
+                          format_cell(row["invalid_pct"]),
+                          format_cell(row["verdict"])))
+    else:
+        out.append("(none)")
+    out.append("")
+    out.append(ACT_NOTE)
+    out.append("")
+
+    out.append("## Action failures by reason")
+    out.append("| type | reason | class | count |")
+    out.append("|---|---|---|---|")
+    if report["action_reasons"]:
+        for row in report["action_reasons"]:
+            out.append("| %s | %s | %s | %s |"
+                       % (format_cell(row["type"]),
+                          format_cell(row["reason"]),
+                          format_cell(row["class"]),
+                          format_cell(row["count"])))
+    else:
+        out.append("(none)")
+    out.append("")
+
+    out.append("## MET-FAIR-01 (fairness rejects)")
+    out.append("| file | rejects | bots | span_s | bot_hours_est | "
+               "rejects_per_bot_hour_est |")
+    out.append("|---|---|---|---|---|---|")
+    if report["fairness"]:
+        for row in report["fairness"]:
+            out.append("| %s | %s | %s | %s | %s | %s |"
+                       % (format_cell(row["file"]),
+                          format_cell(row["rejects"]),
+                          format_cell(row["bots"]), format_cell(row["span_s"]),
+                          format_cell(row["bot_hours_est"]),
+                          format_cell(row["rejects_per_bot_hour_est"])))
+    else:
+        out.append("(none)")
+    out.append("")
+    out.append(FAIR_NOTE)
+    out.append("")
+
+    out.append("## Fairness rejects by rule")
+    out.append("| type | rule | reason | count |")
+    out.append("|---|---|---|---|")
+    if report["fairness_reasons"]:
+        for row in report["fairness_reasons"]:
+            out.append("| %s | %s | %s | %s |"
+                       % (format_cell(row["type"]), format_cell(row["rule"]),
+                          format_cell(row["reason"]),
+                          format_cell(row["count"])))
+    else:
+        out.append("(none)")
+    out.append("")
+
+    out.append("## Scripts")
+    out.append("| file | script | steps_total | steps_run | result | "
+               "elapsed_ms | max_late_ms | submit | invalid | no_result | "
+               "rejects |")
+    out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    if report["scripts"]:
+        for row in report["scripts"]:
+            out.append(
+                "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |"
+                % (format_cell(row["file"]), format_cell(row["script"]),
+                   format_cell(row["steps_total"]),
+                   format_cell(row["steps_run"]),
+                   format_cell(row["result"]),
+                   format_cell(row["elapsed_ms"]),
+                   format_cell(row["max_late_ms"]),
+                   format_cell(row["submit"]), format_cell(row["invalid"]),
+                   format_cell(row["no_result"]),
+                   format_cell(row["rejects"])))
+    else:
+        out.append("(none)")
+    out.append("")
+    out.append(SCRIPT_NOTE)
+    out.append("")
+
     out.append("## Events")
     out.append("| ev | count |")
     out.append("|---|---|")
@@ -575,6 +982,9 @@ def has_violation(report):
             return True
     for perf in report["perf"]:
         if perf["verdict"] == "FAIL":
+            return True
+    for action in report["actions"]:
+        if action["verdict"] == "FAIL":
             return True
     return False
 
@@ -761,6 +1171,141 @@ def run_selftest():
         assert render_json(report_a) == render_json(report_b)
         parsed = json.loads(render_json(report_a))
         assert isinstance(parsed, dict) and "perf" in parsed, parsed
+
+        # Case 7: a synthetic scripted run (MET-ACT-02, MET-FAIR-01, Scripts).
+        script_path = os.path.join(tmp, "f4-21-sample.jsonl")
+        script_records = [
+            make_record("SCRIPT_START", t=1000, script="s1", steps=2,
+                        duration_ms=5000, bot=-1),
+            make_record("SCRIPT_STEP", t=1010, script="s1", step=1, line=3,
+                        offset_ms=0, late_ms=10, verb="move", bot=-1),
+            make_record("ACTION_SUBMIT", t=1011, bot=0, type="Move"),
+            make_record("ACTION_RESULT", t=1012, bot=0, type="Move", ok=True,
+                        reason="ok"),
+            make_record("ACTION_SUBMIT", t=1013, bot=1, type="Attack"),
+            make_record("ACTION_RESULT", t=1014, bot=1, type="Attack", ok=True,
+                        reason="hit"),
+            make_record("SCRIPT_STEP", t=2010, script="s1", step=2, line=4,
+                        offset_ms=1000, late_ms=10, verb="cast", bot=-1),
+            make_record("ACTION_SUBMIT", t=2011, bot=0, type="CastEffect"),
+            make_record("ACTION_RESULT", t=2012, bot=0, type="CastEffect",
+                        ok=False, reason="srv_fail"),
+            make_record("ACTION_SUBMIT", t=2013, bot=0, type="UsePotion"),
+            make_record("ACTION_RESULT", t=2014, bot=0, type="UsePotion",
+                        ok=False, reason="no_result"),
+            make_record("FAIRNESS_REJECT", t=2015, bot=1, type="Attack",
+                        rule="CLI-01", reason="too_soon", value=100.0,
+                        limit=1000.0),
+            make_record("FAIRNESS_REJECT", t=2016, bot=1, type="Attack",
+                        rule="CLI-01", reason="too_soon", value=100.0,
+                        limit=1000.0),
+            make_record("SCRIPT_END", t=3000, script="s1", result="completed",
+                        steps_run=2, steps_total=2, elapsed_ms=2000,
+                        max_late_ms=10, bot=-1),
+        ]
+        write_jsonl(script_path, script_records)
+        _infos7, report7 = gather([script_path])
+        assert len(report7["actions"]) == 1, report7["actions"]
+        act = report7["actions"][0]
+        assert act["submit"] == 4 and act["result"] == 4, act
+        assert act["ok"] == 2 and act["invalid"] == 1, act
+        assert act["no_result"] == 1 and act["other"] == 0, act
+        assert act["invalid_pct"] == 25.0, act
+        assert act["verdict"] == "FAIL", act
+        assert has_violation(report7) is True, report7
+        assert len(report7["fairness"]) == 1, report7["fairness"]
+        fair = report7["fairness"][0]
+        assert fair["rejects"] == 2, fair
+        assert fair["bots"] == 2, fair
+        assert fair["span_s"] == 2.0, fair
+        assert abs(fair["bot_hours_est"] - 0.0011) < 1e-9, fair
+        assert abs(fair["rejects_per_bot_hour_est"] - 1800.0) < 0.5, fair
+        assert report7["fairness_reasons"] == [
+            {"type": "Attack", "rule": "CLI-01", "reason": "too_soon",
+             "count": 2}], report7["fairness_reasons"]
+        assert report7["action_reasons"] == [
+            {"type": "CastEffect", "reason": "srv_fail", "class": "invalid",
+             "count": 1},
+            {"type": "UsePotion", "reason": "no_result", "class": "no_result",
+             "count": 1}], report7["action_reasons"]
+        assert len(report7["scripts"]) == 1, report7["scripts"]
+        run7 = report7["scripts"][0]
+        assert run7["script"] == "s1", run7
+        assert run7["steps_total"] == 2 and run7["steps_run"] == 2, run7
+        assert run7["result"] == "completed", run7
+        assert run7["submit"] == 4 and run7["invalid"] == 1, run7
+        assert run7["no_result"] == 1 and run7["rejects"] == 2, run7
+        assert run7["max_late_ms"] == 10, run7
+        assert report7["warnings"] == [], report7["warnings"]
+        markdown7 = render_markdown(report7)
+        assert "## MET-ACT-02" in markdown7, markdown7
+        assert "## MET-FAIR-01" in markdown7, markdown7
+        assert "## Scripts" in markdown7, markdown7
+        assert "FAIL" in markdown7, markdown7
+
+        # Case 8: classification and verdict boundaries.
+        assert classify_action_result(True, "hit") == "ok"
+        assert classify_action_result(False, "srv_fail") == "invalid"
+        assert classify_action_result(False, "handler_noop") == "invalid"
+        assert classify_action_result(False, "refused_level") == "invalid"
+        assert classify_action_result(False, "no_result") == "no_result"
+        assert classify_action_result(False, "weird") == "other"
+        assert classify_action_result("yes", "ok") == "other"
+        assert classify_action_result(None, "ok") == "other"
+        assert act_verdict(0, 0) == "NO_DATA"
+        assert act_verdict(200, 2) == "PASS"
+        assert act_verdict(200, 3) == "WARN"
+        assert act_verdict(200, 4) == "WARN"
+        assert act_verdict(200, 5) == "FAIL"
+        assert act_verdict(100, 1) == "PASS"
+        assert act_verdict(100, 2) == "WARN"
+        assert act_verdict(100, 3) == "FAIL"
+
+        # Case 9: missing SCRIPT_END, warnings, empty sections, determinism.
+        open_path = os.path.join(tmp, "open.jsonl")
+        write_jsonl(open_path, [
+            make_record("SCRIPT_START", t=0, script="s2", steps=3,
+                        duration_ms=1000, bot=-1),
+            make_record("SCRIPT_STEP", t=10, script="s2", step=1, line=2,
+                        offset_ms=0, late_ms=0, verb="move", bot=-1),
+            make_record("ACTION_SUBMIT", t=11, bot=2, type="Move"),
+            make_record("ACTION_RESULT", t=12, bot=2, type="Move", ok=True,
+                        reason="ok"),
+            make_record("ACTION_SUBMIT", t=13, bot=2, type="Move"),
+        ])
+        _infos9, report9 = gather([open_path])
+        assert report9["scripts"][0]["result"] == "NO_END", report9["scripts"]
+        assert report9["scripts"][0]["steps_run"] == 1, report9["scripts"]
+        assert any("ACTION_SUBMIT/ACTION_RESULT differ for Move (2 vs 1)"
+                   in item for item in report9["warnings"]), \
+            report9["warnings"]
+
+        plain_path = os.path.join(tmp, "plain.jsonl")
+        write_jsonl(plain_path, [
+            make_record("MATCH_START", t=0, match="p-1-1", mode="live",
+                        scenario="p", seed=1, run=1, composition=["a"],
+                        in_game=1),
+            make_record("PERF_SAMPLE", t=100, match="p-1-1",
+                        **make_window(1, 0, 10, 10, 10, 1)),
+            make_record("MATCH_END", t=200, match="p-1-1", mode="live",
+                        duration_ms=200, result="completed", dropped_soft=0,
+                        dropped_hard=0, in_game=1, perf_samples=1),
+        ])
+        _infos_all, combined = gather([script_path, open_path, plain_path])
+        assert any(row["file"] == "(total)" for row in combined["actions"]), \
+            combined["actions"]
+        _infos_plain, plain_report = gather([plain_path])
+        assert plain_report["actions"] == [], plain_report["actions"]
+        plain_markdown = render_markdown(plain_report)
+        assert "## MET-ACT-02" in plain_markdown, plain_markdown
+        assert "(none)" in plain_markdown, plain_markdown
+        _infos_c1, combined1 = gather([script_path, open_path, plain_path])
+        _infos_c2, combined2 = gather([script_path, open_path, plain_path])
+        assert render_markdown(combined1) == render_markdown(combined2)
+        assert render_json(combined1) == render_json(combined2)
+        parsed9 = json.loads(render_json(combined1))
+        assert "actions" in parsed9 and "fairness" in parsed9, parsed9
+        assert "scripts" in parsed9, parsed9
 
     print("selftest OK")
     return 0
