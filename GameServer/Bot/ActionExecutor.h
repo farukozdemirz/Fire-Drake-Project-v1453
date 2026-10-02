@@ -214,6 +214,11 @@ public:
 	// Clears the cast state without sending anything (stop, despawn, target lost). Keeps the reuse timers.
 	static void EndCast(BotSession * s);
 
+	// Classifies one bag item for the perception snapshot: 1 = HP pot, 2 = MP pot, 0 = this bot cannot drink it
+	// (unknown item, no Effect1, class/level mismatch, unknown skill, or not a supported pot shape). Applies the same
+	// rules as BeginPotion (keep them in sync). Touches nothing; the stock is NOT checked.
+	static uint8 PotKindOf(CUser * user, uint32 itemId);
+
 	// Validates and arms a series of 'count' pots of ITEM 'itemId'; sends nothing yet (the same Tick()'s TickPotion()
 	// does). REFUSED (nothing armed): "not_in_game", "dead", "bad_item" (count < 1, unknown item, no Effect1, level or
 	// class does not match, unknown skill), "unsupported_item" (see 5.4 rules). The bag stock is NOT checked here:

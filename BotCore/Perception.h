@@ -783,8 +783,27 @@ namespace BotCore
 	constexpr int     kSnapMaxUnits = 32;   // enemies / allies kept per list (nearest first), design limit
 	constexpr int     kSnapMaxNpcs  = 32;   // npcs kept (nearest first), design limit
 	constexpr uint8_t kSnapUserSit  = 2;    // USER_SITDOWN in the res/hp type byte of the user info
+	constexpr int     kSnapMaxBuffs     = 16;   // type 4 buffs/debuffs kept in the self state (design limit)
+	constexpr int     kSnapMaxCooldowns = 16;   // skills with a running reuse timer kept in the self state
+
+	// One type 4 buff or debuff on the bot itself (the client shows both as status icons).
+	struct BuffView
+	{
+		uint32_t skillId;
+		uint8_t  buffType;       // BUFF_TYPE_* (key of the server's buff map)
+		bool     isBuff;         // false = debuff
+		uint32_t remainingSec;   // > 0 (expired entries are never stored)
+	};
+
+	// One skill whose reuse timer is still running.
+	struct CooldownView
+	{
+		uint32_t skillId;
+		uint32_t remainingMs;    // > 0
+	};
 
 	// The bot's own state (read from its own session by the caller; the contract allows it).
+	// own state only: the contract (docs/14 5.2) forbids the same fields for OTHER players
 	struct SelfState
 	{
 		uint16_t sid;
@@ -795,6 +814,16 @@ namespace BotCore
 		int32_t  hp, maxHp, mp, maxMp;
 		bool     dead;
 		bool     sitting;
+		uint32_t     hpPotStock;        // pots in the own bag that BeginPotion would accept: HP kind
+		uint32_t     mpPotStock;        // same, MP kind
+		uint32_t     potWaitMs;         // shared pot timer: ms until the next pot may go out; 0 = now
+		uint32_t     castGapWaitMs;     // gap after the last EFFECTING (kCastGapMs): ms until the next cast; 0 = now
+		BuffView     buffs[kSnapMaxBuffs];
+		int          buffCount;         // entries stored (<= kSnapMaxBuffs)
+		int          buffTotal;         // buffs/debuffs with remainingSec > 0 offered to SelfAddBuff
+		CooldownView cooldowns[kSnapMaxCooldowns];
+		int          cooldownCount;
+		int          cooldownTotal;
 	};
 
 	// One visible player. No HP, MP, name or inventory: the client never learns them (docs/14 5.2).
@@ -943,5 +972,61 @@ namespace BotCore
 			out.npcTotal++;
 			SnapInsertNearest<NpcView, kSnapMaxNpcs>(out.npcs, out.npcCount, v);
 		}
+	}
+
+	// --- self state extras (ADR-0017 Ek F4-17) ---
+
+	// Whole seconds left until 'endSec' (a time_t value); 0 when it is not in the future. Clamped to 0xFFFFFFFF.
+	inline uint32_t SnapRemainingSec(int64_t endSec, int64_t nowSec)
+	{
+		if (endSec <= nowSec)
+			return 0;
+
+		uint64_t left = (uint64_t)(endSec - nowSec);
+		return left > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (uint32_t)left;
+	}
+
+	// Milliseconds left of a 'spanMs' timer that started 'sinceMs' ago; 0 when it has run out.
+	inline uint32_t SnapRemainingMs(uint32_t spanMs, uint64_t sinceMs)
+	{
+		if (sinceMs >= spanMs)
+			return 0;
+
+		return spanMs - (uint32_t)sinceMs;
+	}
+
+	// Appends a buff. remainingSec == 0 -> nothing happens (returns false, not counted). Otherwise buffTotal++ and the
+	// entry is stored while buffCount < kSnapMaxBuffs (returns true when stored).
+	inline bool SelfAddBuff(SelfState & s, uint32_t skillId, uint8_t buffType, bool isBuff, uint32_t remainingSec)
+	{
+		if (remainingSec == 0)
+			return false;
+
+		s.buffTotal++;
+		if (s.buffCount >= kSnapMaxBuffs)
+			return false;
+
+		BuffView & b = s.buffs[s.buffCount++];
+		b.skillId = skillId;
+		b.buffType = buffType;
+		b.isBuff = isBuff;
+		b.remainingSec = remainingSec;
+		return true;
+	}
+
+	// Same rules for cooldowns (remainingMs == 0 -> ignored).
+	inline bool SelfAddCooldown(SelfState & s, uint32_t skillId, uint32_t remainingMs)
+	{
+		if (remainingMs == 0)
+			return false;
+
+		s.cooldownTotal++;
+		if (s.cooldownCount >= kSnapMaxCooldowns)
+			return false;
+
+		CooldownView & c = s.cooldowns[s.cooldownCount++];
+		c.skillId = skillId;
+		c.remainingMs = remainingMs;
+		return true;
 	}
 }

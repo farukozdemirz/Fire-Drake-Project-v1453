@@ -1074,6 +1074,26 @@ static PotionOutcome SubmitPotion(BotSession * s, CUser * user, uint32 stockBefo
 	return out;
 }
 
+// The server-side shape of a pot the bot can drink (ADR-0017 Ek F4-04). Shared by BeginPotion and PotKindOf.
+static bool PotMagicSupported(const _MAGIC_TABLE * m, const _MAGIC_TYPE3 * t3, uint32 itemId)
+{
+	return
+		m->bType[0] == 3
+		&& m->bType[1] == 0
+		&& m->bMoral == MORAL_SELF
+		&& m->sSkill == 0
+		&& m->sMsp == 0
+		&& m->sUseStanding == 0
+		&& m->sEtc == 0
+		&& m->bFlyingEffect == 0
+		&& (m->iUseItem == 0 || m->iUseItem == itemId)
+		&& BotCore::PotSupported(m->sReCastTime)
+		&& t3 != nullptr
+		&& (t3->bDirectType == 1 || t3->bDirectType == 2)
+		&& t3->sFirstDamage > 0
+		&& t3->sTimeDamage == 0;
+}
+
 PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 count,
 	std::chrono::steady_clock::time_point now)
 {
@@ -1132,21 +1152,7 @@ PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 
 
 	_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(it->m_iEffect1);
 
-	bool supported =
-		m->bType[0] == 3
-		&& m->bType[1] == 0
-		&& m->bMoral == MORAL_SELF
-		&& m->sSkill == 0
-		&& m->sMsp == 0
-		&& m->sUseStanding == 0
-		&& m->sEtc == 0
-		&& m->bFlyingEffect == 0
-		&& (m->iUseItem == 0 || m->iUseItem == itemId)
-		&& BotCore::PotSupported(m->sReCastTime)
-		&& t3 != nullptr
-		&& (t3->bDirectType == 1 || t3->bDirectType == 2)
-		&& t3->sFirstDamage > 0
-		&& t3->sTimeDamage == 0;
+	bool supported = PotMagicSupported(m, t3, itemId);
 	if (!supported)
 	{
 		out.kind = PotionOutcome::REFUSED;
@@ -1166,6 +1172,31 @@ PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 
 	out.kind = PotionOutcome::SENT;
 	out.reason = "ok";
 	return out;
+}
+
+// Same item checks as BeginPotion, without arming a series (perception snapshot only; the bag stock is not read).
+uint8 ActionExecutor::PotKindOf(CUser * user, uint32 itemId)
+{
+	if (user == nullptr)
+		return 0;
+
+	_ITEM_TABLE * it = g_pMain->GetItemPtr(itemId);
+	if (it == nullptr || it->m_iEffect1 == 0)
+		return 0;
+
+	if ((it->m_bClass != 0 && !user->JobGroupCheck(it->m_bClass))
+		|| (it->m_bReqLevel != 0 && user->GetLevel() < it->m_bReqLevel))
+		return 0;
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(it->m_iEffect1);
+	if (m == nullptr)
+		return 0;
+
+	_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(it->m_iEffect1);
+	if (!PotMagicSupported(m, t3, itemId))
+		return 0;
+
+	return t3->bDirectType;
 }
 
 PotionOutcome ActionExecutor::TickPotion(BotSession * s, std::chrono::steady_clock::time_point now)
