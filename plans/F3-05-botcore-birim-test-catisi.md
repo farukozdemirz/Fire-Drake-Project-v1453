@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2, Görev 5 "Birim test çatısı") |
 | Branch | `bot/F3-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | Yok (F3-01..F3-03, F3-06 `KAPANDI`; bu plan sunucu koduna dokunmaz) |
@@ -224,7 +224,35 @@ git diff --stat gece/2026-10-02...bot/F3-05
 
 ### Tur 1
 
-*(henüz uygulanmadı)*
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F3-05` (taban: `gece/2026-10-02`); `bac4e21` (BotCore + Rng), `0d0b7b5` (BotCoreTests + sln + `tools/run-tests.sh`), bu raporu ve `Durum` satirini iceren son commit.
+- **Degisen dosyalar ve nedenleri (yalnizca §4):**
+  - `BotCore/Rng.h`, `BotCore/Rng.cpp` (yeni): `SplitMix64`, `DeriveBotSeed`, `Rng` (xoshiro256**; `NextU64/NextU32/NextBelow/NextRange/NextDouble`) §5.1'deki algoritma ve sabitlerle birebir. `Rng.cpp` yalnizca `#include "Rng.h"`.
+  - `BotCore/BotCore.vcxproj` (yeni): StaticLibrary, v142, C++17, W4, `NotUsing` PCH, iki yapilandirmada `OutDir`/`IntDir` `libs\`; `shared.vcxproj` sablonundan, `WholeProgramOptimization` yok.
+  - `Tests/BotCoreTests/MiniTest.h`, `main.cpp`, `RngTests.cpp` (yeni): tek baslikli mini cati (`TEST_CASE`/`CHECK`/`CHECK_EQ`/`REQUIRE`, `__COUNTER__` ile iki asamali benzersiz ad; `RunAll` `--list` ve ad suzgeci) ve 6 test.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (yeni): Application/Console, `BotCore` `ProjectReference`, `AdditionalIncludeDirectories=$(SolutionDir);...`.
+  - `KnightOnlineServer.sln` (degisti): yalnizca 2 `Project` blogu + 8 yapilandirma esleme satiri eklendi (silme yok; `SolutionGuid` ve diger satirlar aynen).
+  - `tools/run-tests.sh` (yeni): `[Release|Debug] [--no-build] [test-args...]`; bilinmeyen ilk arguman `exit 2`; EXE yoksa `exit 2`; testin cikis kodunu oldugu gibi dondurur.
+- **Bagimsiz on dogrulama:** §5.5'teki tum sabitlenmis degerler yazmadan once bagimsiz bir Python gerceklemesiyle yeniden hesaplandi; hepsi birebir tuttu (SplitMix64 referans vektoru; `DeriveBotSeed(7,0)=0xBCDA4680438A5951`, `(7,1)=0x1A3EAA3C25C3A340`, `(8,0)=0xFEAB185D957C5F22`; `Rng(12345)` u64/u32; `DeriveBotSeed(7,0)` u64; `NextBelow(10)` dizisi `5,8,2,2,6,6,7,3`; iki `NextDouble`; seed 99 `NextBelow(10)` kutu sayilari 9872..10141; seed 5 `NextDouble` ortalama 0,5003; seed 7 `NextRange(-5,5)` tam kapsama).
+- **Derleme ciktisi (son satirlar):**
+  - Release: `BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe` / `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`; `rc=0`.
+  - Debug: `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe` / `proj-GameServer.vcxproj -> ...\x86-Debug\Server\GameServer.exe`; `rc=0`.
+  - Kalan uyarilar yalnizca eski `GameServerDlg.cpp:816/1143/1802`; `botcore` iceren uyari 0.
+- **Kabul kriterleri oz-degerlendirmesi:**
+  - K1 ✔ Release rc=0; `grep -i warning | grep -i botcore` bos.
+  - K2 ✔ Debug rc=0; ayni uyari denetimi bos.
+  - K3 ✔ `./tools/run-tests.sh Release --no-build` rc=0, son satir `6 tests, 0 failed`; `BotCoreTests.exe` ve `libs/BotCore.lib` mevcut.
+  - K4 ✔ Debug ayni: `6 tests, 0 failed`, rc=0.
+  - K5 ✔ `grep -ci ...` = 4.
+  - K6 ✔ `0xE220A8397B1DCDAF` -> `...DAE` yapilip yeniden derlendi: rc=1, `...\Tests\BotCoreTests\RngTests.cpp(10): CHECK_EQ(...) failed` satiri ve `6 tests, 1 failed`; pin geri alindi, K3 tekrar rc=0. Deneme commit edilmedi.
+  - K7 ✔ `--list` 6 ad rc=0; `Rng_NextBelow` -> `1 tests, 0 failed`; `NoSuchTest` -> rc=2.
+  - K8 ✔ `windows.h|stdafx|GameServer|shared/|winsock` ve `rand(` grep'leri bos.
+  - K9 ✔ `git diff --stat gece/2026-10-02...bot/F3-05` yalnizca §4'teki 9 dosya; `GameServer/`, `AIServer/`, `LogInServer/`, `shared/`, `Scripting/` farki yok; sln farki salt ekleme (`^-` satiri yok).
+  - K10 ✔ `.h/.cpp` ASCII+CRLF; `.vcxproj`/`.sln` UTF-8 BOM+CRLF; `tools/run-tests.sh` ASCII+LF (`file` ile).
+  - K11 ✔ GameServer kaynak/proje farki yok; bot sistemi/ini dosyalarina dokunulmadi.
+  - K12 ✔ `time ./tools/run-tests.sh Release --no-build` ≈ 0,04 sn.
+- **Plandan sapmalar:** Yok. K6 denemesi disinda hicbir test gevsetilmedi.
+- **Notlar / acik sorular:** Yok. (Bilgi: MSVC `__FILE__`'i tam yol olarak basar; K6'nin istedigi `RngTests.cpp(` ifadesi satirin icinde `...\Tests\BotCoreTests\RngTests.cpp(10):` seklinde gecer.)
 
 ---
 
