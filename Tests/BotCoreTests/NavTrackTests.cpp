@@ -182,6 +182,189 @@ TEST_CASE("NavTrack_Tracker_Velocity")
 	CHECK_EQ(wt.Count(), 0);
 }
 
+TEST_CASE("NavTrack_Velocity_PacketCadence")
+{
+	// A target moving at a constant 4.5 m/s observed at the real WIZ_MOVE cadence (~1.5 s). The
+	// old 1000/100 defaults saw no second sample and returned 0 at 1.5 s; the 4000/400 window must
+	// recover 4.5 m/s at every interval (docs/12 s13.2, DEG-19).
+	const double mps = 4.5;
+	const int intervals[5] = { 500, 1000, 1500, 1540, 2000 };
+	for (int i = 0; i < 5; ++i)
+	{
+		const int64_t period = intervals[i];
+		BotCore::NavTargetTracker t;
+		int samples = 0;
+		int zero = 0;
+		int nonzero = 0;
+		float minMag = 1e9f;
+		float maxMag = -1e9f;
+		int nextObs = 0;
+		for (int64_t now = 0; now <= 20000; now += 100)
+		{
+			while ((int64_t)nextObs * period <= now)
+			{
+				const int64_t ot = (int64_t)nextObs * period;
+				t.Observe(ot, (float)(mps * (double)ot / 1000.0), 0.0f, (int16_t)45);
+				++nextObs;
+				++samples;
+			}
+			if (t.Count() < 2)
+				continue;
+			int64_t nt = 0;
+			float nx = 0.0f;
+			float nz = 0.0f;
+			REQUIRE(t.Latest(nt, nx, nz));
+			if (now - nt > 4000)
+				continue;
+			float vx = 0.0f;
+			float vz = 0.0f;
+			t.Velocity(now, 4000, 400, vx, vz);
+			const float mag = std::sqrt(vx * vx + vz * vz);
+			if (mag <= 1e-3f)
+			{
+				++zero;
+			}
+			else
+			{
+				++nonzero;
+				if (mag < minMag)
+					minMag = mag;
+				if (mag > maxMag)
+					maxMag = mag;
+			}
+		}
+		std::printf("NAVTRACK cadence period=%lld samples=%d zero=%d nonzero=%d mag_min=%.3f mag_max=%.3f\n",
+			(long long)period, samples, zero, nonzero, minMag, maxMag);
+		CHECK(nonzero > 0);
+		CHECK(minMag >= (float)(mps * 0.9));
+		CHECK(maxMag <= (float)(mps * 1.1));
+		if (period == 1500 || period == 1540)
+			CHECK_EQ(zero, 0);
+	}
+}
+
+TEST_CASE("NavTrack_Velocity_Speed0")
+{
+	float vx = 1.0f;
+	float vz = 1.0f;
+
+	// The newest packet's speed field is 0: the target stopped.
+	BotCore::NavTargetTracker stop;
+	stop.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	stop.Observe(2000, 9.0f, 0.0f, (int16_t)0);
+	stop.Velocity(2000, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+
+	// No speed information (-1): derive from the positions.
+	BotCore::NavTargetTracker unk;
+	unk.Observe(0, 0.0f, 0.0f);
+	unk.Observe(1000, 5.0f, 0.0f);
+	unk.Velocity(1000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 5.0f) < 1e-3f);
+	CHECK(std::fabs(vz) < 1e-3f);
+
+	// speed = 45 (4.5 m/s): a 20 m/s position jump is clamped to 4.95 m/s.
+	BotCore::NavTargetTracker fast;
+	fast.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	fast.Observe(500, 10.0f, 0.0f, (int16_t)45);
+	fast.Velocity(500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.95f) < 1e-3f);
+	CHECK(std::fabs(vz) < 1e-3f);
+
+	// speed = 45 does not inflate a slower estimate.
+	BotCore::NavTargetTracker slow;
+	slow.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	slow.Observe(2000, 4.5f, 0.0f, (int16_t)45);
+	slow.Velocity(2000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 2.25f) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_Velocity_Stale")
+{
+	float vx = 1.0f;
+	float vz = 1.0f;
+
+	// Age == window is still valid; age == window + 1 is stale.
+	BotCore::NavTargetTracker t;
+	t.Observe(0, 0.0f, 0.0f);
+	t.Observe(1000, 5.0f, 0.0f);
+	t.Velocity(5000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 5.0f) < 1e-3f);
+	t.Velocity(5001, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+
+	// Last two samples below minSpan with no older sample: 0.
+	BotCore::NavTargetTracker sh;
+	sh.Observe(0, 0.0f, 0.0f);
+	sh.Observe(300, 1.5f, 0.0f);
+	sh.Velocity(300, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+
+	// Last two samples below minSpan but an older long-enough sample exists: fall back to it.
+	BotCore::NavTargetTracker fb;
+	fb.Observe(0, 0.0f, 0.0f);
+	fb.Observe(1000, 5.0f, 0.0f);
+	fb.Observe(1300, 6.5f, 0.0f);
+	fb.Velocity(1300, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 5.0f) < 1e-3f);
+
+	// A single sample is not enough.
+	BotCore::NavTargetTracker one;
+	one.Observe(0, 0.0f, 0.0f);
+	one.Velocity(0, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+}
+
+TEST_CASE("NavTrack_Velocity_Turn")
+{
+	// 90 degree turn: the last two samples define the current direction, not the older ones.
+	BotCore::NavTargetTracker t;
+	t.Observe(0, 0.0f, 0.0f);
+	t.Observe(500, 5.0f, 0.0f);    // east, 10 m/s
+	t.Observe(1000, 5.0f, 5.0f);   // north, 10 m/s
+	float vx = 0.0f;
+	float vz = 0.0f;
+	t.Velocity(1000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx) < 1e-3f);
+	CHECK(std::fabs(vz - 10.0f) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_Follower_LeadAtPacketCadence")
+{
+	const int n = 60;
+	const float unit = 4.0f;
+	BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	BotCore::NavFollower f;
+
+	// Target recedes east at 4.5 m/s, observed every 1500 ms with the speed field set.
+	f.ObserveTarget(0, 66.0f, 122.0f, (int16_t)45);
+	f.ObserveTarget(1500, 72.75f, 122.0f, (int16_t)45);
+	f.ObserveTarget(3000, 79.5f, 122.0f, (int16_t)45);
+
+	CHECK(f.Update(grid, pf, 3000, 75.0f, 122.0f, 8.0f, params));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(f.Plan().leadSec > 0.0f);
+	const float lead0 = f.Plan().leadSec;
+	CHECK(std::fabs(f.Plan().predX - 82.031f) < 1e-2f);
+	CHECK(f.Plan().predZ == 122.0f);
+
+	// Observation age is added to the lead, still capped at maxLeadSec.
+	CHECK(f.Update(grid, pf, 3500, 75.0f, 122.0f, 8.0f, params));
+	CHECK(f.Plan().leadSec > lead0);
+	CHECK(f.Plan().leadSec <= params.maxLeadSec);
+	CHECK(f.Plan().predX > 79.5f);
+
+	CHECK(f.Update(grid, pf, 5000, 75.0f, 122.0f, 8.0f, params));
+	CHECK(std::fabs(f.Plan().leadSec - params.maxLeadSec) < 1e-6f);
+	CHECK(f.Plan().predX > 79.5f);
+}
+
 TEST_CASE("NavTrack_PredictLead")
 {
 	CHECK(std::fabs(BotCore::NavPredictLead(40.0f, 8.0f, 1.5f) - 1.5f) < 1e-6f);
@@ -324,7 +507,9 @@ TEST_CASE("NavTrack_Follower_Triggers")
 	CHECK(f.Update(grid, pf, 1100, 22.0f, 22.0f, 8.0f, params));
 	CHECK(f.LastReason() == BotCore::NavReplanReason::Moved);
 	CHECK_EQ(f.Replans(), 4);
-	CHECK(f.Plan().goal == Cell(21, 5));
+	// With the 4000 ms window (F5-52) the 0 -> 1100 ms samples now yield ~5.45 m/s and the ring
+	// centre moves ahead of the target (old 1000 ms window gave 0 and Cell(21, 5)).
+	CHECK(f.Plan().goal == Cell(23, 5));
 	CHECK_EQ(f.Plan().plannedAtMs, (int64_t)1100);
 	CHECK(!f.Update(grid, pf, 1599, 22.0f, 22.0f, 8.0f, params));
 	CHECK(f.Update(grid, pf, 1600, 22.0f, 22.0f, 8.0f, params));
@@ -418,18 +603,18 @@ TEST_CASE("NavTrack_Follower_Prediction")
 		CHECK(f.Plan().goal == Cell(22, 5));
 	}
 
-	// (d) Stale observation drops the velocity: now = newest + 1001 / + 1000.
+	// (d) Stale observation drops the velocity: now = newest + 4001 / + 4000 (F5-52 window).
 	{
 		BotCore::NavFollower f;
 		Observe5(f, 82.0f, 2.0f, 22.0f);
-		CHECK(f.Update(grid, pf, 2001, 22.0f, 22.0f, 8.0f, params));
+		CHECK(f.Update(grid, pf, 5001, 22.0f, 22.0f, 8.0f, params));
 		CHECK_EQ(f.Plan().leadSec, 0.0f);
 		CHECK(f.Plan().goal == Cell(22, 5));
 	}
 	{
 		BotCore::NavFollower f;
 		Observe5(f, 82.0f, 2.0f, 22.0f);
-		CHECK(f.Update(grid, pf, 2000, 22.0f, 22.0f, 8.0f, params));
+		CHECK(f.Update(grid, pf, 5000, 22.0f, 22.0f, 8.0f, params));
 		CHECK(f.Plan().goal == Cell(25, 5));
 	}
 

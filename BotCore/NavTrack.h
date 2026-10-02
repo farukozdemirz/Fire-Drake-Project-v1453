@@ -26,14 +26,18 @@ namespace BotCore
 
 		void Clear();
 		// False (sample dropped) when tMs <= the newest stored time; otherwise stored. When all
-		// kCapacity slots are used the oldest sample is overwritten.
-		bool Observe(int64_t tMs, float x, float z);
+		// kCapacity slots are used the oldest sample is overwritten. speedField is the WIZ_MOVE
+		// speed field (m/s * 10, docs/03 CLI-05): 0 marks a stopped packet, -1 (default) means the
+		// caller has no speed information and the velocity is derived from the positions only.
+		bool Observe(int64_t tMs, float x, float z, int16_t speedField = -1);
 		int  Count() const;
 		// False when empty. Otherwise the newest sample.
 		bool Latest(int64_t & tMs, float & x, float & z) const;
-		// vx = vz = 0 unless: >= 2 samples, nowMs - newest.t <= windowMs, and the span between the
-		// newest sample and the oldest sample with t >= newest.t - windowMs is >= minSpanMs (> 0).
-		// Then v = (newest - oldest) / (span / 1000.0f).
+		// vx = vz = 0 unless: >= 2 samples, the newest sample's speed field is not 0, and
+		// nowMs - newest.t <= windowMs. Then the newest sample is differenced against the nearest
+		// older sample whose span is >= minSpanMs (> 0) and <= windowMs (docs/12 s13.2: last two
+		// observations at packet cadence, or going back to a long-enough span). A positive newest
+		// speed field clamps the magnitude to speedField / 10 * 1.1 m/s (direction preserved).
 		void Velocity(int64_t nowMs, int windowMs, int minSpanMs, float & vx, float & vz) const;
 
 	private:
@@ -42,6 +46,7 @@ namespace BotCore
 			int64_t t = 0;
 			float x = 0.0f;
 			float z = 0.0f;
+			int16_t speed = -1;
 		};
 
 		const Sample & At(int backFromNewest) const;
@@ -120,8 +125,8 @@ namespace BotCore
 	struct NavFollowParams
 	{
 		float maxLeadSec = 1.5f;        // docs/12 s4.2 [O]
-		int   velocityWindowMs = 1000;  // docs/12 s4.2 [O]
-		int   minVelocitySpanMs = 100;  // [A] ADR-0006 Ek F5-04
+		int   velocityWindowMs = 4000;  // docs/12 s13.2 [A] P-NAV-VEL-WINDOW
+		int   minVelocitySpanMs = 400;  // docs/12 s13.2 [A] P-NAV-VEL-MIN-SPAN
 		float replanDistM = 6.0f;       // docs/12 s4.2 [O]; <= 0 disables the Moved trigger
 		int   replanIntervalMs = 500;   // docs/12 s4.2 [O]
 		float ringMinM = 0.0f;          // role ring around the predicted point (metres)
@@ -164,8 +169,9 @@ namespace BotCore
 	public:
 		void Reset();   // forget observations and plan: status NoTarget, reason None, Replans() 0
 		// Feed a target position when the perception layer reports one (tMs = observation time).
-		// False when dropped (tMs <= newest stored time).
-		bool ObserveTarget(int64_t tMs, float x, float z);
+		// speedField = -1 when unknown (see NavTargetTracker::Observe). False when dropped
+		// (tMs <= newest stored time).
+		bool ObserveTarget(int64_t tMs, float x, float z, int16_t speedField = -1);
 		// Call once per bot tick. Returns true when a plan was (re)computed during this call
 		// (Plan() then holds the result, also for NoGoal/InvalidStart/PathFailed). Returns false when
 		// nothing was due or no target was observed yet (Plan() unchanged).
@@ -198,7 +204,7 @@ namespace BotCore
 		return m_samples[idx];
 	}
 
-	inline bool NavTargetTracker::Observe(int64_t tMs, float x, float z)
+	inline bool NavTargetTracker::Observe(int64_t tMs, float x, float z, int16_t speedField)
 	{
 		if (m_count > 0)
 		{
@@ -213,6 +219,7 @@ namespace BotCore
 		m_samples[m_next].t = tMs;
 		m_samples[m_next].x = x;
 		m_samples[m_next].z = z;
+		m_samples[m_next].speed = speedField;
 		m_next = (m_next + 1) % kCapacity;
 		if (m_count < kCapacity)
 			++m_count;
@@ -246,27 +253,56 @@ namespace BotCore
 		if (nowMs - newest.t > static_cast<int64_t>(windowMs))
 			return;
 
+		// A packet with speed field 0 means the target stopped (docs/12 s13.2).
+		if (newest.speed == 0)
+			return;
+
+		// Nearest older sample whose span from the newest is at least minSpanMs, staying within
+		// windowMs of the newest observation. At packet cadence (~1.5 s) the newest-to-previous
+		// span is already long enough; a short recent pair falls back to a longer span.
 		const int64_t threshold = newest.t - static_cast<int64_t>(windowMs);
-		int64_t oldT = newest.t;
-		float oldX = newest.x;
-		float oldZ = newest.z;
+		int64_t oldT = 0;
+		float oldX = 0.0f;
+		float oldZ = 0.0f;
+		bool haveOld = false;
 		for (int k = 1; k < m_count; ++k)
 		{
 			const Sample & s = At(k);
 			if (s.t < threshold)
 				break;   // samples only get older from here
-			oldT = s.t;
-			oldX = s.x;
-			oldZ = s.z;
+			if (newest.t - s.t >= static_cast<int64_t>(minSpanMs))
+			{
+				oldT = s.t;
+				oldX = s.x;
+				oldZ = s.z;
+				haveOld = true;
+				break;
+			}
 		}
+		if (!haveOld)
+			return;
 
 		const int64_t span = newest.t - oldT;
-		if (span <= 0 || span < static_cast<int64_t>(minSpanMs))
+		if (span <= 0)
 			return;
 
 		const float inv = 1000.0f / static_cast<float>(span);
 		vx = (newest.x - oldX) * inv;
 		vz = (newest.z - oldZ) * inv;
+
+		// A positive speed field is a magnitude hint (WIZ_MOVE speed = m/s * 10): clamp a noisy
+		// position jump to speedField / 10 * 1.1 m/s, direction preserved.
+		if (newest.speed > 0)
+		{
+			const float maxV = (static_cast<float>(newest.speed) / 10.0f) * 1.1f;
+			const float mag = std::sqrt(vx * vx + vz * vz);
+			if (mag > maxV && mag > 0.0f)
+			{
+				const float scale = maxV / mag;
+				vx *= scale;
+				vz *= scale;
+			}
+		}
 	}
 
 	inline void NavFollower::Reset()
@@ -277,9 +313,9 @@ namespace BotCore
 		m_replans = 0;
 	}
 
-	inline bool NavFollower::ObserveTarget(int64_t tMs, float x, float z)
+	inline bool NavFollower::ObserveTarget(int64_t tMs, float x, float z, int16_t speedField)
 	{
-		return m_tracker.Observe(tMs, x, z);
+		return m_tracker.Observe(tMs, x, z, speedField);
 	}
 
 	inline bool NavFollower::Update(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
@@ -327,7 +363,11 @@ namespace BotCore
 		float leadSec = 0.0f;
 		if ((vx != 0.0f || vz != 0.0f) && lead0 > 0.0f)
 		{
-			float lead = lead0;
+			// Observation age is added to the lead: the older the newest observation, the further
+			// the target has moved since (docs/12 s13.2). Still capped at maxLeadSec.
+			float lead = lead0 + static_cast<float>(nowMs - targetT) / 1000.0f;
+			if (lead > params.maxLeadSec)
+				lead = params.maxLeadSec;
 			for (int attempt = 0; attempt < 4; ++attempt)
 			{
 				const float qx = tx + vx * lead;
