@@ -255,6 +255,44 @@ namespace BotCore
 		return CAST_OK;
 	}
 
+	// --- cast cancel and standing plan (ADR-0017 Ek F4-24) ---
+
+	// docs/03 CLI-03 [V]: the client cancels a cast with MAGIC_FAIL (opcode 4) and sData[3] = -100 (SKILLMAGIC_FAIL_CASTING).
+	constexpr int16_t kCastCancelCode = -100;
+
+	enum CastCancelVerdict
+	{
+		CANCEL_OK = 0,
+		CANCEL_REJECT_NOT_CASTING = 1,   // no CASTING packet is in flight, nothing to cancel
+		CANCEL_REJECT_RATE = 2           // CLI-11
+	};
+
+	// Guard rule for the cancel packet. Order: not casting, rate. There is no minimum delay: the human picks the moment
+	// (docs/03 CLI-03: 786..1408 ms after CASTING measured, no lower bound).
+	inline CastCancelVerdict CheckCastCancel(bool casting, int actionsInWindow)
+	{
+		if (!casting)
+			return CANCEL_REJECT_NOT_CASTING;
+
+		if (actionsInWindow >= kMaxActionsPerWindow)
+			return CANCEL_REJECT_RATE;
+
+		return CANCEL_OK;
+	}
+
+	enum StandingPlan
+	{
+		STAND_PROCEED = 0,      // the cast may start (guard still checks CAST_REJECT_NOT_STANDING)
+		STAND_STOP_FIRST = 1    // send a stop packet now, cast on a later tick
+	};
+
+	// docs/03 CLI-09 / MEC-MAG-07: a UseStanding skill needs speed 0 on the server, so a walking bot stops first and waits
+	// at least one tick (the caller returns after the stop; the next Tick() re-evaluates).
+	inline StandingPlan PlanStanding(bool needsStanding, bool moving)
+	{
+		return (needsStanding && moving) ? STAND_STOP_FIRST : STAND_PROCEED;
+	}
+
 	// --- potion slice (ADR-0017 Ek F4-04) ---
 
 	constexpr uint32_t kPotCooldownMs = 2500;   // docs/03 CLI-06: HP and MP pots share ~2.5 s (measured 2504..2665 ms; HP->MP 2540 ms) [A: shared timer]

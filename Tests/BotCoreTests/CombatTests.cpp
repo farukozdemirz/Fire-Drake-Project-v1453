@@ -924,3 +924,22 @@ TEST_CASE("Combat_ChatCheck_Boundaries")
 	CHECK_EQ((int)BotCore::kChatPerMinute, 6);
 	CHECK_EQ((int)BotCore::kChatMinuteMs, 60000);
 }
+
+TEST_CASE("Combat_CastCancel_Guard")
+{
+	CHECK_EQ((int)BotCore::kCastCancelCode, -100);
+
+	CHECK_EQ((int)BotCore::CheckCastCancel(false, 0), (int)BotCore::CANCEL_REJECT_NOT_CASTING);
+	CHECK_EQ((int)BotCore::CheckCastCancel(false, 6), (int)BotCore::CANCEL_REJECT_NOT_CASTING);
+	CHECK_EQ((int)BotCore::CheckCastCancel(true, 0), (int)BotCore::CANCEL_OK);
+	CHECK_EQ((int)BotCore::CheckCastCancel(true, 5), (int)BotCore::CANCEL_OK);
+	CHECK_EQ((int)BotCore::CheckCastCancel(true, 6), (int)BotCore::CANCEL_REJECT_RATE);
+}
+
+TEST_CASE("Combat_PlanStanding")
+{
+	CHECK_EQ((int)BotCore::PlanStanding(true, true), (int)BotCore::STAND_STOP_FIRST);
+	CHECK_EQ((int)BotCore::PlanStanding(true, false), (int)BotCore::STAND_PROCEED);
+	CHECK_EQ((int)BotCore::PlanStanding(false, true), (int)BotCore::STAND_PROCEED);
+	CHECK_EQ((int)BotCore::PlanStanding(false, false), (int)BotCore::STAND_PROCEED);
+}

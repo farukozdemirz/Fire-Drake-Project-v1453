@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-24` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-01 (`TickMove`/`StopMove`) — `KAPANDI`; F4-04 (CLI-11 `m_actionWindow` kullanımı) — `KAPANDI` |
@@ -290,35 +290,81 @@ git diff --check gece/2026-10-02...bot/F4-24
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-24` — `<kısa-sha> [F4-24] …`
+- Branch / commit'ler: `bot/F4-24` — `6ffff94 [F4-24] Cast iptali: MAGIC_FAIL -100, hareketle iptal, UseStanding otomatik durdurma`; plan dosyası bu raporla ayrıca commit edilir.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `kCastCancelCode`, `CastCancelVerdict`/`CheckCastCancel`, `StandingPlan`/`PlanStanding` (saf mantık, `CheckCastEffect`'ten sonra, pot diliminden önce).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastCancel_Guard` ve `Combat_PlanStanding` (82 → 84).
+  - `GameServer/Bot/ActionExecutor.h`: `CancelCast` bildirimi + `CastOutcome` sebep yorumu.
+  - `GameServer/Bot/ActionExecutor.cpp`: `CancelCast` gövdesi (`EndCast`'ten sonra), `TickCast`'te `m_castTargetId` kaydı ve `UseStanding` otomatik durdurma.
+  - `GameServer/Bot/BotSession.h`: `int16 m_castTargetId`.
+  - `GameServer/Bot/BotSession.cpp`: başlatıcı listesi + `ResetForRespawn()` (yalnızca ekleme; `OnPacket()` değişmedi).
+  - `GameServer/Bot/BotManager.cpp`: `TickSessions()` canlı dalında `TickMove`'dan önce hareketle iptal (`moveHeld`), `CommandCast` `off` dalları `CancelCast` ile.
+- Derleme sonucu (`tools/build.sh Release`; değişen yedi dosya `touch` ile yeniden derlendi, ilgili dosyalarda `warning C`/`error C` yok):
   ```
-  …
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` da hatasız bitti (kalan uyarılar yalnızca eski `GameServerDlg.cpp:1143/1802`).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: Release rc=0; `touch` sonrası yedi dosyada `warning C`/`error C` boş.
+  - K2 ✔: Debug rc=0.
+  - K3 ✔: `84 tests, 0 failed` (Release + Debug); çıktıda `Combat_CastCancel_Guard` ve `Combat_PlanStanding` var.
+  - K4 ✔: yasak include/token eşleşmesi yok; `std::min`/`std::max` yeni satır göstermiyor.
+  - K5 ✔: `kCastCancelCode` yalnızca `ActionExecutor.cpp`; `MAGIC_FAIL` yeni satır yalnızca `ActionExecutor.cpp`.
+  - K6 ✔ (kod okuması): `CheckCastCancel` `HandlePacket`'tan önce; `CANCEL_OK` değilse `HandlePacket`'sız `REFUSED "rate"`; iptal `HandlePacket` tek yerde; `rate` reddinde `EndCast` yok.
+  - K7 ✔: BotSession diff `-` satırları yalnızca başlatıcı satırı; `ResetForRespawn` yalnızca `m_castTargetId = -1` ekler.
+  - K8 ✔: `PlanStanding` yalnızca `CAST_ARMED` koşuluyla; `c.standing` ve `CheckCastStart(c)` değişmedi; `RejectCast` `CLI-09`/`not_standing` duruyor.
+  - K9 ✔: `CancelCast(s, "move"` 1 satır, `CancelCast(s, "cmd"` 2 satır, `EndCast` sayısı 3; `TickMove` yalnızca `!moveHeld`; `TickUserIn`/`TickNpcIn` dışarıda.
+  - K10 ✔: BotManager `-` satırları yalnızca plandaki iki `off` dalı, özet biçimi ve `TickMove` sarmalaması.
+  - K11 ✔: `gece/2026-10-02...bot/F4-24` yalnızca §4'teki 7 dosya; vcxproj/sln farkı yok.
+  - K12 ✔: `BotCombat.h`/`CombatTests.cpp` ASCII + CRLF; `git diff --check` boş.
+  - K13 ✔: `ActionExecutor.*` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok.
+  - K14 ✔: `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckPotion` ≥ 1; önceki 82 testle birlikte 84 geçiyor; `EmitFairnessReject` yeni `"CastCancel"` çağrısı `ActionExecutor.cpp`'de.
+  - K15 ✔: `tools/check-perception-contract.py` → `RESULT: PASS`, `R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0`; yeni kod yalnızca `s->m_pUser` okur.
+  - K16: Claude'un `/plan-dogrula` çalışma zamanı senaryoları (S1–S6) — uygulayıcı yapmaz.
+- Plandan sapmalar ve gerekçeleri: Yok. (Yalnızca `ActionExecutor.h`'deki `CastOutcome` sebep yorumuna "stopping"/"cancelled"/"dropped"/"idle" eklendiği satırda, düzenleme sırasında oluşan çift girinti fark edilip derlemeden önce aslına döndürüldü; `git diff` yalnızca eklenen yorum satırlarını gösterir.)
+- Açık sorular: Yok.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-24` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-24` @ `88b8ce2` (kod commit'i `6ffff94`; plan dosyası ayrıca `88b8ce2`). Gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push yapılmadı, birleştirmeyi döngü betiği yapar.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `BotCombat.h`, `ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `CombatTests.cpp` `touch` ile yeniden derlendi; `./tools/build.sh Release` rc=0; log'da yalnızca iki eski uyarı (`UpgradeHandler.cpp:634/862` C4789), değişen dosyalarda `warning C` yok |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, `warning C` yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `84 tests, 0 failed`; çıktıda `[ OK ] Combat_CastCancel_Guard` ve `[ OK ] Combat_PlanStanding` |
+| K4 | ✔ | `grep -n "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`BotCombat.h:6-7`); diff'te `std::min`/`std::max` yok |
+| K5 | ✔ | `kCastCancelCode` yalnızca `ActionExecutor.cpp:1039,1061`; yeni `MAGIC_FAIL` satırları yalnızca `ActionExecutor.cpp:973,976,1036,1061` + `ActionExecutor.h:219,222` (yorum); `BotManager.cpp`/`BotSession.*`/`ScenarioRunner`/`ScriptRunner` yeni satır yok |
+| K6 | ✔ | `ActionExecutor.cpp:1008` `CheckCastCancel(true, inWindow)`; `!= CANCEL_OK` ise `:1011` `EmitFairnessReject(... "CastCancel", "CLI-11", "rate" ...)` ve `REFUSED "rate"` ile dönüş, `HandlePacket` ve `EndCast` çağrılmaz; iptal `HandlePacket` tek yerde (`:1044`), `:1008`'den sonra |
+| K7 | ✔ | `git diff ... BotSession.cpp \| grep '^-'` yalnızca başlatıcı satırı (`m_castDone(0), m_castPackets(0), m_castAnyHas(false),`); `ResetForRespawn()` yalnızca `m_castTargetId = -1` ekliyor; `OnPacket()` bloğu diff'te yok |
+| K8 | ✔ | `ActionExecutor.cpp:793-801` `PlanStanding` çağrısı `m_castPhase == CAST_ARMED` koşuluyla; `c.standing = !s->m_moveActive` (`:853`) ve `CheckCastStart(c)` (`:877`) silinmemiş; `RejectCast` `CLI-09`/`not_standing` (`:545`) duruyor; sunucuda `CharacterMovementHandler.cpp:18` `m_sSpeed = speed` geçerlilik denetiminden önce, yani durma paketi hızı her koşulda 0 yapar. Çalışma zamanı kanıtı yok (bkz. K16 S5) |
+| K9 | ✔ | `CancelCast(s, "move"` 1 satır (`BotManager.cpp:2920`), `CancelCast(s, "cmd"` 2 satır (`:1398`, `:1466`); `grep -c EndCast` = 3; `TickMove` `if (!moveHeld)` içinde (`:2940`); `TickUserIn`/`TickNpcIn` bu bloğun dışında; üç log metni birebir |
+| K10 | ✔ | `BotManager.cpp` diff `-` satırları yalnızca iki `off` dalı, `all` özet biçimi ve `TickMove` + sarmalanan log blokları; `Startup()`/`Tick()`/`BuildStatusLines()`/`BeginDespawn()`/ini okuma diff'te yok. `ENABLED=0` çalışma zamanında doğrulandı (S6) |
+| K11 | ✔ | `git diff --stat`: yalnızca §4'teki 7 dosya + plan dosyası; vcxproj/filters farkı boş; `GameServer/` altında `Bot/` dışı dosya yok |
+| K12 | ✔ | `file`: `BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.*`, `BotManager.cpp`, `BotSession.*` hepsi `ASCII text, with CRLF line terminators`; `git diff --check` boş |
+| K13 | ✔ | `ActionExecutor.h/.cpp` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` eşleşmesi yok |
+| K14 | ✔ | `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1, `CheckCastEffect` 1, `CheckPotion` 1; `EmitFairnessReject` `"Move"`/`"Attack"`/`"Cast"`/`"Potion"` duruyor, yeni `"CastCancel"` (`:1011`); 82 önceki test geçiyor (toplam 84) |
+| K15 | ✔ | `check-perception-contract.py`: `RESULT: PASS`, `R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0` (sayılar değişmedi); yeni kod yalnızca `s->m_pUser` |
+| K16 | ✔ (S5 hariç) | S1–S4 ve S6 çalışma zamanında geçti; S5 sınanmadı (aşağıda ve bulgu 1) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Çalışma zamanı (Release, `GameServer.ini` `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; botlar `BotMF_K` ve `BotWP_E` zone 71; komutlar `BotCommands.txt` ve geçici `Scripts/f424_*.txt` ile; gözlem `Logs/Bot_2_10_2026.log` ve `Logs/bots/2026-10-02/live-212632.jsonl`, `live-213110.jsonl`):
+  - **S1 ✔:** `CastStart` `ACTION_SUBMIT` → `ACTION_RESULT` (`casting`); +439 ms'de `CastCancel` `ACTION_SUBMIT` (`cause:"cmd"`, `since_casting_ms:439`, `target:2985` = `BotWP_E` kimliği) → `ACTION_RESULT` (`ok:true`, `reason:"cancelled"`, `op:4`, `code:-100`, `latency_us:4`); 6 sn boyunca `CastEffect` yok; log `cast cancelled after 2 packet(s) sent`; `list` MP 6021/6021 (cast öncesiyle aynı).
+  - **S2 ✔:** `CastCancel` (`cause:"move"`, `since_casting_ms:436`, `cancelled`) ve ilk `Move` `ACTION_SUBMIT` aynı `t`'de (`195794692`), iptal önce; log `cast cancelled by move after 2 packet(s) sent`, sonra `arrived at (1285.0, 920.0)`; `CastEffect` yok. Yeniden `cast` atıldı: `effected`, `list` MP 6001/6021 (yalnızca ikinci cast düştü) ⇒ iptal sonrası seri/zamanlayıcı bozulmadı.
+  - **S3 ✔:** aynı komut dosyasında `cast` + `cast off`: `stopped after 0 packet(s) sent`, JSONL'de `Cast*` olayı yok; canlı ama cast etmeyen bot: `not casting`; `cast all off`: `0 stopped, 2 not casting, 0 refused`.
+  - **S4 ✔ (hareket yolu):** CLI-11 penceresi 6 aksiyonla dolduruldu (1 `CastStart` + 5 `TargetHpReq`, farklı hedeflerle); `move` sonrası altı ardışık tick'te `FAIRNESS_REJECT` (`type:"CastCancel"`, `rule:"CLI-11"`, `reason:"rate"`, `value:6.00`, `limit:6.00`), log `cast cancel deferred (rate)` ×6, bu sürede `Move` gönderilmedi; pencere açılınca (+1083 ms) iptal gitti (`cancelled`) ve **aynı `t`'de** `Move` ardından geldi. Seri reddedilen tick'lerde düşmedi. (`cmd` yolundaki `REFUSED` mesajı çalıştırılmadı; mesaj kodu okundu, `BotManager.cpp:1424-1429,1478-1481`.)
+  - **S5 sınanmadı:** geçici `MAGIC` `UPDATE` gerekiyordu; `CLAUDE.md` yerel DB için yalnızca `SELECT` izni veriyor, bu yüzden DB'ye yazılmadı. Plan §7 S5 bu durumda K8'in kod okuması ve birim testle desteklenmiş sayılmasına izin veriyor. Bekleyen test olarak `docs/STATUS.md`'ye yazıldı.
+  - **S6 ✔:** `cast BotMF_K 110518 BotWP_E 3` → `effected` ×3, `cast finished (effected) after 3 cycle(s), 3 ok, 6 packet(s) sent`; `cast ... self` → `refused (bad_target)`; `move`/`stop`/`move` (BotWP_K ≈ 33 m yürüyüş, durma, varış `after 4 packets`); `attack BotWP_K BotWP_E 3` → `finished (hit) after 3 hit(s) sent, 3 ok`. `TELEMETRY=summary`: log `cast cancelled after 2 packet(s) sent`, JSONL'de `ACTION_*` 0 (yalnızca `PERF_SAMPLE`). `ENABLED=0`: `BotCommands.txt` 15 sn sonra yerinde, `Bot_*.log`'a 0 yeni satır, `Logs/bots/` dosya sayısı değişmedi. `tick_p95_us`: en fazla 666 (iptal koşusu), özet koşusunda en fazla 377 (≤ 1 ms). Üç sunucu `[UP]` (3/3), `GameServer.log` 32 satır, değişmedi.
+  - Temizlik: ini yedekten geri (md5 öncesi/sonrası `265a8e1c35ea12df46f6d006fe894d9b`), `Scripts/f424_*.txt` ve `BotCommands.*` silindi, sunucular `run-servers.sh stop` ile kapatıldı (`0/3`), çalışma ağacı temiz (yalnızca izlenmeyen `plans/.queue`).
+- Bulgular (önem sırasıyla; hiçbiri engelleyici değil):
+  1. **Not (S5 sınanmadı):** `UseStanding` otomatik durdurması (`ActionExecutor.cpp:793-801`) çalışma zamanında görülmedi; bot skill'lerinin hiçbiri `UseStanding = 1` değil ve geçici `MAGIC` düzenlemesi `CLAUDE.md`'deki yalnızca-`SELECT` kuralı yüzünden yapılmadı. Mantık kod okumasıyla (yalnızca `CAST_ARMED`, `StopMove` her çıkışta `m_moveActive = false` bırakır, sunucu durma paketinde hızı doğrulamadan önce sıfırlar) ve `Combat_PlanStanding` ile desteklenmiş. Proje sahibi `MAGIC` düzenlemesine izin verirse ya da başka bir yolla `UseStanding = 1` bot skill'i sağlanırsa sınanır (`docs/STATUS.md` bekleyen testler).
+  2. **Not (tasarım gereği, bilgi):** `rate` ile ertelenen iptal EFFECTING sınırında yarışabilir: S4'te iptal `since_casting_ms = 1083` ile (cast süresi 1080) gitti, çünkü `TickSessions()` içinde hareket bölümü cast bloğundan önce çalışıyor; sıra korunmasa EFFECTING gidebilirdi. Plan §8 (c) ile uyumlu, kod değişikliği gerekmiyor; F6 davranış katmanı pencereyi cast sırasında boş tutmalı.
+  3. **Not:** `cmd cast ... off` `FAILED` ve `all` özetinde `FAILED`'ın "stopped" sayılması plana uygun (§5.6); `FAILED` yolu (yankı gelmemesi) çalışma zamanında üretilemedi, yalnızca kod okundu (`ActionExecutor.cpp:1053-1065`).
+- Düzeltme talimatı: gerekmiyor (DOĞRULANDI).
