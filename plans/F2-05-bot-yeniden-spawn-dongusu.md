@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03 (`KAPANDI`: spawn, `BotSession`), F2-04 (`KAPANDI`: despawn, `PollDespawn`, `m_despawnAfterMs`) |
