@@ -82,6 +82,7 @@
     <ClCompile Include="NavGridTests.cpp" />
     <ClCompile Include="NavPathTests.cpp" />
     <ClCompile Include="NavSmoothTests.cpp" />
+    <ClCompile Include="NavTrackTests.cpp" />
     <ClCompile Include="PerceptionTests.cpp" />
     <ClCompile Include="RngTests.cpp" />
   </ItemGroup>
