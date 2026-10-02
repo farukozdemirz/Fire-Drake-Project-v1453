@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-54 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12, F4-13, F4-14, F4-15 (görünür oyuncu/NPC tabloları ve bölge değişimi istekleri) — `KAPANDI` |
@@ -95,13 +95,34 @@ grep -n "region_dropped\|inout_parse_fail" GameServer/Bot/BotSession.cpp GameSer
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-54` (taban: `gece/2026-10-02`); `ad8598c` `[F4-54] Algi teshis sayaclari ve see dokumu`.
 - Değişen dosyalar ve neden:
+  - `GameServer/Bot/BotSession.h`: teşhis sayaç üyeleri (atomikler + `m_obsLock` altındaki `m_regionDroppedLastIds[8]`/`m_regionDroppedLastCount`). Yorum blokları eklendi.
+  - `GameServer/Bot/BotSession.cpp`: `OnPacket()` içinde sayaç artırımları (`inout in/out/fail`, `reqUserIn recv/units/stop`, `region recv/ids/dropped`, `move_unknown`); `WIZ_REGIONCHANGE` dalında `Retain` öncesi tablo kimlikleri alınıp sonrasında düşenler hesaplanıyor (mevcut `Retain` satırı değişmedi); `WIZ_MOVE` dalında bilinmeyen kimlik `Find` ile sayılıyor (mevcut `UpdateMove` satırı değişmedi); `ResetForRespawn()` sayaçları sıfırlıyor. Tüm yeni satırlar alıcı yolunda; mevcut tablo güncellemeleri/eko kayıtları değişmedi.
+  - `GameServer/Bot/BotManager.cpp`: yalnızca `CommandSee` çıktısına iki teşhis satırı (`diag:` sayaç dökümü + son silinen kimlik listesi). Kilit altında kopyalanıp kilit dışında biçimlendiriliyor.
+  - `bots/config/script_see_symmetry.txt` (yeni): yalnızca `list`/`see`/`snap` içeren 7 adımlı betik; `./Scripts/` ayrıştırıcısından geçtiği bağımsız olarak doğrulandı (`ParseScript`: `error=0`, `steps=7`).
 - Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; yalnızca eski `UpgradeHandler.cpp` C4789 uyarıları; değişen dosyalarda yeni uyarı yok.
+  - `./tools/build.sh Debug` rc=0; değişen dosyalarda uyarı yok.
+  - `./tools/run-tests.sh Release` ve `Debug`: `96 tests, 0 failed` (düzeltme yapılmadı, test sayısı değişmedi).
+  - `tools/check-perception-contract.py` `RESULT: PASS` (`--selftest` rc=0).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, touch'lı yeniden derleme, değişen dosyalarda yeni uyarı yok).
+  - K2 ✔ (Debug rc=0, uyarı yok).
+  - K3 ✔ (`96 tests, 0 failed`; düzeltme yapılmadığı için test sayısı değişmedi).
+  - K4 ✔ (`git diff` yalnızca ek satır; kod dosyalarında `-` satırı yok; mevcut `OnPacket` davranışı aynı).
+  - K5 ✔ (yeni satırlarda `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` yok; `m_regionDropped*` yalnızca `m_obsLock` altında; atomikler `OnPacket` yazar, `CommandSee` okur).
+  - K6 ✔ (yeni ini anahtarı/komut/thread/paket yok; `ENABLED=0` davranışı değişmez; ASCII+CRLF; `git diff --check` boş).
+  - K7 ✔ (betik `ParseScript`'ten geçti; 7 adım ≤ 100; fiiller `list`/`see`/`snap`).
+  - K8: çalışma zamanı koşusu **Claude'da** (plan §5.3); DeepSeek sunucu/istemci açmadı. 12 koşunun simetri tablosu ve hipotez (H1..H4) hükmü doğrulamada doldurulacak.
 - Plandan sapmalar ve gerekçeleri:
+  - `userin_req_skipped_gap` sayacı eklenmedi: artırımı `ActionExecutor::TickUserIn` (gap dalı, `ActionExecutor.cpp:2848`) içindedir fakat bu dosya "Dokunulabilecek dosyalar" tablosunda yok. K4/K6 yalnızca alıcı yolunu şart koştuğu için gap sayacı atlandı; `userin_req_sent` yerine mevcut `m_userInRequests` (gönderilen istek) `diag` satırında `sent` olarak gösterildi. H4 teşhisi `pending` ve `sent` ile izlenebilir.
+  - Teşhis için `BotCore/Perception.h` değişmedi (kök neden henüz bilinmiyor; plan yalnızca kök neden `BotCore`'daysa izin veriyor). `Retain`'in düşürdüğü sayı/kimlikler `BotSession` tarafında `Count()`/`At()`/`Find()` ile türetildi.
+  - Silinen satır olmaması için yeni atomikler kurucu gövdesinde sıfırlanıyor (init listesi değiştirilmedi); kabul K4'ün "yalnızca ek satır" şartına birebir uyar.
 - Açık sorular:
+  - `userin_req_skipped_gap` gerekliyse `ActionExecutor.cpp`'nin izin listesine eklenmesi (veya sayaç yuvasının `BotSession` dışına taşınması) gerekir. Onay/karar bekleniyor.
+  - Plan §7'deki örnek grep `region_dropped\|inout_parse_fail` (küçük harf/alt çizgi) bu koddaki `m_regionDropped*` / `m_inoutParseFail` (camelCase) adlarıyla eşleşmez; üslup korunarak camelCase bırakıldı.
 
 ---
 
