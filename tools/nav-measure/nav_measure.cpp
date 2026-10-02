@@ -7,7 +7,7 @@
 // repeat acceptance timings with the MSVC Release unit tests.
 //
 //   nav_measure <section> [--navgrid PATH] [--seed N] [--n COUNT]
-//   sections: segments | smoothing | synthetic | velocity | arena | budget | stuck | all
+//   sections: segments | smoothing | synthetic | velocity | arena | budget | budget-scheduled | stuck | all
 //
 // Every section prints one "KEY value ..." line per result so a CI-less wrapper can grep them.
 
@@ -17,6 +17,7 @@
 #include "BotCore/NavSmooth.h"
 #include "BotCore/NavTrack.h"
 #include "BotCore/NavStuck.h"
+#include "BotCore/NavBudget.h"
 
 #include <algorithm>
 #include <chrono>
@@ -545,6 +546,76 @@ namespace
 		}
 	}
 
+	// ---------- budget-scheduled: near64 load through NavQueryScheduler (F5-53) ----------
+	void BudgetScheduled(Ctx & c)
+	{
+		std::mt19937 rng(c.seed);
+		NavPathfinder pf;
+		NavPathResult res;
+		NavSearchParams sp;
+
+		const int bots = 16;
+		const int ticks = 600;                 // 60 s of virtual time at 100 ms
+		const double budgetMs = 1.5;           // P-NAV-TICK-BUDGET-MS
+		const int intervalTicks = 5;           // 500 ms at 100 ms/tick
+
+		NavQueryScheduler sched;
+		sched.SetMaxWaitMs(1000);
+
+		std::vector<double> tickSum;
+		int64_t longestWait = 0;
+		int64_t requestAt[64];
+		long served = 0;
+		for (int b = 0; b < 64; ++b)
+			requestAt[b] = -1;
+
+		for (int t = 0; t < ticks; ++t)
+		{
+			const int64_t nowMs = (int64_t)t * 100;
+
+			// Each bot asks when its (phase-shifted) 500 ms interval is due.
+			for (int b = 0; b < bots; ++b)
+			{
+				if (t % intervalTicks == (NavReplanPhaseMs(b) / 100) % intervalTicks)
+				{
+					if (requestAt[b] < 0)
+						requestAt[b] = nowMs;
+					sched.Request((uint16_t)b, nowMs);
+				}
+			}
+
+			uint16_t batch[64];
+			const int n = sched.NextBatch(nowMs, budgetMs, batch, 64);
+
+			double sum = 0.0;
+			for (int k = 0; k < n; ++k)
+			{
+				const int b = batch[k];
+				NavCell a = c.walk[rng() % c.walk.size()];
+				NavCell g = RandomNear(c, rng, a, 64);
+				const auto t0 = Clock::now();
+				pf.Find(c.grid, a, g, sp, res);
+				const double ms = MsSince(t0);
+				sum += ms;
+				++served;
+				sched.ReportCost((uint16_t)b, ms, res.expanded);
+				if (requestAt[b] >= 0)
+				{
+					const int64_t wait = nowMs - requestAt[b];
+					if (wait > longestWait)
+						longestWait = wait;
+					requestAt[b] = -1;
+				}
+				sched.Cancel((uint16_t)b);
+			}
+			tickSum.push_back(sum);
+		}
+
+		std::printf("BUDGET_SCHED bots=%d ticks=%d budget_ms=%.1f served=%ld tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f longest_wait_ms=%lld pending=%d\n",
+			bots, ticks, budgetMs, served, Pct(tickSum, 50), Pct(tickSum, 95), Pct(tickSum, 99), Pct(tickSum, 100),
+			(long long)longestWait, sched.Pending());
+	}
+
 	// ---------- stuck: the F5-09 detector fed with bot packet-cadence positions ----------
 	struct StuckRun { long ticks = 0; long alarms = 0; long episodes = 0; };
 
@@ -631,7 +702,7 @@ int main(int argc, char ** argv)
 {
 	if (argc < 2)
 	{
-		std::printf("usage: nav_measure <segments|smoothing|velocity|arena|budget|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
+		std::printf("usage: nav_measure <segments|smoothing|velocity|arena|budget|budget-scheduled|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
 		return 2;
 	}
 	std::string section = argv[1];
@@ -669,6 +740,8 @@ int main(int argc, char ** argv)
 		Arena(c);
 	if (all || section == "budget")
 		Budget(c);
+	if (all || section == "budget-scheduled")
+		BudgetScheduled(c);
 	if (all || section == "stuck")
 		Stuck(c);
 	return 0;

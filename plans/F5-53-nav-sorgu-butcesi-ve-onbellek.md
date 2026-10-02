@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-53 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-04 (`NavFollower`) — `KAPANDI` |
@@ -122,14 +122,35 @@ git diff --stat gece/2026-10-02-nav...bot/F5-53
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-53` (taban: `gece/2026-10-02-nav`); tek commit (aşağıda).
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/NavBudget.h` (yeni, 374 satır): `NavQueryScheduler` (sabit boyut, bot başına tek bekleyen istek, `maxWaitMs` önceliği + FIFO + dönen başlangıç, EWMA maliyet kestirimi, ilerleme garantisi), `NavPathCache` (kapasite 64 LRU, TTL 30000, `fieldVersion`, 512 hücre sınırı, kopyalı), `NavReplanPhaseMs`, `NavDeferAction`/`NavDeferParams`/`NavWhileDeferred`.
+  - `Tests/BotCoreTests/NavBudgetTests.cpp` (yeni, 967 satır): sekiz test (`NavBudget_Scheduler_Basic/_Fairness/_Cost`, `NavBudget_Cache`, `NavBudget_ReplanPhase`, `NavBudget_Deferred_Contract`, `NavBudget_Deferred_Chase_Sim` ve `NavBudget_RealMap_Load`; son ikisi harita yoksa `SKIPPED`).
+  - `BotCore/BotCore.vcxproj`: `NavBudget.h` `ClInclude` satırı.
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: `NavBudgetTests.cpp` `ClCompile` satırı.
+  - `tools/nav-measure/nav_measure.cpp`: yalnızca yeni `budget-scheduled` bölümü + include + kullanım satırı (mevcut bölümlere dokunulmadı).
+- Derleme sonucu: `./tools/build.sh Release` rc=0 ve `./tools/build.sh Debug` rc=0; yeni dosyalarda uyarı yok (`NavBudget.h`'te bir C4244 `int16_t` dönüşümü cast ile giderildi). `./tools/run-tests.sh Release` ve `Debug --no-build`: `191 tests, 0 failed`, sekiz yeni test adı `[ OK ]` (Release satırları: chase B `plan_wait_max=200` / `plan_wait_p95=0` / `without_plan_pct=0.1` / `follow_stale_ticks=0` / `dist_mean=10.99` (A 9.59); realm A `tick_p95=3.281 tick_p99=4.262`, B `tick_p95=0.139 ≤ 2.0 tick_p99=0.382 ≤ 4.5` ve `0.139 ≤ 0.70 × 3.281`). `tools/nav-measure.sh budget-scheduled`: `served=1920 tick_p95=0.798 tick_p99=1.272 longest_wait_ms=400 pending=0` (host `g++ -O2`).
 - Kabul kriterleri öz-değerlendirme:
+  - K1: Release rc=0, yeni dosyalarda uyarı yok — ✔
+  - K2: Debug rc=0, uyarı yok — ✔
+  - K3: `191 tests, 0 failed` Release+Debug; sekiz yeni ad `[ OK ]`; mevcut testler geçti; harita var (realm/chase koştu) — ✔
+  - K4: `windows.h|stdafx|GameServer|shared/|new|malloc` grep'i boş; yalnızca önbellek hücre dizisinde `std::vector` (kapasite 512 sınırlı); global/static değiştirilebilir durum yok — ✔
+  - K5: AC-NAV-07 Release (B) eşikleri karşılandı (yukarıdaki satırlar); MSVC Release değerleri raporda — ✔
+  - K6: ilerleme garantisi (bütçeyi aşan tek istek yine seçilir) ve `maxWaitMs` önceliği (yapay 40 istek patlaması) testleri geçti; 1000 tick simülasyonda hiçbir bot `1100 ms`'yi aşmadı, servis farkı ≤ %10 — ✔
+  - K7: diff yalnızca §4 + planın `Durum` satırı; `GameServer/`, `shared/`, `docs/` farkı 0; iki yeni dosya ASCII+CRLF; `git diff --check` boş — ✔
+  - K7a: `NavBudget_Deferred_Chase_Sim` (B) eşikleri karşılandı; `tools/nav-measure.sh budget-scheduled` aynı yapıyı ve sıfır bekleyeni üretir — ✔
+  - K7b: oyun içi 16 bot tick/yol bütçesi ve erteleme davranışı bu planda kapanmadı (`BEKLİYOR`; F5-55 / T-NAV-11) — ✔ (kapsam dışı bırakıldı)
+  - K8: `NavPathfinder` bot başına ölçüm notu aşağıda — ✔
 - Plandan sapmalar ve gerekçeleri:
+  - `NavQueryScheduler::NextBatch` önce iki geçişli döngüyle yazıldı; eşit beklemelerde dönen ofset sıralamayı bozuyordu. Aday listesi üzerinden kararlı ekleme sıralaması + ofset rotasyonu ile yeniden yazıldı (davranış plana uygun: önce `maxWaitMs`, sonra yaş, eşitlikte id + rotasyon).
+  - `NavBudget_Deferred_Chase_Sim`'de hedefler her tick yürünebilir hücreye `snapWalk` ile çekilir; aksi halde hedef engelli hücreye kayınca plan `NoGoal` olup "plansız süre" ölçüsü model artefaktı oluyordu. Ayrıca başarısız yenileme önceki izlenebilir yolu atmaz (erteleme sözleşmesinin "mevcut yolu izle" davranışı).
+  - `NavWhileDeferred` parametre alanı `params.targetDriftM` yerine `params.driftMaxM` (plan metnindeki `driftMaxM` alan adı).
 - Açık sorular:
+  - `NavBudget_RealMap_Load` (B) `longest_wait=0`: bütçe 1,5 ms 16 botun 500 ms'lik fazlı yükünü rahat karşıladığı için istekler aynı tick'te servis ediliyor; bekleme ölçüsü asıl olarak chase simülasyonunda anlamlı (`plan_wait_max=200`). Sorun değil, bilgi.
+  - K8 ölçüm notu (karar F5-55'te): `NavPathfinder` iç havuzu zone 71 için `n=513`, `cells=513²=263169`; `m_g` (float) + `m_parent` (int32) + `m_seen`/`m_closed` (uint32) = 16 B/hücre → **4,02 MiB/örnek** (+ `m_heap.reserve(4096)` ≈ 64 KiB). 16 bot ayrı örnek kullanırsa ≈ **64,3 MiB**; tek paylaşılan örnek (tek thread, seri) 4,02 MiB. Havuz paylaşımı kararı F5-55'e bırakıldı; bu plan yalnızca ölçüm notunu ister.
 
 ---
+
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
