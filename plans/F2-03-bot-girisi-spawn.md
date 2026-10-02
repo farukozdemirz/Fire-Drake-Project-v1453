@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`: slot havuzu, `m_botSink`, `CUser::Send` geçersiz kılma), F2-02 (`KAPANDI`: `BotManager::Tick()` IOCP thread'inde); F1-04 (`KAPANDI`: 12 bot hesabı/karakteri DB'de, `db/002`) |
@@ -267,16 +267,29 @@ file GameServer/Bot/* GameServer/CharacterSelectionHandler.cpp GameServer/proj-G
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-03` — `<kısa-sha> [F2-03] …`
+- Branch / commit'ler: `bot/F2-03` (taban: `gece/2026-10-02`) — `cf14824 [F2-03] Bot girişi (spawn): BotSession, SPAWN_ON_START durum makinesi ve m_botSink SELECT_LOGIN_INFO koşulu` (uygulama); `[F2-03] Uygulayıcı Raporu (Tur 1) ve Durum: UYGULANDI` (bu rapor + `Durum: UYGULANDI`, bu commit)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/BotSession.h` (yeni): plan §5.2'deki `Phase`/`SelectResult`/üyeler; `IBotSink` uygulaması, iş parçacığı notu.
+  - `GameServer/Bot/BotSession.cpp` (yeni): kurucu (`m_opcodeCount[256]` döngüyle sıfırlanır), `OnPacket` yalnızca atomik alanlara yazar; `WIZ_SEL_CHAR` ilk payload baytını `m_selectResult`'a çevirir (`g_pMain`/`CUser`/`WriteBotLog`/`GetLock` yok).
+  - `GameServer/Bot/BotManager.h`: `<string>`/`<vector>` ve `BotSession` ön bildirimi; `ParseSpawnList`/`TickSessions`/`StartSession`/`FailSession`, `m_sessions`, `m_spawnSummaryDone` (kurucuda `false`).
+  - `GameServer/Bot/BotManager.cpp`: `SPAWN_START_DELAY_MS/SELECT_SETTLE_MS/LOADED_DELAY_MS/PHASE_TIMEOUT_MS` (5000/1000/200/15000), 12'lik `BOT_TABLE`; `Startup`'ta `SPAWN_ON_START` yalnız `ENABLED=1` yolunda ve havuz kurulumu başarılıysa `ParseSpawnList`; `Tick()` sonuna `TickSessions()`; durum makinesi + log satırları.
+  - `GameServer/CharacterSelectionHandler.cpp`: `SetLogInInfoToDB(bInit)` → `if (m_botSink == nullptr)` koşulu (ADR-0014), başka satıra dokunulmadı; fark +3/−1.
+  - `GameServer/proj-GameServer.vcxproj` / `.filters`: `Bot\BotSession.cpp` (ClCompile) ve `Bot\BotSession.h` (ClInclude), mevcut `Bot\BotManager.*`/`Bot\IBotSink.h` kalıbıyla.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    Kod üretiliyor
+    252 of 13163 functions ( 1.9%) were compiled, the rest were copied from previous compilation.
+      78 functions were new in current compilation
+      369 functions had inline decision re-evaluated but remain unchanged
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` de rc=0 (`...\x86-Debug\Server\GameServer.exe`). Uyarı taramasında (`grep -a "warning" | sort -u`) `Bot\` ve `CharacterSelectionHandler.cpp` için 0 uyarı; kalan uyarılar eski satırlarda.
+- Kabul kriterleri öz-değerlendirme: K1 ✔ (Release rc=0, `Bot\` dosyalarında/eklenen satırlarda uyarı yok), K2 ✔ (Debug rc=0), K3 ✔ (7 kod dosyası + plan dosyası; `CharacterSelectionHandler.cpp` +3/−1; ayrıntı aşağıda), K4 ✔ (`BotSession.cpp` grep boş; `OnPacket` yalnız atomik, sayaçlar kurucuda sıfır), K5 ✔ (`m_pUser`/`HandlePacket`/`OnConnect`/`EnableCrypto` yalnız `StartSession`/`TickSessions`; `Tick()` üzerinden IOCP), K6 ✔ (`_stricmp` tablo, `unknown bot name`, `ignored (pool size`, yinelenen ad atlanır), K7 ✔ (ini okuma `ENABLED` erken dönüşünden sonra; `ParseSpawnList` yalnız `ok` iken; `TickSessions` boşta ilk ifadede döner; `SelectCharacter` farkı yalnız `m_botSink == nullptr`), K8 ✔ (GameStart adımları `HandlePacket`; `Packet(WIZ_GAMESTART, uint8(1/2))`; `WIZ_SEL_CHAR` isteği `req << charName << uint8(1)` + `AddDatabaseRequest(req, pUser)`; doğrudan `GameStart()` çağrısı yok), K9 ✔ (`OnConnect` → `EnableCrypto` → `m_strAccountID` → `m_botSink` → `AddAccountName` → `AddDatabaseRequest`; sabitler 1000/200/15000/5000), K10 ✔ (yedi log metni birebir; eklenen kodda yalnız `WriteBotLog`), K11 ✔ (`FailSession` slot iade/silme yapmaz + açıklama yorumu), K12 ✔ (Bot/* ASCII+CRLF, diğerleri UTF-8 BOM+CRLF), K13 ✔ (yalnız izinli dosyalar commit'li; sunucu çalıştırılmadı, ini/DB değişmedi).
+- Plandan sapmalar ve gerekçeleri:
+  - `git diff --stat gece/2026-10-02...bot/F2-03` 8 dosya listeler: §4'teki 7 kod dosyası + `plans/F2-03-bot-girisi-spawn.md` (`Durum` satırı ve bu rapor; `AGENTS.md` §2.2/§5 gereği beklenen). Kod dosyaları listesi plandaki 7 dosyayla birebir.
+  - `ParseSpawnList` başında `m_sessions` temizlenmez (tek çağrı; plan temizleme istemiyor).
+- Açık sorular: yok. Çalışma zamanı doğrulaması (`SPAWN_ON_START` ile `in game` satırları) `AGENTS.md` §2.9 gereği Claude'a bırakıldı; botlar DB'de (`db/002`) kurulu olmalı.
 
 ---
 
