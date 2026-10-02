@@ -50,3 +50,14 @@ Komut çekirdeğine `scenario run <ad>`, `scenario stop`, `scenario status` ekle
 Senaryo dosyası `./Scenarios/<ad>.yaml` (sunucu çalışma dizini; `BotCommands.txt` ile aynı kural), **YAML'ın küçük bir alt kümesi**: üst düzey `anahtar: skaler|[liste]`, harici YAML kütüphanesi yok. Tanınmayan anahtar ve girintili/iç içe yapı **hata**dır (docs/13 §5.1'deki `teams`/`arena`/`consumables` sonraki planlarda desteklenene kadar): sessizce yok sayılan bir yazım hatası `seeds`/`repeat` gibi değerlendirme protokolünü bozardı. Desteklenen anahtarlar: `scenario_id`, `zone` (yalnızca 71), `bots`, `seeds`, `repeat`, `duration_sec`. Her koşu sonunda botlar despawn edilir (konum/HP sıfırlama olmadığı için temiz başlangıç yolu budur).
 
 Alternatifler: JSON/INI senaryo biçimi (docs/13 YAML diyor; ileride tam YAML'a evrilme yolu açık kalsın diye aynı sözdizimi alt kümesi), `/bot scenario` + `/bot start` ayrı komutlar (yukarıdaki gerekçeyle reddedildi), tam YAML ayrıştırıcı (F3 için gereksiz bağımlılık/boyut). Geri alma: `ScenarioRunner.*` ve `ExecuteCommand`'daki tek dal kaldırılır.
+
+
+## Ek (F3-04): oyun içi GM komutu `+bot` (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
+
+Komut çekirdeğine **üçüncü giriş yolu** eklenir: GM yetkili (`isGM()`) oyuncunun `+bot ...` sohbet komutu (`CUser::InitChatCommands`). `CUser::Chat` bot tick'inden farklı bir IOCP worker thread'inde çalışabildiğinden (ADR-0005) işleyici `BotManager` durumuna dokunmaz: `spawn|despawn|match|scenario` satırları olduğu gibi `EnqueueCommand`'a gider (sonuç yine `Bot_*.log`'da); `list` ise **kuyruğa girmez**, `Tick()`'in 1 sn'de bir yenilediği kilitli anlık görüntüden (`GetStatusSnapshot`) GM'e özel mesajlarla (`SendHelpDescription`) hemen yanıtlanır. Anlık görüntü ile `/bot list` log çıktısı **aynı biçimlendirme yardımcısını** (`BuildStatusLines`) kullanır; böylece otomasyonla (komut dosyası + `Bot_*.log`) doğrulanabilir bir kod yolu GM yanıtını da üretir.
+
+Kapsam: `docs/13` §10'daki `+bot why|pause|resume|policy|verbose|testtp` bu ekte **yoktur**: karar motoru (F6+), politika deposu (F9), duraklatma ve test teleportu henüz yok; ilgili fazlarda aynı çekirdeğe eklenir. GM'e sonuç/hata yanıtı yalnızca `list` için vardır; diğer komutların sonucunu GM'e geri yollamak (yanıt kuyruğu) ayrı bir karardır.
+
+Alternatifler: `+bot list`'i de kuyruğa alıp sonucu GM'e geri yollamak (yanıt kanalı + oturum kimliği taşıma gerektirir, F3 için büyük), `list`'i işleyicide doğrudan `m_sessions`'tan okumak (kilitsiz yarış, ADR-0005'i ihlal eder), anlık görüntüyü her tick'te yenilemek (10 Hz gereksiz). Geri alma: `ChatHandler.cpp`'deki tablo satırı + işleyici, `User.h` satırı ve `BotManager`'daki anlık görüntü bölümü kaldırılır.
