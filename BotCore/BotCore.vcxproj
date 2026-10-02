@@ -69,6 +69,7 @@
     <ClCompile Include="Rng.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BotMotion.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

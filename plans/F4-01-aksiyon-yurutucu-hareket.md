@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-03/F2-04 (bot oturumu), F2-06 + F3-04 (komut çekirdeği), F3-01 (telemetri), F3-05 (`BotCore` + test çatısı) — hepsi `KAPANDI` |
