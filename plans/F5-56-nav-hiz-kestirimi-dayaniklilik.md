@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-56 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`), **F5-52** (pencere 4000/400 ms, `speed` alanı, gözlem yaşı lead'e eklenir) — `DOĞRULANDI`/`KAPANDI` olmalı |
@@ -138,3 +138,46 @@ git diff --stat gece/2026-10-02-nav...bot/F5-56
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-03
+
+- **Karar:** DÜZELTME GEREKLİ
+- **İncelenen commit:** `cf06837` (`bot/F5-56`, taban `gece/2026-10-02-nav`; iki commit: `68b6922` uygulama, `cf06837` rapor). Paralel hat `nav`: sunuculara dokunulmadı.
+- **Doğrulama ortamı:** `./tools/build.sh Release` ve `Debug` (`NavTrack.h` ve `NavTrackTests.cpp` `touch` edildi), `./tools/run-tests.sh <cfg> --no-build`, `tools/nav-measure.sh velocity-robust`, ayrıca depoya yazılmayan geçici deneyler (`/tmp/f556/probe.cpp`, host `g++`).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, yeni uyarı yok | ✔ | rc=0; `touch` sonrası `NavTrackTests.cpp` yeniden derlendi; `warning C` 0 |
+| K2 Debug rc=0, uyarı yok | ✔ | rc=0; `warning C`/`error C` 0 |
+| K3 `0 failed`, yeni adlar `[ OK ]`, mevcut `NavTrack_*` değişmez | ✔ | Release ve Debug `209 tests, 0 failed`; 11 yeni ad `[ OK ]` (plan "on yeni" yazıyor, §5.3 listesi 11 ad; sorun değil); mevcut vakalara dokunulmamış (fark yalnızca dosya sonuna ekleme) |
+| K4 §5.3 sayısal eşikler ve kurallar | ✘ (kısmen) | Sayılar raporla uyuşuyor (aşağıda), ancak dört vaka planın istediği şeyi sınamıyor ya da gevşetilmiş: B1-B4 |
+| K5 imzalar, `NavTrack_Perf` p95 ≤ 2 ms | ✔ | İmzalar değişmedi; Release `exact` p95 0,557 ms, `mage` 0,629 ms |
+| K6 başlık/biçim/`git diff --check`/kapsam | ✔ | `NavTrack.h`'te yasak başlık yok; yeni kodda dinamik bellek/global durum yok; üç kod dosyası ASCII + CRLF (satır sayısı = CRLF sayısı); `git diff --check` boş; fark yalnızca §4 dosyaları + planın kendisi (plan farkı: `Durum` ve Uygulayıcı Raporu) |
+| K7 (Claude) `velocity-robust` yeniden koşu | ✔ | `arrival_jitter` p95 0,1359 / max 0,1691; `arrival_bunching` p95 0,1360 / max 0,5217; `variable_interval` p95 0,0156 / max 0,0186; `packet_loss` 0,0074; hepsinde `zero_pct=0.000`. Rapordaki tabloyla birebir aynı |
+| K8 oyun içi kanıt | — | Bu planda kapanmaz (`BEKLİYOR`) |
+
+Ölçüm doğrulaması: MSVC Release `NAVTRACK velrobust` satırları rapordaki sayılarla aynı (`ArrivalJitter` p95 0,1395 / max 0,1650; `ArrivalBunching` p95 0,1395 / max 0,5203; `VariableInterval` 0,0141 / 0,0182; `PacketLoss` 0,0074); `NAVTRACK chase_cadence caught_ms_perfect=11200 caught_ms_cadence=11800` (≤ 1,3 × 11200). Uygulayıcı Raporu'ndaki derleme/test/ölçüm iddialarında yanlış yok.
+
+**Bulgular (önem sırasıyla)**
+
+1. **B1 (yüksek) `BotCore/NavTrack.h:260-276`: sıçrama koruması yalnızca en yeni iki gözlemi denetliyor; plan "hız hiçbir zaman sıçrama büyüklüğünde çıkmaz" diyor.** Geçici deneyle (`speed = -1`, 0/1500/3000 ms'de normal yürüyüş, 4500 ms'de +50 m, **4505 ms'de** yığılmış ikinci paket): `Velocity` = **33,2 m/s** (sıçrama büyüklüğü). Sebep: en yeni iki örnek arası 5 ms < `minSpanMs` olduğu için koruma (`jspan >= minSpanMs` kapısı) çalışmıyor; seçim döngüsü sıçramanın öncesindeki 3000 ms örneğiyle eşleştiriyor. Ayrıca bilinmeyen hızda (`speed = -1`) 2500 ms aralıklı +53 m sıçrama **21,3 m/s**, 1500 ms aralıklı +42,5 m **28,3 m/s** üretiyor (eşik 30 sabit; plan §3.3(b)/(c) bilinmeyen hız için 10 m/s tavanı istiyor, uygulanmadı). `NavTrack_VelocityRobust_Jump` yalnızca tek ve 1500 ms aralıklı ≥ 50 m senaryoyu sınıyor.
+2. **B2 (orta) `Tests/BotCoreTests/NavTrackTests.cpp` `NavTrack_VelocityRobust_Quantization`: sınır plandan gevşek ve test 400/1000 ms'de boş (vacuous).** Plan sınırı `0,1 m × √2 / aralık_sn + %5` ve "400 ms'de ≤ ~0,40 m/s mutlak" der; test `+ 0,05×4,5 = +0,225` kullanıyor (400 ms'de 0,579) ve raporda "plan formülü mutlak hata olarak yorumlandı" diye geçiyor, ama formülün kendisi 0,40'ı vermiyor. Üstelik 4,5 m/s × 0,4 s = 1,8 m ve 4,5 × 1,0 = 4,5 m, 0,1 m ızgarasının tam katı: bu aralıklarda nicemleme farkı **her zaman 0** (deneyle en kötü mutlak hata 400 ms'de 0,000, 1000 ms'de 0,000, 700 ms'de 0,071, 1500 ms'de 0,033). Yani planın vurguladığı 400 ms durumu hiç sınanmıyor. Plan §8: eşiği gevşetme.
+3. **B3 (orta) `NavTrack_VelocityRobust_Reverse180`: "geçiş örneği" (dönüş iki gözlemin arasında) sınanmıyor.** Test dönüşü tam bir örnek anına hizalıyor (3000 ms'de 13,5 → 4500 ms'de 6,75). Plan: "geçiş örneğinde (iki örnek dönüşü kapsar) hata en çok 1 paket periyodu sürer". Deneyle (dönüş 3750 ms'de, 4500 ms'de x = 13,5): geçiş örneğinde hız **0,0** (gerçek −4,5), sonraki örnekte (6000 ms) −4,5: yani 1 paket geçici, gereksinim karşılanıyor; ama bu davranış testte yok, ileride değişirse yakalanmaz. Bkz. B4 `SpeedChange`.
+4. **B4 (orta) `NavTrack_VelocityRobust_SpeedChange`: bilinmeyen hızda 10 m/s tavanı ve `speed` sınırının yeni değere uyumu sınanmıyor.** Plan: "`speed` büyüklük sınırı yeni değere uyar; `speed` bilinmiyorsa (−1) yalnızca konum farkından, 10 m/s tavanıyla". Test yalnızca temiz örnekleri okuyor (6000 ms'de 6,7, 7500 ms'de 4,5): konum gürültüsü olsa kırpmanın 7,37 (sprint) mi 4,95 (yürüyüş) mi olduğu görülmüyor. `speed = -1` için tavan hem uygulanmadı hem sınanmadı (B1 ile ilişkili).
+5. **B5 (düşük, not) `_StopStart` 5 sn duruş:** test yalnızca plandaki 5 sn'lik durmayı sınıyor; bu sürede durma paketi 4000 ms penceresinden çıktığı için "durma öncesi örnekle karışmaz" iddiası pencere ile örtülüyor. Kısa durma (2 sn) denemesinde ilk hareketli örnekte hız 3,375 m/s çıkıyor (durma paketiyle eşleşiyor; gerçek 4,5). Bu davranış kabul edilebilir (alçak yönlü, bir paket), plan 5 sn dediği için engel değil; yalnızca kayıt.
+6. **B6 (düşük, not) yığılma modeli:** `GenCadence` yığılan paketi **bir sonraki** nominal varışa çekiyor (kuyrukta bekleyip toplu işlenme; gerçekçi). Plan ifadesi ("bir öncekinden ≤ 10 ms sonra") bu modelle uyumlu okunabiliyor; en kötü `max` 0,5203 ≤ 0,60 ve `zero_pct = 0`. Uygulayıcı "erken-varış zinciri modelinde zero_pct > 1 çıkıyordu" diyor: bu ölçüm raporda yok. Zincirleme yığılma gerçek `WIZ_MOVE` ölçümüne (T-NAV-06, F5-55) bırakılıyor; engel değil.
+
+**Notlar (engel değil):** `maxExtrapSec` için yeni parametre eklenmemesi doğru: `NavFollower` `NavTrack.h:387-388`'de lead'i zaten `maxLeadSec = 1,5 sn` ile sınırlıyor, `_Stale` testi (`leadSec ≤ 3,0`) bu yüzden gerçekte daha gevşek bir üst sınırı sınıyor; isterseniz `leadSec ≤ params.maxLeadSec` ile sıkılaştırın. Sıçrama eşiği olarak 30 m/s seçimi mevcut `NavTrack_Velocity_Speed0` (500 ms'de 20 m/s konum sıçraması 4,95'e kırpılır) vakasıyla uyumlu tutulmuş; bilinen `speed` için bu eşik korunmalı. Talimat 1 depoya yazılmayan geçici bir kopyada denendi: yığılmış sıçrama 33,2 → 0, bilinmeyen hızda +53 m/2500 ms 21,3 → 0, +42,5 m/1500 ms 28,3 → 0, bilinen hızda +53 m/2500 ms 4,95 (kırpma, değişmedi); `velocity-robust` dört satırı değişmedi (`arrival_bunching` p95 0,1360 / max 0,5217, `zero_pct` 0).
+
+**Düzeltme talimatı:**
+
+```
+plans/F5-56-nav-hiz-kestirimi-dayaniklilik.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. BotCore/NavTrack.h Velocity(): sıçrama korumasını "en yeni iki örnek" yerine SEÇİLEN ÇİFTE uygula. Mevcut `if (m_count >= 2) { jspan ... }` bloğunu kaldır; `haveOld` ve `span > 0` kontrollerinden sonra (vx/vz hesabından ÖNCE) ima edilen hızı (sqrt(dx*dx+dz*dz) * 1000 / span, dx/dz = newest - old) hesapla; `limit = (newest.speed < 0) ? 10.0f : 30.0f` (bilinmeyen hızda 10 m/s tavanı, plan §3.3(b)/(c); bilinen hızda mevcut 30 m/s ve mevcut NavTrack_Velocity_Speed0 20 m/s kırpma vakası değişmez), `implied > limit` ise vx = vz = 0 bırakıp dön. Böylece (a) sıçramadan hemen sonra yığılmış (< minSpanMs) paket sıçramanın öncesiyle eşleşip sıçrama büyüklüğünde hız üretmez, (b) hız bilinmediğinde 2500 ms aralıklı +53 m sıçrama (21,3 m/s) 0 döner. Mevcut NavTrack_* testleri (F5-52 ve NavTrack_Velocity_Speed0 dahil) değişmeden geçmeli; geçmeyen olursa durup raporda soru olarak yaz. Başlık yorumunu İngilizce, tek kısa blok olarak güncelle.
+2. Tests/BotCoreTests/NavTrackTests.cpp NavTrack_VelocityRobust_Jump: şu alt vakaları ekle (mevcutlara dokunma): (a) speed = -1; 0/1500/3000 ms normal 4,5 m/s yürüyüş, 4500 ms'de +50 m sıçrama, 4505 ms'de yığılmış ikinci paket: Velocity(4505) büyüklüğü < 1e-3 (30'dan küçük DEĞİL, sıfır); (b) speed = -1; 0/1500 ms normal, 4000 ms'de +53 m (2500 ms aralık): büyüklük < 1e-3; (c) speed = -1, ikili örnek 9 m/s ima ediyor: hız ≈ 9 (geçer), 11 m/s ima ediyor: 0. Sıçramadan sonraki iki temiz gözlemle hızın 4,5'e döndüğünü tekrar doğrula.
+3. NavTrackTests.cpp NavTrack_VelocityRobust_Quantization: sınırı plana uydur: `bound = 0.1 * sqrt(2) / (interval/1000.0) + 0.05` (m/s, mutlak; 400 ms'de ≈ 0,404). Testi gerçekten nicemleme hatası üretecek biçimde değiştir: hareket x VE z eksenlerinde (örn. vx = 3,2, vz = 3,1 m/s; konumların ikisi de Quant1), aralıklar 0,1 m ızgarasına hizalı olmayan değerlerden (400, 413, 577, 700, 911, 1237, 1500 ms) ve t0 sürekli kaydırılarak; her biri için en az 200 yineleme; ayrıca gözlenen EN KÖTÜ mutlak hatayı `std::printf("NAVTRACK quant interval=%d worst_abs=%.3f bound=%.3f\n", ...)` ile yaz ve en az bir aralıkta worst_abs > 0,05 olduğunu CHECK et (testin boş olmadığının kanıtı). 400 ms altında kestirim yapılmayan mevcut son vaka kalsın.
+4. NavTrackTests.cpp NavTrack_VelocityRobust_Reverse180: geçiş örneği alt vakası ekle (mevcutları değiştirme): 0/1500/3000 ms'de x = 0/6,75/13,5 (speed 45); hedef 3750 ms'de döner; 4500 ms'de x = 13,5, 6000 ms'de x = 6,75. 4500 ms'de büyüklük hatası en çok 1 paket sürer (hız 0 ya da herhangi bir değer; yön −x ya da 0 olmalı, +x ve büyüklük > 4,95 olmamalı), 6000 ms'de vx ≈ −4,5 (±1e-3) ve vz ≈ 0.
+5. NavTrackTests.cpp NavTrack_VelocityRobust_SpeedChange: (a) yürüyüşe dönüş paketinde (speed 45) konumu gürültülü ver (örn. 7500 ms'de x = 41,5 → ima edilen 5,27 m/s): vx tam 4,95 ± 1e-3 (sprint sınırı 7,37'ye KIRPILMAMALI); (b) sprint paketinde (speed 67) aynı gürültüyle vx 7,37 ± 1e-3'e kırpılır; (c) speed = -1: ikili örnek 6,7 m/s ima ederse ≈ 6,7 (geçer; madde 1'in 10 m/s tavanı altında).
+6. İsteğe bağlı küçük sıkılaştırma: NavTrack_VelocityRobust_Stale içinde `CHECK(f.Plan().leadSec <= 3.0f)` yerine `CHECK(f.Plan().leadSec <= params.maxLeadSec + 1e-4f)` kullan (yorumu güncelle).
+7. Maddelerden sonra: ./tools/build.sh Release ve Debug (rc=0, yeni uyarı yok), ./tools/run-tests.sh Release ve Debug (0 failed; 11 yeni ad hâlâ [ OK ]), tools/nav-measure.sh velocity-robust (satırlar; ArrivalBunching zero_pct ≤ 1, p95 ≤ 0,20, max ≤ 0,60 hâlâ sağlanmalı: değerleri Tur 2 raporuna öncesi/sonrası olarak yaz). Quantization'ın yeni NAVTRACK quant satırlarını rapora ekle. git diff --check boş, ASCII + CRLF, yalnızca §4 dosyaları.
+```
