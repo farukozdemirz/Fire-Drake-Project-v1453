@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-50 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`) — `KAPANDI` |
@@ -146,6 +146,41 @@ git diff --stat gece/2026-10-02-nav...bot/F5-50
 - Açık sorular:
   - Q1: Eğim kuralının kanonik Bresenham + `EdgeOpen` olması (plan §3.1(c) literal süpercover eğiminden sapma; K7 segmentleri için zorunlu) kabul mü? Literal süpercover eğimi K7'yi ulaşılamaz kılar.
   - Q2: K7'nin kiriş eğimi `0` şartı isteniyorsa guard üst segment bağlamını bilmelidir; bu planın API'si bağlamsızdır (F5-55'e bırakılabilir).
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-50` (taban `gece/2026-10-02-nav` @ `196857d`); düzeltme kod commit'i `046ddc8`; bu rapor + `Durum: UYGULANDI` ayrı commit.
+- Değişen dosyalar ve nedenleri (yalnızca talimattaki iki dosya):
+  - `BotCore/NavSegment.h`:
+    - `NavCheckSegment` imzasına son parametre `bool checkSlope = false` eklendi; Bresenham + `EdgeOpen` (`SlopeTooSteep`) bloğu `if (checkSlope)` ile sarmalandı. Kapalıyken fonksiyon yalnızca Walk süpercover kararını (`Ok`/`OutOfBounds`/`BlockedCell`) döndürür. `NavCheckStep`'e de aynı parametre eklendi ve aynen iletildi.
+    - Üst dosya yorumu güncellendi: eğim katmanı isteğe bağlı, yalnızca uçları planlayıcı waypoint'i olan tam segmentler için planlayıcıyla tutarlı, keyfi alt kirişler için garanti yok.
+    - `guard` aşımı fail-closed: `break` yerine `fail(NavSegmentVerdict::OutOfBounds, -1, -1)` + `return res`.
+    - Girdi doğrulaması: dört koordinatın `std::isfinite` ve `|deger/unit| <= 1e9` denetimi, dönüşümlerden (`std::floor`/`(int)`) önce; aksi halde `OutOfBounds` (`cellX = cellZ = -1`, `cellsTouched = 0` varsayılan).
+    - Vertex eşitlik toleransı `1e-12` → `1e-9` (plan metniyle aynı; seçim gerekçesi aşağıda).
+  - `Tests/BotCoreTests/NavSegmentTests.cpp`:
+    - `Check` yardımcısına `bool checkSlope = false` parametresi eklendi.
+    - `NavSegment_Slope`: tüm eğim denetimleri `checkSlope = true` ile; ayrıca `2.51` ızgarasında varsayılan çağrının `Ok` döndüğü `CHECK` edildi.
+    - `NavSegment_RealMap_Planner`: planlayıcı segmentleri `checkSlope = true` (`CHECK_EQ(segmentBad, 0)` korundu); 6,75 m kirişler varsayılan (Walk-only) çağrıyla, `Ok` olmayan her karar `chordViolations` sayıldı, `CHECK_EQ(chordViolations, 0)` eklendi; eğim açıkken `SlopeTooSteep` sayısı `chordSlopeOpt` olarak ayrıca sayıldı (yalnızca bilgi, `CHECK` yok). `printf` talimattaki biçime çekildi.
+    - `NavSegment_Basic`: `NaN`, `+inf`, `1e12` koordinatlı kirişler `OutOfBounds` (`<limits>` eklendi).
+    - Diğer testler (Basic diğer satırlar, Corner, Symmetry_Oracle, RealMap_Straight, Perf) varsayılan çağrıyla bırakıldı.
+- Derleme çıktısının son satırları (değişen dosyalar `touch` ile yeniden derlendi, `warning C` = 0):
+  - Release: `BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe` (rc=0)
+  - Debug: `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe` (rc=0)
+- Test çıktısı (Release ve Debug aynı; `169 tests, 0 failed`):
+  - `NAVSEG oracle: chords=3000 blocked=2947 sym=0 safety=0 graze=0 excess=0`
+  - `NAVSEG planner: paths=997 segments=4876 segment_bad=0 chords=35878 chord_violations=0 chord_slope_opt=691`
+  - `NAVSEG straight: chords=2000 blocked=1722 sym=0 safety=0 graze=2 excess=0`
+  - `NAVSEG perf: chords=20000 out_of_bounds=29 ms_p50=0.000100 ms_p95=0.000200 ms_p99=0.000200` (Release); Debug `ms_p95=0.000800` (eşik yok)
+- Kabul kriterleri öz-değerlendirme (talimat 1-6):
+  - 1 ✔ `checkSlope = false` varsayılan; eğim bloğu yalnızca `true` iken; `NavCheckStep` iletir; yorum güncel; `SlopeTooSteep` kaldı.
+  - 2 ✔ Slope testleri `true`; `2.51` ızgarasında varsayılan `Ok`; planlayıcı segmentleri `true` + `segment_bad=0`; kirişler Walk-only + `chord_violations=0`; `chord_slope_opt` yalnızca bilgi.
+  - 3 ✔ `guard` aşımı fail-closed (`OutOfBounds`), yorum talimattaki gibi.
+  - 4 ✔ `isfinite` + `1e9` denetimi; `NaN`/`+inf`/`1e12` testleri `OutOfBounds`.
+  - 5 ✔ Tolerans plana çekildi (`1e-9`); tüm testler (özellikle `RealMap_Straight` `excess=0`, `graze*1000 <= total`) geçti.
+  - 6 ✔ Release/Debug rc=0, uyarı 0; `0 failed`; `git diff --check` boş; iki dosya ASCII + CRLF.
+- Plandan sapmalar: yalnızca talimatta istenenler yapıldı; ek sapma yok.
+- Açık sorular: yok. (Talimat 5 seçimi: tolerans `1e-9`'a çekildi, plan metniyle uyumlu; `RealMap_Straight` dahil tüm testler bu toleransla geçtiği için koruma gerekçesi yazmaya gerek kalmadı.)
 
 ---
 
