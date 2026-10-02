@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "Map.h"
+#include "DamageTrace.h"
 
 void CUser::Attack(Packet & pkt)
 {
@@ -52,6 +53,10 @@ void CUser::Attack(Packet & pkt)
 			CUser *pUser = g_pMain->GetUserPtr(GetSocketID());
 			if (pUser != nullptr)
 				pUser->m_RHitRepeatList.insert(std::make_pair(GetSocketID(), UNIXTIME));
+
+#ifdef FDP_DAMAGE_TRACE
+			DamageTrace::Scope dmgTraceScope('R', 0, GetSocketID());
+#endif
 
 			damage = GetDamage(pTarget);
 

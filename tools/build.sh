@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Builds KnightOnlineServer.sln (Win32, MSVC v143) from WSL.
-# Usage: tools/build.sh [Release|Debug] [--packet-trace]
+# Usage: tools/build.sh [Release|Debug] [--packet-trace] [--damage-trace]
 set -euo pipefail
 
 CONFIG="${1:-Release}"
 EXTRA=()
-if [ "${2:-}" = "--packet-trace" ]; then
-	EXTRA+=("/p:FdpPacketTrace=1")
-fi
+for arg in "${@:2}"; do
+	case "$arg" in
+		--packet-trace) EXTRA+=("/p:FdpPacketTrace=1") ;;
+		--damage-trace) EXTRA+=("/p:FdpDamageTrace=1") ;;
+		*) echo "Unknown option: $arg" >&2; exit 2 ;;
+	esac
+done
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MSBUILD="${MSBUILD:-/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe}"
 
