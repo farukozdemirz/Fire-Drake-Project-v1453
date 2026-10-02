@@ -181,6 +181,13 @@ MoveOutcome ActionExecutor::BeginMove(BotSession * s, float tx, float tz, int16 
 		return out;
 	}
 
+	if (user->m_bResHpType == USER_SITDOWN)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "sitting";
+		return out;
+	}
+
 	int16 serverLimit = ServerLimitFor(user);
 	BotCore::MoveVerdict speedVerdict = BotCore::CheckMoveStep(speedField, speedField,
 		serverLimit, 0.0f, BotCore::kMovePeriodMs);
@@ -298,6 +305,13 @@ AttackOutcome ActionExecutor::BeginAttack(BotSession * s, const std::string & ta
 	{
 		out.kind = AttackOutcome::REFUSED;
 		out.reason = "dead";
+		return out;
+	}
+
+	if (user->m_bResHpType == USER_SITDOWN)
+	{
+		out.kind = AttackOutcome::REFUSED;
+		out.reason = "sitting";
 		return out;
 	}
 
@@ -671,6 +685,13 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "dead";
+		return out;
+	}
+
+	if (user->m_bResHpType == USER_SITDOWN)
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "sitting";
 		return out;
 	}
 
@@ -1242,4 +1263,143 @@ void ActionExecutor::EndPotion(BotSession * s)
 
 	s->m_potActive = false;
 	s->m_potLeft = 0;
+}
+
+// --- stance slice (ADR-0017 Ek F4-05) ---
+
+// Maps a stance guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static StanceOutcome RejectStance(BotSession * s, CUser * user, BotCore::StanceVerdict verdict,
+	const BotCore::StanceCheck & c)
+{
+	const char * rule = "CLI-13";
+	const char * reason = "busy";
+	float value = 1.0f;
+	float limit = 0.0f;
+
+	switch (verdict)
+	{
+	case BotCore::STANCE_REJECT_TOGGLE:
+		rule = "CLI-13"; reason = "toggle"; value = (float)c.sinceLastMs; limit = (float)BotCore::kStanceToggleMinMs;
+		break;
+	case BotCore::STANCE_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "State", rule, reason, value, limit);
+
+	StanceOutcome out;
+	out.kind = StanceOutcome::REFUSED;
+	out.reason = reason;
+	return out;
+}
+
+StanceOutcome ActionExecutor::SetStance(BotSession * s, bool sit, std::chrono::steady_clock::time_point now)
+{
+	StanceOutcome out;
+	out.kind = StanceOutcome::NOTHING;
+	out.reason = "ok";
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = StanceOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = StanceOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// Already in the requested stance: refuse without an event (the client sends no packet either).
+	bool sittingNow = (user->m_bResHpType == USER_SITDOWN);
+	if (sit == sittingNow)
+	{
+		out.kind = StanceOutcome::REFUSED;
+		out.reason = "no_change";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	uint32 sinceLastMs = 0;
+	if (s->m_stanceHasLast)
+		sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_stanceLast).count();
+
+	BotCore::StanceCheck c;
+	c.toSit = sit;
+	c.busy = s->m_moveActive || s->m_attackActive || s->m_castPhase != BotSession::CAST_IDLE;
+	c.hasLast = s->m_stanceHasLast;
+	c.sinceLastMs = sinceLastMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::StanceVerdict verdict = BotCore::CheckStance(c);
+	if (verdict != BotCore::STANCE_OK)
+		return RejectStance(s, user, verdict, c);
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"StateSit\",\"to\":\"" + (sit ? "sit" : "stand") + "\"";
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 bType + u16 nBuff (User.cpp:2715-2716).
+	Packet pkt(WIZ_STATE_CHANGE);
+	pkt << uint8(1) << uint16(sit ? USER_SITDOWN : USER_STANDING);
+
+	s->m_castSelfId = user->GetID();
+	s->m_stateEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+	s->m_stanceHasLast = true;
+	s->m_stanceLast = now;
+
+	// Result only from the broadcast the server published (m_stateEcho); m_bResHpType is telemetry only.
+	uint64 echo = s->m_stateEcho.load();
+	uint32 wanted = sit ? USER_SITDOWN : USER_STANDING;
+	bool ok = (echo & (1ull << 63)) != 0
+		&& ((echo >> 32) & 0xFF) == 1
+		&& (uint32)(echo & 0xFFFFFFFF) == wanted;
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"StateSit\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + (ok ? "applied" : "no_result") + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"state_after\":" + std::to_string((int)user->m_bResHpType);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (ok)
+	{
+		out.kind = StanceOutcome::SENT;
+		out.reason = "applied";
+	}
+	else
+	{
+		out.kind = StanceOutcome::FAILED;
+		out.reason = "no_result";
+	}
+	return out;
 }

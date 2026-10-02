@@ -96,10 +96,14 @@ public:
 	bool m_potHasLast;                                     // IOCP thread only: m_potLast is valid for this spawn (shared timer)
 	std::chrono::steady_clock::time_point m_potLast;       // IOCP thread only: when the last pot packet went out (any pot)
 
+	bool m_stanceHasLast;                                  // IOCP thread only: m_stanceLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_stanceLast;    // IOCP thread only: when the last stance packet went out
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
 	std::atomic<uint64> m_attackEcho;                      // written by OnPacket() (same thread as HandlePacket for own hits)
 	std::atomic<int> m_castSelfId;                         // set by ActionExecutor (IOCP thread), read by OnPacket(): own caster id, -1 = none
 	std::atomic<uint64> m_castEcho;                        // written by OnPacket(): skill result packet, see BotSession.cpp
+	std::atomic<uint64> m_stateEcho;                       // written by OnPacket(): own WIZ_STATE_CHANGE broadcast, see BotSession.cpp
 };

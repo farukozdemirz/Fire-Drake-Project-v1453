@@ -341,3 +341,74 @@ TEST_CASE("Combat_PotWait")
 	CHECK_EQ(BotCore::PotSupported(150), false);
 	CHECK_EQ(BotCore::PotSupported(0), true);
 }
+
+static BotCore::StanceCheck OkStance()
+{
+	BotCore::StanceCheck c;
+	c.toSit = true;
+	c.busy = false;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 0;
+	return c;
+}
+
+TEST_CASE("Combat_StanceCheck_Order")
+{
+	BotCore::StanceCheck c = OkStance();
+	c.busy = true;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_BUSY);
+
+	c = OkStance();
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_TOGGLE);
+
+	c = OkStance();
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_TOGGLE);
+
+	c = OkStance();
+	c.hasLast = true;
+	c.sinceLastMs = 1000;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_OK);
+
+	c = OkStance();
+	c.hasLast = false;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_OK);
+
+	c = OkStance();
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_RATE);
+
+	c = OkStance();
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_OK);
+}
+
+TEST_CASE("Combat_StanceCheck_StandIgnoresBusy")
+{
+	BotCore::StanceCheck c = OkStance();
+	c.toSit = false;
+	c.busy = true;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_OK);
+
+	c = OkStance();
+	c.toSit = false;
+	c.hasLast = true;
+	c.sinceLastMs = 500;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_TOGGLE);
+
+	c = OkStance();
+	c.toSit = false;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckStance(c), (int)BotCore::STANCE_REJECT_RATE);
+
+	CHECK_EQ((int)BotCore::kStanceToggleMinMs, 1000);
+}

@@ -302,4 +302,41 @@ namespace BotCore
 
 		return POT_OK;
 	}
+
+	// --- stance slice (ADR-0017 Ek F4-05) ---
+
+	constexpr uint32_t kStanceToggleMinMs = 1000;   // docs/03 CLI-13: two stance packets at least 1.0 s apart [A: conservative]
+
+	struct StanceCheck
+	{
+		bool toSit;               // true = sit down, false = stand up
+		bool busy;                // a walk, an attack series or a cast series is in progress (rule applies to toSit only)
+		bool hasLast;             // a stance packet was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that packet
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum StanceVerdict
+	{
+		STANCE_OK = 0,
+		STANCE_REJECT_BUSY = 1,     // CLI-13 (sitting down while a walk/attack/cast series runs)
+		STANCE_REJECT_TOGGLE = 2,   // CLI-13 (previous stance packet younger than kStanceToggleMinMs)
+		STANCE_REJECT_RATE = 3      // CLI-11
+	};
+
+	// Guard rule for a stance packet. Order: busy (toSit only), toggle interval, rate.
+	// "Already in the requested stance" is NOT a guard rule: the executor refuses it as "no_change" before this call.
+	inline StanceVerdict CheckStance(const StanceCheck & c)
+	{
+		if (c.toSit && c.busy)
+			return STANCE_REJECT_BUSY;
+
+		if (c.hasLast && c.sinceLastMs < kStanceToggleMinMs)
+			return STANCE_REJECT_TOGGLE;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return STANCE_REJECT_RATE;
+
+		return STANCE_OK;
+	}
 }

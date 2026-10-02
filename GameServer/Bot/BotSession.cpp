@@ -12,8 +12,9 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_castDone(0), m_castPackets(0), m_castAnyHas(false),
 		m_potActive(false), m_potItemId(0), m_potSkillId(0), m_potKind(0),
 		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
+		m_stanceHasLast(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
-		m_castSelfId(-1), m_castEcho(0)
+		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -55,6 +56,17 @@ void BotSession::OnPacket(Packet & pkt)
 				| (uint64(uint16(sData3)) << 32) | uint64(skillId);
 		}
 	}
+
+	// State change broadcast: u16 socket id, u8 bType, u32 nBuff (User.cpp:2817-2819). Only the bot's own packet is recorded;
+	// m_castSelfId (own id) is written on the IOCP thread before HandlePacket() runs on the same thread.
+	if (opcode == WIZ_STATE_CHANGE && pkt.size() >= 7)
+	{
+		uint16 sid = pkt.read<uint16>(0);
+		uint8 bType = pkt.read<uint8>(2);
+		uint32 nBuff = pkt.read<uint32>(3);
+		if ((int)sid == m_castSelfId.load())
+			m_stateEcho = (1ull << 63) | (uint64(bType) << 32) | uint64(nBuff);
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -95,11 +107,13 @@ void BotSession::ResetForRespawn()
 	m_potSent = 0;
 	m_potOk = 0;
 	m_potHasLast = false;
+	m_stanceHasLast = false;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;
 	m_castSelfId = -1;
 	m_castEcho = 0;
+	m_stateEcho = 0;
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
 }
