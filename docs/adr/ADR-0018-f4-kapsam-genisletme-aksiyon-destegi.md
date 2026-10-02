@@ -36,3 +36,6 @@ Değerlendirme (`docs/reports/degerlendirme-2026-10-02.md`, §6) ADR'nin belirsi
 
 ## Ek 2 (2026-10-02, F4-25; otonom döngüde Claude kararı — gözden geçirilmeli)
 Dilim 2 (uçan skill'ler) ikiye bölünür: **2a** tek hedefli, tek tipli Type3 uçan skill'ler (F4-25: Fire ball, Fire spear, Static orb); **2b** okçu Type2 skill'leri (ok tüketimi ve yay denetimi; ok stoğu için dilim 8 ile birlikte). Gerekçe ve paket düzeni: ADR-0017 Eki F4-25. Dilim sırası değişmez; F4-25'ten sonra sıradaki **F4-26 = dilim 3 (çift tipli Type3)**.
+
+## Ek 3 (2026-10-02, F4-26; otonom döngüde Claude kararı — gözden geçirilmeli)
+Dilim 3 (çift tipli Type3) **yalnızca `bType = {3, 4}` çifti** olarak yazıldı (F4-26: buz büyüleri, Prismatic, uçanlar Ice arrow/orb). Diğer çiftler (Type1+Type3/4 melee, Type2 okçu, Type1+Type9, alan, `UseItem`) bu dilimde açılmaz; ilgili dilimlere bırakılır (alan: dilim 5, okçu: 2b, `UseItem`: dilim 6, Type1+Type4 melee çiftleri: warrior davranışı için ayrı küçük dilim gerekirse eklenir). Gerekçe ve sunucu davranışı: ADR-0017 Eki F4-26. Dilim sırası değişmez; F4-26'dan sonra sıradaki **F4-27 = dilim 4 (Type4 tek tipli buff/debuff)**.

@@ -222,8 +222,8 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Priest debuff + hedef çağrısı | Type4 düşman (Malice/Parasite) | ✘ | **m.4** (F7'den önce) | debuff başarısı: F4-52; düşman durumu: F4-53; düşman adı: F4-50 | T-PRI-06 |
 | Priest'e baskı: cast kesme/geri çekilme | cast iptali | ✘ | **m.1** | düşman konum+hız: F4-50 | T-PRI-07 |
 | Mage tek hedef, uçmayan, tek tipli Type3 | Type3 düşman (Ignition) | ✔ | — | düşman HP: F4-51 | T-MAG-01 |
-| Mage uçan büyü (Fire ball, Ice arrow...) | Type3 uçan | ✘ (`bFlyingEffect != 0`) | **m.2** (F6'dan önce) | düşman konum+hız: F4-50 | T-MAG-01/02 |
-| Mage çift tipli Type3 (buz büyüleri, Prismatic) | Type3 `bType[1] != 0` | ✘ | **m.3** (F6'dan önce) | — | T-MAG-02 |
+| Mage uçan büyü (Fire ball, Ice arrow...) | Type3 uçan | ◐ tek tipli Type3 uçan ✔ (F4-25: Fire ball/Fire spear/Static orb); çift tipli uçan (Ice arrow/orb) F4-26 | **m.2** ✔ + **m.3** (F6'dan önce) | düşman konum+hız: F4-50 | T-MAG-01/02 |
+| Mage çift tipli Type3 (buz büyüleri, Prismatic) | Type3 `bType[1] != 0` | ◐ F4-26 HAZIR (`{3, 4}` çifti, tek hedef; alan/`UseItem` çiftleri hariç) | **m.3** (F6'dan önce) | — | T-MAG-02 |
 | Mage alan büyü (Fire burst, Supernova, ice storm) | Type3 alan, hedef noktası | ✘ | **m.5** (CLI-07; F6'dan önce) | düşman kümesi: F4-50 | T-MAG-02 |
 | Mage summon (Type8 friend) + Gate | Type8 | ✘ | **m.6** (summon açıkça listelenmeli: **ADR-0018'e eklenmeli**; F7'den önce) | yaşayan/yeniden doğmuş üye (`WIZ_USER_INOUT` respawn ✔ F4-12, party ✔) | T-IGT-MAG-01 |
 | Pot ve envanter (pot/taş/scroll doldurma) | `UsePotion` | ✔ kullanım; doldurma ✘ | **m.8** | self stok ✔ | T-POT-01..03, `ScenarioReset` |

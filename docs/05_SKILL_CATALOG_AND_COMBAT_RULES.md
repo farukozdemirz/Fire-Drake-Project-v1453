@@ -26,7 +26,7 @@ Doğrulama: veri `[V]`, sunucu uygulaması `[D]`. Skill'lerin gerçek oyunda bek
 - Birimler: `CastTime` ve `ReCastTime` 0,1 sn; menzil ve yarıçap metre; Type4 süresi saniye; Type3 süreli hasar `TimeDamage` toplamı, 2 sn'de bir tick.
 - `Etc ≠ 0` = quest kapısı (yalnızca Release derleme). Standart profillerde `Etc` 510–523 skill'leri kullanılmaz (CHR-08).
 - `BeforeAction` 1–4 ise sınıf taşı (`379058000 + n·1000`) tüketilir ve `UseItem` yalnızca gereksinim olur (03 §4.3 U9).
-- `UseStanding = 1` skill'ler hareket halinde kullanılamaz (CLI-09). Örnekler: Howling Sword, Iron Skin, berserk Echo, critical restore, imposingness, Bless of God, Subside, incineration, meteor Fall, Prismatic, ice storm, Stun Cloud, Chain lightning.
+- `UseStanding = 1` skill'ler hareket halinde kullanılamaz (CLI-09). Örnekler: Howling Sword, Iron Skin, berserk Echo, critical restore, imposingness, Bless of God, Subside, incineration, meteor Fall, Prismatic, ice storm, Stun Cloud, Chain lightning. **Veri notu (2026-10-02, KI-017):** master skill'lerde (incineration, meteor Fall, Prismatic, ice storm, Stun Cloud, Chain lightning, Howling Sword, Bloody Beast, critical restore, imposingness, Bless of God, Subside, Dark pursuer) bu veritabanındaki `UseStanding` değeri 1 değil **51..54**'tür; sunucu yalnızca `== 1`'i hız denetimiyle uygular, bot da öyle (CLI-09 yalnızca `== 1`). Gerçek istemcinin davranışı bilinmiyor `[A]`.
 
 ## 3. Karus – El Morad asimetrileri `[V]`
 
