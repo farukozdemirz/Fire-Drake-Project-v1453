@@ -1,6 +1,10 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
+
 class CUser;
+class Thread;
 
 class BotManager
 {
@@ -23,9 +27,29 @@ public:
 	// Clears m_botSink and returns the slot to the pool.
 	void ReleaseSlot(CUser * pUser);
 
+	// Starts the BotTickTimer thread. No-op unless enabled. Call once after RunServer().
+	void StartTicking();
+	// Joins the timer thread. Idempotent; safe when ticking never started.
+	void Shutdown();
+
 private:
-	BotManager() : m_enabled(false), m_poolSize(0) {}
+	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
+		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
+		m_tickCount(0), m_tickThreadId(0) {}
+
+	static uint32 THREADCALL TimerThreadProc(void * lpParam);
+	static void TickCallback();
+	void Tick(); // IOCP worker thread only
 
 	bool m_enabled;
 	uint16 m_poolSize;
+
+	uint32 m_tickMs;
+	Thread * m_timerThread;
+	std::atomic<bool> m_shuttingDown;
+	std::atomic<uint32> m_timerThreadId;
+	std::atomic<uint32> m_skippedTicks;
+	uint32 m_tickCount;      // IOCP thread only
+	uint32 m_tickThreadId;   // IOCP thread only
+	std::chrono::steady_clock::time_point m_firstTickTime; // IOCP thread only
 };

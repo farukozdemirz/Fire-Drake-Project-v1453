@@ -1,6 +1,6 @@
 # Bot Projesi — Güncel Durum
 
-Son güncelleme: 2026-10-02 · Güncelleyen: Claude (F2-02 planı yazıldı)
+Son güncelleme: 2026-10-02 · Güncelleyen: Claude (F2-02 DOĞRULANDI)
 Sunucu commit: `0f52027` (upstream ile aynı) · Bot kodu: henüz yok · Doküman paketi: v1.0
 Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `MAGIC_BAK_etc` yedeği var)
 
@@ -13,7 +13,7 @@ Veritabanı: `FDP_kn_online` (yerel; MAGIC.Etc düzeltmesi elle uygulanmış, `M
 
 ## Aktif faz
 
-F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILDI (DeepSeek'in işleri bitti; F0 KABUL_EDILDI 2026-10-02; F1-01..F1-10 KAPANDI, F1-08..F1-10 `gece/2026-10-02`'de; kalan: insan istemcisi testleri, faz raporu taslağı `docs/phase-reports/F1-taslak.md`, kabul bekliyor). Gece modunda F2'ye geçildi: F2-01 KAPANDI; F2-02 (tick altyapısı) HAZIR.
+F1 — Veri ve mekanik doğrulama — Durum: GELIŞTIRILDI (DeepSeek'in işleri bitti; F0 KABUL_EDILDI 2026-10-02; F1-01..F1-10 KAPANDI, F1-08..F1-10 `gece/2026-10-02`'de; kalan: insan istemcisi testleri, faz raporu taslağı `docs/phase-reports/F1-taslak.md`, kabul bekliyor). Gece modunda F2'ye geçildi: F2-01 KAPANDI; F2-02 (tick altyapısı) DOĞRULANDI (birleştirmeyi döngü betiği yapar).
 
 ## Faz tablosu
 
@@ -57,12 +57,13 @@ Liste: `plans/README.md`.
 | F1-09 Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`) | KAPANDI | `bot/F1-09` @ `3406555` (taban: `gece/2026-10-02`); `plans/F1-09-sunucu-hasar-kaydi.md`; Tur 1'de doğrulandı, `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu); kanca yalnızca `--damage-trace` ile derlenir; log özet betiği F1-10'da; çalışma zamanı ölçümü insan oturumunda (T-MECH-DMG) |
 | F1-10 Hasar logu özet betiği (`tools/damage-trace-summary.py`) | KAPANDI | `bot/F1-10` @ `b93309d` (taban: `gece/2026-10-02`); `plans/F1-10-hasar-logu-ozet-betigi.md` (Tur 2'de doğrulandı; `gece/2026-10-02`'ye birleşti, 2026-10-02, gece modu, merge `9148336`); DeepSeek yalnızca betik yazar (log + `stat-model`/`spell-model` çıktısını ± %15 karşılaştırır); F1'in DeepSeek'e düşen son işi |
 | F2-01 Bot alıcısı (`m_botSink`) ve ayrılmış slot havuzu | KAPANDI | `bot/F2-01` (taban: `gece/2026-10-02`); `plans/F2-01-bot-alicisi-ve-slot-havuzu.md`; S1+S2: `KOSocketMgr` rezerve havuz, `CUser::Send` geçersiz kılma, `BotManager::Startup` + öz-sınama; `[BOT] ENABLED=0` varsayılan (davranış değişmez); çalışma zamanı doğrulaması yapıldı (`ENABLED=1`: `reserved 16 sessions (ids 2984-2999), pool self-test OK`; `ENABLED=0`: log yok); `bot/F2-01` @ `7703426` `gece/2026-10-02`'ye birleşti (2026-10-02, gece modu, merge `e7f8119`); `main`'e birleştirme proje sahibinde |
-| F2-02 `BOT_TICK` IOCP olayı ve bot zamanlayıcı thread'i | HAZIR | `bot/F2-02` (taban: `gece/2026-10-02`); `plans/F2-02-bot-tick-iocp-olayi.md`; ADR-0005 (otonom döngüde Claude kararı): `SOCKET_IO_EVENT_BOT_TICK`, `SocketMgr::PostBotTick` (tek uçuşta), `BotManager` zamanlayıcı thread'i ve boş `Tick()` + öz-sınama logu; `ENABLED=0` iken thread/kanca yok; çalışma zamanı doğrulaması Claude'da |
+| F2-02 `BOT_TICK` IOCP olayı ve bot zamanlayıcı thread'i | DOĞRULANDI | `bot/F2-02` (taban: `gece/2026-10-02`); `plans/F2-02-bot-tick-iocp-olayi.md`; ADR-0005 (otonom döngüde Claude kararı): `SOCKET_IO_EVENT_BOT_TICK`, `SocketMgr::PostBotTick` (tek uçuşta), `BotManager` zamanlayıcı thread'i ve boş `Tick()` + öz-sınama logu; `ENABLED=0` iken thread/kanca yok; çalışma zamanı doğrulaması yapıldı (`ENABLED=1`: tick IOCP thread'inde, `TICK_MS=100` → ortalama 110,5 ms, `TICK_MS=20` → 31,7 ms, skipped 0; `ENABLED=0`: log yok, ini'ye `TICK_MS` yazılmaz); `bot/F2-02` @ `7c94ace`, `gece/2026-10-02`'ye birleştirme döngü betiğinde |
 
 ## Son doğrulamalar
 
 | Tarih | Plan | Karar | Not |
 |---|---|---|---|
+| 2026-10-02 | F2-02 | DOĞRULANDI (Tur 1) | 11/11 kriter ✔ (tam yeniden derlemede Release/Debug rc=0, `Bot\`/`SocketMgr`/`SocketDefines` uyarısı 0; kalan uyarılar eski dosya/satırlarda). Çalışma zamanı bağımsız doğrulandı: `ENABLED=1, MAX_BOTS=16` → `tick OK on IOCP thread 41460 (timer thread 30248), period 100 ms`, `100 tick intervals in 11052 ms (avg 110.5 ms), skipped 0`; `TICK_MS=20` → avg 31,7 ms; `ENABLED=0` → log yok, ini'ye `TICK_MS` eklenmedi; 3/3 UP, nazik kapanış, çökme olayı yok; ini geri yüklendi (md5 aynı). Notlar: `Sleep` granülaritesi gerçek aralığı uzatıyor (MET-PERF-02/F3 için `dt` ölçümü); F2-01'den gelen `m_activeSessions` bulgusu F2-03/F2-04'te; uyarı listesi raporda eksik (artımlı derleme) |
 | 2026-10-02 | F2-01 | DOĞRULANDI (Tur 1) | 10/10 kriter ✔ (Release/Debug rc=0, yeni uyarı yok; 5 Release uyarısı eski satırlarda). Çalışma zamanı bağımsız doğrulandı: `[BOT] ENABLED=1, MAX_BOTS=16` → `Bot_*.log`: `BotManager: reserved 16 sessions (ids 2984-2999), pool self-test OK`, sunucu 3/3 UP; `MAX_BOTS=500` → 100 (ids 2900-2999) kıskaç; anahtar yokken log yok (ini'ye `ENABLED=0` yazılır, beklenen). Ini geri yüklendi. Notlar: F2-02/03 `m_activeSessions`'taki bot oturumunu gezen zamanlayıcıları (`Update()`, `SendAll*`) ele almalı; uygulayıcı raporundaki "Release'de uyarı yok" ifadesi yanlış (K1 ölçütü yine karşılandı) |
 | 2026-10-02 | F1-10 | DOĞRULANDI (Tur 2) | 8/8 kriter ✔ (selftest `_E` için `R`/`K`/`H` hükmü sınıyor; `ctx=R` profil geri düşüşü bağımsız denendi: `verdict=OK match=profile`; `requested=0` D satırı yok, `zero=` A+D; Release rc=0 uyarı 0). Tur 1 bulgularının tamamı giderildi |
 | 2026-10-02 | F1-10 | DÜZELTME GEREKLİ (Tur 1) | 8/8 kriter lafzen ✔ (selftest, bölümler, dayanıklılık, stdlib/ASCII/LF, kapsam, Release derleme rc=0 uyarı 0). Engelleyen: `find_r` profil geri düşüşünde model türünü `None` döndürüyor, `_E` botlarının `R` (temel vuruş) grupları `NO_MODEL` çıkıyor (`K`/`H` doğru), selftest hükmü sınamıyor. Düşük: `primary=0`, `requested=0` satırı `kind=heal` etiketleniyor |
