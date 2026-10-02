@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 3) |
 | Branch | `bot/F4-27` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `BeginCast`), F4-25/F4-26 (uçan ve çift tipli skill; `BeginCast`'in destek kuralları değişti: satır numaraları kaymıştır, sembolle bul) — `KAPANDI` olmalı; F2-03 (bot girişi), `db/002_bot_characters.sql` (12 bot satırı) — `KAPANDI` |
@@ -130,14 +130,42 @@ python3 tools/client-tbl-quests.py --server
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (derleme ve birim testler geçti; SQL betikleri yerel `FDP_kn_online`'da çalıştırıldı; çalışma zamanı K8 Claude'un doğrulamasına bırakıldı, sunucu açılmadı)
+- Branch / commit'ler: `bot/F4-27` (taban: `gece/2026-10-02` @ `06a76e8`), commit `ada6ffe` ("[F4-27] Quest ile acilan skill'ler: bot quest kurulumu (db/003) ve BeginCast quest_locked")
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
-- SQL çıktı satırları (`BOTQUEST:` / `BOTQUEST_ROLLBACK:`):
+  - `db/003_bot_quests.sql` (yeni): 12 bot satırına sınıf quest'lerini durum 2 yazar; mevcut kayıtları korur; idempotent; `QuestTestPoints=1` ile BotWP_K/BotMF_K skill puanlarını 80. seviye quest skill'leri için yükseltir; `dbo.USERDATA_BOT_QUEST_BACKUP` yedeği; sonda `BOTQUEST: rows=12 ok=12 fail=0` öz denetimi.
+  - `db/003_bot_quests_rollback.sql` (yeni): yedekten `sQuestCount`/`strQuest`/`strSkill` geri yükler; yedek satırları siler (tablo korunur, ikinci geri alma `restored=0`).
+  - `db/README.md` (değişti): 003 bölümü (ne yapar, sunucular kapalı, `QuestTestPoints`, geri alma).
+  - `BotCore/BotCombat.h` (değişti): saf `CastQuestAllowed(etc, isGm, questDone)` eklendi.
+  - `Tests/BotCoreTests/CombatTests.cpp` (değişti): `Combat_CastQuestAllowed` (5 assert).
+  - `GameServer/Bot/ActionExecutor.cpp` (değişti): `BeginCast` destek kuralından `|| m->sEtc != 0` kaldırıldı; ardından `CastQuestAllowed(...)` ile `quest_locked` ön kontrolü; `PotMagicSupported`'teki `sEtc == 0` aynen kaldı.
+  - `GameServer/Bot/ActionExecutor.h` (değişti): iki yorum satırına `quest_locked` eklendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0 ve `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (yalnızca eski `UpgradeHandler.cpp` C4789).
+- Birim testler: `./tools/run-tests.sh Release` ve `Debug` → `103 tests, 0 failed`; `[ OK ] Combat_CastQuestAllowed` (önceki 102, yeni 1).
+- SQL çıktı satırları:
+  - İlk uygulama (`-v QuestTestPoints=0`): `changed=12 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - İkinci uygulama: `changed=0 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - `-v QuestTestPoints=1`: `changed=0 ...` (quest'ler aynı), `BOTQUEST: rows=12 ok=12 fail=0`; `BotWP_K` strSkill `sum=142 t5=80 t6=0 t7=42 m=20`, `BotMF_K` `sum=142 t5=80 t6=42 t7=0 m=20`; diğerleri değişmedi
+  - Geri alma: `BOTQUEST_ROLLBACK: restored=12`; ikinci geri alma: `restored=0`
+  - Yeniden uygulama: `changed=12 ...`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - Birleştirme kanıtı (`BotMI_K`'ya elle 500:1 ve 32001:5 enjekte edildi): `changed=1 kept_other=2`, liste `500:1 32001:5 53:2 515:2 516:2 517:2`
 - Kabul kriterleri öz-değerlendirme:
+  - K1: ✔ Release/Debug rc=0, değişen dosyalarda yeni uyarı yok
+  - K2: ✔ 103 tests 0 failed, `Combat_CastQuestAllowed` `[ OK ]`
+  - K3: ✔ fark yalnızca §4 dosyaları; `MagicInstance.cpp`, `shared/`, `db/001*`, `db/002*` farkı 0; `sEtc != 0` kuralı kaldırıldı, `CastQuestAllowed`/`quest_locked` eklendi, `PotMagicSupported` `sEtc == 0` aynen
+  - K4: ✔ ilk `changed=12`, ikinci `changed=0`; `grep -c "LIKE 'Bot"` = 0; satır içeriği basılmaz (yalnızca sayaçlar ve `BOTQUEST`)
+  - K5: ✔ `restored=12`, ardından `changed=12`; yedek tablo 12 satır; mevcut kayıt korunması `kept_other` sayacı ve enjeksiyon kanıtıyla gösterildi
+  - K6: ✔ `QuestTestPoints=1` yalnızca BotWP_K/BotMF_K `strSkill`'ini değiştirdi (142, ağaç ≤ 80, master ≤ 20, `fail=0`); varsayılan `strSkill`'e dokunmaz
+  - K7: ✔ `BotCombat.h` saf (windows.h/stdafx/GameServer/shared yok); ASCII/CRLF korundu; `git diff --check` boş
+  - K8: Claude'un doğrulamasına bırakıldı (sunucu açılmadı)
+  - K9: ✔ (aşağıdaki sapma ve açık soru dürüstçe yazıldı)
 - Plandan sapmalar ve gerekçeleri:
+  - **`QuestTestPoints` değişkeni zorunlu yapıldı (iç `:setvar` yok).** Plan §3.1 item 6 `-v QuestTestPoints=1` ile isteğe bağlı, varsayılan 0 istiyordu. Bu ortamdaki sqlcmd (ODBC 130) **tanımsız bir `$(...)` değişkenine rastlayınca batch'i durduruyor** (rc=1); iç `:setvar QuestTestPoints 0` eklenince bu sqlcmd sürümü dış `-v` geçersiz kılmayı **yok sayıyor** (test edildi: `:setvar` varken `-v QuestTestPoints=1` daima 0 verir). Bu nedenle hem güvenli varsayılanı hem de `-v` geçersiz kılmayı aynı dosyada sağlamak bu sqlcmd ile mümkün değil. Çözüm: `$(QuestTestPoints)` korundu, başlık ve README'de `-v QuestTestPoints=0|1` **zorunlu** kılındı (db/002'deki `$(Upgrade)` kalıbına benzer: orada da değişken zorunlu). K4/K5/K6 beklenen çıktıları `-v QuestTestPoints=0` ile üretildi.
+  - `kept_other` sayacı ve enjeksiyon testi eklendi (K5 kanıtı; plan "eşdeğer" çıktıya izin veriyor). Enjeksiyon sonrası `BotMI_K` ve tüm bot satırları elle temizlendi; DB şu an db/002 durumunda (quest listesi boş, yedek tablo yok).
+  - Geri alma **yedek satırlarını siler** (tabloyu bırakır) — plan "ikinci geri alma etkisizdir" istediği için; yalnızca tabloyu bırakıp satırları bırakmak ikinci çalıştırmada yeniden `restored=12` veriyordu.
 - Açık sorular:
+  - K4/K5/K6 komutlarında `-v QuestTestPoints=0` zorunlu hâle geldi (bkz. sapma). §7'deki örnek komutlar bu değişkeni içermiyor; reader'ın bunu bilmesi gerekir.
+  - `db/003`'ün bot quest'lerini kalıcı bırakması mı, geri alınmış (db/002) durumda bırakması mı istendiği: ben **geri alınmış/temiz** durumda bıraktım (betik istenince uygulanır). Doğrulamada K8, `db/003`'ü `-v QuestTestPoints=1` ile uygular, test eder; sonra istenirse geri alır.
 
 ---
 
