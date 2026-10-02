@@ -432,4 +432,71 @@ namespace BotCore
 
 		return REGENE_OK;
 	}
+
+	// --- party slice (ADR-0017 Ek F4-08) ---
+
+	constexpr uint32_t kPartyInviteGapMs = 1000;   // docs/03 CLI-15: a human needs at least this long between two party invitations [A] (unmeasured)
+	constexpr uint32_t kPartyAcceptMinMs = 1000;   // docs/03 CLI-15: reading the invitation popup and clicking accept takes a human at least this long [A] (unmeasured)
+
+	struct PartyInviteCheck
+	{
+		bool inParty;             // the bot is in a party (it was invited or it leads one)
+		bool isLeader;            // ... and it leads it
+		int regionDelta;          // RegionDelta(bot position, target position)
+		bool hasLast;             // a party invitation was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that invitation
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PartyInviteVerdict
+	{
+		PARTYINVITE_OK = 0,
+		PARTYINVITE_REJECT_LEADER = 1,   // CLI-15 (in a party but not its leader: only the leader invites)
+		PARTYINVITE_REJECT_VIEW = 2,     // CLI-15 (target outside the 3x3 regions)
+		PARTYINVITE_REJECT_GAP = 3,      // CLI-15 (second invitation before kPartyInviteGapMs)
+		PARTYINVITE_REJECT_RATE = 4      // CLI-11
+	};
+
+	// Guard rule for a party invitation. Order: leader, view, gap, rate.
+	inline PartyInviteVerdict CheckPartyInvite(const PartyInviteCheck & c)
+	{
+		if (c.inParty && !c.isLeader)
+			return PARTYINVITE_REJECT_LEADER;
+
+		if (c.regionDelta > kViewRegionRadius)
+			return PARTYINVITE_REJECT_VIEW;
+
+		if (c.hasLast && c.sinceLastMs < kPartyInviteGapMs)
+			return PARTYINVITE_REJECT_GAP;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return PARTYINVITE_REJECT_RATE;
+
+		return PARTYINVITE_OK;
+	}
+
+	struct PartyAcceptCheck
+	{
+		uint32_t sinceInviteMs;   // since the invitation reached the bot
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum PartyAcceptVerdict
+	{
+		PARTYACCEPT_OK = 0,
+		PARTYACCEPT_REJECT_WAIT = 1,   // CLI-15 (accepted before kPartyAcceptMinMs after the invitation arrived)
+		PARTYACCEPT_REJECT_RATE = 2    // CLI-11
+	};
+
+	// Guard rule for accepting an invitation. The caller has already checked that an invitation is pending. Order: wait, rate.
+	inline PartyAcceptVerdict CheckPartyAccept(const PartyAcceptCheck & c)
+	{
+		if (c.sinceInviteMs < kPartyAcceptMinMs)
+			return PARTYACCEPT_REJECT_WAIT;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return PARTYACCEPT_REJECT_RATE;
+
+		return PARTYACCEPT_OK;
+	}
 }

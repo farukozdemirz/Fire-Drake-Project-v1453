@@ -79,6 +79,8 @@ private:
 	void CommandStance(const std::string & args, bool sit);
 	void CommandTarget(const std::string & args);
 	void CommandRegene(const std::string & args);
+	void CommandPartyInvite(const std::string & args);
+	void CommandPartyAccept(const std::string & args);
 	BotSession * FindSession(const char * charName);
 	static bool IsKnownBotName(const std::string & name);   // BOT_TABLE lookup, case-insensitive
 

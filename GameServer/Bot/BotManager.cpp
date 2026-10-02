@@ -636,10 +636,14 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandTarget(args);
 	else if (_stricmp(verb.c_str(), "regene") == 0)
 		CommandRegene(args);
+	else if (_stricmp(verb.c_str(), "pinvite") == 0)
+		CommandPartyInvite(args);
+	else if (_stricmp(verb.c_str(), "paccept") == 0)
+		CommandPartyAccept(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1845,6 +1849,131 @@ void BotManager::CommandRegene(const std::string & args)
 	else
 		snprintf(message, sizeof(message),
 			"BotManager: cmd regene: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandPartyInvite(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() != 2)
+	{
+		WriteBotLog("BotManager: cmd pinvite: usage: pinvite <bot> <target bot>");
+		return;
+	}
+
+	const std::string & name = words[0];
+	const std::string & targetName = words[1];
+
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	BotSession * target = FindSession(targetName.c_str());
+	if (target == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: unknown or not spawned bot '%s'",
+			IsKnownBotName(targetName) ? targetName.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (target->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: target %s not in game (phase %s)",
+			target->m_charName.c_str(), PhaseName(target->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Test driver: the target comes straight from the target bot's session; the Perception slice replaces this
+	// source, not PartyInviteTarget.
+	PartyInviteTarget tv = { (int16)target->m_pUser->GetSocketID(), target->m_charName,
+		target->m_pUser->GetX(), target->m_pUser->GetZ() };
+	PartyOutcome outcome = ActionExecutor::RequestPartyInvite(s, tv, now);
+
+	char message[256];
+	if (outcome.kind == PartyOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == PartyOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: %s invited %s (%s)",
+			s->m_charName.c_str(), target->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pinvite: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandPartyAccept(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd paccept: usage: paccept <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd paccept: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd paccept: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	PartyOutcome outcome = ActionExecutor::RequestPartyAccept(s, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == PartyOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd paccept: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == PartyOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd paccept: %s joined party of #%d", s->m_charName.c_str(), outcome.peerId);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd paccept: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 

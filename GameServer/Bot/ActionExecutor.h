@@ -95,6 +95,28 @@ struct RegeneOutcome
 	float z;
 };
 
+// Caller-supplied view of the party invitation target (ADR-0017 Ek F4-08). Temporary, like TargetHpTarget: the
+// /bot pinvite test driver fills it from the target bot's session; the Perception slice replaces the source.
+struct PartyInviteTarget
+{
+	int16 id;            // target's socket id (not sent; self / invalid check)
+	std::string name;    // target's character name (the PARTY_CREATE / PARTY_INSERT payload)
+	float x;             // metres
+	float z;
+};
+
+struct PartyOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "created" (PartyInvite, PARTY_CREATE confirmed by the bot's own
+	                       // leader state broadcast), "sent" (PartyInvite, PARTY_INSERT: no refusal reply), "joined" (PartyAccept).
+	                       // FAILED: "refused_target" (-1), "refused_level" (-2), "refused_zone" (-3), "refused_other", "no_result".
+	                       // REFUSED: "not_in_game", "dead", "bad_target", "no_invite", or a guard verdict
+	                       // ("not_leader", "out_of_view", "invite_gap", "accept_wait", "rate")
+	int peerId;            // PartyInvite: the target's id; PartyAccept: the inviter's id; -1 = none
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -185,4 +207,18 @@ public:
 	// REFUSED without an event: "not_in_game", "not_dead", "no_np" (loyalty 0: the server would kick the bot out of the
 	// zone, KI-013); with FAIRNESS_REJECT: "dead_wait", "rate".
 	static RegeneOutcome RequestRegene(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// One-shot party invitation: sends one WIZ_PARTY (PARTY_CREATE when the bot is in no party, PARTY_INSERT when it leads
+	// one) with the target's name through CUser::HandlePacket() after the guard (CLI-15: leader only, target in the 3x3
+	// regions, >= 1 s between invitations; CLI-11). Result only from published replies: a refusal arrives as WIZ_PARTY
+	// PARTY_INSERT + i16 code (FAILED "refused_*"); PARTY_CREATE is confirmed by the bot's own WIZ_STATE_CHANGE type 6
+	// (leader flag 1) -> SENT "created"; PARTY_INSERT has no positive reply -> SENT "sent" (no refusal reply; [A]).
+	static PartyOutcome RequestPartyInvite(BotSession * s, const PartyInviteTarget & target,
+		std::chrono::steady_clock::time_point now);
+
+	// One-shot acceptance of the pending invitation (PARTY_PERMIT 1 through CUser::HandlePacket()) after the guard
+	// (CLI-15: >= 1 s after the invitation arrived; CLI-11). The pending invitation is the one OnPacket() recorded
+	// (m_partyInviteEcho); none -> REFUSED "no_invite" without an event. SENT "joined": the bot's own PARTY_INSERT member
+	// packet (sid == its id, flag 1) arrived. FAILED "no_result": it did not (e.g. the leader changed zone).
+	static PartyOutcome RequestPartyAccept(BotSession * s, std::chrono::steady_clock::time_point now);
 };
