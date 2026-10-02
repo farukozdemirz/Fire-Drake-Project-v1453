@@ -7,7 +7,8 @@ Scans the bot sources (GameServer/Bot, BotCore) and checks five rules:
   R2  restricted symbols only in the named, size-capped allowlist
   R3  cross-session CUser reads only in the known test drivers
   R4  BotCore includes only standard and sibling headers
-  R5  the view structs carry no forbidden field
+  R5  the view structs carry no forbidden field (the player name in UnitView is allowed from F4-50;
+      UnitView hp stays forbidden until F4-51; the NPC name is never allowed)
 
 Exit codes: 0 PASS, 1 at least one violation, 2 usage / input error.
 Only the standard library is used. The scanner is line based (comment and
@@ -76,7 +77,9 @@ ALLOW_R3 = [
     (BOT, "IsSamePartyMember", "m_pUser", 2, TEST_DRIVER),
 ]
 VIEW_FORBIDDEN = {   # struct name -> forbidden words (lower case) in field names
-    "UnitView": ("hp", "mp", "name", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
+    # The player name arrives with WIZ_USER_INOUT (docs/03 section 16) and is allowed from F4-50 on;
+    # hp stays forbidden here until F4-51. The NPC name is never a decision input.
+    "UnitView": ("hp", "mp", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
     "NpcView": ("hp", "mp", "name", "cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
     "TeamMemberView": ("cooldown", "stock", "inventory", "invent", "buff", "skill", "item", "potion"),
 }
@@ -579,7 +582,7 @@ def selftest_cases(base):
     reset_tree(base)
     write_tree(base, {
         "GameServer/Bot/T.cpp": "\n".join(["void Foo::Bar(int a)", "{", "\treturn;", "}"]),
-        "BotCore/Perception.h": clean_perception().replace("\t\tfloat x, z;", "\t\tfloat x, z;\n\t\tint32_t hp;"),
+        "BotCore/Perception.h": clean_perception().replace("\t\tfloat x, z;", "\t\tfloat x, z;\n\t\tint32_t mp;"),
     })
     res = audit(base, [], [])
     assert len(res["violations"]) == 1, res["violations"]
@@ -588,7 +591,15 @@ def selftest_cases(base):
     reset_tree(base)
     write_tree(base, {
         "GameServer/Bot/T.cpp": "\n".join(["void Foo::Bar(int a)", "{", "\treturn;", "}"]),
-        "BotCore/Perception.h": clean_perception().replace("\t\tuint16_t id;\n\t};", "\t\tuint16_t id;\n\t\tchar playerName[24];\n\t};"),
+        "BotCore/Perception.h": clean_perception().replace("\t\tfloat x, z;", "\t\tfloat x, z;\n\t\tchar name[24];"),
+    })
+    res = audit(base, [], [])
+    assert not res["violations"], res["violations"]   # player name is allowed in UnitView (F4-50)
+
+    reset_tree(base)
+    write_tree(base, {
+        "GameServer/Bot/T.cpp": "\n".join(["void Foo::Bar(int a)", "{", "\treturn;", "}"]),
+        "BotCore/Perception.h": clean_perception().replace("\t\tuint16_t id;\n\t};", "\t\tuint16_t id;\n\t\tchar name[24];\n\t};"),
     })
     res = audit(base, [], [])
     assert len(res["violations"]) == 1, res["violations"]
