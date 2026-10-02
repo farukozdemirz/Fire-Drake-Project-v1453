@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-54 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`) — `KAPANDI`. Bu plan ilk yazımda (değerlendirme, 2026-10-02) "yeni dosya" idi; nav döngüsü F5-09'u önce uyguladığından **F5-09'a eklenen küçük bir değişikliğe** uyarlandı (2026-10-02, birleştirme sırasında) |
@@ -128,3 +128,27 @@ git diff gece/2026-10-02-nav...bot/F5-54 -- BotCore/NavStuck.h | grep -c "^-[^-]
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-03
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `072d6b5` (kod commit'i `c5cda0b`; taban `gece/2026-10-02-nav`; paralel hat `nav`, sunuculara dokunulmadı)
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, yeni uyarı yok | ✔ | `./tools/build.sh Release` rc=0; `touch Tests/BotCoreTests/NavStuckTests.cpp` ile yeniden derlemede `NavStuck`/uyarı/`C4xxx` çıktısı yok |
+| K2 Debug rc=0, yeni uyarı yok | ✔ | `./tools/build.sh Debug` rc=0, günlükte `warning` 0 |
+| K3 `0 failed`, altı yeni test `[ OK ]`, mevcut testler geçer | ✔ | `run-tests.sh Release` ve `Debug`: `198 tests, 0 failed`; altı ad iki yapılandırmada `[ OK ]` |
+| K4 üç senaryo 600 sn yanlış alarm 0, çıktı `packets`/`false_alarms` | ✔ | `walk45/sprint67/target45: packets=398 false_alarms=0`; `forced_delay: packets=39 false_alarms=0` |
+| K5 `NoProgress` yalnızca ≥ 3200 ms sonra; pencere dolmadan alarm yok | ✔ | `NavStuckTests.cpp` `NavStuckCadence_Stuck`: t<3200 `None`, ilk alarm tam 3200 `NoProgress`; 1,2 m/3,2 sn ve `moving=false` → `None`; `NavStuck.h:241-247` anchor ≤ eşik kuralı |
+| K6 yasaklı include/dinamik bellek/static yok, ASCII+CRLF | ✔ | `grep windows.h\|stdafx\|GameServer\|shared/` boş; eklenen satırlarda `new/malloc/static/vector` yok; `file`: ASCII, CRLF (574/574 satır `\r`) |
+| K7 yalnızca `+`, kapsam, `diff --check` | ✔ | `grep -c "^-[^-]"` iki dosyada `0`; `--stat`: `NavStuck.h` +98, `NavStuckTests.cpp` +291, plan dosyası; `GameServer/`, `shared/`, `docs/`, `.vcxproj` farkı yok; `git diff --check` boş |
+| K8 (Claude) bağımsız Python simülasyonu | ✔ | `/tmp/f554_sim.py` (detektör mantığı bağımsız yeniden yazıldı, 200 tohum × 3 senaryo × 600 sn): ~397 paket, en çok alarm 0; 2500 ms gecikme alarmsız; F5-09 varsayılanı paket-anı beslemede 0, tick beslemede 21–66 alarm (≥ 1), hazır ayar tick beslemede 0 — uygulayıcının ölçümüyle (398 paket / 0; varsayılan 33 alarm) uyumlu |
+
+**Bulgular (engel değil; not):**
+
+1. `Tests/BotCoreTests/NavStuckTests.cpp` `NavStuckCadence_DefaultsFalseAlarm`: plan "paket konumlarıyla besle" derken uygulayıcı bilinçli olarak her tick (100 ms) besledi. Gerekçe doğru: `docs/12` §13.3 notu da yanlış alarmın tick beslemede çıktığını yazar; paket-anı beslemede varsayılan 0 verir (Python ile teyit edildi). Sapma Uygulayıcı Raporu'nda belirtilmiş, kabul edilir.
+2. `BotCore/NavStuck.h:494-570` `NavGuardBlockDetector`: halka 16 olay; pencere (3200 ms) içinde > 16 olay olursa en eski `OnPacketSent` ezilebilir ve `Blocked` yanlışlıkla `true` dönebilir. Gerçek kullanımda guard reddi paket başına (≥ 1,5 sn) olduğundan 3,2 sn'de ≤ ~3 olay beklenir; tehlike yok. F5-55 bağlaması reddi tick başına çağırırsa yeniden bakılmalı.
+3. `NavStuckCadence_Stuck` 100 ms örnekler (plan üretecinin paket-anı örneklemesi 3200 sınırını gösteremez): kabul, rapora yazılmış.
+
+Çalışma zamanı doğrulaması F5-55'te (T-NAV-04); eşikler `[A]`.
