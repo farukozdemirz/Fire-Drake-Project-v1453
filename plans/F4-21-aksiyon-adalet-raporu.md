@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `d803438`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-21` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-06 (`tools/bot-telemetry-report.py`) — `KAPANDI`; F4-20 (`SCRIPT_*` telemetrisi) — `KAPANDI` (merge `e36d9d1`); F4-01..F4-18 (`ACTION_*`/`FAIRNESS_REJECT` yazan kod) — `KAPANDI` |
