@@ -189,7 +189,6 @@ Açık teknik kararlar: ADR-0008 (L1, F9), ilgili fazda verilecek.
 
 | Konu | Etki | Sahibi | Not |
 |---|---|---|---|
-| 2026-10-02 19:30 otonom döngü | /plan-olustur iki denemede de plan yazmadı. | Claude (sabah) | `plans/_logs/auto-loop.log` |
 | F1, F2 ve F3 faz kabulü | F1 (T-ENV-ARENA, T-DATA-02/03, skill/buff/pot; T-MECH-DMG-01..03 GEÇTİ), F2 (T-ARCH-01..04 proje sahibi tarafından GEÇTİ, faz raporu taslağı güncellenmeli) ve F3 (T-ARCH-05 + ertelenen `decisions`/16 bot ölçümü) bekliyor; gece modunda F4'e geçildi, kabul verilmedi | Proje sahibi | `docs/phase-reports/F1-taslak.md`, `F2-taslak.md`, `F3-taslak.md`; testler aşağıda "Proje sahibi testleri (bekleyen)" |
 
 ## Proje sahibi test sonuçları (2026-10-02, yapıldı)
