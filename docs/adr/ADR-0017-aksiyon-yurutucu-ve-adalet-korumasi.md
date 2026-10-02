@@ -30,3 +30,14 @@ F4 botun tüm temel aksiyonlarını **gerçek handler'lar** üzerinden ve CLI s�
 
 ## Doğrulama
 F4-01: birim testleri (`Motion_*`), `ENABLED=1` altında `move`/`stop`/guard reddi çalışma zamanı sınamaları (`plans/F4-01-aksiyon-yurutucu-hareket.md` §7), `ACTION_*` ve `FAIRNESS_REJECT` telemetri satırları.
+
+## Ek (F4-02): saldırı dilimi (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-02-aksiyon-yurutucu-saldiri.md`
+
+1. **Aksiyon = gerçek `WIZ_ATTACK` + `HandlePacket`** (Karar 1'in devamı). Alan sırası `bType=1, bResult=1, tid, delaytime = silah.Delay + 10, distance = hedefe mesafe × 10` (`docs/03` T-MECH-CLIENT-02). Sunucunun `Attack()` kapıları (kör/ölü, gecikme, `FREEZE`) sessiz döndüğünde bot bunu `no_result` olarak görür.
+2. **Sonuç yalnızca sunucunun yayınladığı sonuç paketinden okunur** (`WIZ_ATTACK, bType, bResult, saldıranId, tid`; `SendToRegion` saldıranı da kapsar, `CUser::Send` bot alıcısını aynı thread'de çağırır). `ACTION_RESULT` eşlemesi: `1` → `hit`, `2/3` → `killed`, `0` → `srv_fail` (MET-ACT-02 paydasına girer), paket yoksa `no_result`. Hedefin HP'sine/hasara bakılmaz (AC-LRN-03: bot, gerçek oyuncunun göremeyeceği bilgiyle sonuç çıkarmaz).
+3. **Guard kuralları saf mantık olarak `BotCore/BotCombat.h`'de** (Karar 2/3 deseni): menzil (MEC-R-04, `distance ≤ m_sRange` 0,1 m biriminde; sunucunun `15 + menzil` m cömertliğinden **dar**, çünkü gerçek istemci yalnızca silah menzilinde vurur), vuruş aralığı (CLI-01: `max(Delay × 10 ms, 1000 ms)`; 1000 ms zemini MEC-R-07 + `UNIXTIME` 1 sn çözünürlüğü) ve aksiyon hızı tavanı (CLI-11: kayan pencerede ≤ 6/sn, hareket hariç). Aralık, çağıran zamanlamayla zaten sağlanır; guard'ın `TOO_SOON` kuralı savunma katmanıdır ve normal akışta tetiklenmez (yalnızca gerçek ihlalde `FAIRNESS_REJECT`).
+4. **Hedef girdisi geçicidir:** `/bot attack <bot> <hedefbot> [adet]` test komutu hedef konumunu/kimliğini hedef botun oturumundan okur ve `AttackTarget` yapısıyla `ActionExecutor`'a verir. Bu, üretim algısı değildir; `Perception` dilimi (sıradaki F4 planları) kaynağı değiştirir, `AttackTarget` arayüzü kalır. Sözleşme denetimi (AC-LRN-03, "sözleşme dışı algı erişimi 0") o dilimde yapılır; o zamana dek algı okuyan tek yer `BotManager::TickSessions()`'taki test sürücüsüdür.
+5. **CLI-02 bu dilimde yok:** F1 ölçümü R ile skill arasında kilit olmadığını gösterdi (`docs/03` §14); cast diliminde R ve skill bağımsız zamanlayıcılar olarak uygulanır. Saldırı hızı buff'ı (`BUFF_TYPE_ATTACK_SPEED`) algı gelene kadar uygulanmaz; aralık tavan kalır (buff yokken doğru).
+6. **Ölüm/yeniden doğuş kapsam dışı:** hedef ölürse seri `killed` ile biter; `Regene`/ölüm yönetimi ayrı dilimde. Test serileri kısa (≤ 5 vuruş) ve botların HP'si 32000.
