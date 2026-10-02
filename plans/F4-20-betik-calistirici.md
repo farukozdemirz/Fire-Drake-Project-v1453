@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `e36d9d1`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-20` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`) — `KAPANDI` (merge `66342b7`); F3-03 (`ScenarioRunner` kalıbı) — `KAPANDI`; F4-01..F4-18 (betiğin sürdüğü komutlar) — `KAPANDI` |

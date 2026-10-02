@@ -133,6 +133,8 @@ Tanımlarda "fırsat", botun **o anda** aksiyon yapabileceği durumdur: canlı, 
 | MET-ACT-03 | Fırsat → aksiyon gecikmesi | p50/p95 | p95 ≤ 400 ms |
 | MET-FAIR-01 | Fairness guard reddi | `FAIRNESS_REJECT` sayısı / bot-saat | Bilgi amaçlı; reddin **kendisi** sorun değildir ama sunucuya giden ihlal 0 olmalı. Sunucuya ihlalli aksiyon ulaşması (guard atlatılmışsa) = 0 |
 
+MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetrideki karşılığı `ACTION_RESULT.ok=false` ve `reason` ∈ {`srv_fail`, `handler_noop`, `refused_*`} (geçersiz); `no_result` ayrı sütundur, paya girmez; payda tüm `ACTION_SUBMIT`. Hüküm: PASS ≤ %1 (F4 kapısı), WARN ≤ %2, FAIL > %2. MET-FAIR-01 bot-saat oranı tahmindir. Hesaplayan araç: `tools/bot-telemetry-report.py` (F4-21).
+
 ### 6.2 Hedefleme ve baskı
 
 | Kimlik | Ad | Tanım | Başlangıç eşiği |
