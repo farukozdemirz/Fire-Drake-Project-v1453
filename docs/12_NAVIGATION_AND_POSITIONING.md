@@ -62,8 +62,8 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 ### 4.2 Hareketli hedef
 
 - Hedefin son 1 sn'lik hız vektöründen öngörü noktası: `p + v·min(1,5 sn, mesafe/kendi_hız)`.
-- Yeniden planlama: hedef ≥ 6 m yer değiştirdiğinde veya 500 ms'de bir (hangisi önce).
-- Menzil hedefi: yol, hedefin etrafında rol menzili halkasındaki en yakın ulaşılabilir hücreye planlanır (warrior: melee halkası; mage: P-MAG-PREF-RANGE).
+- Yeniden planlama: hedef, **son planın yapıldığı konumdan** ≥ 6 m yer değiştirdiğinde veya son plandan 500 ms geçtiğinde (hangisi önce). Hız kestirimi en yeni gözlemden geriye 1 sn içindeki en eski örnekle yapılır; aralık < 100 ms ya da en yeni gözlem > 1 sn eskiyse hız 0. Öngörü noktası yürünebilir değilse süre yarıya indirilir (en çok 3 kez), olmazsa hedefin mevcut konumu kullanılır (`BotCore/NavTrack.h`, ADR-0006 Eki F5-04, F5-04 planı).
+- Menzil hedefi: yol, hedefin etrafında rol menzili halkasındaki en yakın ulaşılabilir hücreye planlanır (warrior: melee halkası; mage: P-MAG-PREF-RANGE). Halka, öngörü noktasından `[ringMinM, ringMaxM]` metre (hücre merkezi uzaklığı); etkin üst sınır en az hücre köşegeninin yarısıdır (4 m ızgarada 2,83 m). "En yakın" = bota octile uzaklığa göre sıralı `Walk` adaylar; en çok 3 aday için A* denenir `[A]`.
 
 ### 4.3 Ulaşılamayan hedef
 
@@ -168,3 +168,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.0+ | §4.1 ve §11 T-NAV-03: `NodeLimit` anlamı ve sorgu dağılımı notu (ADR-0006, F5-02 planı) |
 | 2026-10-02 | v1.0+ | §4.1 yol düzleştirme: `EdgeOpen` tabanlı Bresenham görünürlüğü, açgözlü ayıklama ve `P-NAV-SMOOTH-LOOKAHEAD` `[A]` (ADR-0006 Eki F5-03, F5-03 planı) |
+| 2026-10-02 | v1.0+ | §4.2 hareketli hedef: gözlem/planlama ayrımı, hız kestirimi penceresi, öngörü geri çekilmesi, menzil halkası tanımı (ADR-0006 Eki F5-04, F5-04 planı) |
