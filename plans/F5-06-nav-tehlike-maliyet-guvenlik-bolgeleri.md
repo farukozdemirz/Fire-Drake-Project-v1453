@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-06` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`); F5-05 `KAPANDI` (merge `c5788d7`), bu planın testleri 106 testin üstüne eklenir |
@@ -312,3 +312,66 @@ git diff gece/2026-10-02-nav...bot/F5-06 -- BotCore/NavPath.h
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
 ### Tur 1
+
+- **Durum:** UYGULANDI.
+- **Branch / commit:** `bot/F5-06` (taban: `gece/2026-10-02-nav`); `ef926e3` — `[F5-06] Tehlike maliyet katmanlari ve guvenlik bolgeleri (BotCore/NavDanger.h)`.
+- **Değişen dosyalar:**
+  - `BotCore/NavDanger.h` (yeni, 318 satır): `NavThreatKind`/`NavThreat`/`NavThreatParams`, `NavCostLayer`, `NavCostParams`, `NavCostField`, `NavCellPenalty`, `NavZoneParams`, `NavBuildTeamZones`. Başlık-yalnızca; yalnızca `NavGrid.h` + `<algorithm> <cmath> <cstddef> <cstdint> <vector>`; ASCII + CRLF + tab + Allman.
+  - `BotCore/NavPath.h` (değişti, +45/−6): `#include "NavDanger.h"`, yorumlar, `NavPathResult::length`, `Find`'a isteğe bağlı `const NavCostField *` parametresi (ağırlıklı adım + yasaklı hücreye dışarıdan giriş yasağı + yasaklı hedefte `InvalidGoal`), `field == nullptr` yolu bit düzeyinde eski. Diff yalnızca §5.2 değişiklikleri.
+  - `Tests/BotCoreTests/NavDangerTests.cpp` (yeni, 1614 satır): sekiz test (`NavDanger_Layer_Basics`, `_Band_Values`, `_Threats`, `_Penalty`, `_Path_Field`, `_Path_Optimal`, `_RealMap`, `_Perf`), bağımsız Dijkstra çapraz doğrulaması, gerçek harita + `SKIPPED` kalıbı. ASCII + CRLF.
+  - `BotCore/BotCore.vcxproj` (+1 `<ClInclude Include="NavDanger.h" />`), `Tests/BotCoreTests/BotCoreTests.vcxproj` (+1 `<ClCompile Include="NavDangerTests.cpp" />`); BOM/CRLF korundu; `.filters` dosyası yok.
+- **Derleme:** `./tools/build.sh Release` ve `Debug` hatasız (rc=0). `touch` ile zorla yeniden derlenen `NavDanger.h`/`NavPath.h`/`NavDangerTests.cpp` için **tek uyarı yok** (Level 4). Release çıktısının son satırları:
+  ```
+    NavDangerTests.cpp
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ```
+- **Kabul kriterleri (öz-değerlendirme):**
+  - K1 ✔: Release/Debug hatasız, `BotCore`/`BotCoreTests` yeni uyarı 0 (zorla yeniden derleme, tüm çıktıda `warning` yok).
+  - K2 ✔: `--list` sekiz `NavDanger_*` adını içeriyor.
+  - K3 ✔: `114 tests, 0 failed`; tüm eski testler + sekiz yeni `[ OK ]`; `SKIPPED` yok; `NAVDANGER random maps: … found=1838 invalid_goal=60 no_path=1102`, `NAVDANGER real: …` ve üç `NAVDANGER perf …` satırı var.
+  - K4 ✔: `build/nav/zone71.navgrid` geçici taşındığında `NavDanger_` rc=0, `NavDanger_RealMap`/`NavDanger_Perf` `SKIPPED`, diğer altı `[ OK ]`; dosya geri kondu.
+  - K5 ✔: `./tools/run-tests.sh Debug` rc=0, `114 tests, 0 failed` (`NAVDANGER perf set=zones queries=100`, süre kapısı yok).
+  - K6 ✔: band sıfır-olmayan hücre 101 / 553, `223`/`96`/`153`/`19`; S1 `139,882`; S2 `191,255`; S3 `66,142`/`63,314`; S4 start-içeride `251,598` ve `(18,20)→(22,20)` `176,0`; S4b `NoPath`; S5 `32,0`; `InvalidGoal`; Dijkstra eşitliği 3000 çiftte uyuşmazlık 0; gerçek harita `elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232`, `arena A->B cost=660.617 default=689.103`, çapraz çift `plain=310.676 field=315.363` (`field` yolu halkaya girmez, `forbidden=0`), start-içeride `forb=22`, halka taraması `violations=0`.
+  - K7 ✔ (Release; üçü de kapıların altında: ≤ 2,000 / ≤ 0,500; `nproc=16`, Ryzen 7 7800X3D, WSL):
+    ```
+    NAVDANGER perf set=zones queries=1000 found=991 nopath=4 nodelimit=5 expanded_p50=357 expanded_p95=2588 ms_p50=0.105 ms_p95=0.676 ms_p99=1.284
+    NAVDANGER perf set=threats queries=1000 found=991 nopath=4 nodelimit=5 expanded_p50=380 expanded_p95=2989 ms_p50=0.111 ms_p95=0.769 ms_p99=1.369
+    NAVDANGER perf rebuild samples=1000 threats=12 ms_p50=0.074 ms_p95=0.079 ms_p99=0.081
+    ```
+  - K8 ✔: `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavDanger.h` boş; `include` listesinde `NavPath.h` yok; `git diff --stat gece/2026-10-02-nav...bot/F5-06` yalnızca §4'teki beş dosyayı (+ bu plan dosyası) gösterir; `git diff … -- BotCore/NavPath.h` yalnızca §5.2 değişiklikleri.
+  - K9 ✔: `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10, `NavReach_` 8, hepsi `0 failed`; `NAVPATH T-NAV-03 set=near64 found=997 expanded_p50=306 expanded_p95=2431 ms_p95=0.540`; `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400`; `NAVREACH real: components=143 largest=88279 pockets=229`.
+- **Plandan sapmalar:** Yok. (Tek fark, test içi bir parametre sırası: `NavDanger_Penalty` (d)'de `wClear=2.0` ile `clearFree=3` ayrı `NavCostParams` nesneleriyle kuruldu; planın beklenti sayıları bağımsız parametre varsayımına dayanıyordu. Uygulama kodu değişmedi.)
+- **Açık sorular:** Yok. `NavFollower`/`NavReach`'in alanı kullanması ve `Detour`'ın `length`'e geçirilmesi plan gereği ertelendi (F5-07 ve bağlama planı).
+
+---
+
+## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI.** Paralel hat `nav` (`AUTO_LOOP=1`, `AUTO_TRACK=nav`): birleştirme/push yapılmadı (döngü betiği yapar). Sunucuya dokunulmadı; yalnız yanlışlıkla bir kez salt-okunur `tools/run-servers.sh status` çağrıldı (üç sunucu `[DOWN]`, hiçbir şey başlatılıp durdurulmadı).
+- İncelenen commit: `de7f62c` (`bot/F5-06`; kod `ef926e3`, ardından yalnızca uygulayıcı raporu). Taban: `gece/2026-10-02-nav`. Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme, yeni uyarı yok | ✔ | `NavDanger.h`, `NavPath.h`, `NavDangerTests.cpp` `touch` ile zorlandı, `./tools/build.sh Release` (tüm çözüm) rc=0; çıktıda `warning` satırı 0 |
+| K2 sekiz test adı | ✔ | `--list` 114 satır; sekiz `NavDanger_*` adı tam |
+| K3 tam Release koşusu | ✔ | rc=0, `114 tests, 0 failed`, `SKIPPED` 0; sekiz yeni test `[ OK ]`; `NAVDANGER random maps: seeds=30 pairs=3000 found=1838 invalid_goal=60 no_path=1102` (eşikler 1000/20/300), `NAVDANGER real: …` ve üç `NAVDANGER perf …` satırı var |
+| K4 harita yokken | ✔ | `zone71.navgrid` geçici `.bak`'a taşındı: `NavDanger_` rc=0, `8 tests, 0 failed`, `NavDanger_RealMap` ve `NavDanger_Perf` `SKIPPED`, diğer altı `[ OK ]`; dosya geri kondu (`ls build/nav`) |
+| K5 Debug (derleme dahil) | ✔ | `./tools/run-tests.sh Debug` rc=0, `114 tests, 0 failed`, çıktıda `warning` 0; Debug'da `queries=100`, süre kapısı yok (`ms_p95=20.299`) |
+| K6 davranış sayıları | ✔ | Release+Debug `[ OK ]`: band sıfır-olmayan hücre 101/553 (`NavDangerTests.cpp:426,440`); `Path_Field` S1 139,882 / S2 191,255 / S3 66,142 ve 63,314 / S4 251,598 ve 176,0 / S5 (`:845-930`); `Path_Optimal` 3000 çiftte uyuşmazlık 0; `real: elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232; arena A->B cost=660.617 default=689.103; cross plain=310.676 field=315.363; start-inside cost=1171.853 forb=22; ring sweep … violations=0` |
+| K7 süre (Release) | ✔ | kendi koşumum (`nproc=16`): `set=zones queries=1000 … ms_p95=0.698`, `set=threats queries=1000 … ms_p95=0.739`, `rebuild samples=1000 … ms_p95=0.080` (kapılar 2,000 / 2,000 / 0,500); uygulayıcının satırları (0,676 / 0,769 / 0,079) ve `nproc` bilgisi raporda var, benim ölçümümle tutarlı |
+| K8 saflık/kapsam | ✔ | `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavDanger.h` boş; `include` listesi `NavGrid.h` + beş standart başlık (`NavPath.h` yok); `git diff --stat gece/2026-10-02-nav...bot/F5-06` 6 dosya: `BotCore.vcxproj` +1, `NavDanger.h` +318, `NavPath.h` +45/−6, `BotCoreTests.vcxproj` +1, `NavDangerTests.cpp` +1614, kendi plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavTrack.h`, `NavReach.h`, `NavSmooth.h` yok; `NavPath.h` farkı yalnızca §5.2 maddeleri (include+yorum, `InvalidGoal` yorumu, `length`, `Find` imzası/gövdesi) |
+| K9 F5-01..F5-05 bozulmadı | ✔ | `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10, `NavReach_` 8: hepsi rc=0 `0 failed`, testler değişmemiş; `NAVPATH T-NAV-03 set=near64 … found=997 expanded_p50=306 expanded_p95=2431 ms_p95=0.531` (taban 0,54; kötüleşme yok); `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400`; `NAVREACH real: components=143 largest=88279 pockets=229` |
+
+Kural/biçim denetimi: `NavDanger.h` (318/318), `NavDangerTests.cpp` (1614/1614) ve `NavPath.h` (292/292) satırları CRLF (çalışma ağacı; depo `core.autocrlf=true`, blob LF, eski `NavGrid.h`/`NavReach.h` ile aynı), ASCII dışı 0, boşluk girintisi 0; vcxproj'lar BOM (`efbbbf`) + CRLF korunmuş, yalnızca birer satır eklenmiş (plan §5.4 konumları); `.filters` yok. `NavDanger.h` saf (yalnız standart başlıklar, global/`static` durum yok, `printf` yok, `#pragma once`). `build/` commit edilmemiş. Plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişmiş; `docs/`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, başka plan değişmemiş. Mekanik/bot-avantajı/thread/DB/sunucu kuralları bu plana uygulanmaz (saf `BotCore`, sunucusuz); `proj-GameServer.vcxproj` değişmemiş.
+
+Kod incelemesi: `RefDijkstra` (`NavDangerTests.cpp:204-272`) A*'tan bağımsız kendi döngüsü (`priority_queue`, `EdgeOpen`, aynı yasaklı kuralı ve adım formülü) ve sıfır ağırlık eşdeğerliği testi `plain.cost == out.cost` bit düzeyinde (`:826-829`); `NavCellPenalty` (`NavDanger.h:95-119`) plan §5.1 madde 6 ile birebir; `Find` yasaklı kuralı (`NavPath.h:109-113, 200-202`) doğrulama sırası ve "dışarıdan girilemez, içeriden serbest" kuralıyla uyumlu; `length` hem ana döngüde hem `start == goal` yolunda (0) doğru. Uygulayıcının sapma bildirimi (yalnız `NavDanger_Penalty` (d)'de test içi parametre nesnesi sırası) kod davranışını etkilemiyor.
+
+Bulgular (engel değil, önem sırasıyla):
+
+1. `BotCore/NavPath.h:177-178` — `penCur`/`curForbidden` her genişletmede `weighted` koşuluyla hesaplanıyor ve kenar döngüsünde `if (!weighted)` (`:193`) var; plan §5.2 madde 4 "alan yok yoluna ek dallanma eklenmesin" demişti. Sonuç bit düzeyinde eski ile aynı ve `near64` `ms_p95=0.531` (taban 0,54), yani ölçülebilir maliyet yok; K9 kapısı geçiyor. İleride sıcak döngü baskı altında kalırsa `weighted` için ayrı bir kenar döngüsü düşünülebilir.
+2. `Tests/BotCoreTests/NavDangerTests.cpp:1496-1511` ve `:1530-1544` — `NavDanger_Perf` içinde 12 tehlike üretimi (`dyn = elm` + `AddThreats`) ısınma ve ölçüm döngülerinde kopya kod; ısınma da ayrıca ölçülen kümenin ilk 20 çiftini kullanıyor (planın "aynı kümeden 20 ek çift" ifadesinden küçük fark; kapı payı 2,7×+ olduğundan etkisiz).
+3. Rapor/plan sayı farkı: çapraz çift alan maliyeti raporda `315.363`, planda `315.362` (`0,05` toleransı içinde; float yuvarlama). `random maps` sayaçları prototipten farklı (`1838/60/1102`; C++ `Rng` farklı örnek, plan önceden belirtmişti).
+
+Kayıtlar: `plans/README.md`, `docs/STATUS.md` güncellendi. Birleştirme (`bot/F5-06` → `gece/2026-10-02-nav`) döngü betiğindedir; push yok. Faz kapısı: F5'in diğer planları (F5-07..) sürüyor.

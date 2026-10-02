@@ -80,6 +80,7 @@
     <ClCompile Include="CombatTests.cpp" />
     <ClCompile Include="MotionTests.cpp" />
     <ClCompile Include="NavGridTests.cpp" />
+    <ClCompile Include="NavDangerTests.cpp" />
     <ClCompile Include="NavPathTests.cpp" />
     <ClCompile Include="NavSmoothTests.cpp" />
     <ClCompile Include="NavTrackTests.cpp" />
