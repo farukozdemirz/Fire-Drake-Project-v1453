@@ -84,6 +84,9 @@
     <ClCompile Include="Bot\BotManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Bot\ActionExecutor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Bot\BotSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -207,6 +210,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Bot\BotManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Bot\ActionExecutor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Bot\IBotSink.h">

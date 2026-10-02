@@ -191,6 +191,7 @@
     <ClCompile Include="PacketTrace.cpp" />
     <ClCompile Include="DamageTrace.cpp" />
     <ClCompile Include="Bot\BotManager.cpp" />
+    <ClCompile Include="Bot\ActionExecutor.cpp" />
     <ClCompile Include="Bot\BotSession.cpp" />
     <ClCompile Include="Bot\Telemetry.cpp" />
     <ClCompile Include="Bot\ScenarioRunner.cpp" />
@@ -285,6 +286,7 @@
     <ClInclude Include="PacketTrace.h" />
     <ClInclude Include="DamageTrace.h" />
     <ClInclude Include="Bot\BotManager.h" />
+    <ClInclude Include="Bot\ActionExecutor.h" />
     <ClInclude Include="Bot\IBotSink.h" />
     <ClInclude Include="Bot\BotSession.h" />
     <ClInclude Include="Bot\Telemetry.h" />
