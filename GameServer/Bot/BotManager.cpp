@@ -1388,20 +1388,41 @@ void BotManager::CommandCast(const std::string & args)
 	{
 		if (_stricmp(words[0].c_str(), "all") == 0)
 		{
-			uint32 stopped = 0, notCasting = 0;
+			uint32 stopped = 0, notCasting = 0, refused = 0;
 			for (size_t i = 0; i < m_sessions.size(); i++)
 			{
 				BotSession * s = m_sessions[i];
 				if (s->m_phase != BotSession::PHASE_IN_GAME)
 					continue;
 
+				CastOutcome cancel = ActionExecutor::CancelCast(s, "cmd", now);
 				char message[224];
-				if (s->m_castPhase != BotSession::CAST_IDLE)
+				if (cancel.kind == CastOutcome::SENT)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd cast: %s cast cancelled after %u packet(s) sent",
+						s->m_charName.c_str(), (unsigned)s->m_castPackets);
+					stopped++;
+				}
+				else if (cancel.kind == CastOutcome::FAILED)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd cast: %s cancel failed (%s)",
+						s->m_charName.c_str(), cancel.reason);
+					stopped++;
+				}
+				else if (cancel.kind == CastOutcome::REFUSED)
+				{
+					snprintf(message, sizeof(message),
+						"BotManager: cmd cast: %s cancel refused (%s); still casting",
+						s->m_charName.c_str(), cancel.reason);
+					refused++;
+				}
+				else if (std::strcmp(cancel.reason, "dropped") == 0)
 				{
 					snprintf(message, sizeof(message),
 						"BotManager: cmd cast: %s stopped after %u packet(s) sent",
 						s->m_charName.c_str(), (unsigned)s->m_castPackets);
-					ActionExecutor::EndCast(s);
 					stopped++;
 				}
 				else
@@ -1415,8 +1436,8 @@ void BotManager::CommandCast(const std::string & args)
 
 			char summary[128];
 			snprintf(summary, sizeof(summary),
-				"BotManager: cmd cast all: %u stopped, %u not casting",
-				(unsigned)stopped, (unsigned)notCasting);
+				"BotManager: cmd cast all: %u stopped, %u not casting, %u refused",
+				(unsigned)stopped, (unsigned)notCasting, (unsigned)refused);
 			WriteBotLog(summary);
 			return;
 		}
@@ -1442,19 +1463,27 @@ void BotManager::CommandCast(const std::string & args)
 			return;
 		}
 
+		CastOutcome cancel = ActionExecutor::CancelCast(s, "cmd", now);
 		char message[224];
-		if (s->m_castPhase != BotSession::CAST_IDLE)
-		{
+		if (cancel.kind == CastOutcome::SENT)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s cast cancelled after %u packet(s) sent",
+				s->m_charName.c_str(), (unsigned)s->m_castPackets);
+		else if (cancel.kind == CastOutcome::FAILED)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s cancel failed (%s)",
+				s->m_charName.c_str(), cancel.reason);
+		else if (cancel.kind == CastOutcome::REFUSED)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd cast: %s cancel refused (%s); still casting",
+				s->m_charName.c_str(), cancel.reason);
+		else if (std::strcmp(cancel.reason, "dropped") == 0)
 			snprintf(message, sizeof(message),
 				"BotManager: cmd cast: %s stopped after %u packet(s) sent",
 				s->m_charName.c_str(), (unsigned)s->m_castPackets);
-			ActionExecutor::EndCast(s);
-		}
 		else
-		{
 			snprintf(message, sizeof(message),
 				"BotManager: cmd cast: %s not casting", s->m_charName.c_str());
-		}
 		WriteBotLog(message);
 		return;
 	}
@@ -2884,23 +2913,50 @@ void BotManager::TickSessions()
 				{
 					s->m_deadSeen = false;
 
-					MoveOutcome outcome = ActionExecutor::TickMove(s, now);
-					if (outcome.kind == MoveOutcome::ARRIVED)
+					// ADR-0017 Ek F4-24 / CLI-03: moving while a cast waits for EFFECTING cancels it first (cancel packet, then move).
+					bool moveHeld = false;
+					if (s->m_moveActive && s->m_castPhase == BotSession::CAST_CASTING)
 					{
+						CastOutcome cancel = ActionExecutor::CancelCast(s, "move", now);
+						if (cancel.kind == CastOutcome::REFUSED)
+							moveHeld = true;   // rate: the move must not overtake its cancel, retry next tick
+
 						char message[224];
-						snprintf(message, sizeof(message),
-							"BotManager: bot %s arrived at (%.1f, %.1f) after %u packets",
-							s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
-							(unsigned)s->m_movePackets);
+						if (cancel.kind == CastOutcome::SENT)
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s cast cancelled by move after %u packet(s) sent",
+								s->m_charName.c_str(), (unsigned)s->m_castPackets);
+						else if (cancel.kind == CastOutcome::FAILED)
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s cast cancel failed (%s)",
+								s->m_charName.c_str(), cancel.reason);
+						else
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s cast cancel deferred (%s)",
+								s->m_charName.c_str(), cancel.reason);
 						WriteBotLog(message);
 					}
-					else if (outcome.kind == MoveOutcome::REFUSED || outcome.kind == MoveOutcome::FAILED)
+
+					if (!moveHeld)
 					{
-						char message[224];
-						snprintf(message, sizeof(message),
-							"BotManager: bot %s move stopped (%s)",
-							s->m_charName.c_str(), outcome.reason);
-						WriteBotLog(message);
+						MoveOutcome outcome = ActionExecutor::TickMove(s, now);
+						if (outcome.kind == MoveOutcome::ARRIVED)
+						{
+							char message[224];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s arrived at (%.1f, %.1f) after %u packets",
+								s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
+								(unsigned)s->m_movePackets);
+							WriteBotLog(message);
+						}
+						else if (outcome.kind == MoveOutcome::REFUSED || outcome.kind == MoveOutcome::FAILED)
+						{
+							char message[224];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s move stopped (%s)",
+								s->m_charName.c_str(), outcome.reason);
+							WriteBotLog(message);
+						}
 					}
 
 					UserInOutcome userIn = ActionExecutor::TickUserIn(s, now);

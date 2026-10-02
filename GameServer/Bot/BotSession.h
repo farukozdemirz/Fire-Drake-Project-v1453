@@ -94,6 +94,7 @@ public:
 	uint32 m_castCycle;                                    // IOCP thread only: cycles started in this series (1-based in telemetry)
 	uint32 m_castDone;                                     // IOCP thread only: cycles whose EFFECTING result was effected/missed
 	uint32 m_castPackets;                                  // IOCP thread only: WIZ_MAGIC_PROCESS packets sent in this series
+	int16 m_castTargetId;                                  // IOCP thread only: target id sent with CASTING (the cancel packet carries it)
 	std::chrono::steady_clock::time_point m_castCastingAt; // IOCP thread only: when CASTING went out (phase CAST_CASTING)
 	std::map<uint32, std::chrono::steady_clock::time_point> m_castSkillLast;   // IOCP thread only: skill id -> last EFFECTING sent
 	bool m_castTypeHas[8];                                 // IOCP thread only: per skill type 0..7

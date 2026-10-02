@@ -47,7 +47,8 @@ struct CastOutcome
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "effected", "missed", "srv_fail", "no_result",
 	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "bad_target",
-	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early"
+	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
+	                       // "stopping", "cancelled", "dropped", "idle"
 };
 
 struct PotionOutcome
@@ -213,6 +214,14 @@ public:
 
 	// Clears the cast state without sending anything (stop, despawn, target lost). Keeps the reuse timers.
 	static void EndCast(BotSession * s);
+
+	// Ends the cast series. Only a series whose CASTING packet is in flight (m_castPhase == CAST_CASTING) needs a packet:
+	// one WIZ_MAGIC_PROCESS MAGIC_FAIL with sData[3] = -100 through CUser::HandlePacket() after the guard (CLI-03, CLI-11).
+	// 'cause' ("cmd" / "move") is telemetry text only. Result only from the reply the server published to the caster
+	// (m_castEcho). NOTHING "idle": no series. NOTHING "dropped": ARMED series, nothing in flight, dropped without a
+	// packet (or the session cannot send). SENT "cancelled": the echo (MAGIC_FAIL, -100) arrived, series ended.
+	// FAILED "no_result": no echo, series ended anyway. REFUSED "rate": guard (FAIRNESS_REJECT written), series KEPT.
+	static CastOutcome CancelCast(BotSession * s, const char * cause, std::chrono::steady_clock::time_point now);
 
 	// Classifies one bag item for the perception snapshot: 1 = HP pot, 2 = MP pot, 0 = this bot cannot drink it
 	// (unknown item, no Effect1, class/level mismatch, unknown skill, or not a supported pot shape). Applies the same

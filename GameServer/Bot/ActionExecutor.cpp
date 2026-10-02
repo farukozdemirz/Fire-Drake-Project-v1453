@@ -790,6 +790,17 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 		return out;
 	}
 
+	// CLI-09: a UseStanding skill needs a stop packet and at least one tick before the cast starts. Only the ARMED
+	// phase is held; the next Tick() re-evaluates (the guard below still rejects "not_standing" as a safety net).
+	if (s->m_castPhase == BotSession::CAST_ARMED
+		&& BotCore::PlanStanding(m->sUseStanding == 1, s->m_moveActive) == BotCore::STAND_STOP_FIRST)
+	{
+		StopMove(s, now);
+		out.kind = CastOutcome::SENT;
+		out.reason = "stopping";
+		return out;
+	}
+
 	// Target view (metres).
 	float dx = target.x - user->GetX();
 	float dz = target.z - user->GetZ();
@@ -877,6 +888,7 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 			{
 				s->m_castPhase = BotSession::CAST_CASTING;
 				s->m_castCastingAt = now;
+				s->m_castTargetId = target.id;
 				return cast;
 			}
 
@@ -955,6 +967,121 @@ void ActionExecutor::EndCast(BotSession * s)
 
 	s->m_castPhase = BotSession::CAST_IDLE;
 	s->m_castLeft = 0;
+}
+
+// Ends the cast series. Only a series whose CASTING packet is in flight (m_castPhase == CAST_CASTING) needs a packet:
+// one WIZ_MAGIC_PROCESS MAGIC_FAIL with sData[3] = -100 through CUser::HandlePacket() after the guard (CLI-03, CLI-11).
+// 'cause' ("cmd" / "move") is telemetry text only. Result only from the reply the server published to the caster
+// (m_castEcho). NOTHING "idle": no series. NOTHING "dropped": ARMED series, nothing in flight, dropped without a
+// packet (or the session cannot send). SENT "cancelled": the echo (MAGIC_FAIL, -100) arrived, series ended.
+// FAILED "no_result": no echo, series ended anyway. REFUSED "rate": guard (FAIRNESS_REJECT written), series KEPT.
+CastOutcome ActionExecutor::CancelCast(BotSession * s, const char * cause,
+	std::chrono::steady_clock::time_point now)
+{
+	CastOutcome out;
+	out.kind = CastOutcome::NOTHING;
+	out.reason = "idle";
+
+	if (s == nullptr || s->m_castPhase == BotSession::CAST_IDLE)
+		return out;
+
+	// ARMED: no CASTING packet is in flight, nothing to tell the server.
+	if (s->m_castPhase == BotSession::CAST_ARMED)
+	{
+		EndCast(s);
+		out.reason = "dropped";
+		return out;
+	}
+
+	CUser * user = s->m_pUser;
+	if (user == nullptr || !user->isInGame() || user->isDead())
+	{
+		EndCast(s);
+		out.reason = "dropped";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	if (BotCore::CheckCastCancel(true, inWindow) != BotCore::CANCEL_OK)
+	{
+		uint32 rejectId = NextDecisionId(s);
+		EmitFairnessReject(s, user, rejectId, "CastCancel", "CLI-11", "rate",
+			(float)inWindow, (float)BotCore::kMaxActionsPerWindow);
+
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "rate";
+		return out;
+	}
+
+	uint32 sinceCastingMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_castCastingAt).count();
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"CastCancel\""
+			+ ",\"skill\":" + std::to_string(s->m_castSkillId)
+			+ ",\"target\":" + std::to_string((int)s->m_castTargetId)
+			+ ",\"cause\":\"" + cause + "\""
+			+ ",\"since_casting_ms\":" + std::to_string(sinceCastingMs);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	Packet pkt(WIZ_MAGIC_PROCESS);
+	pkt << uint8(MAGIC_FAIL) << uint32(s->m_castSkillId) << int16(user->GetID())
+		<< int16(s->m_castTargetId)
+		<< int16(0) << int16(0) << int16(0)
+		<< int16(BotCore::kCastCancelCode) << int16(0) << int16(0);
+
+	s->m_castEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_castPackets++;
+	s->m_actionWindow.Record(nowMs);
+
+	uint64 echo = s->m_castEcho.load();
+	int op = -1;
+	int code = 0;
+	bool ok = false;
+	const char * reason = "no_result";
+	if ((echo & (1ull << 63)) != 0
+		&& (uint32)(echo & 0xFFFFFFFF) == s->m_castSkillId)
+	{
+		op = (int)((echo >> 48) & 0xF);
+		code = (int)(int16)((echo >> 32) & 0xFFFF);
+		if (op == MAGIC_FAIL && code == BotCore::kCastCancelCode)
+		{
+			ok = true;
+			reason = "cancelled";
+		}
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"CastCancel\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"op\":" + std::to_string(op)
+			+ ",\"code\":" + std::to_string(code)
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	EndCast(s);
+	out.kind = ok ? CastOutcome::SENT : CastOutcome::FAILED;
+	out.reason = reason;
+	return out;
 }
 
 // --- potion slice (ADR-0017 Ek F4-04) ---
