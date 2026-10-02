@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-57 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`), **F5-54** (`NavPacketCadenceParams()` ve `NavGuardBlockDetector`) — `KAPANDI` olmalı |
@@ -182,4 +182,62 @@ plans/F5-57-nav-niyet-ve-gercek-ilerleme.md — Doğrulama Turu 1 düzeltmeleri.
 8. NavStuckTests.cpp NavProgress_UTurn_vs_Displacement: kullanılmayan `route` değişkenini ve `(void)route;` satırını sil; `grid`, F5-09 kontrast bloğunda kullanıldığı için kalır.
 9. tools/nav-measure/nav_measure.cpp'de kod değişikliği YOK: yalnızca koş; madde 2 sonrası `PROGRESS_TRUE evaluator=assessor detected_after_ms=3200` olmalı, çıktıyı rapora yaz.
 10. Maddelerden sonra: ./tools/build.sh Release ve Debug (rc=0, yeni uyarı yok), ./tools/run-tests.sh Release ve Debug (0 failed; sekiz yeni ad hâlâ [ OK ]; test sayısı 217 kalır; yeni alt vakalar mevcut sekiz vakanın içine eklenir), tools/nav-measure.sh stuck ve progress (F5-09 varsayılanı 6, cadence_3200 0, assessor 0 ve PROGRESS_TRUE assessor 3200). Rapora: yeni NAVPROGRESS normal satırları, replan ve dondurulmuş süpürmenin ilk Stalled anları, derleme/test çıktıları. Kontrol: `git diff gece/2026-10-02-nav...bot/F5-57 -- BotCore/NavStuck.h Tests/BotCoreTests/NavStuckTests.cpp` yalnızca `+` satırları olmalı (Tur 1 eklerini düzenlemek taban farkında `-` üretmez).
+```
+
+---
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-57` (taban: `gece/2026-10-02-nav`). Düzeltme commit'i `e716339` (NavStuck.h + NavStuckTests.cpp), ardından rapor/`Durum` commit'i.
+- Düzeltme talimatı 1-10, tek tek:
+  1. ✔ `m_progressBaseM` kaldırıldı, yerine `int64_t m_replanMs = 0;`. `NotifyReplan(int64_t nowMs, float)` `m_hasProgressBase = true; m_replanMs = nowMs;` (rota parametresi adsız, `// reserved: the baseline is the first packet sent after the replan`). `Reset()` ve `SetIntent(true)` içinde `m_replanMs = 0`. Assess adım (5) çapa seçiminde `m_hasProgressBase` iken yalnızca `t >= m_replanMs` olan paketler çapa olabilir; `m_hasProgressBase == false` (Öklid yedeği) davranışı aynen kaldı; paket geçmişi silinmiyor (guard/Awaiting kararları geçmişi kullanmaya devam ediyor).
+  2. ✔ `winStart = nowMs - ((int64_t)params.periods * (int64_t)params.periodMs + (int64_t)params.toleranceMs)` (varsayılanda 3200 ms). Başka kural değişmedi.
+  3. ✔ Üç yorum eklendi: bütünleşme sözleşmesi (a, `NavProgressVerdict` üstünde), `NotifyReplan` çağıran sözleşmesi (b, bildirim yanında), `AwaitingPacket` (c, Assess adım (4) yorumunda).
+  4. ✔ `NavProgress_Stalled`'a dondurulmuş süpürme eklendi (1500, sonra her 1500 ms, `routeProgressM = 0`, `NotifyReplan(0, 0)`, 0..12000 ms 10 ms adım): ilk `Stalled` = **4700 ms** (`CHECK(firstStall >= 0)`, `CHECK(firstStall >= 1500 + 3200)`). Mevcut "span 3200 ms" yorumları pencere ifadesine çevrildi.
+  5. ✔ `corner45` gerçek köşeli rotayla değiştirildi, `corner_dense` eklendi; `RunProgressWalk` artık `totalLen`'i polylinden hesaplıyor ve paketin `routeProgressM`'ini `NavRouteProgressM(route.data(), (int)route.size(), x, z)` ile veriyor (`distToGoalM = totalLen - pos` kaldı). Dört senaryo × üç modelde `stalled == 0`, `stalledEpisodes == 0`, `stuckEpisodes == 0`, `progressing > awaiting`. Test sayısı 217 kaldı.
+  6. ✔ `NavProgress_Arrival_Replan` replan alt vakası iki gerçek alt vakaya çevrildi: (i) eski rotadan sonra `NotifyReplan(4600)`, yeni rotada sağlıklı paketler → 4500..10500 süpürmesinde `Stalled` **yok**; (ii) aynı replan, yeni rotada dondurulmuş paketler → ilk `Stalled` = **9200 ms** (`>= 6000 + 3200`).
+  7. ✔ `NavProgress_Awaiting`'e 2,5 sn gecikme vakası eklendi (1500/3000/5500/7000/8500, `routeProgressM` 0/6,75/13,5/20,25/27,0, `NotifyReplan(0,0)`): 0..8500 süpürmesinde `Stalled` **yok**; 3000+1651..5499 aralığında sonuç `AwaitingPacket`.
+  8. ✔ `NavProgress_UTurn_vs_Displacement`'ten kullanılmayan `route` ve `(void)route;` silindi; `grid` (F5-09 kontrastı) kaldı.
+  9. ✔ `tools/nav-measure/nav_measure.cpp`'de kod değişikliği **yok**; koşuldu: `PROGRESS_TRUE evaluator=assessor detected_after_ms=3200`.
+  10. ✔ Aşağıdaki derleme/test/ölçüm ve `git diff gece/2026-10-02-nav...bot/F5-57 -- BotCore/NavStuck.h Tests/BotCoreTests/NavStuckTests.cpp` yalnızca `+` satırları.
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/NavStuck.h` (madde 1-3): yalnızca `+` satırları (taban farkında `-` yok).
+  - `Tests/BotCoreTests/NavStuckTests.cpp` (madde 4-8) + iki kanıt `printf` satırı; yalnızca `+` satırları (taban farkında `-` yok).
+  - `tools/nav-measure/nav_measure.cpp`: dokunulmadı.
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0.
+  - `touch BotCore/NavStuck.h Tests/BotCoreTests/NavStuckTests.cpp` sonrası her iki yapılandırmada değişen dosyalarda yeni uyarı yok (çıktıda yalnızca `NavStuckTests.cpp` derlendi).
+- Test sonucu:
+  - `./tools/run-tests.sh Release`: `217 tests, 0 failed`; sekiz `NavProgress_*` adı `[ OK ]`; F5-09/F5-54 testleri değişmeden geçti.
+  - `./tools/run-tests.sh Debug`: `217 tests, 0 failed`.
+  - Yeni kanıt satırları: `NAVPROGRESS stalled frozen first_ms=4700`, `NAVPROGRESS replan frozen first_ms=9200`.
+- Yeni `NAVPROGRESS normal` satırları (Release; `walk45` örnek, `corner45`/`corner_dense` bunlarla birebir aynı):
+  ```
+  NAVPROGRESS normal walk45 model=0 ticks=6001 stalled=0 awaiting=15 progressing=5986 false_alarms=0 monitor_episodes=0
+  NAVPROGRESS normal walk45 model=1 ticks=6594 stalled=0 awaiting=17 progressing=6577 false_alarms=0 monitor_episodes=0
+  NAVPROGRESS normal walk45 model=2 ticks=6383 stalled=0 awaiting=16 progressing=6367 false_alarms=0 monitor_episodes=0
+  NAVPROGRESS normal corner45 model=0/1/2 ... (walk45 ile birebir aynı)
+  NAVPROGRESS normal corner_dense model=0/1/2 ... (walk45 ile birebir aynı)
+  ```
+- `tools/nav-measure.sh stuck` (güncel kod):
+  - `tick110.8+-20+3%late250` / `every_tick`: `F5-09_default false_episodes=6`, `cadence_3200 0`; diğer modellerde 0.
+  - `STUCK_TRUE F5-09_default 1500`, `STUCK_TRUE cadence_3200 3200`.
+- `tools/nav-measure.sh progress` (güncel kod):
+  - `tick110.8+-20+3%late250`: `F5-09_default false_episodes=6 first_ms=138917`, `cadence_3200 0`, `assessor 0`; diğer modellerde 0.
+  - `PROGRESS_TRUE evaluator=F5-09_default detected_after_ms=1500`, `evaluator=cadence_3200 detected_after_ms=3200`, `evaluator=assessor detected_after_ms=3200`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1-K3 ✔: Release/Debug rc=0 (yeni uyarı yok); `217 tests, 0 failed` her iki yapılandırmada; sekiz `NavProgress_*` adı `[ OK ]`.
+  - K4 ✔ (düzeltilmiş): dört senaryo × üç modelde `stalled == 0`, `stuckEpisodes == 0` (satırlar raporun üstünde). `corner45`/`corner_dense` artık köşeli rotaları kullanıyor ve izdüşüm (`NavRouteProgressM`) yolundan geçiyor; bkz. aşağıdaki sapma.
+  - K5 ✔: dondurulmuş süpürmede ilk `Stalled` tam **4700** ms (pencere `toleranceMs` ile 3200 ms); replan sonrası sağlıklı yürüyüşte `Stalled` yok (B1 kapandı), dondurulmuş replanda ilk `Stalled` **9200** ms; (`Awaiting`/`Blocked`/`Idle` iken `Stalled` yok, U-dönüşü `Progressing`).
+  - K6 ✔: yasak başlık yok; yeni kod dinamik bellek/global durum içermiyor; `git diff gece/2026-10-02-nav...bot/F5-57 -- <iki dosya>` yalnızca `+` satırları (silinen 0).
+  - K7 ✔: `git diff --stat` yalnızca §4'teki iki kod dosyası; `GameServer/`, `shared/`, `docs/`, `.vcxproj` farkı 0; dosyalar ASCII + CRLF; `git diff --check` boş.
+  - K8 (Claude): `stuck`/`progress` güncel kodda koşuldu; F5-09 varsayılanı 6 yanlış epizodunun `cadence_3200`/`assessor` ile 0'a indiği ve `PROGRESS_TRUE assessor 3200` doğrulandı.
+  - K9: kapsam dışı (oyun içi kanıt F5-55).
+- Plandan sapmalar / notlar:
+  - **`corner45`/`corner_dense` satırları `walk45` ile birebir aynı çıktı (talimatın beklediği "farklı çıktı" gerçekleşmedi).** Neden: `RunProgressWalk` sayaçları yalnızca paket zamanlamasına (hız, tohum, tick modeli) bağlı; rota şekli yalnızca içerideki `(x,z)` ve izdüşüm ilerlemesini değiştirir ve `Stalled`/varış yokken `stalled`/`awaiting`/`progressing` sayılarını etkilemez. İzdüşüm yolu artık sınanıyor; fark CHECK'i (istendiği gibi) eklenmedi.
+  - İlk `Stalled` anları için iki `printf` satırı eklendi (talimatta açıkça istenmedi); dosyanın mevcut `printf` kanıt tarzına uyuyor ve Tur 1'deki kanıt satırlarının yerini alıyor.
+  - Tur 1'deki karar gereği `NotifyReplan` çağıran sözleşmesi (`docs/12` §13.3 + F5-55) Claude tarafından eklenecek; bu turda dokümana dokunulmadı.
+- Açık sorular:
+  - Yok. (Talimat 1-10 eksiksiz uygulandı.)
 ```
