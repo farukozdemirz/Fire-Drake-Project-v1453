@@ -1203,3 +1203,621 @@ TEST_CASE("NavTrack_Perf")
 	runSet(0.0f, 0.0f, "exact");
 	runSet(30.0f, 45.0f, "mage");
 }
+
+// ---------- F5-56: velocity estimation robustness (arrival jitter, bunching, loss, jumps) ----------
+namespace
+{
+	struct VelObs
+	{
+		int64_t t = 0;
+		float x = 0.0f;
+		int16_t speed = -1;
+	};
+
+	struct VelStats
+	{
+		int ticks = 0;
+		int zero = 0;
+		double p50 = 0.0;
+		double p95 = 0.0;
+		double max = 0.0;
+	};
+
+	float Quant1(double v)
+	{
+		return (float)(std::floor(v * 10.0 + 0.5) / 10.0);
+	}
+
+	// Target walking east at 4.5 m/s, observed every intervalMs. The stamp is the arrival time
+	// (send time + uniform jitter); the position is the send-time position (0.1 m rounded), so
+	// arrival jitter is a real error source. bunchProb batches a packet with the next one (two
+	// packets processed within 10 ms, queue drain), modelled by moving it onto the next nominal
+	// arrival so no artificial holes appear.
+	std::vector<VelObs> GenCadence(uint64_t seed, int intervalMs, double jitterMs, double bunchProb)
+	{
+		std::vector<int64_t> sends;
+		for (int64_t t = 1000; t < 120000; t += intervalMs)
+			sends.push_back(t);
+
+		BotCore::Rng rng(seed);
+		std::vector<double> nominal(sends.size());
+		for (size_t i = 0; i < sends.size(); ++i)
+			nominal[i] = (double)sends[i] + (rng.NextDouble() * 2.0 - 1.0) * jitterMs;
+
+		std::vector<double> arrival(nominal);
+		if (bunchProb > 0.0)
+		{
+			for (size_t i = 1; i + 1 < sends.size(); )
+			{
+				if (rng.NextDouble() < bunchProb)
+				{
+					arrival[i] = nominal[i + 1] - rng.NextDouble() * 10.0;
+					i += 2;   // a queue batch holds two packets at most
+				}
+				else
+				{
+					++i;
+				}
+			}
+		}
+
+		std::vector<VelObs> out;
+		out.reserve(sends.size());
+		int64_t prev = -1;
+		for (size_t i = 0; i < sends.size(); ++i)
+		{
+			int64_t t = (int64_t)std::llround(arrival[i]);
+			if (t <= prev)
+				t = prev + 1;
+			out.push_back(VelObs{ t, Quant1(4.5 * (double)sends[i] / 1000.0), (int16_t)45 });
+			prev = t;
+		}
+		return out;
+	}
+
+	std::vector<VelObs> GenVariable(uint64_t seed)
+	{
+		BotCore::Rng rng(seed);
+		std::vector<VelObs> out;
+		int64_t t = 1000;
+		while (t < 120000)
+		{
+			out.push_back(VelObs{ t, Quant1(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1000 + (int64_t)rng.NextBelow(1501);
+		}
+		return out;
+	}
+
+	std::vector<VelObs> GenLoss(uint64_t)
+	{
+		std::vector<VelObs> out;
+		int64_t t = 1000;
+		int k = 0;
+		while (t < 120000)
+		{
+			if (k % 4 != 3)
+				out.push_back(VelObs{ t, Quant1(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1500;
+			++k;
+		}
+		return out;
+	}
+
+	// One fresh tracker per tick: every observation up to `now` is replayed, matching the tool.
+	VelStats RunVel(const std::vector<VelObs> & obs, double mps, int windowMs, int minSpanMs)
+	{
+		VelStats s;
+		std::vector<double> errs;
+		const int64_t end = obs.back().t + windowMs;
+		for (int64_t now = obs.front().t; now <= end; now += 100)
+		{
+			BotCore::NavTargetTracker t;
+			for (size_t i = 0; i < obs.size(); ++i)
+			{
+				if (obs[i].t > now)
+					break;
+				t.Observe(obs[i].t, obs[i].x, 0.0f, obs[i].speed);
+			}
+			if (t.Count() < 2)
+				continue;
+
+			int64_t nt = 0;
+			float nx = 0.0f;
+			float nz = 0.0f;
+			t.Latest(nt, nx, nz);
+			if (now - nt > windowMs)
+				continue;
+
+			float vx = 0.0f;
+			float vz = 0.0f;
+			t.Velocity(now, windowMs, minSpanMs, vx, vz);
+			const double mag = std::sqrt((double)vx * vx + (double)vz * vz);
+			++s.ticks;
+			if (mag <= 1e-3)
+				++s.zero;
+			else
+				errs.push_back(std::fabs(mag - mps) / mps);
+		}
+		std::sort(errs.begin(), errs.end());
+		s.p50 = PercentileDouble(errs, 0.50);
+		s.p95 = PercentileDouble(errs, 0.95);
+		s.max = errs.empty() ? 0.0 : errs.back();
+		return s;
+	}
+
+	void RunSeeds(const char * name, std::vector<VelObs> (*gen)(uint64_t), double mps,
+		double p95Limit, double maxLimit, double zeroLimit)
+	{
+		double worstP95 = 0.0, worstMax = 0.0, worstZero = 0.0;
+		int p95Seed = 0, maxSeed = 0;
+		for (int seed = 1; seed <= 20; ++seed)
+		{
+			const VelStats s = RunVel(gen((uint64_t)seed), mps, 4000, 400);
+			const double zp = s.ticks > 0 ? 100.0 * (double)s.zero / (double)s.ticks : 0.0;
+			if (s.p95 > worstP95)
+			{
+				worstP95 = s.p95;
+				p95Seed = seed;
+			}
+			if (s.max > worstMax)
+			{
+				worstMax = s.max;
+				maxSeed = seed;
+			}
+			if (zp > worstZero)
+				worstZero = zp;
+		}
+		std::printf("NAVTRACK velrobust %s: p95=%.4f (seed %d) max=%.4f (seed %d) zero_pct=%.3f\n",
+			name, worstP95, p95Seed, worstMax, maxSeed, worstZero);
+		CHECK(worstZero <= zeroLimit);
+		CHECK(worstP95 <= p95Limit);
+		CHECK(worstMax <= maxLimit);
+	}
+
+	long long RunChase(const BotCore::NavGrid & grid, BotCore::NavPathfinder & pf, uint64_t seed,
+		bool perfect, int cadenceMs, double jitterMs, double lossProb)
+	{
+		BotCore::Rng rng(seed);
+		std::vector<int64_t> obsTimes;
+		if (perfect)
+		{
+			for (int64_t t = 0; t <= 24000; t += 100)
+				obsTimes.push_back(t);
+		}
+		else
+		{
+			int64_t prev = -1;
+			for (int64_t s = 0; s <= 24000; s += cadenceMs)
+			{
+				if (rng.NextDouble() < lossProb)
+					continue;
+				int64_t t = (int64_t)std::llround((double)s + (rng.NextDouble() * 2.0 - 1.0) * jitterMs);
+				if (t <= prev)
+					t = prev + 1;
+				obsTimes.push_back(t);
+				prev = t;
+			}
+		}
+
+		BotCore::NavFollower follower;
+		BotCore::NavFollowParams params;
+		double botX = 82.0, botZ = 162.0;
+		std::vector<BotCore::NavCell> route;
+		size_t oi = 0;
+		long long caught = 0;
+		for (long long t = 0; t <= 24000; t += 100)
+		{
+			while (oi < obsTimes.size() && obsTimes[oi] <= t)
+			{
+				const double ox = 122.0 + 0.6 * ((double)obsTimes[oi] / 100.0);
+				follower.ObserveTarget(obsTimes[oi], (float)ox, 162.0f);
+				++oi;
+			}
+
+			if (follower.Update(grid, pf, t, (float)botX, (float)botZ, 9.0f, params))
+			{
+				if (follower.Plan().status == BotCore::NavFollowStatus::Planned)
+				{
+					route.clear();
+					const std::vector<BotCore::NavCell> & wp = follower.Plan().smooth.waypoints;
+					for (size_t i = 1; i < wp.size(); ++i)
+						route.push_back(wp[i]);
+				}
+				else
+				{
+					route.clear();
+				}
+			}
+
+			double move = 0.9;
+			while (move > 1e-9 && !route.empty())
+			{
+				const double wx = grid.CellCenter(route[0].x);
+				const double wz = grid.CellCenter(route[0].z);
+				const double ddx = wx - botX;
+				const double ddz = wz - botZ;
+				const double d = std::sqrt(ddx * ddx + ddz * ddz);
+				if (d <= move)
+				{
+					botX = wx;
+					botZ = wz;
+					move -= d;
+					route.erase(route.begin());
+				}
+				else
+				{
+					botX += ddx / d * move;
+					botZ += ddz / d * move;
+					move = 0.0;
+				}
+			}
+
+			const double tx = 122.0 + 0.6 * ((double)t / 100.0);
+			const double d = std::sqrt((tx - botX) * (tx - botX) + (162.0 - botZ) * (162.0 - botZ));
+			if (caught == 0 && d <= 6.0)
+				caught = t + 100;
+		}
+		return caught;
+	}
+}
+
+TEST_CASE("NavTrack_VelocityRobust_ArrivalJitter")
+{
+	RunSeeds("ArrivalJitter", +[](uint64_t s) { return GenCadence(s, 1500, 150.0, 0.0); },
+		4.5, 0.20, 0.30, 0.0);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_ArrivalBunching")
+{
+	RunSeeds("ArrivalBunching", +[](uint64_t s) { return GenCadence(s, 1500, 150.0, 0.05); },
+		4.5, 0.20, 0.60, 1.0);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_VariableInterval")
+{
+	RunSeeds("VariableInterval", &GenVariable, 4.5, 0.10, 0.20, 0.0);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_PacketLoss")
+{
+	RunSeeds("PacketLoss", &GenLoss, 4.5, 0.10, 0.20, 0.0);
+
+	// A 4500 ms hole is outside the 4000 ms window: the estimate is 0 through the hole and
+	// recovers after two new observations (one packet of transient).
+	BotCore::NavTargetTracker g;
+	g.Observe(1000, 0.0f, 0.0f, (int16_t)-1);
+	g.Observe(2500, 6.75f, 0.0f, (int16_t)-1);
+	float vx = 0.0f;
+	float vz = 0.0f;
+	g.Velocity(6500, 4000, 400, vx, vz);   // age == window, still valid
+	CHECK(std::fabs(vx - 4.5f) < 1e-3f);
+	for (int64_t now = 6501; now < 7000; now += 100)
+	{
+		g.Velocity(now, 4000, 400, vx, vz);
+		CHECK_EQ(vx, 0.0f);
+		CHECK_EQ(vz, 0.0f);
+	}
+
+	g.Observe(7000, 27.0f, 0.0f, (int16_t)-1);   // the gap is 4500 ms
+	g.Velocity(7000, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);   // transient: the only pair is outside the window
+	CHECK_EQ(vz, 0.0f);
+
+	g.Observe(8500, 33.75f, 0.0f, (int16_t)-1);
+	g.Velocity(8500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.5f) < 1e-3f);
+	CHECK(std::fabs(vz) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_Stale")
+{
+	// Age == window is still valid; window + 1 is stale.
+	BotCore::NavTargetTracker t;
+	t.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	t.Observe(1000, 5.0f, 0.0f, (int16_t)-1);
+	float vx = 0.0f;
+	float vz = 0.0f;
+	t.Velocity(5000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 5.0f) < 1e-3f);
+	t.Velocity(5001, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+
+	// The follower adds observation age to the lead but never extrapolates past maxExtrapSec.
+	const int n = 40;
+	const float unit = 4.0f;
+	BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	BotCore::NavFollower f;
+	f.ObserveTarget(0, 100.0f, 100.0f, (int16_t)-1);
+	f.ObserveTarget(1000, 105.0f, 100.0f, (int16_t)-1);
+	CHECK(f.Update(grid, pf, 4000, 60.0f, 100.0f, 8.0f, params));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(f.Plan().leadSec <= params.maxLeadSec + 1e-4f);   // lead is capped at maxLeadSec (1.5 s)
+	CHECK(std::fabs(f.Plan().predX - 105.0f) <= 5.0f * 3.0f + 1e-3f);
+	CHECK(grid.Walk(grid.CellOf(f.Plan().predX), grid.CellOf(f.Plan().predZ)));
+}
+
+TEST_CASE("NavTrack_VelocityRobust_StopStart")
+{
+	BotCore::NavTargetTracker t;
+	CHECK(t.Observe(0, 0.0f, 0.0f, (int16_t)45));
+	CHECK(t.Observe(1500, 6.75f, 0.0f, (int16_t)45));
+	CHECK(t.Observe(3000, 13.5f, 0.0f, (int16_t)45));
+	CHECK(t.Observe(4500, 20.25f, 0.0f, (int16_t)0));   // stopped (speed field 0)
+
+	float vx = 0.0f;
+	float vz = 0.0f;
+	for (int64_t now = 4500; now < 9500; now += 100)
+	{
+		t.Velocity(now, 4000, 400, vx, vz);
+		CHECK_EQ(vx, 0.0f);
+		CHECK_EQ(vz, 0.0f);
+	}
+
+	// Motion resumes at 9500: the first moving sample is alone in the window (age relationship),
+	// the second pairs against it only and never mixes the pre-stop samples.
+	CHECK(t.Observe(9500, 27.0f, 0.0f, (int16_t)45));
+	t.Velocity(9500, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+	CHECK(t.Observe(11000, 33.75f, 0.0f, (int16_t)45));
+	t.Velocity(11000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.5f) < 1e-3f);
+	CHECK(std::fabs(vz) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_Reverse180")
+{
+	BotCore::NavTargetTracker t;
+	t.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	t.Observe(1500, 6.75f, 0.0f, (int16_t)45);
+	t.Observe(3000, 13.5f, 0.0f, (int16_t)45);
+
+	float vx = 0.0f;
+	float vz = 0.0f;
+	t.Velocity(3000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.5f) < 1e-3f);
+
+	t.Observe(4500, 6.75f, 0.0f, (int16_t)45);   // target turned 180 degrees
+	t.Velocity(4500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx + 4.5f) < 1e-3f);   // already reversed at the first post-turn packet
+
+	t.Observe(6000, 0.0f, 0.0f, (int16_t)45);
+	t.Velocity(6000, 4000, 400, vx, vz);
+	const float mag = std::sqrt(vx * vx + vz * vz);
+	CHECK(std::fabs(mag - 4.5f) <= 0.25f * 4.5f);
+	CHECK(std::fabs(vx + 4.5f) < 1e-3f);   // direction error 0 deg (<= 15)
+
+	// Follower: after the reverse the prediction point stays walkable (back-off keeps it on the grid).
+	const int n = 40;
+	const float unit = 4.0f;
+	BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	BotCore::NavFollower f;
+	const float xs[6] = { 100.0f, 106.75f, 113.5f, 106.75f, 100.0f, 93.25f };
+	for (int k = 0; k < 6; ++k)
+		f.ObserveTarget((int64_t)k * 1500, xs[k], 100.0f, (int16_t)45);
+	CHECK(f.Update(grid, pf, 7500, 60.0f, 100.0f, 8.0f, params));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(grid.Walk(grid.CellOf(f.Plan().predX), grid.CellOf(f.Plan().predZ)));
+
+	// F5-56 Tur 2: a turn that falls between two observations (overshoot to 16.875 at 3750, then
+	// back: packets at 4500 = 13.5, 6000 = 6.75). The transition sample must not report +x over
+	// the clamp; the next packet recovers the reversed velocity.
+	BotCore::NavTargetTracker o;
+	o.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	o.Observe(1500, 6.75f, 0.0f, (int16_t)45);
+	o.Observe(3000, 13.5f, 0.0f, (int16_t)45);
+	o.Observe(4500, 13.5f, 0.0f, (int16_t)45);   // turn at 3750, overshoot returns to 13.5
+	o.Velocity(4500, 4000, 400, vx, vz);
+	CHECK(vx <= 1e-3f);                            // direction -x or 0, never +x
+	CHECK(std::sqrt(vx * vx + vz * vz) <= 4.95f);  // never above the walk clamp
+	o.Observe(6000, 6.75f, 0.0f, (int16_t)45);
+	o.Velocity(6000, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx + 4.5f) < 1e-3f);
+	CHECK(std::fabs(vz) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_SpeedChange")
+{
+	BotCore::NavTargetTracker t;
+	t.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	t.Observe(1500, 6.75f, 0.0f, (int16_t)45);
+	t.Observe(3000, 13.5f, 0.0f, (int16_t)45);
+
+	float vx = 0.0f;
+	float vz = 0.0f;
+	t.Velocity(3000, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 4.5f) <= 0.10f * 4.5f);
+
+	t.Observe(4500, 23.55f, 0.0f, (int16_t)67);   // sprint 6.7 m/s
+	t.Observe(6000, 33.6f, 0.0f, (int16_t)67);
+	t.Velocity(6000, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 6.7f) <= 0.10f * 6.7f);
+
+	t.Observe(7500, 40.35f, 0.0f, (int16_t)45);   // walk again
+	t.Velocity(7500, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 4.5f) <= 0.10f * 4.5f);
+
+	// Unknown speed (-1): the estimate comes from positions only.
+	BotCore::NavTargetTracker u;
+	u.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	u.Observe(1500, 6.75f, 0.0f, (int16_t)-1);
+	u.Observe(3000, 13.5f, 0.0f, (int16_t)-1);
+	u.Velocity(3000, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 4.5f) <= 0.10f * 4.5f);
+
+	// F5-56 Tur 2: the clamp follows the newest packet's speed field. A noisy walk packet
+	// (speed 45, implies 5.27 m/s) clamps to 4.95, never to the sprint 7.37; the same noise on a
+	// sprint packet (speed 67, implies 7.47 m/s) clamps to 7.37.
+	BotCore::NavTargetTracker w;
+	w.Observe(6000, 33.6f, 0.0f, (int16_t)45);
+	w.Observe(7500, 41.5f, 0.0f, (int16_t)45);   // true 40.35, noise +1.15 -> 5.27 m/s
+	w.Velocity(7500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.95f) < 1e-3f);
+
+	BotCore::NavTargetTracker sp;
+	sp.Observe(6000, 33.6f, 0.0f, (int16_t)67);
+	sp.Observe(7500, 44.8f, 0.0f, (int16_t)67);  // true 43.65, same +1.15 -> 7.47 m/s
+	sp.Velocity(7500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 7.37f) < 1e-3f);
+
+	// Unknown speed: a pair implying 6.7 m/s is valid (under the 10 m/s teleport cap).
+	BotCore::NavTargetTracker u67;
+	u67.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	u67.Observe(1500, 10.05f, 0.0f, (int16_t)-1);
+	u67.Velocity(1500, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 6.7f) < 1e-3f);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_Jump")
+{
+	// A single >= 50 m step (respawn / summon) with an unknown speed field: the estimator must
+	// never report the jump magnitude and the first observation after it reads 0.
+	BotCore::NavTargetTracker t;
+	CHECK(t.Observe(1000, 0.0f, 0.0f, (int16_t)-1));
+	CHECK(t.Observe(2500, 6.75f, 0.0f, (int16_t)-1));
+	CHECK(t.Observe(4000, 13.5f, 0.0f, (int16_t)-1));
+	CHECK(t.Observe(5500, 63.5f, 0.0f, (int16_t)-1));   // +50 m
+
+	float vx = 0.0f;
+	float vz = 0.0f;
+	t.Velocity(5500, 4000, 400, vx, vz);
+	CHECK(std::sqrt(vx * vx + vz * vz) < 1e-3f);
+
+	for (int64_t now = 5500; now <= 7000; now += 100)
+	{
+		float ax = 0.0f;
+		float az = 0.0f;
+		t.Velocity(now, 4000, 400, ax, az);
+		CHECK(std::sqrt(ax * ax + az * az) < 30.0f);
+	}
+
+	CHECK(t.Observe(7000, 70.25f, 0.0f, (int16_t)-1));
+	t.Velocity(7000, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 4.5f) <= 0.10f * 4.5f);
+
+	// A moderate 20 m/s step with a known speed field is still the existing clamp case, not a jump.
+	BotCore::NavTargetTracker c;
+	c.Observe(0, 0.0f, 0.0f, (int16_t)45);
+	c.Observe(500, 10.0f, 0.0f, (int16_t)45);
+	c.Velocity(500, 4000, 400, vx, vz);
+	CHECK(std::fabs(vx - 4.95f) < 1e-3f);
+
+	// F5-56 Tur 2: the guard is applied to the selected pair, so a packet bunched right after
+	// the jump cannot pair with a sample from before it and reproduce the jump magnitude.
+	BotCore::NavTargetTracker j;
+	j.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	j.Observe(1500, 6.75f, 0.0f, (int16_t)-1);
+	j.Observe(3000, 13.5f, 0.0f, (int16_t)-1);
+	j.Observe(4500, 63.5f, 0.0f, (int16_t)-1);    // +50 m jump
+	j.Observe(4505, 63.6f, 0.0f, (int16_t)-1);    // bunched packet right after the jump
+	j.Velocity(4505, 4000, 400, vx, vz);
+	CHECK(std::sqrt(vx * vx + vz * vz) < 1e-3f);   // exactly zero, not merely < 30
+
+	// Unknown speed: a +53 m jump over 2500 ms (21.3 m/s) is over the 10 m/s cap -> 0.
+	BotCore::NavTargetTracker k;
+	k.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	k.Observe(1500, 6.75f, 0.0f, (int16_t)-1);
+	k.Observe(4000, 59.75f, 0.0f, (int16_t)-1);   // +53 m over 2500 ms
+	k.Velocity(4000, 4000, 400, vx, vz);
+	CHECK(std::sqrt(vx * vx + vz * vz) < 1e-3f);
+
+	// Unknown-speed boundary: a pair implying 9 m/s stays valid, 11 m/s is rejected.
+	BotCore::NavTargetTracker v9;
+	v9.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	v9.Observe(1000, 9.0f, 0.0f, (int16_t)-1);
+	v9.Velocity(1000, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 9.0f) < 1e-3f);
+
+	BotCore::NavTargetTracker v11;
+	v11.Observe(0, 0.0f, 0.0f, (int16_t)-1);
+	v11.Observe(1000, 11.0f, 0.0f, (int16_t)-1);
+	v11.Velocity(1000, 4000, 400, vx, vz);
+	CHECK(std::sqrt(vx * vx + vz * vz) < 1e-3f);
+
+	// After the jump, two clean observations restore the 4.5 m/s estimate.
+	j.Observe(6000, 70.35f, 0.0f, (int16_t)-1);
+	j.Observe(7500, 77.1f, 0.0f, (int16_t)-1);
+	j.Velocity(7500, 4000, 400, vx, vz);
+	CHECK(std::fabs(std::sqrt(vx * vx + vz * vz) - 4.5f) <= 0.10f * 4.5f);
+}
+
+TEST_CASE("NavTrack_VelocityRobust_Quantization")
+{
+	// Positions are rounded to 0.1 m on both axes; the estimate error is bounded by the
+	// quantization (0.1 m * sqrt(2) / span) plus the [A] 5% slack. The intervals are not aligned
+	// to the 0.1 m grid and t0 keeps shifting so the rounding error is really exercised; at
+	// least one interval must show worst_abs > 0.05, proving the case is not vacuous.
+	const int intervals[7] = { 400, 413, 577, 700, 911, 1237, 1500 };
+	const double vxTrue = 3.2;
+	const double vzTrue = 3.1;
+	double bestWorst = 0.0;
+	for (int ii = 0; ii < 7; ++ii)
+	{
+		const int interval = intervals[ii];
+		double worst = 0.0;
+		for (int it = 0; it < 200; ++it)
+		{
+			const int64_t t0 = 100000 + (int64_t)it * 7;
+			BotCore::NavTargetTracker t;
+			t.Observe(t0, Quant1(vxTrue * (double)t0 / 1000.0), Quant1(vzTrue * (double)t0 / 1000.0),
+				(int16_t)-1);
+			t.Observe(t0 + interval, Quant1(vxTrue * (double)(t0 + interval) / 1000.0),
+				Quant1(vzTrue * (double)(t0 + interval) / 1000.0), (int16_t)-1);
+			float vx = 0.0f;
+			float vz = 0.0f;
+			t.Velocity(t0 + interval, 4000, 400, vx, vz);
+			const double ex = (double)vx - vxTrue;
+			const double ez = (double)vz - vzTrue;
+			const double err = std::sqrt(ex * ex + ez * ez);
+			if (err > worst)
+				worst = err;
+		}
+		const double bound = 0.1 * std::sqrt(2.0) / ((double)interval / 1000.0) + 0.05;
+		std::printf("NAVTRACK quant interval=%d worst_abs=%.3f bound=%.3f\n", interval, worst, bound);
+		CHECK(worst <= bound);
+		if (worst > bestWorst)
+			bestWorst = worst;
+	}
+	CHECK(bestWorst > 0.05);   // the case produces a real quantization error
+
+	// Below minVelocitySpanMs no estimate is produced.
+	BotCore::NavTargetTracker s;
+	s.Observe(100, 0.0f, 0.0f, (int16_t)45);
+	s.Observe(200, 0.9f, 0.0f, (int16_t)45);
+	float vx = 0.0f;
+	float vz = 0.0f;
+	s.Velocity(200, 4000, 400, vx, vz);
+	CHECK_EQ(vx, 0.0f);
+	CHECK_EQ(vz, 0.0f);
+}
+
+TEST_CASE("NavTrack_Chase_Sim_Cadence")
+{
+	// Same arena chase as NavTrack_Chase_Sim, but the target is only seen at the real WIZ_MOVE
+	// cadence (1500 ms, +-150 ms arrival jitter, 10% packet loss). The sparse observation must
+	// not slow the catch by more than 30% against perfect per-tick observation.
+	const int n = 80;
+	const float unit = 4.0f;
+	BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+
+	const long long perfect = RunChase(grid, pf, 20261002u, true, 0, 0.0, 0.0);
+	long long worstCadence = 0;
+	for (int seed = 1; seed <= 5; ++seed)
+	{
+		const long long c = RunChase(grid, pf, (uint64_t)(seed * 7919u), false, 1500, 150.0, 0.10);
+		if (c > worstCadence)
+			worstCadence = c;
+	}
+
+	std::printf("NAVTRACK chase_cadence caught_ms_perfect=%lld caught_ms_cadence=%lld\n",
+		perfect, worstCadence);
+	REQUIRE(perfect > 0);
+	REQUIRE(worstCadence > 0);
+	CHECK((double)worstCadence <= 1.3 * (double)perfect);
+}

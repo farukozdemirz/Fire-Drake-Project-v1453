@@ -38,6 +38,8 @@ namespace BotCore
 		// older sample whose span is >= minSpanMs (> 0) and <= windowMs (docs/12 s13.2: last two
 		// observations at packet cadence, or going back to a long-enough span). A positive newest
 		// speed field clamps the magnitude to speedField / 10 * 1.1 m/s (direction preserved).
+		// A selected pair implying more than 10 m/s with an unknown speed field, or more than
+		// 30 m/s with a known one, reports no velocity (teleport jump guard).
 		void Velocity(int64_t nowMs, int windowMs, int minSpanMs, float & vx, float & vz) const;
 
 	private:
@@ -286,9 +288,17 @@ namespace BotCore
 		if (span <= 0)
 			return;
 
+		// Teleport jump guard (F5-56): the selected pair may not imply an impossible speed.
+		const float dx = newest.x - oldX;
+		const float dz = newest.z - oldZ;
+		const float implied = std::sqrt(dx * dx + dz * dz) * 1000.0f / static_cast<float>(span);
+		const float limit = newest.speed < 0 ? 10.0f : 30.0f;
+		if (implied > limit)
+			return;
+
 		const float inv = 1000.0f / static_cast<float>(span);
-		vx = (newest.x - oldX) * inv;
-		vz = (newest.z - oldZ) * inv;
+		vx = dx * inv;
+		vz = dz * inv;
 
 		// A positive speed field is a magnitude hint (WIZ_MOVE speed = m/s * 10): clamp a noisy
 		// position jump to speedField / 10 * 1.1 m/s, direction preserved.
