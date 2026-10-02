@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-20` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`) — `KAPANDI` (merge `66342b7`); F3-03 (`ScenarioRunner` kalıbı) — `KAPANDI`; F4-01..F4-18 (betiğin sürdüğü komutlar) — `KAPANDI` |
@@ -256,16 +256,39 @@ file GameServer/Bot/ScriptRunner.h GameServer/Bot/ScriptRunner.cpp bots/config/s
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-20` — `<kısa-sha> [F4-20] …`
+- Branch / commit'ler: `bot/F4-20` (taban: `gece/2026-10-02`) — `ae00bde [F4-20] Betik calistirici: ScriptRunner (/bot script run|stop|status, Scripts/<ad>.txt, SCRIPT_* telemetrisi)`; plan raporu/Durum commit'i bu turun sonunda.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ScriptRunner.h` (yeni): plan §5.2'deki sınıf bildirimi aynen (`Command`, `Tick`, `LoadScript`, `CommandRun/Stop/Status`, `Finish`, üyeler).
+  - `GameServer/Bot/ScriptRunner.cpp` (yeni): plan §5.3 aynen; dosya-statik `WriteScriptLog`, `IsSafeFileStem`, `SplitWords`; `SCRIPT_LOG_CMD_MAX=120`; yol yalnızca `"./Scripts/" + name + ".txt"`; üç `SCRIPT_*` `TEL_DECISIONS` olayı; adımlar tek noktadan `m_mgr.ExecuteCommand(...)`.
+  - `GameServer/Bot/BotManager.h`: `#include "ScriptRunner.h"`, `friend class ScriptRunner;`, kurucu başlatıcısına `m_script(*this)`, üye `ScriptRunner m_script;` (§5.4).
+  - `GameServer/Bot/BotManager.cpp`: `script` dalı, `Tick()` kancası, bilinmeyen komut listesine `script` (§5.4).
+  - `GameServer/proj-GameServer.vcxproj` / `.filters`: `ScriptRunner.cpp`/`.h` öğeleri (§5.6).
+  - `bots/config/script_smoke_2bot.txt` (yeni): §5.5'teki örnek betik.
+- Derleme sonucu (`tools/build.sh Release`, `ScriptRunner.*`/`BotManager.*` `touch` edilip yeniden derlendi; yeni dosyalara atıf yapan uyarı 0; kalan uyarılar eski `GameServerDlg.cpp`/`UpgradeHandler.cpp` satırlarında):
   ```
-  …
+  ScriptRunner.cpp
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  Kod üretiliyor
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `rc=0`.
+- Birim testler: `tools/run-tests.sh` son satırı `82 tests, 0 failed` (`Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers` dahil).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; yeni dosyalara atıf yapan `warning` 0.
+  - K2 ✔ `82 tests, 0 failed`.
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F4-20` yalnızca §4'teki 7 dosyayı listeler; `BotCore/`, `Tests/`, `ScenarioRunner.*`, `ActionExecutor.*`, `BotSession.*`, `Telemetry.*`, `ChatHandler.cpp`, `docs/` yok.
+  - K4 ✔ `BotManager.*` `-` satırları tam iki tane: kurucu başlatıcı satırı ve bilinmeyen-komut mesajı satırı; kalanı `+`.
+  - K5 ✔ `Tick` ilk deyimi `if (!m_running) return;`; kurucu yalnızca üyeleri başlatır; ini grep'i boş; `fopen` tam iki satır (günlük + `LoadScript`).
+  - K6 ✔ yol yalnızca `"./Scripts/" + name + ".txt"`, önce `IsSafeFileStem`; `fopen` ile `fclose` arasında `return` yok.
+  - K7 ✔ grep yalnızca `snprintf` çağrıları + `WriteScriptLog` içindeki tek `fprintf`; `Sleep`/`thread`/`rand` yok.
+  - K8 ✔ üç `Emit`, hepsi `TEL_DECISIONS`, `bot=-1`; alan adları plan ile aynı.
+  - K9 ✔ `m_mgr.ExecuteCommand(` tek yerde (`:213`); `ActionExecutor`/`BotFairnessGuard`/`HandlePacket` grep'i boş.
+  - K10 ✔ dosya §5.5 metniyle aynı, ASCII + CRLF, `ParseScript` ile bağımsız denetlendi: `error=0`, 7 adım, son ofset 6000.
+  - K11 ✔ iki kaynak + betik `ASCII text, with CRLF line terminators`; `git diff --check` boş; `vcxproj`/`filters` farkı yalnızca eklenen dört öğe.
+  - K12 (Claude): DeepSeek işaretlemez.
+- Plandan sapmalar ve gerekçeleri: Yok. `std::max` yerine düz `if` karşılaştırması kullanıldı (`<algorithm>` planın include listesinde yok diye); `SCRIPT_LOG_CMD_MAX` birimi `static const size_t` (plan "Sabit" der; `ScenarioRunner.cpp`'deki sabitlerle aynı biçim).
+- Açık sorular: Yok.
+
 
 ---
 
