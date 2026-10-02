@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`, `gece/2026-10-02`'ye birleşti: `BotManager`, `[BOT]` ini anahtarları, `WriteBotLog`) |
@@ -226,16 +226,39 @@ file shared/SocketDefines.h shared/SocketMgr.h shared/SocketMgr.cpp GameServer/G
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-02` — `<kısa-sha> [F2-02] …`
+- Branch / commit'ler: `bot/F2-02` — `077d142 [F2-02] BOT_TICK IOCP olayi, BotTickTimer thread'i ve bos Tick() (varsayilan kapali)` + bu rapor/Durum commit'i
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `shared/SocketDefines.h`: `SOCKET_IO_EVENT_BOT_TICK = 3`, `NUM_SOCKET_IO_EVENTS = 4` (yeni olay; mevcut üç değer/sıra değişmedi).
+  - `shared/SocketMgr.h`: `BotTickHandler` typedef'i, `SetBotTickHandler`, `PostBotTick`, `s_botTickHandler` / `s_botTickPending` üyeleri; `HandleBotTick` bildirimi ve `ophandlers`'in dördüncü girişi (`&HandleBotTick`).
+  - `shared/SocketMgr.cpp`: iki statik üyenin tanımı; `SetBotTickHandler`, tek-uçuşta `PostBotTick` (kalıcı `static OverlappedStruct`), `HandleBotTick` (kancayı çağırır, sonra bayrağı temizler). İşçi döngüsü/`ShutdownThreads` dokunulmadı.
+  - `GameServer/Bot/BotManager.h`: `Thread` ön bildirimi, `<atomic>`/`<chrono>`, `StartTicking`/`Shutdown`, `TimerThreadProc`/`TickCallback`/`Tick` ve yeni üyeler (kurucu başlatmalarıyla).
+  - `GameServer/Bot/BotManager.cpp`: `TICK_MS` okuma + `[20,1000]` kısma (etkin yolda, erken dönüşten sonra); zamanlayıcı thread'i, `TickCallback`, boş `Tick()` + ilk/101. tick log satırları; `Shutdown()`.
+  - `GameServer/GameServerDlg.cpp`: `RunServer()` sonrası `StartTicking()`, yıkıcının ilk ifadesi `Shutdown()`.
+- Derleme sonucu (`tools/build.sh Release`, ilk tam derleme rc=0; değişen .cpp'ler dokunulup yeniden derlendi, son satırlar):
   ```
-  …
+    Kodun üretilmesi tamamlandı
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    Kod üretiliyor
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    0 of 13081 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` rc=0, son satır: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0. Yeni uyarı yok: `grep -a "warning" | sort -u` yalnızca eski satırlar (`GameServerDlg.cpp(812,94)` C4834, `(1139,16)`/`(1798,18)` C4267). `BotManager`/`SocketMgr`/`SocketDefines` uyarısı 0.
+  - K2 ✔ Debug rc=0; `BotManager|SocketMgr|SocketDefines` uyarısı 0.
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F2-02` yalnızca §4 dosyaları; `GameServerDlg.cpp` 3 ekleme / 0 silme; `SocketDefines.h` 2 ekleme / 1 silme; `SocketMgr.h` silinen tek satır `&HandleShutdown`; `SocketMgr.cpp` 0 silme.
+  - K4 ✔ enum `BOT_TICK=3`, `NUM=4`; `ophandlers` sırası `ReadComplete, WriteComplete, Shutdown, BotTick`; `SocketWorkerThread`/`ShutdownThreads` diff'te yok.
+  - K5 ✔ `compare_exchange_strong` ile tek-uçuş; `static OverlappedStruct` kalıcı; BOT_TICK için `new`/`delete` yok (grep'teki `new`/`delete` yalnızca mevcut işçi thread/kapanış satırları); `HandleBotTick` kancadan sonra bayrağı temizler; gönderim başarısızsa bayrak geri alınır.
+  - K6 ✔ `StartTicking()` `!m_enabled || m_timerThread != nullptr` ile döner; `TICK_MS` yalnızca `ENABLED` erken dönüşünden sonra (satır 47) okunur.
+  - K7 ✔ `Tick()`'te `g_pMain`/`CUser`/`GetLock` yok; `grep` yalnızca F2-01 `Startup`/`AcquireSlot`/`ReleaseSlot` ve `TimerThreadProc`'taki izinli `g_pMain->m_socketMgr.PostBotTick()` satırını veriyor.
+  - K8 ✔ Üç log dizgesi §5.6 metinleriyle birebir; konsola yazılmıyor (yalnızca `snprintf`+`WriteBotLog`; `printf` yalnızca F2-01 `Startup` durum satırı).
+  - K9 ✔ Yıkıcının ilk ifadesi `BotManager::Instance().Shutdown();`; `StartTicking()` `RunServer()`'dan hemen sonra.
+  - K10 ✔ `SocketDefines.h`/`SocketMgr.h`/`SocketMgr.cpp`/`Bot/*` ASCII+CRLF; `GameServerDlg.cpp` UTF-8 (BOM)+CRLF (öncekiyle aynı).
+  - K11 ✔ Kod commit'li; `git status --short` yalnızca plan dosyasını gösteriyor (bu rapor commit'ine girecek); `build/`/`Logs/` izlenmiyor. Sunucu çalıştırılmadı, `GameServer.ini` değiştirilmedi.
+- Plandan sapmalar ve gerekçeleri: `GameServerDlg.cpp` yıkıcısında okunabilirlik için `Shutdown()` satırından sonra bir boş satır eklendi (toplam 3 ekleme, K3 üst sınırı 4'ün altında). `BotManager.h`'ye `<atomic>`/`<chrono>` açıkça dahil edildi (üye tipleri başlıkta; stdafx'e bağımlılığı azaltır). Başka sapma yok.
+- Açık sorular: Yok. Çalışma zamanı doğrulaması (§7 sonu: `ENABLED=1` tick log satırları/3/3 UP, `TICK_MS=20`, `ENABLED=0` davranışı) Claude'da.
 
 ---
 
