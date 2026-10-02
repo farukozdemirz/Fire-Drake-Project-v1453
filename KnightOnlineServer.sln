@@ -23,6 +23,13 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Lua", "Scripting\Lua.vcxpro
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "shared", "shared\shared.vcxproj", "{221DE5A1-4C5A-4DC7-82A0-0BB66E0ADD01}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BotCore", "BotCore\BotCore.vcxproj", "{923A84D1-26FF-47B6-A051-DD7D261BD29C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BotCoreTests", "Tests\BotCoreTests\BotCoreTests.vcxproj", "{A45478D2-7A55-43D6-B6CB-F473CA514A2A}"
+	ProjectSection(ProjectDependencies) = postProject
+		{923A84D1-26FF-47B6-A051-DD7D261BD29C} = {923A84D1-26FF-47B6-A051-DD7D261BD29C}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -50,6 +57,14 @@ Global
 		{221DE5A1-4C5A-4DC7-82A0-0BB66E0ADD01}.Debug|Win32.Build.0 = Debug|Win32
 		{221DE5A1-4C5A-4DC7-82A0-0BB66E0ADD01}.Release|Win32.ActiveCfg = Release|Win32
 		{221DE5A1-4C5A-4DC7-82A0-0BB66E0ADD01}.Release|Win32.Build.0 = Release|Win32
+		{923A84D1-26FF-47B6-A051-DD7D261BD29C}.Debug|Win32.ActiveCfg = Debug|Win32
+		{923A84D1-26FF-47B6-A051-DD7D261BD29C}.Debug|Win32.Build.0 = Debug|Win32
+		{923A84D1-26FF-47B6-A051-DD7D261BD29C}.Release|Win32.ActiveCfg = Release|Win32
+		{923A84D1-26FF-47B6-A051-DD7D261BD29C}.Release|Win32.Build.0 = Release|Win32
+		{A45478D2-7A55-43D6-B6CB-F473CA514A2A}.Debug|Win32.ActiveCfg = Debug|Win32
+		{A45478D2-7A55-43D6-B6CB-F473CA514A2A}.Debug|Win32.Build.0 = Debug|Win32
+		{A45478D2-7A55-43D6-B6CB-F473CA514A2A}.Release|Win32.ActiveCfg = Release|Win32
+		{A45478D2-7A55-43D6-B6CB-F473CA514A2A}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
