@@ -864,7 +864,7 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 	c.standing = !s->m_moveActive;
 	c.mana = user->GetMana();
 	c.msp = (flying && s->m_castPhase != BotSession::CAST_FLYING)
-		? (uint16_t)BotCore::CastManaNeed(m->sMsp, true) : (uint16_t)m->sMsp;
+		? BotCore::CastManaNeed(m->sMsp, true) : (uint32_t)m->sMsp;
 	c.reCastMs = BotCore::CastRecastMs(m->sReCastTime);
 	c.hasSkillLast = hasSkillLast;
 	c.sinceSkillLastMs = sinceSkillLastMs;

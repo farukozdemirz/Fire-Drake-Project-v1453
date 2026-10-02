@@ -964,7 +964,7 @@ TEST_CASE("Combat_FlyingCast_Rules")
 	c.weaponRangeField = 0;
 	c.needsStanding = false;
 	c.standing = true;
-	c.msp = (uint16_t)BotCore::CastManaNeed(50, true);
+	c.msp = BotCore::CastManaNeed(50, true);
 	c.reCastMs = 4300;
 	c.typeGated = true;
 	c.hasSkillLast = false;
@@ -975,6 +975,14 @@ TEST_CASE("Combat_FlyingCast_Rules")
 	c.mana = 99;
 	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
 	c.mana = 100;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	CHECK_EQ((int)BotCore::CastManaNeed(40000, true), 80000);
+
+	c.msp = BotCore::CastManaNeed(40000, true);
+	c.mana = 79999;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
+	c.mana = 80000;
 	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
 }
 

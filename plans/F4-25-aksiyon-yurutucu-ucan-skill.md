@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-25` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `CancelCast`, `CAST_CASTING` hareketle iptal) — `KAPANDI` |
@@ -340,6 +340,35 @@ git diff --check gece/2026-10-02...bot/F4-25
   - K16 — Claude'un `/plan-dogrula` çalışma zamanı (S1–S5); DeepSeek yapmaz.
 - Plandan sapmalar ve gerekçeleri: Yok. Kod, plana birebir uygulandı; `SubmitCast` parametre sırası planın uygulayıcıya bıraktığı niyetle aynı (`sinceCastingMs, sinceFlyingMs, castMs`).
 - Açık sorular: Yok. Not: çalışma zamanı MP muhasebesi (MEC-MAG-12 çift düşüm) S1'de ölçülecek; sonuç tersi çıkarsa plan §7 gereği düzeltme turu gerekir.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-25` (taban: `gece/2026-10-02`); Tur 1 doğrulamasında bulunan tek bulgu düzeltildi (commit için bkz. branch ucu).
+- **Düzeltilen bulgu (Claude Doğrulama Turu 1, bulgu 1):** Tur 1 raporundaki "`CastStartCheck::msp` `uint32_t`'e genişletildi" cümlesi **o turda doğru değildi**: alan kodda `uint16_t` kalmış, yalnızca yorum değişmişti. Bu turda alan gerçekten `uint32_t`'e genişletildi ve dolayısıyla `ActionExecutor.cpp`'deki `(uint16_t)` daraltıcı dönüşümler kaldırıldı; raporun Tur 1'deki ifadesi yanlıştı, düzeltme şimdi yapıldı.
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/BotCombat.h` — `CastStartCheck::msp` alanı `uint16_t` → `uint32_t` (yorum satırı aynı kaldı: `// MAGIC.Msp, or CastManaNeed(...) for a flying cast`).
+  - `GameServer/Bot/ActionExecutor.cpp` — `TickCast` içindeki `c.msp` atamasında iki `(uint16_t)` dönüşümü kaldırıldı; ikinci kolda genişletici `(uint32_t)m->sMsp` kaldı (`BotCore::CastManaNeed(...)` dönüşümü artık gereksiz).
+  - `Tests/BotCoreTests/CombatTests.cpp` — `Combat_FlyingCast_Rules` içinde `c.msp = (uint16_t)BotCore::CastManaNeed(50, true);` → `c.msp = BotCore::CastManaNeed(50, true);`; aynı test fonksiyonunun sonuna iki `CHECK_EQ` eklendi (yeni `TEST_CASE` yok, test sayısı 99): `CastManaNeed(40000, true) == 80000` ve `msp = CastManaNeed(40000, true)` ile `mana = 79999` → `CAST_REJECT_NO_MANA`, `mana = 80000` → `CAST_OK`.
+- Derleme sonucu (`./tools/build.sh Release` son satırları):
+  ```
+  All 14042 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Kodun üretilmesi tamamlandı
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  ```
+  `./tools/build.sh Debug` son satırları:
+  ```
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe
+  ```
+  Değişen üç dosya (`BotCombat.h`, `ActionExecutor.cpp`, `CombatTests.cpp`) `touch` edilip yeniden derlendi; bu dosyalarda uyarı/hata yok (Release çıktısındaki tek uyarı eski `GameServer/UpgradeHandler.cpp` C4789 ×2).
+- Test sonucu:
+  - `./tools/run-tests.sh Release` son satırı: `99 tests, 0 failed` (çıktıda `[ OK ] Combat_FlyingCast_Rules`).
+  - `./tools/run-tests.sh Debug` son satırı: `99 tests, 0 failed`.
+- Diğer kontroller: `git diff --check` boş (rc=0); `file` çıktıları ASCII + CRLF (`BotCore/BotCombat.h: C++ source, ASCII text, with CRLF line terminators`, `GameServer/Bot/ActionExecutor.cpp` ve `Tests/BotCoreTests/CombatTests.cpp: C source, ASCII text, with CRLF line terminators`).
+- Kapsam: yalnızca yukarıdaki üç dosya değişti (`git diff --stat`: 3 dosya, +11/−3). Başka dosyaya dokunulmadı.
+- Plandan sapmalar: Yok; düzeltme talimatı birebir uygulandı.
+- Açık sorular: Yok. Davranış değişmediği için çalışma zamanı S1–S5 yeniden koşulmadı (Claude Doğrulama Turu 1 bulgu 4 ile aynı gerekçe); `K16` Claude'un doğrulamasındadır.
 
 ---
 

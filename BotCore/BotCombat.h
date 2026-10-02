@@ -157,7 +157,7 @@ namespace BotCore
 		bool needsStanding;         // MAGIC.UseStanding == 1
 		bool standing;              // the bot has no walk in progress
 		int32_t mana;               // caster's current MP
-		uint16_t msp;               // MAGIC.Msp, or CastManaNeed(...) for a flying cast
+		uint32_t msp;               // MAGIC.Msp, or CastManaNeed(...) for a flying cast
 		uint32_t reCastMs;          // CastRecastMs(MAGIC.ReCastTime)
 		bool hasSkillLast;          // this skill was effected earlier in this spawn
 		uint32_t sinceSkillLastMs;
