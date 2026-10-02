@@ -454,7 +454,8 @@ void CUser::ReqUserLogOut()
 	g_DBAgent.UpdateWarehouseData(GetAccountName(), UPDATE_LOGOUT, this);
 	g_DBAgent.UpdateSavedMagic(this);
 
-	if (m_bLogout != 2)	// zone change logout
+	// Bots never wrote CURRENTUSER, so there is nothing to delete (ADR-0014).
+	if (m_bLogout != 2 && m_botSink == nullptr)	// zone change logout
 		g_DBAgent.AccountLogout(GetAccountName());
 
 	// this session can be used again.

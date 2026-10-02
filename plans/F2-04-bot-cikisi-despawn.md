@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`: slot havuzu, `ReleaseSlot`), F2-02 (`KAPANDI`: `Tick()`), F2-03 (`KAPANDI`: `BotSession`, `TickSessions`, spawn) |
