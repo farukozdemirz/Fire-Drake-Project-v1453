@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-53 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-04 (`NavFollower`) — `KAPANDI` |
@@ -238,3 +238,34 @@ plans/F5-53-nav-sorgu-butcesi-ve-onbellek.md — Doğrulama Turu 1 düzeltmeleri
 7. Biçim: NavBudgetTests.cpp sonundaki fazladan boş satırı sil (`git diff --check` boş olmalı); `for (int64_t t = 0; t < endMs; t += tickMs)` satırında `{` alt satıra, `if (...) if (...)` iç içe yapısını süslü parantezlerle ve Allman ile yaz; kullanılmayan `from` değişkenini ve `(void)from` satırını sil. Dosyalar ASCII + CRLF kalsın.
 8. Raporu güncelle: §7 komutlarını Release ve Debug için yeniden çalıştır; (A)/(B)/(B2) satırlarının tam çıktısını, bot başına servis sayılarını ve `tools/nav-measure.sh budget-scheduled` çıktısını (3 koşu) Tur 2'ye yaz. Uygulayıcı Raporu'nda "bot başına servis edilen sorgu" kontrolü olmadan geçen ölçümü kabul kanıtı sayma.
 ```
+
+### Tur 2 — 2026-10-03
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `21eac54` (`bot/F5-53`, taban `gece/2026-10-02-nav`; Tur 2 kod commit'i `1910e13`). Paralel hat `nav`: sunuculara dokunulmadı, birleştirme/push yapılmadı (`AUTO_LOOP=1`).
+- **Doğrulama ortamı:** `./tools/build.sh Release` ve `Debug`, `./tools/run-tests.sh <cfg> --no-build`, `tools/nav-measure.sh budget-scheduled` (3 koşu, host `g++ -O2`), `NavBudget_RealMap_Load` Release'te 4 kez ek tekrar; test ve başlık kodunun satır satır okunması. Çalışma ağacı temizdi (`git status` boş).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, uyarı yok | ✔ | rc=0; çıktıda `warning` 0; `NavBudgetTests.cpp` derlendi |
+| K2 Debug rc=0, uyarı yok | ✔ | rc=0; `warning` 0 |
+| K3 `0 failed`, yeni adlar `[ OK ]` | ✔ | Release ve Debug `192 tests, 0 failed`; dokuz `NavBudget_*` adı `[ OK ]` (Basic, Fairness, Priority, Cost, Cache, ReplanPhase, Deferred_Contract, Deferred_Chase_Sim, RealMap_Load); harita vardı (chase/realm koştu, SKIPPED yok); mevcut testler geçti |
+| K4 başlık kuralları | ✔ | `windows.h\|stdafx\|GameServer\|shared/\|new\|malloc` grep'i yalnızca bir yorum satırı ("no global/static mutable state") ve `static constexpr` sabitleri (`NavBudget.h:25,206,237,238`) buluyor; `std::vector` yalnızca `NavPathCache::Entry::cells` (`:317`); değiştirilebilir global/static durum yok; saat çağrısı yok |
+| K5 AC-NAV-07 (B) eşikleri | ✔ | Release (MSVC) realm: `worst_A_p95=3.336 worst_B_p95=1.451 worst_B_p99=4.157 worst_B_wait=500 served_A=5760 served_B=5758 served_B_min_per_bot=119` (üç koşu satırı ayrı basılıyor). 4 ek tekrar: `worst_B_p95` 1.423-1.437, `worst_B_p99` 4.014-4.246, bekleme 500, hepsi `0 failed`. Eşikler: p95 ≤ 2,0, p99 ≤ 4,5, bekleme ≤ 1100, B p95 ≤ 0,70 × A p95 (1.451 ≤ 2.335). Bot başına servis kanıtlı: her bot ≥ 119 sorgu (Tur 1 B1 kapandı). `g++` çapraz kontrol (`nav-measure`): p95 0,771-0,804 ms |
+| K6 ilerleme garantisi, `maxWaitMs` önceliği | ✔ | `Scheduler_Basic` (`:105`) ve `Scheduler_Cost` (`:316`) bütçeyi aşan tek sorguyu seçtiriyor; `Scheduler_Priority` (`:238-293`) (a) 0..9 ofsette aşmış bot daima ilk, (b) farklı beklemeler her ofsette en eskiden yeniye, (c) eşitlerde ilk seçim her çağrıda değişiyor; `Fairness` (`:229-234`) 1000 tick'te `overMaxWait = 0`, `longestWait ≤ 1100`, servis farkı ≤ %10 ve yapay patlamada deterministik `out[0] == 5`. `NavBudget.h:84-94` sıra anahtarı (aşmış, bekleme azalan, `(id - m_offset) mod 128`) ve `break` Tur 1 talimatına uygun |
+| K7 kapsam, biçim, `git diff --check` | ✔ | `git diff --stat` yalnızca §4 beş dosya + planın kendi dosyası; `GameServer/`, `AIServer/`, `shared/` farkı 0; `docs/` farkı yalnızca Claude'un Tur 1 `STATUS.md` satırı (uygulayıcı `docs/`'a dokunmadı: `5f94691..HEAD` yalnızca 4 dosya). İki yeni dosya ASCII + CRLF (CR dışı satır 0, ASCII dışı bayt 0, satır sonu boşluğu 0, sonda boş satır yok); `nav_measure.cpp` blob'u LF (taban ile aynı), mevcut bölümlere dokunulmamış. `git diff --check` §4 dosyalarında ve plan/README'de boş (kalan tek uyarı `docs/STATUS.md:112` Claude'un kendi Tur 1 satırı; bu turda düzeltildi). `build/` commit'te yok. vcxproj'lerde tek satır eklenmiş |
+| K7a kuyruklu takip (B) eşikleri, `budget-scheduled` | ✔ | Chase (Release, kendim koştum, uygulayıcının sayılarıyla birebir): B `plan_wait_p95=0 plan_wait_max=200 without_plan_pct=0.1 follow_stale_ticks=0 dist_mean=11.00 ≤ 1,25 × 9.59`; B2 `deferred_ticks=7347` (19200 bot-tick'in %38'i ≥ %5), `hold_ticks=55`, `plan_wait_p95=400`, `plan_wait_max=700`, `without_plan_pct=0.3`, `follow_stale_ticks=0`. `nav-measure budget-scheduled` 3 koşu: A `tick_p95` 0.779 / 0.771 / 0.791, B 0.777 / 0.783 / 0.804, B `longest_wait_ms=200`, `served=1920`, `pending=0` |
+| K7b oyun içi bütçe | — | F5-55'e bırakıldı (plan böyle istiyor); `docs/reports/degerlendirme-takip.md` T-NAV-11 `BEKLİYOR` kalır |
+| K8 `NavPathfinder` ölçüm notu | ✔ | Not raporda; `NavPath.h` alanları `m_g` (float), `m_parent` (int32), `m_seen`/`m_closed` (uint32) = 16 B/hücre; 513² × 16 B = 4 210 704 B = 4,02 MiB, 16 bot ≈ 64,3 MiB: tutarlı |
+
+**Tur 1 bulgularının kapanışı:** B1 (RealMap tek paylaşılan zamanlayıcı, bot başına servis sayacı) ✔; B2 (dönen ofset önceliği/FIFO'yu bozuyor) ✔ deterministik testlerle; B3 (`follow_stale_ticks` Hold dalında sayılıyordu, `holdDistMoved`, kuyruklanma yok) ✔ (metrik tanımı düzeldi, B2 koşusu gerçek kuyruklanma üretiyor); B4 biçim ✔ (sonda boş satır, Allman, ölü `from` kaldırıldı, başlık yorumu `Cancel` sözleşmesini söylüyor); B5 (A/B iki satır) ✔. Notta istenen `continue` → `break` yapıldı.
+
+**Bulgular (engel değil, önem sırasıyla)**
+
+1. **Not (`NavBudgetTests.cpp:1113`, `:1112`): Release gerçek harita eşiğinin marjı dar.** B p99 4,01-4,25 ms, eşik 4,5 ms (%6-11 marj); p99 yaklaşık 6 tick'e denk gelir ve ulaşılamaz hedefli (tam bileşen taraması) nadir pahalı sorgulardan etkilenir. Yük altındaki paylaşımlı makinede ara sıra kırılabilir. Bu turda 5 test koşusunda (her biri 3 iç koşu) ve uygulayıcının koşularında hiç kırılmadı. Kırılırsa önce gürültü olarak tekrarlanır; eşik `[Ö]` ve `docs/12` §13.5 ile birlikte güncellenir.
+2. **Not (`NavBudgetTests.cpp:490`, `:529`, `:581`): chase testindeki `BotState` hâlâ bot başına `NavQueryScheduler scheduler` üyesi taşıyor** ve `st[0].scheduler` paylaşılan örnek olarak kullanılıyor; Tur 1'deki B1 hatasının kaynağı olan kalıp. Şu an doğru çalışıyor (sonuçlar etkilenmiyor), ama ileride yanlış örneğe yazma riski var. Bir sonraki dokunuşta üye `BotState` dışına çıkarılabilir.
+3. **Not (`tools/nav-measure/nav_measure.cpp`, `BudgetScheduled`): araç A modu da fazlı istek üretiyor (`due` her iki modda aynı)**, bu yüzden A ≈ B çıkar (p95 ~0,78 ms); en kötü durum (hepsi aynı tick) karşılaştırması yalnızca `NavBudget_RealMap_Load` A modunda var. Uygulayıcı raporu bunu açıkça belirtmiş; plan kabulünü etkilemez, araç yapısal karşılaştırma ve kalıcı `g++` çapraz kontrolü sağlıyor.
+4. **Not (`NavBudgetTests.cpp:797-804` / chase `holdDistMoved`):** Hold edilen botun konum değişimi benzetimin kendi hareket dalının dışında kaldığı için hâlâ yapısal olarak 0 çıkar; Tur 1 talimatı (iki ölçüm noktası) uygulanmış, gerçek davranış F5-55 / T-NAV-11'de oyun içi ölçülür.
+5. **Not (`NavBudget.h:334-339`):** `NavPathCache::Remove` kaydırırken `std::vector` kopya ataması yapıyor (en çok 64 giriş × 512 hücre); önbellek henüz sunucuya bağlı olmadığı için etkisi yok, F5-55'te kullanılırken ölçülür. Ayrıca `NavBudgetTests.cpp:406-407` ardışık iki boş satır (üslup).
+
+Uygulayıcının sapma ve soruları: (B) `RealMap` `#ifndef _DEBUG` ve B2 bekleme eşiklerinin Release'e özel olması makul (Debug A* ~10× yavaş); `Clear()` ile modlar arası durum temizliği, "servis edilen sorgu = `Update` true" tanımı ve `nav-measure` A modu notu kabul edildi. K7b açık: oyun içi 16 bot bütçesi ve erteleme davranışı F5-55'te.
