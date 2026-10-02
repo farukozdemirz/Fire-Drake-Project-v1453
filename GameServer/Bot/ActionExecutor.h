@@ -66,6 +66,25 @@ struct StanceOutcome
 	                       // REFUSED: "not_in_game", "dead", "no_change", "busy", "toggle", "rate"
 };
 
+// Caller-supplied view of the HP request target (ADR-0017 Ek F4-06). Temporary, like AttackTarget: the /bot target
+// test driver fills it from the target bot's session; the Perception slice replaces the source, not this struct.
+struct TargetHpTarget
+{
+	int16 id;      // target's socket id (WIZ_TARGET_HP 'uid')
+	float x;       // metres
+	float z;
+};
+
+struct TargetHpOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed: "observed" (SENT), "no_result" (FAILED),
+	                       // REFUSED: "not_in_game", "dead", "bad_target", "out_of_view", "poll", "rate"
+	int32 hp;              // from the server's reply; valid only when kind == SENT
+	int32 maxHp;
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -140,4 +159,13 @@ public:
 	// REFUSED: "not_in_game", "dead", "no_change" (already in that stance; no event) or a guard verdict ("busy", "toggle",
 	// "rate"; FAIRNESS_REJECT written).
 	static StanceOutcome SetStance(BotSession * s, bool sit, std::chrono::steady_clock::time_point now);
+
+	// One-shot target selection + HP request: sends one WIZ_TARGET_HP through CUser::HandlePacket() after the guard
+	// (CLI-10: target inside the bot's 3x3 regions, same target re-polled at most every 2 s; CLI-11) and maps the result
+	// from the reply the server published (m_targetHpEcho / m_targetHpValues). SENT "observed": a reply for that target
+	// arrived (hp / maxHp filled). FAILED "no_result": no reply (target dead or unknown to the server).
+	// REFUSED: "not_in_game", "dead", "bad_target" (id < 0 or the bot itself) or a guard verdict ("out_of_view", "poll",
+	// "rate"; FAIRNESS_REJECT written).
+	static TargetHpOutcome RequestTargetHp(BotSession * s, const TargetHpTarget & target,
+		std::chrono::steady_clock::time_point now);
 };

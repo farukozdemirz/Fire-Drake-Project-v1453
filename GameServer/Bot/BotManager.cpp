@@ -632,10 +632,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandStance(args, true);
 	else if (_stricmp(verb.c_str(), "stand") == 0)
 		CommandStance(args, false);
+	else if (_stricmp(verb.c_str(), "target") == 0)
+		CommandTarget(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1716,6 +1718,83 @@ void BotManager::CommandStance(const std::string & args, bool sit)
 	else
 		snprintf(message, sizeof(message),
 			"BotManager: cmd %s: %s failed (%s)", verb, s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandTarget(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	if (words.size() != 2)
+	{
+		WriteBotLog("BotManager: cmd target: usage: target <bot> <target bot>");
+		return;
+	}
+
+	const std::string & name = words[0];
+	const std::string & targetName = words[1];
+
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	BotSession * target = FindSession(targetName.c_str());
+	if (target == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: unknown or not spawned bot '%s'",
+			IsKnownBotName(targetName) ? targetName.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (target->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: target %s not in game (phase %s)",
+			target->m_charName.c_str(), PhaseName(target->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Test driver: the target view comes straight from the target bot's session.
+	// The Perception slice replaces this source, not TargetHpTarget.
+	TargetHpTarget tv = { (int16)target->m_pUser->GetSocketID(), target->m_pUser->GetX(), target->m_pUser->GetZ() };
+	TargetHpOutcome outcome = ActionExecutor::RequestTargetHp(s, tv, now);
+
+	char message[256];
+	if (outcome.kind == TargetHpOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == TargetHpOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: %s observed %s hp %d/%d",
+			s->m_charName.c_str(), target->m_charName.c_str(), (int)outcome.hp, (int)outcome.maxHp);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd target: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 

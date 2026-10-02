@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-05 (duruş dilimi, `OnPacket()` ekleme kalıbı, `SetStance` iskeleti) — `KAPANDI`; F4-02 (`AttackTarget` kalıbı, `m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |

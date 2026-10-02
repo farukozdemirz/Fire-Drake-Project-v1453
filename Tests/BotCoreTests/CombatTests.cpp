@@ -412,3 +412,90 @@ TEST_CASE("Combat_StanceCheck_StandIgnoresBusy")
 
 	CHECK_EQ((int)BotCore::kStanceToggleMinMs, 1000);
 }
+
+TEST_CASE("Combat_RegionIndex_RegionDelta")
+{
+	CHECK_EQ(BotCore::RegionIndex(0.0f), 0);
+	CHECK_EQ(BotCore::RegionIndex(47.9f), 0);
+	CHECK_EQ(BotCore::RegionIndex(48.0f), 1);
+	CHECK_EQ(BotCore::RegionIndex(95.9f), 1);
+	CHECK_EQ(BotCore::RegionIndex(96.0f), 2);
+	CHECK_EQ(BotCore::RegionIndex(-5.0f), 0);
+	CHECK_EQ(BotCore::RegionIndex(70000.0f), 65535 / 48);
+
+	CHECK_EQ(BotCore::RegionDelta(10.0f, 10.0f, 10.0f, 10.0f), 0);
+	CHECK_EQ(BotCore::RegionDelta(47.9f, 0.0f, 48.0f, 0.0f), 1);
+	CHECK_EQ(BotCore::RegionDelta(0.0f, 0.0f, 48.0f, 48.0f), 1);
+	CHECK_EQ(BotCore::RegionDelta(0.0f, 0.0f, 96.0f, 0.0f), 2);
+	CHECK_EQ(BotCore::RegionDelta(0.0f, 0.0f, 48.0f, 96.0f), 2);
+	CHECK_EQ(BotCore::RegionDelta(100.0f, 100.0f, 100.0f, 148.0f), 1);
+
+	CHECK_EQ(BotCore::RegionDelta(10.0f, 20.0f, 130.0f, 80.0f),
+		BotCore::RegionDelta(130.0f, 80.0f, 10.0f, 20.0f));
+}
+
+static BotCore::TargetHpCheck OkTargetHp()
+{
+	BotCore::TargetHpCheck c;
+	c.regionDelta = 0;
+	c.sameTarget = true;
+	c.hasLast = true;
+	c.sinceLastMs = 5000;
+	c.actionsInWindow = 0;
+	return c;
+}
+
+TEST_CASE("Combat_TargetHpCheck_Order")
+{
+	BotCore::TargetHpCheck c = OkTargetHp();
+	c.regionDelta = 2;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_REJECT_VIEW);
+
+	c = OkTargetHp();
+	c.regionDelta = 1;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_REJECT_POLL);
+
+	c = OkTargetHp();
+	c.sinceLastMs = 1999;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_REJECT_POLL);
+
+	c = OkTargetHp();
+	c.sinceLastMs = 2000;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_OK);
+
+	c = OkTargetHp();
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_REJECT_RATE);
+
+	c = OkTargetHp();
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_OK);
+}
+
+TEST_CASE("Combat_TargetHpCheck_SwitchAndFirst")
+{
+	BotCore::TargetHpCheck c = OkTargetHp();
+	c.sameTarget = false;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_OK);
+
+	c = OkTargetHp();
+	c.sameTarget = true;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_OK);
+
+	c = OkTargetHp();
+	c.sameTarget = false;
+	c.regionDelta = 2;
+	CHECK_EQ((int)BotCore::CheckTargetHp(c), (int)BotCore::TARGETHP_REJECT_VIEW);
+
+	CHECK_EQ((int)BotCore::kTargetHpPollMs, 2000);
+	CHECK_EQ((int)BotCore::kViewDistance, 48);
+	CHECK_EQ((int)BotCore::kViewRegionRadius, 1);
+}

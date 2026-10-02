@@ -339,4 +339,68 @@ namespace BotCore
 
 		return STANCE_OK;
 	}
+
+	// --- target HP slice (ADR-0017 Ek F4-06) ---
+
+	constexpr uint32_t kTargetHpPollMs   = 2000;   // docs/03 CLI-10 / Q-18: the client polls the selected target every 2.0 s (p50 2001 ms) [A]
+	constexpr int      kViewDistance     = 48;     // server VIEW_DISTANCE (globals.h): region edge in metres
+	constexpr int      kViewRegionRadius = 1;      // the client sees the 3x3 regions around its own (docs/03 section 16)
+
+	// Region index of a coordinate: the server's (uint16)(coord) / VIEW_DISTANCE (Unit.h GetNewRegionX/Z).
+	// Clamped to 0..65535 because the server's cast is only defined there.
+	inline int RegionIndex(float coord)
+	{
+		if (coord < 0.0f)
+			return 0;
+		if (coord > 65535.0f)
+			coord = 65535.0f;
+
+		return (int)((uint16_t)coord) / kViewDistance;
+	}
+
+	// Chebyshev distance between the region indices of two positions (0 = same region, 1 = adjacent, incl. diagonal).
+	inline int RegionDelta(float ax, float az, float bx, float bz)
+	{
+		int dx = RegionIndex(ax) - RegionIndex(bx);
+		int dz = RegionIndex(az) - RegionIndex(bz);
+		if (dx < 0)
+			dx = -dx;
+		if (dz < 0)
+			dz = -dz;
+
+		return dx > dz ? dx : dz;
+	}
+
+	struct TargetHpCheck
+	{
+		int regionDelta;          // RegionDelta(bot position, target position)
+		bool sameTarget;          // the request re-polls the currently selected target (same id as the previous request)
+		bool hasLast;             // a target HP request was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that request
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum TargetHpVerdict
+	{
+		TARGETHP_OK = 0,
+		TARGETHP_REJECT_VIEW = 1,   // CLI-10 (target outside the 3x3 regions)
+		TARGETHP_REJECT_POLL = 2,   // CLI-10 (same target polled again before kTargetHpPollMs)
+		TARGETHP_REJECT_RATE = 3    // CLI-11
+	};
+
+	// Guard rule for a target HP request. Order: view, poll, rate.
+	// Selecting a different target is not rate limited by CLI-10 (a human can click quickly); CLI-11 still applies.
+	inline TargetHpVerdict CheckTargetHp(const TargetHpCheck & c)
+	{
+		if (c.regionDelta > kViewRegionRadius)
+			return TARGETHP_REJECT_VIEW;
+
+		if (c.sameTarget && c.hasLast && c.sinceLastMs < kTargetHpPollMs)
+			return TARGETHP_REJECT_POLL;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return TARGETHP_REJECT_RATE;
+
+		return TARGETHP_OK;
+	}
 }
