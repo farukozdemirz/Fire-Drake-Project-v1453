@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-05` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-04 (pot dilimi, `m_castSelfId` kalıbı) — `KAPANDI`; F4-03 (`BeginCast`) — `KAPANDI`; F4-02 (`m_actionWindow`, `BeginAttack`) — `KAPANDI`; F4-01 (`BeginMove`) — `KAPANDI` |
@@ -320,20 +320,41 @@ git diff --check gece/2026-10-02...bot/F4-05
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-05` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-05` @ `86982d2` (kod: `ccf8b29`; ikinci commit yalnızca rapor/Durum)
+- Kriter sonuçları (14/14 ✔):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 Release derleme | ✔ | `build.sh Release` rc=0; beş dosya (`BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`) touch'lanıp yeniden derlendi: bu dosyalar için uyarı 0 (yalnızca eski `UpgradeHandler.cpp` C4789 satırları) |
+| K2 Debug derleme | ✔ | `build.sh Debug` rc=0, bot dosyalarında uyarı yok |
+| K3 Testler | ✔ | `run-tests.sh Release` rc=0 ve Debug: `28 tests, 0 failed`; `Combat_StanceCheck_Order` ve `Combat_StanceCheck_StandIgnoresBusy` çıktıda `[ OK ]` |
+| K4 Saf mantık | ✔ | `grep windows.h\|stdafx\|GameServer\|shared/ BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` |
+| K5 Paket yalnızca burada | ✔ | `WIZ_STATE_CHANGE`: `ActionExecutor.cpp:1360` (paket) ve `BotSession.cpp:62` (okuma); `StateChange*` çağrısı yok; `m_bResHpType` yalnızca okuma (`:184 :311 :691 :1322 :1389`, `BotManager.cpp:834`), `m_bResHpType\s*=[^=]` boş |
+| K6 Guard atlanmıyor | ✔ | `CheckStance` `:1346`, `STANCE_OK` dışında `RejectStance` ile dönüş, `HandlePacket` `:1367` tek yer. Çalışma zamanı: `toggle`/`busy` reddinde `ACTION_SUBMIT` yok |
+| K7 `sitting` | ✔ | `"sitting"` `ActionExecutor.cpp:187` Move, `:314` Attack, `:694` Cast; hepsi `isDead()` sonrası, diğer doğrulamalardan önce; `BeginPotion`'da yok |
+| K8 `OnPacket()` yalnızca ekleme | ✔ | `BotSession.cpp` `grep '^-'`: yalnızca `m_castSelfId(-1), m_castEcho(0)` başlatıcı satırı; mevcut bloklar bayt bayt aynı |
+| K9 `ENABLED=0` değişmez | ✔ | `BotManager.cpp` `grep '^-'`: yalnızca 3 bilinçli satır (`unknown command` metni, `BuildStatusLines` biçim ve argüman satırı). Çalışma zamanı: `ENABLED=0` + komut dosyası → dosya tüketilmedi, `Bot_*.log` 6934→6934, `Logs/bots` yok, `GameServer.log` 32→32 |
+| K10 Kapsam | ✔ | `git diff --stat`: yalnızca §4'teki 8 dosya + plan; dört `.vcxproj*` farkı boş; `Bot/` dışında `GameServer/` değişikliği yok |
+| K11 Kodlama | ✔ | Sekiz dosya da `ASCII text, with CRLF line terminators`; `git diff --check` boş |
+| K12 Yasak çağrılar | ✔ | `ActionExecutor.*` içinde `printf/Sleep/lock_guard/mutex/CreateThread/rand(` yok |
+| K13 Gerilemesiz | ✔ | `CheckMoveStep` 2, `CheckAttack` 1, `CheckCastStart` 1, `CheckPotion` 1; `EmitFairnessReject` türleri `Move`/`Attack`/`Cast`/`Potion` + yeni `State`; 26 eski test geçiyor |
+| K14 Çalışma zamanı | ✔ | S1–S8 aşağıda |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Çalışma zamanı (Release, `ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`, `BotWP_K`/`BotWP_E`/`BotMF_K`, zone 71; ini yedekten geri yüklendi md5 `d16463283c0d41074a2d8b6ec4aee203`; sunucular kapatıldı; `db/002` yeniden uygulandı rc=0):
+  - **S1 mutlu yol:** `sit` → `sat down`; `ACTION_SUBMIT` (`StateSit`, `to:"sit"`) → `ACTION_RESULT` (`applied`, `state_after:2`, `latency_us` 7–14); `list` `sit=1`; `stand` → `stood up`, `to:"stand"`, `applied`, `state_after:1`, `sit=0`; `FAIRNESS_REJECT` yok. **Plan §8 `[A]`(a) doğrulandı:** sunucunun `WIZ_STATE_CHANGE` yayını botun kendi alıcısına geliyor (`SendToRegion` göndereni dışlamıyor), `no_result` hiç görülmedi.
+  - **S2 yenilenme (salt gözlem):** `BotWP_E` HP 4829/5650, oturunca ~5,4 sn aralıklı ölçümler 5125 → 5421 → 5650 (tavan): **+296 HP / ~5–6 sn (~%5,2 maxHP)**; ayakta (başka yaralanma, HP 5000/5650) 17 sn boyunca 5000 sabit, MP dolu olduğundan değişmedi. `HPTimeChange` `User.cpp:3380-3394` ile uyumlu. Not: `stand` sonrası "artış durur" doğrudan HP dolu iken değil, ikinci denemede ayakta yaralı botla gözlendi.
+  - **S3 `no_change`:** ayakta `stand` → `refused (no_change)`; oturmuşken `sit` → `refused (no_change)`; JSONL'e yeni olay yazılmadı.
+  - **S4 `toggle`/`busy`:** aynı dosyada `sit`+`stand` → `sat down` + `refused (toggle)`; `FAIRNESS_REJECT` (`State`, `CLI-13`, `toggle`, `value 0.00`, `limit 1000.00`), bot `sit=1` kaldı; ≥ 1,05 sn sonra `stand` `applied`. `move`+`sit` aynı dosyada → `refused (busy)` (`value 1`, `limit 0`), yürüyüş `arrived after 5 packets`, bot ayakta. `attack 6`+`sit` ve `cast 110518 ×2`+`sit BotMF_K` → ikisinde de `refused (busy)`, seri tamamlandı.
+  - **S5 `sitting`:** `sit` sonrası `move`/`attack`/`cast` üçü de `refused (sitting)`, JSONL'de `ACTION_SUBMIT`/`FAIRNESS_REJECT` yok, konum değişmedi. `pot BotWP_K 389015000 1` → `effected`; sonrasında `sit=1` kaldı (**HP dolu iken** denendi; sunucu kodunda pot `m_bResHpType`'i yazmıyor: yazanlar yalnızca `StateChangeServerDirect`, diriliş `AttackHandler.cpp:178/192`, `MagicInstance.cpp:2346`; Q-06'nın istemci tarafı (gerçek istemci pot içerken kalkar mı) bu planda ölçülmedi). `stand` + 10 m `move` → `arrived after 2 packets`.
+  - **S6 ömür döngüsü:** `sit` sonrası `despawn` → `despawned (... names cleared yes)`, `pool free 14/16`; despawn'lı bota `sit`/`stand` → `not in game (phase despawned)`; yeniden `spawn` → `sit=0`, ilk `sit` `applied` (`decision_id` 1'e döndü). Not: yeniden spawn önceki duruş paketinden ≥ 8 sn sonraydı; `m_stanceHasLast` sıfırlaması bu yüzden zamanlayıcı davranışıyla değil kod okumasıyla (`BotSession.cpp` `ResetForRespawn`) doğrulandı.
+  - **S7 reddedilen komutlar:** `sit Ghost`/`stand Ghost` → `unknown or not spawned bot '?'`; argümansız ve `sit BotWP_K x`/`stand BotWP_K x` → `usage: <verb> <bot>`; `RESPAWN_CYCLES=2` iken `sit` → `cmd rejected (RESPAWN_CYCLES is active)`.
+  - **S8 gerilemesiz:** `attack BotWP_K BotWP_E 3` → `3 hit(s) sent, 3 ok` (ilk denemedeki `out_of_range` yanlış yerleşimimden: E 32 m uzaktaydı, yakından tekrarlanınca geçti); `cast BotMF_K 110518 BotWP_E 2` → `2 cycle(s), 2 ok, 4 packet(s)`; `pot ... 3` → `3 use(s), 3 ok`; 30 m `move` → `arrived after 5 packets`; `TELEMETRY=summary` → `sit`/`stand` çalışır, JSONL'de `ACTION_*`/`FAIRNESS_REJECT` 0; `PERF_SAMPLE` `tick_p95_us` 115–116, `skipped_ticks` 0; sunucu 3/3 UP, `GameServer.log` 32→32.
+- Bulgular (önem sırasıyla): bloklayıcı bulgu yok.
+  1. **[Not]** `GameServer/ChatHandler.cpp` `+bot` yardım metni `sit`/`stand` fiillerini de listelemiyor: KI-012 kapsamı genişletildi (kapsam dışı, üretim kodu).
+  2. **[Not]** Q-06 (pot oturanı kaldırır mı) yalnızca sunucu tarafında yanıtlandı (kaldırmaz); gerçek istemci davranışı T-MECH-POT-05 ile istemciden ölçülmeli. Dolu HP ile yapılan denemeden istemci hakkında sonuç çıkmaz.
+  3. **[Not]** `toggle` reddinde `value` aynı `Tick()`'te 0,00 çıkıyor (beklenen); `m_stanceHasLast` spawn başına sıfırlama zamanlayıcı düzeyinde sınanmadı (kod okumasıyla doğru).
+- Düzeltme talimatı: gerekmiyor.
 
-```
-…
-```
