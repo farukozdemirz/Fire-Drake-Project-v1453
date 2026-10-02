@@ -1,4 +1,4 @@
-# F4-54: Gözlem tablosunda tek yönlü görüş (KI-016): sayaçlı teşhis ve kök neden düzeltmesi
+# F4-54: Gözlem tablosunda tek yönlü görüş (KI-DEG-01): sayaçlı teşhis ve kök neden düzeltmesi
 
 | Alan | Değer |
 |---|---|
@@ -6,7 +6,7 @@
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-54 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12, F4-13, F4-14, F4-15 (görünür oyuncu/NPC tabloları ve bölge değişimi istekleri) — `KAPANDI` |
-| İlgili gereksinim / kabul | KI-016, Q-27; `docs/03` §16 (3×3 bölge bilgisi); `docs/reports/degerlendirme-2026-10-02.md` DEG-04 |
+| İlgili gereksinim / kabul | KI-DEG-01, Q-27; `docs/03` §16 (3×3 bölge bilgisi); `docs/reports/degerlendirme-2026-10-02.md` DEG-04 |
 | Tahmini büyüklük | S–M (teşhis sayaçları + koşullu düzeltme; 4 kod dosyası) |
 | Hazırlayan / tarih | Claude / 2026-10-02 (değerlendirme) |
 
@@ -41,7 +41,7 @@ F4-18 Tur 2 doğrulamasında (plan dosyası, "Bulgular" madde 3) görüş tablos
 **Kapsam dışı**
 
 - Sunucu (`GameServer/*.cpp` bot dışı, `shared/`) değişikliği; yeni komut/ini anahtarı; karar katmanı; NPC tablosu (`npcs` aynı yöntemle **yalnızca gözlenir**, bulgu varsa rapora yazılır).
-- `docs/`, `KNOWN_ISSUES.md` değişikliği (Claude yapar; KI-016 zaten açık).
+- `docs/`, `KNOWN_ISSUES.md` değişikliği (Claude yapar; KI-DEG-01 zaten açık).
 
 ## 4. Dokunulabilecek dosyalar
 
@@ -72,7 +72,7 @@ Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
 - [ ] K5: yeni satırlarda `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` yok; sayaçlara kilit dışı erişim yok
 - [ ] K6: yeni ini anahtarı/komut/thread/paket yok; `ENABLED=0` davranışı değişmez; ASCII + CRLF; `git diff --check` boş
 - [ ] K7: `bots/config/script_see_symmetry.txt` `./Scripts/` ayrıştırıcısından geçer (F4-19 izinli fiiller: yalnızca `see`/`snap`/`list`), 100 adım sınırı içinde
-- [ ] K8 (çalışma zamanı, Claude yapar): 12 koşunun tamamında üç botun `see`'si **her yönde simetrik** (aynı bölgedeki her çift birbirini gösteriyor) **veya** asimetri bulunduysa kök neden sayaçla belgeli ve (koddaysa) düzeltmeden sonra 12 koşu simetrik; sonuç tablosu plan dosyasına ve KI-016'ya işlenir
+- [ ] K8 (çalışma zamanı, Claude yapar): 12 koşunun tamamında üç botun `see`'si **her yönde simetrik** (aynı bölgedeki her çift birbirini gösteriyor) **veya** asimetri bulunduysa kök neden sayaçla belgeli ve (koddaysa) düzeltmeden sonra 12 koşu simetrik; sonuç tablosu plan dosyasına ve KI-DEG-01'ya işlenir
 
 ## 7. Doğrulama komutları
 

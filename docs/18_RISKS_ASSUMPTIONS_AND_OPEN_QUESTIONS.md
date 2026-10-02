@@ -73,7 +73,7 @@ Değerlendirme (2026-10-02) ADR'leri, arka plan ajanında Claude kararı, **göz
 | Q-24 | Değerlendirme için gerekli maç sayısına ulaşmak üzere paralel sunucu örnekleri çalıştırılabilir mi (ayrı DB/port) | R-10 | Deneme | F8 |
 | Q-25 | Priest/mage insan aksiyon hızı ve cast döngüsü dağılımı (heal/cure rotasyonu, toplam aksiyon/sn); CLI-11 6/sn emniyet ağının ve cast sınırlarının insanla eşdeğerliği | Adalet (üç katman, `docs/03` §13.4) | Priest ve mage ile T-MECH-CLIENT-01..04 yeniden (insan) | F6 |
 | Q-26 | İstemci suya/göl cebine girebiliyor mu, suda yavaşlıyor mu, kıyı olay ızgarasıyla uyumlu mu (T-NAV-09) | Su katmanı gerekir mi (`docs/12` §13.1) | İstemcide göl kıyısında yürüme + sunucu konum kaydı | F5 |
-| Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-016, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
+| Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-DEG-01, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
 
 ## 4. Riskler
 
