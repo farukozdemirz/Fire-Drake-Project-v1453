@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `bee4fe4`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-16` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`, `UnitObs`, `/bot see`) — `KAPANDI` (merge `dcd8f80`); F4-14 (`NpcTable`, `NpcObs`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F4-15 (NPC tablosu bölge değişiminde dolar) — `KAPANDI` (merge `bfdd839`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |

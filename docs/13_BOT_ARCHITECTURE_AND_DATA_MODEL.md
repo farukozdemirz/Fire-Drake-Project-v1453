@@ -164,7 +164,7 @@ struct Action { ActionType type; uint32 skillId; int16 targetId; float x, z; std
 struct ActionResult { uint64 decisionId; bool ok; int16 failCode; std::string reason; uint64 latencyMs; };
 ```
 
-> **Uygulama notu (F4-16, ADR-0017 Eki F4-16):** `PerceptionSnapshot` `BotCore/Perception.h`'de kısmen uygulandı: `SelfState` (HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor), düşman/müttefik oyuncu listeleri (`UnitView`, HP/MP/ad yok, en çok 32, yakından uzağa) ve NPC listesi (`NpcView`) `BuildSnapshot` ile kurulur; `/bot snap <bot>` ile sınanır. `team` (`TeamView`), `nav` (`NavView`) ve `self`'in buff/cooldown/stok alanları henüz yoktur (sonraki dilimler, F5).
+> **Uygulama notu (F4-16, ADR-0017 Eki F4-16):** `PerceptionSnapshot` `BotCore/Perception.h`'de kısmen uygulandı: `SelfState` (HP/MP/konum/ulus/sınıf/seviye/ölü/oturuyor), düşman/müttefik oyuncu listeleri (`UnitView`, HP/MP/ad yok, en çok 32, yakından uzağa) ve NPC listesi (`NpcView`) `BuildSnapshot` ile kurulur; `/bot snap <bot>` ile sınanır. `team` (`TeamView`) ve `nav` (`NavView`) henüz yoktur (sonraki dilimler, F5). **F4-17 (HAZIR, ADR-0017 Eki F4-17):** `SelfState`'e botun kendi HP/MP pot stoku, ortak pot süresi, cast boşluğu, skill başına kalan yeniden-kullanım süresi ve Type4 buff listesi eklenir (`/bot snap` ile sınanır); tip kapısı kalan süresi ve pot dışı stok yoktur.
 
 ### 5.3 Rol profili
 

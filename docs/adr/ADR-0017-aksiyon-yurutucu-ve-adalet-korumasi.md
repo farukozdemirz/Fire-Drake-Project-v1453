@@ -214,3 +214,15 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Bilinen sınır:** başkalarının `WIZ_STATE_CHANGE` yayını tabloya işlenmez, bu yüzden başkaları için `sitting` bayrağı (`resHpType == 2`) yalnızca `WIZ_USER_INOUT`/`WIZ_REQ_USERIN` anındaki değerdir; ayrı dilimde ele alınır.
 7. **Kapsam sınırı:** karar/guard, telemetri olayı, periyodik kurulum, takım ve navigasyon görünümü yok. `ENABLED=0` iken davranış değişmez; `/bot snap` yalnızca komut kanalından çalışır.
 8. **Dilim sırası:** F4-16 görüntü; sonraki: `SelfState` buff/cooldown/stok, party HP (`TeamView`), `WIZ_STATE_CHANGE` yayını, betikli test dizileri; sonra F4 faz raporu taslağı.
+
+## Ek (F4-17): `Perception` dilim 6 — `SelfState` genişletme: pot stoku, soğuma, buff listesi (otonom döngüde Claude kararı — gözden geçirilmeli)
+
+Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-17-algi-oz-durum-genisletme.md`
+
+1. **Neden:** karar katmanı "pot içebilir miyim, skill hazır mı, üzerimde buff var mı" sorularını botun **kendi** durumundan cevaplamalı (`docs/13` §5.2 `SelfState`: buffs, cooldowns, stock). `docs/14` §5.2 yalnızca **başkalarının** soğuma/stok/envanter bilgisini yasaklar; botun kendi durumu serbesttir (§5.1 "Öz durum"). F4-16 bu alanları bilerek sonraya bırakmıştı (Ek F4-16 madde 5).
+2. **Pot stoku:** yalnızca botun bugün gerçekten içebileceği pot türleri sayılır (HP: `DirectType 1`, MP: `DirectType 2`; çanta slotları 14..41). Sınıflandırma `BeginPotion`'ın kuralıyla **aynı ifadeyi** (`PotMagicSupported`) paylaşır; ayrı bir kural icat edilmez ve `BeginPotion` davranışı değişmez. MB-01 potları (tüketilmeyen) çantada duruyorsa sayılır (guard da öyle sayar, K-5).
+3. **Soğuma kaynakları:** botun kendi `BotSession` zamanlayıcıları (guard'ın kullandığı kaynakla aynı: `m_potLast`, `m_castAnyLast`, `m_castSkillLast`) — sunucunun `m_CoolDownList`'i okunmaz. Böylece görüntü, guard'ın reddedeceği şeyle tutarlıdır. Tip kapısı (MEC-MAG-03, 1000 ms) kalan süresi bilinçli eksik: karar katmanı gelince ihtiyaç netleşir.
+4. **Buff listesi:** `Unit::m_buffMap` (Type4; buff ve debuff) `m_buffLock` altında kısa blokta okunur; kalan süre `UNIXTIME` ile (saniye). Süresi dolmuş kayıtlar görüntüye alınmaz. Botun kendi debuff'larının istemcide gösterilmesi insanla aynı varsayılır `[Ö]` (insanın kendi durum ikonlarını görmesi muhafazakâr varsayımdır).
+5. **Sözleşme denetimi:** botun kendi çantasına/buff'ına/skill tablosuna erişim `CommandSnap` gövdesinde değil, ayrı dosya-statik `FillSelfExtras`'tadır; F4-16'nın `CommandSnap` gövdesi grep denetimi aynen geçerli kalır. `UnitView`/`NpcView` alanları değişmez.
+6. **Kapsam sınırı:** karar/guard/telemetri, periyodik kurulum, `TeamView`, `NavView` yok; `ENABLED=0` iken davranış değişmez.
+7. **Dilim sırası:** F4-17 öz durum; sonraki: party HP (`PARTY_HPCHANGE`, `TeamView`), başkalarının `WIZ_STATE_CHANGE` yayını, betikli test dizileri; sonra F4 faz raporu taslağı ve F5.
