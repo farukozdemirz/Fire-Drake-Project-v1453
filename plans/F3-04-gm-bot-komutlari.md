@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02) |
 | Faz | F3 — Telemetri ve test altyapısı (`docs/17` §2) |
 | Branch | `bot/F3-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-06 (`KAPANDI`: komut çekirdeği, `EnqueueCommand`), F3-02 (`KAPANDI`: `match`), F3-03 (`KAPANDI`: `scenario`) |

@@ -72,7 +72,8 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F3-06](F3-06-telemetri-analiz-araci.md) | Telemetri analiz aracı (`tools/bot-telemetry-report.py`): JSONL → Markdown rapor, MET-PERF-02 bütçe hükmü, geçersiz maç bayrakları (F3-03..05 numaraları ScenarioRunner/GM komutları/birim test çatısı için ayrılmıştır) | F3 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F3-06` (taban: `gece/2026-10-02`) |
 | [F3-03](F3-03-senaryo-kosucusu.md) | `ScenarioRunner`: senaryo dosyası (`./Scenarios/<ad>.yaml`, YAML alt kümesi) → bot spawn, seed/tekrar başına maç, despawn (`/bot scenario run\|stop\|status`; ADR-0015 Eki) | F3 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F3-03` (taban: `gece/2026-10-02`) |
 | [F3-05](F3-05-botcore-birim-test-catisi.md) | `BotCore` statik kütüphanesi + mini birim test çatısı (`BotCoreTests`, `tools/run-tests.sh`) ve belirlenimli `Rng` (ADR-0016) | F3 | KAPANDI | `bot/F3-05` (taban: `gece/2026-10-02`) |
-| [F3-04](F3-04-gm-bot-komutlari.md) | Oyun içi GM komutu `+bot` (`spawn`/`despawn`/`match`/`scenario` komut kuyruğuna; `list` anlık görüntüden yanıtlanır; ADR-0015 Eki) | F3 | DOĞRULANDI | `bot/F3-04` (taban: `gece/2026-10-02`) |
+| [F3-04](F3-04-gm-bot-komutlari.md) | Oyun içi GM komutu `+bot` (`spawn`/`despawn`/`match`/`scenario` komut kuyruğuna; `list` anlık görüntüden yanıtlanır; ADR-0015 Eki) | F3 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F3-04` (taban: `gece/2026-10-02`) |
+| [F4-01](F4-01-aksiyon-yurutucu-hareket.md) | `ActionExecutor` çekirdeği: `Move`/`Stop` aksiyonları gerçek `WIZ_MOVE` + `HandlePacket` ile, `BotFairnessGuard` hız/adım kuralı (`BotCore/BotMotion.h`, birim testli), `/bot move\|stop`, `ACTION_SUBMIT/RESULT`/`FAIRNESS_REJECT` telemetrisi (ADR-0017) | F4 | HAZIR | `bot/F4-01` (taban: `gece/2026-10-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
