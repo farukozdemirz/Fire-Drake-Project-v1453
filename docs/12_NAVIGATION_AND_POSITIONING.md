@@ -55,7 +55,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 - 8 komşu; çapraz geçişte iki ortogonal komşu da açık olmalı (köşe kesme yok).
 - Maliyet = mesafe × (1 + `w_danger`·danger + `w_clear`·max(0, 2 − clearance)) + eğim cezası.
 - Sezgisel: octile mesafe (kabul edilebilir).
-- İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama.
+- İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama (bu dilimde yok: F5-02 yalnızca `NodeLimit` = "bilinmiyor" döndürür, "ulaşılamaz" değil; ADR-0006).
 - Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse ara noktalar atlanır.
 - AIServer `CPathFind`'ın sezgisel ve yürünebilirlik hataları (MB-11) bu uygulamaya **taşınmaz**.
 
@@ -138,7 +138,7 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 |---|---|
 | T-NAV-01 | Temel koşu hızı ve hareket paketi sıklığının gerçek istemciyle ölçülmesi |
 | T-NAV-02 | Eğim kalibrasyonu: istemcinin tırmanamadığı eğimlerin işaretlenmesi |
-| T-NAV-03 | 1000 rastgele A* sorgusu: başarı, süre, düğüm sayısı |
+| T-NAV-03 | 1000 rastgele A* sorgusu: başarı, süre, düğüm sayısı. Sorgu dağılımı `[Ö]` ([ADR-0006](adr/ADR-0006-navigasyon-izgara-astar.md) madde 4): kapı kümesi Chebyshev ≤ 64 hücre (256 m); ≤ 150 hücre ve tüm harita kümeleri raporlanır. F5-02'de birim/performans testi olarak gerçeklenir |
 | T-NAV-04 | Dar geçit ve köprü noktalarında 50 geçiş: takılma oranı |
 | T-NAV-05 | Respawn noktasından arenaya yürüyüş süresi (summon değerinin hesabı) |
 | T-NAV-06 | Hareketli hedef takibi (kiting mage) |
@@ -166,3 +166,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.0+ | §4.1 ve §11 T-NAV-03: `NodeLimit` anlamı ve sorgu dağılımı notu (ADR-0006, F5-02 planı) |

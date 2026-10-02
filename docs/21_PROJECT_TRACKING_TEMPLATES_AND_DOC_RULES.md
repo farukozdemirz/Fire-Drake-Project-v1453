@@ -144,7 +144,7 @@ ADR listesi (verilen kararlar `adr/` klasöründe; ayrıntı [18](18_RISKS_ASSUM
 | ADR-0003 | MAGIC.Etc düzeltmesi: depoda geri alınabilir SQL betiği | KABUL (K-4) |
 | ADR-0004 | Test arenası: yalnızca arena A, taraf değişimi | KABUL (K-6) |
 | ADR-0005 | Bot karar döngüsünün bağlanacağı thread/timer | KABUL (otonom döngüde Claude kararı, 2026-10-02 — gözden geçirilmeli; [adr](adr/ADR-0005-bot-tick-thread-modeli.md)) |
-| ADR-0006 | Navigasyon veri kaynağı (SMD ızgarası) ve görüş hattı yaklaşımı | AÇIK |
+| ADR-0006 | Navigasyon veri kaynağı (SMD ızgarası) ve görüş hattı yaklaşımı | KABUL (otonom döngüde Claude kararı, 2026-10-02 — gözden geçirilmeli; [adr](adr/ADR-0006-navigasyon-izgara-astar.md)) |
 | ADR-0007 | Telemetri formatı ve depolama | KABUL (otonom döngüde Claude kararı, 2026-10-02 — gözden geçirilmeli; [adr](adr/ADR-0007-telemetri-formati-ve-depolama.md)) |
 | ADR-0008 | Öğrenme katmanı L1 yöntemi | AÇIK |
 | ADR-0009 | Tüketilmeyen pot verisi (MB-01): olduğu gibi kalır | KABUL (K-5) |

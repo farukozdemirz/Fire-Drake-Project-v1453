@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02-nav, merge `788aa86`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-01` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | Yok (`BotCore` + `BotCoreTests` zaten var: F3-05 `KAPANDI`) |
