@@ -33,8 +33,8 @@ GameServer başlangıcında zone 71 için bir kez hesaplanır. `C3DMap`, `SMDFil
 | `walk` | 4 m | Olay = 1 ve ana bileşende |
 | `slope` | 4 m | Komşu yükseklik farkı; `|Δh| > P-NAV-MAX-STEP` (başlangıç 2,5 m / 4 m) ise kenar engelli `[Ö]`. Gerçek istemcinin tırmanabildiği eğim T-NAV-02 ile kalibre edilir. |
 | `clearance` | 4 m | En yakın engelli hücreye mesafe (BFS, hücre) |
-| `danger_static` | 4 m | Karşı ulusun guard tower halkası (kapıya ≤ 90 m), canavar spawn dikdörtgenleri + arama menzili. Takıma göre iki ayrı katman (Karus/El Morad). |
-| `danger_dynamic` | 4 m | Görünür düşmanların etki haritası (melee: 15 m çekirdek, mage: 45 m halka), 500 ms'de bir güncellenir |
+| `danger_static` | 4 m | Karşı ulusun guard tower halkası (kapıya ≤ 90 m) **yasaklı** (hücre bayrağı, dışarıdan girilemez; `BotCore/NavDanger.h`, ADR-0006 Eki F5-06), kendi halkası **güvenli işaretli**; canavar spawn dikdörtgenleri + arama menzili (yol maliyeti; henüz yok). Takıma göre iki ayrı katman (Karus/El Morad). |
+| `danger_dynamic` | 4 m | Görünür düşmanların etki haritası (melee: 15 m çekirdek, ağırlık 1,0; mage: 45 m menzil diski, ağırlık 0,6 `[A]`; 8 m doğrusal sönüm `[A]`; hücre başına 0–255, en büyük değer birleşimi), 500 ms'de bir statik katmanın kopyası üzerine yeniden kurulur |
 | `region_graph` | 48 m | Bölge düzeyinde bağlantı grafiği (uzun yollar için hiyerarşik arama) |
 
 Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
@@ -53,7 +53,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 ### 4.1 A* tanımı `[Ö]`
 
 - 8 komşu; çapraz geçişte iki ortogonal komşu da açık olmalı (köşe kesme yok).
-- Maliyet = mesafe × (1 + `w_danger`·danger + `w_clear`·max(0, 2 − clearance)) + eğim cezası.
+- Maliyet: adım = mesafe × (1 + 0,5 × (ceza(a) + ceza(b))); ceza(c) = `w_danger`·danger(c) + `w_clear`·max(0, 2 − clearance(c)) + (yasaklı hücrede 10); `w_danger` = 4, `w_clear` = 0,5 `[A]`; ceza ≥ 0 olduğundan octile sezgisel tutarlı kalır. Yasaklı hücreye dışarıdan girilemez (içeriden çıkış serbest); hedef yasaklıysa `InvalidGoal`. Maliyet alanı isteğe bağlıdır (yokken yalnızca mesafe). Eğim cezası yoktur (sert eğim kesmesi `EdgeOpen`'da; T-NAV-02 sonrası). `BotCore/NavDanger.h`, ADR-0006 Eki F5-06, F5-06 planı.
 - Sezgisel: octile mesafe (kabul edilebilir).
 - İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama (bu dilimde yok: F5-02 yalnızca `NodeLimit` = "bilinmiyor" döndürür, "ulaşılamaz" değil; ADR-0006).
 - Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse (her adım `EdgeOpen`; kanonik yön, simetrik) ara noktalar atlanır; açgözlü, en çok `P-NAV-SMOOTH-LOOKAHEAD` = 64 yol hücresi ileri `[A]` (`BotCore/NavSmooth.h`, ADR-0006 Eki F5-03, F5-03 planı). Bresenham `supercover` değildir (bilinen sınırlama, takılma ölçümüyle yeniden değerlendirilir).
@@ -93,10 +93,10 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 
 | Bölge | Tanım | Bot kuralı |
 |---|---|---|
-| Karşı ulus tower halkası | Karşı ulus kapısına ≤ 90 m (tower'lar 25–50 m halkada, arama menzili 35 m) `[V]` | Girilmez; hedef bu bölgeye girerse takip biter |
-| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge |
-| Canavar alanları | Spawn dikdörtgeni + arama menzili | Yol maliyetini artırır; test arenasında bulunmaz ([15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md) §2) |
-| Arena sınırı (test modu) | Senaryo tanımı | Bot arena dışına yol planlamaz |
+| Karşı ulus tower halkası | Karşı ulus kapısına ≤ 90 m (tower'lar 25–50 m halkada, arama menzili 35 m) `[V]` | Girilmez (yol planlayıcısı dışarıdan yasaklı hücreye girmez, `NavDanger.h`); hedef bu bölgeye girerse takip biter (`InvalidGoal`; bırakma kararı karar katmanında); içeride kalan bot en kısa çıkışla çıkar |
+| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge (hücre `Safe` bayrağı; puanı F5-07) |
+| Canavar alanları | Spawn dikdörtgeni + arama menzili | Yol maliyetini artırır; test arenasında bulunmaz ([15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md) §2); F5-06'da yok (ertelendi) |
+| Arena sınırı (test modu) | Senaryo tanımı | Bot arena dışına yol planlamaz (arena dairesinin dışı yasaklı: `AddForbidOutsideDisc`) |
 
 ## 8. Güvenli geri çekilme noktası
 
@@ -170,3 +170,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-02 | v1.0+ | §4.1 yol düzleştirme: `EdgeOpen` tabanlı Bresenham görünürlüğü, açgözlü ayıklama ve `P-NAV-SMOOTH-LOOKAHEAD` `[A]` (ADR-0006 Eki F5-03, F5-03 planı) |
 | 2026-10-02 | v1.0+ | §4.2 hareketli hedef: gözlem/planlama ayrımı, hız kestirimi penceresi, öngörü geri çekilmesi, menzil halkası tanımı (ADR-0006 Eki F5-04, F5-04 planı) |
 | 2026-10-02 | v1.0+ | §4.3 ulaşılamaz hedef: bileşen tabanlı kesin tespit, `Detour` kuralı, `NodeLimit` = bilinmiyor, 1,5 sn bırakma süresi `[A]` (ADR-0006 Eki F5-05, F5-05 planı) |
+| 2026-10-02 | v1.0+ | §2 `danger_*`, §4.1 maliyet formülü, §7 güvenlik bölgeleri: hücre cezası modeli, yasaklı (sert, içeriden çıkış serbest) ve güvenli bayrağı, bant ilkeli tehlike, ağırlıklar `[A]` (ADR-0006 Eki F5-06, F5-06 planı) |
