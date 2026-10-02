@@ -107,6 +107,7 @@ typedef std::vector<Arrow> ArrowList;
 #include "GameDefine.h"
 
 class CGameServerDlg;
+class IBotSink;
 class CUser : public Unit, public KOSocket
 {
 public:
@@ -575,6 +576,13 @@ public:
 	virtual void OnConnect();
 	virtual void OnDisconnect();
 	virtual bool HandlePacket(Packet & pkt);
+
+	// Bot sessions only: receives the packets that would have been sent to a client socket.
+	// Always nullptr for real connections.
+	IBotSink * m_botSink;
+
+	virtual bool Send(Packet * pkt);
+	virtual bool SendCompressed(Packet * pkt);
 
 	void Update();
 

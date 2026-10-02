@@ -6,13 +6,37 @@
 #include "PacketTrace.h"
 #include "DamageTrace.h"
 #include "DBAgent.h"
+#include "Bot/IBotSink.h"
 #include <algorithm>
 #include "../shared/DateTime.h"
 
 using namespace std;
 
-CUser::CUser(uint16 socketID, SocketMgr *mgr) : KOSocket(socketID, mgr, -1, 16384, 3172), Unit(UnitPlayer)
+CUser::CUser(uint16 socketID, SocketMgr *mgr) : KOSocket(socketID, mgr, -1, 16384, 3172), Unit(UnitPlayer), m_botSink(nullptr)
 {
+}
+
+bool CUser::Send(Packet * pkt)
+{
+	if (m_botSink != nullptr)
+	{
+		m_botSink->OnPacket(*pkt);
+		return true;
+	}
+
+	return KOSocket::Send(pkt);
+}
+
+bool CUser::SendCompressed(Packet * pkt)
+{
+	// Bots receive the uncompressed packet.
+	if (m_botSink != nullptr)
+	{
+		m_botSink->OnPacket(*pkt);
+		return true;
+	}
+
+	return KOSocket::SendCompressed(pkt);
 }
 
 /**
