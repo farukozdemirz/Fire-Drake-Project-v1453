@@ -154,6 +154,8 @@ Kurallar:
 
 T-NAV-01..08, T-NAV-LOS-01: [12](12_NAVIGATION_AND_POSITIONING.md) §11.
 
+Değerlendirme ekleri (2026-10-02, `docs/12` §13): **T-NAV-09** su ve göl kıyısı (insan istemcisi suya girebiliyor mu; olay ızgarasıyla uyum; Q-26); **T-NAV-10** ölüm → respawn → arenaya dönüş zinciri, **Karus ve El Morad ayrı ayrı** oyun içinde (her ulus ≥ 10 tekrar; Karus ~52 sn, El Morad ~142 sn ± %20; arena sınırı içinde kalma; takılma/`NodeLimit`/`InvalidGoal` 0); **T-NAV-11** 16 botta oyun içi tick ve yol bulma bütçesi (gerçek `BotManager` tick'i, MSVC Release, 30 dk; ertelenen sorguda bekleme/takip/mevcut yolu kullanma davranışı). Üçü de birim testi veya doküman güncellemesiyle kapanmaz: oyun içi kanıt `docs/reports/degerlendirme-takip.md`'de ayrı izlenir.
+
 ### 4.4 Sınıf ve rol
 
 | Kimlik | Kaynak |
