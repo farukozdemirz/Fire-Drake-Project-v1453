@@ -9,7 +9,7 @@ struct MoveOutcome
 {
 	enum Kind { NOTHING, SENT, ARRIVED, REFUSED, FAILED };
 	Kind kind;
-	const char * reason;   // "ok", "not_in_game", "dead", "bad_target", "speed_field",
+	const char * reason;   // "ok", "not_in_game", "dead", "sitting", "bad_target", "speed_field",
 	                       // "step_too_long", "handler_noop"
 };
 
@@ -27,7 +27,7 @@ struct AttackOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "hit", "killed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "bad_target", "out_of_range", "too_soon", "rate"
+	                       // "not_in_game", "dead", "sitting", "bad_target", "out_of_range", "too_soon", "rate"
 };
 
 // Caller-supplied view of the cast target (ADR-0017 Ek F4-03). Temporary, like AttackTarget: the /bot cast test
@@ -46,7 +46,7 @@ struct CastOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "effected", "missed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "bad_skill", "unsupported_skill", "bad_target",
+	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early"
 };
 
@@ -56,6 +56,14 @@ struct PotionOutcome
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "effected", "srv_fail", "no_result",
 	                       // "not_in_game", "dead", "bad_item", "unsupported_item", "no_stock", "pot_cooldown", "rate"
+};
+
+struct StanceOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed: "applied" (SENT), "no_result" (FAILED),
+	                       // REFUSED: "not_in_game", "dead", "no_change", "busy", "toggle", "rate"
 };
 
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
@@ -125,4 +133,11 @@ public:
 
 	// Clears the pot series without sending anything (stop, despawn). Keeps the shared pot timer.
 	static void EndPotion(BotSession * s);
+
+	// One-shot stance change: sit down (sit = true) or stand up. Validates, runs the guard, sends one WIZ_STATE_CHANGE
+	// (type 1) through CUser::HandlePacket() and maps the result from the broadcast the server published (m_stateEcho).
+	// SENT "applied": the broadcast carried the requested stance. FAILED "no_result": no/other broadcast.
+	// REFUSED: "not_in_game", "dead", "no_change" (already in that stance; no event) or a guard verdict ("busy", "toggle",
+	// "rate"; FAIRNESS_REJECT written).
+	static StanceOutcome SetStance(BotSession * s, bool sit, std::chrono::steady_clock::time_point now);
 };

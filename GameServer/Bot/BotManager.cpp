@@ -628,10 +628,14 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandCast(args);
 	else if (_stricmp(verb.c_str(), "pot") == 0)
 		CommandPot(args);
+	else if (_stricmp(verb.c_str(), "sit") == 0)
+		CommandStance(args, true);
+	else if (_stricmp(verb.c_str(), "stand") == 0)
+		CommandStance(args, false);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -822,11 +826,12 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 			snprintf(mp, sizeof(mp), "-");
 
 		snprintf(message, sizeof(message),
-			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d casting=%d mp=%s pot=%d",
+			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u hp=%s attacking=%d casting=%d mp=%s pot=%d sit=%d",
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount,
 			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load(),
 			hp, s->m_attackActive ? 1 : 0, s->m_castPhase != BotSession::CAST_IDLE ? 1 : 0, mp,
-			s->m_potActive ? 1 : 0);
+			s->m_potActive ? 1 : 0,
+			(s->m_pUser != nullptr && s->m_pUser->m_bResHpType == USER_SITDOWN) ? 1 : 0);
 		out.push_back(message);
 	}
 }
@@ -1659,6 +1664,58 @@ void BotManager::CommandPot(const std::string & args)
 		snprintf(message, sizeof(message),
 			"BotManager: cmd pot: %s using %ld (%ld use(s))",
 			s->m_charName.c_str(), itemId, count);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandStance(const std::string & args, bool sit)
+{
+	const char * verb = sit ? "sit" : "stand";
+
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: usage: %s <bot>", verb, verb);
+		WriteBotLog(message);
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: unknown or not spawned bot '%s'",
+			verb, IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s not in game (phase %s)",
+			verb, s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	StanceOutcome outcome = ActionExecutor::SetStance(s, sit, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == StanceOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s refused (%s)", verb, s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == StanceOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s %s", verb, s->m_charName.c_str(), sit ? "sat down" : "stood up");
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd %s: %s failed (%s)", verb, s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 
