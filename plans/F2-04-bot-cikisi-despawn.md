@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-04` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`: slot havuzu, `ReleaseSlot`), F2-02 (`KAPANDI`: `Tick()`), F2-03 (`KAPANDI`: `BotSession`, `TickSessions`, spawn) |
@@ -273,16 +273,45 @@ file GameServer/Bot/* GameServer/GameServerDlg.cpp GameServer/DatabaseThread.cpp
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-04` — `<kısa-sha> [F2-04] …`
+- Branch / commit'ler: `bot/F2-04` — `660dd3f [F2-04] Bot çıkışı (despawn): OnDisconnect() taklidi, slot iadesi, saniyelik Update() ve Timer_UpdateSessions/AccountLogout muafiyeti`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/BotSession.h` — üç yeni faz (`PHASE_DESPAWN_WAIT/DESPAWNED/DESPAWN_STUCK`) ve `m_inGameSince`, `m_lastUpdate`, `m_despawnStart`, `m_updateCount`, `m_slotId` alanları (hepsi IOCP thread only).
+  - `GameServer/Bot/BotSession.cpp` — kurucu başlatıcılarına `m_updateCount(0), m_slotId(0)` (bildirim sırasıyla aynı); `OnPacket` değişmedi.
+  - `GameServer/Bot/BotManager.h` — `BeginDespawn`/`PollDespawn` bildirimleri, `m_despawnAfterMs`, `m_spawnOk`, `m_spawnFailed`, `m_despawnSummaryDone`; kurucu başlatıcı listesi; F2-03 yorumundaki "in F2-03" ifadesi "sessions are never freed" oldu.
+  - `GameServer/Bot/BotManager.cpp` — `UPDATE_PERIOD_MS=1000`, `DESPAWN_TIMEOUT_MS=30000`; `DESPAWN_AFTER_SEC` okuma+kıskaç (`Startup`); `despawn after` logu (`ParseSpawnList`); `FailSession` sayaç; `TickSessions` giriş koşulu (`m_spawnSummaryDone` kaldırıldı), `PHASE_IN_GAME` (saniyelik `Update()` / süre dolunca despawn), `PHASE_DESPAWN_WAIT` (`PollDespawn`), sayaç tabanlı spawn/despawn özetleri; yeni `BeginDespawn` (`OnDisconnect()` + faz) ve `PollDespawn` (`IsDeleted()` false olunca `ReleaseSlot`, 30 sn aşımında `PHASE_DESPAWN_STUCK`); `m_deleted` kilitsiz okuma yorumu. Tüm loglar `WriteBotLog`.
+  - `GameServer/GameServerDlg.cpp` — `Timer_UpdateSessions` içinde bot oturumlarını atlayan tek koşul (zaman aşımı + `Update()`).
+  - `GameServer/DatabaseThread.cpp` — `ReqUserLogOut`'ta `m_botSink == nullptr` koşulu + ADR-0014 yorumu; `AccountLogout` botlar için atlanır.
+- Derleme sonucu (`tools/build.sh Release`, son satırlar):
   ```
-  …
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Uyarılar (tamamı eski satırlarda; `Bot\` ve eklenen satırlarda yeni uyarı yok):
+  ```
+  GameServerDlg.cpp(816,94): warning C4834 (eski)
+  GameServerDlg.cpp(1143,16): warning C4267 (eski)
+  GameServerDlg.cpp(1802,18): warning C4267 (eski)
+  UpgradeHandler.cpp(634/862): warning C4789 (eski, GameServer tam derlemesi)
+  ```
+  `./tools/build.sh Debug` de hatasız bitti (yalnızca eski `GameServerDlg.cpp` uyarıları).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — Release rc=0; `Bot\`/eklenen satırlarda yeni uyarı yok (yalnızca eski `GameServerDlg.cpp`/`UpgradeHandler.cpp` uyarıları).
+  - K2 ✔ — Debug rc=0.
+  - K3 ✔ — `git diff --stat gece/2026-10-02...bot/F2-04`: 6 izinli dosya + plan. `GameServerDlg.cpp` +4/−0 (3 kod satırı + 1 boş satır; plan "boş satır dahil değil" diyor), `DatabaseThread.cpp` +2/−1 (silinen tek satır eski `if (m_bLogout != 2)`).
+  - K4 ✔ — Bu iki dosyanın farkı yalnızca `m_botSink` koşulları; `nullptr` iken davranış aynı.
+  - K5 ✔ — `m_pUser`/`OnDisconnect`/`->Update()`/`IsDeleted`/`ReleaseSlot` satırları `TickSessions`(436–489), `BeginDespawn`(543–547), `PollDespawn`(560–585), `StartSession`(625) içinde; `ReleaseSlot` ayrıca F2-01 havuz kurulumu (162). `delete` yalnızca F2-02 `m_timerThread` (233); `erase`/oturum silme yok.
+  - K6 ✔ — `PollDespawn` `IsDeleted()` false olana dek beklemez/iade etmez; `waited > 30000` ise `PHASE_DESPAWN_STUCK` (iade yok).
+  - K7 ✔ (grep nüansı) — `BeginDespawn` yalnızca `pUser->OnDisconnect()` çağırır; `LogOut(`/`Disconnect(` çağrısı yok. Grep'te `Disconnect()`/`LogOut()` yalnızca plan §5.4'ün zorunlu kıldığı yorum satırlarında (544, 546) geçer; çalıştırılan çağrı değildir.
+  - K8 ✔ — `TickSessions` ilk ifadesi `m_sessions.empty()`; `m_spawnSummaryDone` artık girişte kullanılmıyor (yalnızca 511/513/522).
+  - K9 ✔ — `DESPAWN_AFTER_SEC` satır 79'da, `ENABLED` erken dönüşünden (56–57) sonra; `[0,86400]` kıskaç; `0` iken despawn yolu kapalı.
+  - K10 ✔ — Sabitler 1000/30000; tüm log metinleri mevcut; `spawn complete: %u/%u in game, %u failed` birebir aynı; yeni kodda `printf` yok.
+  - K11 ✔ — `FailSession` yalnızca `m_spawnFailed++` kazandı; slot iadesi/`delete` yok.
+  - K12 ✔ — `file`: `Bot/*` "ASCII … CRLF", `GameServerDlg.cpp`/`DatabaseThread.cpp` "UTF-8 (with BOM) … CRLF".
+  - K13 ✔ — `git status --short` temiz; sunucu çalıştırılmadı, `GameServer.ini`/DB değişmedi.
+- Plandan sapmalar ve gerekçeleri:
+  - `GameServerDlg.cpp` git farkı +4/−0 (plan metni "+3 / −0, boş satır dahil değil" diyor): eklenti 3 kod satırı + 1 boş satır. Plan niyetiyle uyumlu.
+  - `PollDespawn`'da `waited` `long long`; plan pseudokodu `<ms since s->m_despawnStart>` diyor, `duration_cast` ile uygulandı.
+- Açık sorular:
+  - K7'deki `grep … LogOut|Disconnect` çıktısında, plan §5.4'ün zorunlu kıldığı yorum satırlarındaki `Disconnect()`/`LogOut()` sözcükleri görünür. Yorum metni plan tarafından birebir istendiği için değiştirilmedi; Claude doğrulamada bu ayrımı dikkate almalı.
 
 ---
 
