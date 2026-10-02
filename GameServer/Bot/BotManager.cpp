@@ -652,10 +652,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandPartyChat(args);
 	else if (_stricmp(verb.c_str(), "see") == 0)
 		CommandSee(args);
+	else if (_stricmp(verb.c_str(), "npcs") == 0)
+		CommandNpcs(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -2319,6 +2321,86 @@ void BotManager::CommandSee(const std::string & args)
 			(unsigned)u.sid, u.name, enemy ? "enemy" : "ally", (unsigned)u.nation,
 			(unsigned)u.cls, (unsigned)u.level, ux, uz, dist,
 			u.resHpType == BotCore::kObsUserDead ? "dead" : "alive", (unsigned long long)age);
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::CommandNpcs(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd npcs: usage: npcs <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd npcs: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd npcs: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Copy the table and the counter under the lock, then format with the lock released.
+	BotCore::NpcTable copy;
+	uint32 unresolved = 0;
+	{
+		std::lock_guard<std::mutex> lock(s->m_obsLock);
+		copy = s->m_npcs;
+		unresolved = s->m_npcUnresolved.load();
+	}
+
+	// The only read of the bot's own session: its CUser, which the contract allows.
+	CUser * me = s->m_pUser;
+	float myX = me->GetX();
+	float myZ = me->GetZ();
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	int dead = 0;
+	for (int i = 0; i < copy.Count(); i++)
+	{
+		if (copy.At(i).dead)
+			dead++;
+	}
+
+	char message[320];
+	snprintf(message, sizeof(message),
+		"BotManager: cmd npcs: %s sees %d npc(s) (dead %d, dropped %u, unresolved %u)",
+		s->m_charName.c_str(), copy.Count(), dead, (unsigned)copy.Overflow(), (unsigned)unresolved);
+	WriteBotLog(message);
+	WriteBotLog("BotManager: cmd npcs:   (unresolved counts the ids of the last WIZ_NPC_REGION list that the table did not know; no WIZ_REQ_NPCIN is sent yet)");
+
+	for (int i = 0; i < copy.Count(); i++)
+	{
+		const BotCore::NpcObs & n = copy.At(i);
+		float nx = n.x10 / 10.0f;
+		float nz = n.z10 / 10.0f;
+		float dist = (float)sqrt((nx - myX) * (nx - myX) + (nz - myZ) * (nz - myZ));
+		uint64 age = nowMs > n.lastSeenMs ? nowMs - n.lastSeenMs : 0;
+
+		snprintf(message, sizeof(message),
+			"BotManager: cmd npcs:   id=%u proto=%u type=%u %s nation=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s gate=%s obj=%u age=%llums",
+			(unsigned)n.id, (unsigned)n.protoId, (unsigned)n.type, n.name, (unsigned)n.nation,
+			(unsigned)n.level, nx, nz, dist, n.dead ? "dead" : "alive",
+			n.gateOpen ? "open" : "closed", (unsigned)n.objectType, (unsigned long long)age);
 		WriteBotLog(message);
 	}
 }
