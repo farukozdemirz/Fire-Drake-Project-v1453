@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-51 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-06 (`TargetHpReq`, CLI-10), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI`; F4-50 önerilir (aynı `UnitView` alanlarına dokunur: F4-50 önce birleşmeli, aksi halde `UnitView` çakışması çözülür) |
@@ -102,14 +102,68 @@ grep -n "m_hp" GameServer/Bot/BotSession.cpp GameServer/Bot/BotManager.cpp
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-51` (taban: `gece/2026-10-02` @ `d3605e2`, F4-50 birleşmiş); commit'ler bu raporla birlikte.
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/Perception.h`: `kHpMaxEntries`, `kHpStaleMs`, `TargetHpMsg`, `ParseTargetHp` (tam 13 bayt + `maxHp<=0`/`hp<0`/`hp>maxHp` ret), `HpObs`, kopyalanabilir `HpTable` (ezme, dolunca en eski `atMs` atılır, `Invalidate`, `Find`), `UnitView`/`NpcView`'a HP alanları, saf `AttachHp` (`BuildSnapshot` imzası değişmedi).
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: 4 yeni `TEST_CASE` (`ParseTargetHp`, `HpTable_Upsert`, `HpTable_Attach`, `HpTable_Death`).
+  - `GameServer/Bot/BotSession.h`: `HpTable m_hp` (m_obsLock).
+  - `GameServer/Bot/BotSession.cpp`: mevcut `WIZ_TARGET_HP` kaydının yanına ayrı algı bloğu (kilitten önce ayrıştırma, kilit altında `Upsert`), `WIZ_USER_INOUT OUT`/`WIZ_NPC_INOUT OUT`/`WIZ_DEAD` (oyuncu ve NPC) `Invalidate`, `ResetForRespawn` temizliği.
+  - `GameServer/Bot/BotManager.cpp`: yalnızca `CommandSnap` — `hpCopy` (kilit altında), `AttachHp` çağrısı, `enemy`/`ally`/`npc` satırlarına `hp=<hp>/<max> hp_age=<ms>[ stale]` veya `hp=?`.
+  - `tools/check-perception-contract.py`: `UnitView`/`NpcView` `VIEW_FORBIDDEN`'dan `hp` çıkarıldı, `mp`/`name`/`cooldown`/envanter yasak kaldı; başlık R5 açıklaması güncellendi; selftest'e `hp` alanının `UnitView` ve `NpcView`'da geçtiği iki vaka eklendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0 (yeni uyarı yok), `./tools/build.sh Debug` rc=0; `./tools/run-tests.sh Release` ve `Debug` → `92 tests, 0 failed` (plan başı 88, +4). `python3 tools/check-perception-contract.py` → `RESULT: PASS` (R1 0, R2 0/28, R3 0/18, R4 0, R5 0), `--selftest` → `selftest OK`.
 - Kabul kriterleri öz-değerlendirme:
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ Release rc=0, touch sonrası değişen dosyalarda uyarı yok.
+  - K2 ✔ Debug rc=0, uyarı yok.
+  - K3 ✔ Release+Debug `92 tests, 0 failed`, dört yeni ad `[ OK ]`.
+  - K4 ✔ `BotCore/Perception.h`'te yasak include/kelime grep'i boş.
+  - K5a ✔ araç `RESULT: PASS` + `--selftest OK`; `mp` eklemek hâlâ R5 ihlali (selftest), `hp` alanı `UnitView`/`NpcView`'da geçiyor.
+  - K5 ✔ yeni satırlarda `g_pMain`/`GetUserPtr`/`_PARTY_GROUP`/`m_pUser->` yok; HP yalnızca `WIZ_TARGET_HP` paketinden (`AttachHp` saf tabloyu kullanır).
+  - K6 ✔ mevcut `m_targetHpValues`/`m_targetHpEcho` kaydı ve `/bot target` yolu değişmedi; `BotSession.cpp` farkında `-` satırı yok.
+  - K7 ✔ yeni paket isteği/zamanlayıcı/ini anahtarı/komut yok; `ENABLED=0` yolu değişmedi (yalnızca alınan paket işlenir).
+  - K8 ✔ `m_hp` yalnızca `m_obsLock` altında (6 erişim: 5 `OnPacket`/`ResetForRespawn` kilitli blok, 1 `CommandSnap` kilitli kopya); ayrıştırma kilitten önce.
+  - K9 ✔ ASCII+CRLF (araç ASCII+LF, mevcut kural), `git diff --check` boş; yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok (bulunan iki `printf` eski satırlar).
+  - K10 → Claude yapar (çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: yok.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI**
+- İncelenen commit: `868022a` (`bot/F4-51`, taban `gece/2026-10-02` @ `d3605e2`, F4-50 birleşmiş). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı; birleştirmeyi döngü betiği yapar. Çalışma ağacı temiz.
+- Kapsam: 7 dosya, hepsi §4 listesinde (`Perception.h`, `PerceptionTests.cpp`, `BotSession.h/.cpp`, `BotManager.cpp`, `check-perception-contract.py`, kendi planı). `docs/`, `AGENTS.md`, `CLAUDE.md`, `.claude/`, başka plan değişmedi. Tek commit `[F4-51] …`, merge/force izi yok.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release | ✔ | Dört dosya `touch` + `./tools/build.sh Release` rc=0; uyarı yalnızca eski `UpgradeHandler.cpp(634/862)` C4789 |
+| K2 Debug | ✔ | `touch` + `./tools/build.sh Debug` rc=0; uyarı/hata 0 |
+| K3 testler | ✔ | `run-tests.sh Release` ve `Debug`: `92 tests, 0 failed` (taban 88 + 4); `Perception_ParseTargetHp`, `_HpTable_Upsert`, `_HpTable_Attach`, `_HpTable_Death` `[ OK ]`; testlerde `-` satırı yok |
+| K4 | ✔ | `Perception.h` içinde `windows.h|stdafx|GameServer|shared/` grep'i boş |
+| K5a | ✔ | `check-perception-contract.py` `RESULT: PASS` (R1 0, R5 0) ve `--selftest` `selftest OK`; `VIEW_FORBIDDEN`'dan yalnızca `hp` çıktı (`UnitView`/`NpcView`), `mp/cooldown/stock/inventory/invent/buff/skill/item/potion` ve `NpcView.name` yasak kaldı; selftest `mp` ihlal vakası (satır 587) mevcut, `UnitView`/`NpcView` `hp` geçer vakaları eklendi, `buffCount` ihlal vakası geçiyor |
+| K5 sözleşme | ✔ | `GameServer` eklenen satırlarında `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` boş; HP yalnızca `BotSession::OnPacket` içinde `ParseTargetHp` ile alınan pakettendir (`BotSession.cpp:96-117`), `AttachHp` saf tablodan okur |
+| K6 | ✔ | `BotSession.cpp`/`.h` farkında `-` satırı 0; `m_targetHpValues`/`m_targetHpEcho` bloğu (`BotSession.cpp:79-94`) dokunulmadı; `BotManager.cpp` `-` satırları yalnızca `CommandSnap` format dizgileri. Çalışma zamanında `target` aynı biçimde `observed BotWP_E hp 2821/5650` döndü |
+| K7 | ✔ | Yeni paket isteği/zamanlayıcı/ini anahtarı/komut yok; `GameServer.ini` md5 öncesi/sonrası `265a8e1c...`; yalnızca alınan paket işleniyor |
+| K8 | ✔ | `m_hp` erişimleri: `BotSession.cpp:115` (`lock_guard` altında `Upsert`), `:233/:272/:296/:338` (mevcut `m_obsLock` bloklarında `Invalidate`), `:409` (`ResetForRespawn` kilitli blokta `Clear`), `BotManager.cpp:2557` (kilitli kopya); ayrıştırma `ParseTargetHp` kilitten önce |
+| K9 | ✔ | Beş kod dosyası tamamen CRLF (`1787/1787`, `2248/2248`, `179/179`, `454/454`, `3406/3406`), `.py` ASCII+LF; eklenen satırlarda ASCII dışı 0; `git diff --check` rc=0; yeni `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok |
+| K10 çalışma zamanı | ✔ | Aşağıda |
+
+**Çalışma zamanı (K10; `Release`, `GameServer.ini` değiştirilmedi (`ENABLED=1`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş); `BotWP_K`, `BotWP_E`, `BotMF_K` zone 71; iş bitince `run-servers.sh stop`, `0/3`; `BotCommands.*` kalmadı):**
+
+1. **Hedeflenmemiş ✔.** `target` öncesi `snap BotWP_K`: `enemy id=2985 … hp=?`, `ally id=2986 … hp=?`.
+2. **`target` sonrası ✔.** `target BotWP_K BotWP_E` → `observed … hp 2821/5650`; sonraki `snap`: `enemy … hp=2821/5650 hp_age=3213ms`, `list` `BotWP_E hp=2821/5650` ile aynı; hedeflenmeyen `ally BotMF_K hp=?` kaldı.
+3. **Bayatlık ✔.** İsteksiz geçen sürede `snap`: `hp_age=18582ms stale` ve `hp_age=50400ms stale`.
+4. **Hasar bildirimi (yeni istek yok) ✔.** `attack BotWP_K BotWP_E 4` (1 m) sonrası `snap`: `hp=2265/5650 hp_age=4572ms`, `list` `hp=2265/5650` ile aynı; arada `target` yollanmadı.
+5. **Hedef ölünce ✔.** `attack … 60` → `killed after 19 hit(s)`; `snap BotWP_K`: `enemy … dead … hp=?` (`list` `hp=0/5650`); sonradan görünüme giren `BotMF_K`'nin `snap`'inde de ölü düşman `hp=?`, `ally BotWP_K hp=?`.
+6. **Gerileme ✔.** `list`, `see`, `npcs`, `snap` (üç bot), `move`, `target`, `attack`, `despawn all` çalıştı (`names cleared yes`); `Bot_2_10_2026.log` içinde `WARN`/`ERROR` 0.
+
+**Bulgular (hepsi not, engel değil)**
+
+1. **[Üslup] `AttachHp` üç döngüde aynı gövdeyi tekrarlıyor** (`BotCore/Perception.h:1684-1730`). `UnitView` ve `NpcView` ortak bir alt yapı paylaşmadığı için kabul edilebilir; ileride üçüncü görünüm türü eklenirse küçük bir yardımcı şablon düşünülebilir.
+2. **[Bilgi] `HpObs.reply` yazılıyor ama henüz okunmuyor** (`BotSession.cpp:113`); plan §3.1 böyle istedi (karar katmanı F6'da kullanır).
+3. **[Bilgi] Tablo yalnızca OUT/`WIZ_DEAD`/respawn'da temizleniyor** (plan §3.2). Bölge değişimiyle OUT'suz görüşten çıkan birimin kaydı yaşlanıp `stale` olur, 32'lik kapasite dolunca en eski atılır; yanlış doğru görünme riski yok (`hp_age`/`stale` açık).
+4. **[Bilgi] Telemetri `FAIRNESS_REJECT` `value/limit` birimi 1/10 m** (`value 30.00 limit 20.00` = 3,0 m > 2,0 m silah menzili); F4-51'den bağımsız, test sırasında karıştırılmaması için not.
+5. **[Bilgi] Komutla öldürülen `BotWP_E` DB'ye `Hp=0` yazdı** (bilinen davranış, F4-06 notu); sonraki spawn'da ölü açılır, yeniden doğuş `regene` ile yapılır.

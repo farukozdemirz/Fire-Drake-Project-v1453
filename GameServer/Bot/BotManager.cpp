@@ -2548,11 +2548,13 @@ void BotManager::CommandSnap(const std::string & args)
 	BotCore::ObsTable obsCopy;
 	BotCore::NpcTable npcCopy;
 	BotCore::TeamTable teamCopy;
+	BotCore::HpTable hpCopy;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		obsCopy = s->m_obs;
 		npcCopy = s->m_npcs;
 		teamCopy = s->m_team;
+		hpCopy = s->m_hp;
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2578,6 +2580,7 @@ void BotManager::CommandSnap(const std::string & args)
 
 	BotCore::PerceptionSnapshot snap;
 	BotCore::BuildSnapshot(self, obsCopy, npcCopy, nowMs, snap);
+	BotCore::AttachHp(snap, hpCopy, nowMs);
 	BotCore::BuildTeam(self, teamCopy, obsCopy, nowMs, snap.team);
 
 	char message[320];
@@ -2669,12 +2672,19 @@ void BotManager::CommandSnap(const std::string & args)
 		else
 			snprintf(speedText, sizeof(speedText), "%d", (int)u.speedField);
 
+		char hpText[48];
+		if (u.hpKnown)
+			snprintf(hpText, sizeof(hpText), "%d/%d hp_age=%ums%s", u.hp, u.maxHp, (unsigned)u.hpAgeMs, u.hpStale ? " stale" : "");
+		else
+			snprintf(hpText, sizeof(hpText), "?");
+
 		snprintf(message, sizeof(message),
-			"BotManager: cmd snap:   enemy id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s",
+			"BotManager: cmd snap:   enemy id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s hp=%s",
 			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
 			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs,
 			u.name, (unsigned)u.posAgeMs, speedText, u.vx, u.vz,
-			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"));
+			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"),
+			hpText);
 		WriteBotLog(message);
 	}
 
@@ -2687,22 +2697,36 @@ void BotManager::CommandSnap(const std::string & args)
 		else
 			snprintf(speedText, sizeof(speedText), "%d", (int)u.speedField);
 
+		char hpText[48];
+		if (u.hpKnown)
+			snprintf(hpText, sizeof(hpText), "%d/%d hp_age=%ums%s", u.hp, u.maxHp, (unsigned)u.hpAgeMs, u.hpStale ? " stale" : "");
+		else
+			snprintf(hpText, sizeof(hpText), "?");
+
 		snprintf(message, sizeof(message),
-			"BotManager: cmd snap:   ally id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s",
+			"BotManager: cmd snap:   ally id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums name=%s pos_age=%ums speed=%s v=(%.2f,%.2f) pos=%s hp=%s",
 			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
 			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs,
 			u.name, (unsigned)u.posAgeMs, speedText, u.vx, u.vz,
-			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"));
+			u.posState == BotCore::POS_STALE ? "stale" : (u.posState == BotCore::POS_LOST ? "lost" : "fresh"),
+			hpText);
 		WriteBotLog(message);
 	}
 
 	for (int i = 0; i < snap.npcCount && i < kPrintMax; i++)
 	{
 		const BotCore::NpcView & n = snap.npcs[i];
+		char hpText[48];
+		if (n.hpKnown)
+			snprintf(hpText, sizeof(hpText), "%d/%d hp_age=%ums%s", n.hp, n.maxHp, (unsigned)n.hpAgeMs, n.hpStale ? " stale" : "");
+		else
+			snprintf(hpText, sizeof(hpText), "?");
+
 		snprintf(message, sizeof(message),
-			"BotManager: cmd snap:   npc id=%u proto=%u type=%u nation=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s gate=%s age=%ums",
+			"BotManager: cmd snap:   npc id=%u proto=%u type=%u nation=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s gate=%s age=%ums hp=%s",
 			(unsigned)n.id, (unsigned)n.protoId, (unsigned)n.type, (unsigned)n.nation, (unsigned)n.level,
-			n.x, n.z, n.dist, n.dead ? "dead" : "alive", n.gateOpen ? "open" : "closed", (unsigned)n.ageMs);
+			n.x, n.z, n.dist, n.dead ? "dead" : "alive", n.gateOpen ? "open" : "closed", (unsigned)n.ageMs,
+			hpText);
 		WriteBotLog(message);
 	}
 }
