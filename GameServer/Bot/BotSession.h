@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <string>
 #include "IBotSink.h"
 #include "../../BotCore/BotCombat.h"
@@ -27,6 +28,8 @@ public:
 	};
 
 	enum SelectResult { SELECT_PENDING = 0, SELECT_OK = 1, SELECT_FAILED = 2 };
+
+	enum CastPhase { CAST_IDLE = 0, CAST_ARMED = 1, CAST_CASTING = 2 };
 
 	BotSession(const char * charName, const char * accountName);
 
@@ -69,8 +72,24 @@ public:
 	uint32 m_attackHits;                                   // IOCP thread only: of those, results hit/killed
 	BotCore::ActionRateWindow m_actionWindow;              // IOCP thread only: CLI-11 window (non-move actions)
 
+	uint8 m_castPhase;                                     // IOCP thread only: CastPhase
+	uint32 m_castSkillId;                                  // IOCP thread only
+	std::string m_castTargetName;                          // IOCP thread only: target bot's character name; empty = self
+	uint32 m_castLeft;                                     // IOCP thread only: cycles still to complete
+	uint32 m_castCycle;                                    // IOCP thread only: cycles started in this series (1-based in telemetry)
+	uint32 m_castDone;                                     // IOCP thread only: cycles whose EFFECTING result was effected/missed
+	uint32 m_castPackets;                                  // IOCP thread only: WIZ_MAGIC_PROCESS packets sent in this series
+	std::chrono::steady_clock::time_point m_castCastingAt; // IOCP thread only: when CASTING went out (phase CAST_CASTING)
+	std::map<uint32, std::chrono::steady_clock::time_point> m_castSkillLast;   // IOCP thread only: skill id -> last EFFECTING sent
+	bool m_castTypeHas[8];                                 // IOCP thread only: per skill type 0..7
+	std::chrono::steady_clock::time_point m_castTypeLast[8];   // IOCP thread only
+	bool m_castAnyHas;                                     // IOCP thread only
+	std::chrono::steady_clock::time_point m_castAnyLast;   // IOCP thread only: last EFFECTING of any skill
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
 	std::atomic<uint64> m_attackEcho;                      // written by OnPacket() (same thread as HandlePacket for own hits)
+	std::atomic<int> m_castSelfId;                         // set by ActionExecutor (IOCP thread), read by OnPacket(): own caster id, -1 = none
+	std::atomic<uint64> m_castEcho;                        // written by OnPacket(): skill result packet, see BotSession.cpp
 };

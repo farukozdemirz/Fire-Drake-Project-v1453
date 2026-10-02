@@ -3,10 +3,13 @@
 #include "BotSession.h"
 #include "Telemetry.h"
 #include "../Map.h"
+#include "../GameServerDlg.h"
+#include "../MagicInstance.h"
 #include "../../BotCore/BotMotion.h"
 #include "../../BotCore/BotCombat.h"
 
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -509,4 +512,422 @@ void ActionExecutor::EndAttack(BotSession * s)
 	s->m_attackActive = false;
 	s->m_attackLeft = 0;
 	s->m_attackHasLast = false;
+}
+
+// --- cast slice (ADR-0017 Ek F4-03) ---
+
+// Maps a guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict verdict,
+	const BotCore::CastStartCheck & c, uint32 sinceCastingMs, uint8 castTime, int inWindow)
+{
+	const char * rule = "MEC-MAG-11";
+	const char * reason = "out_of_range";
+	float value = 0.0f;
+	float limit = 0.0f;
+
+	switch (verdict)
+	{
+	case BotCore::CAST_REJECT_NOT_STANDING:
+		rule = "CLI-09"; reason = "not_standing"; value = 1; limit = 0;
+		break;
+	case BotCore::CAST_REJECT_NO_MANA:
+		rule = "MEC-MAG-08"; reason = "no_mana"; value = (float)c.mana; limit = (float)c.msp;
+		break;
+	case BotCore::CAST_REJECT_RECAST:
+		rule = "CLI-04"; reason = "recast"; value = (float)c.sinceSkillLastMs; limit = (float)c.reCastMs;
+		break;
+	case BotCore::CAST_REJECT_TYPE_GATE:
+		rule = "MEC-MAG-03"; reason = "type_gate"; value = (float)c.sinceTypeLastMs; limit = (float)BotCore::kTypeGateMs;
+		break;
+	case BotCore::CAST_REJECT_GAP:
+		rule = "CLI-04"; reason = "gap"; value = (float)c.sinceAnyLastMs; limit = (float)BotCore::kCastGapMs;
+		break;
+	case BotCore::CAST_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)inWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	case BotCore::CAST_REJECT_TOO_EARLY:
+		rule = "CLI-03"; reason = "too_early"; value = (float)sinceCastingMs; limit = (float)BotCore::CastDurationMs(castTime);
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "Cast", rule, reason, value, limit);
+
+	ActionExecutor::EndCast(s);
+	CastOutcome out;
+	out.kind = CastOutcome::REFUSED;
+	out.reason = reason;
+	return out;
+}
+
+// Builds one WIZ_MAGIC_PROCESS packet, runs it through CUser::HandlePacket() and maps the result the server
+// published back (via BotSession::m_castEcho). 'type' is the telemetry action name.
+static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32 skillId,
+	const CastTarget & target, const int16 sData[3], uint32 cycle, uint32 sinceCastingMs,
+	uint32 castMs, uint64 nowMs, std::chrono::steady_clock::time_point now)
+{
+	const char * type = (opcode == MAGIC_CASTING) ? "CastStart" : "CastEffect";
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"" + type + "\""
+			+ ",\"skill\":" + std::to_string(skillId)
+			+ ",\"target\":" + std::to_string((int)target.id)
+			+ ",\"cycle\":" + std::to_string(cycle);
+		if (opcode == MAGIC_CASTING)
+			fields += ",\"cast_ms\":" + std::to_string(castMs);
+		else
+			fields += ",\"since_casting_ms\":" + std::to_string(sinceCastingMs);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	Packet pkt(WIZ_MAGIC_PROCESS);
+	pkt << uint8(opcode) << uint32(skillId) << int16(user->GetID()) << int16(target.id)
+		<< int16(sData[0]) << int16(sData[1]) << int16(sData[2])
+		<< int16(0) << int16(0) << int16(0);
+
+	s->m_castEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_castPackets++;
+	s->m_actionWindow.Record(nowMs);
+
+	uint64 echo = s->m_castEcho.load();
+	int op = -1;
+	int code = 0;
+	bool ok = false;
+	const char * reason = "no_result";
+	if ((echo & (1ull << 63)) != 0
+		&& (uint32)(echo & 0xFFFFFFFF) == skillId)
+	{
+		op = (int)((echo >> 48) & 0xF);
+		code = (int)(int16)((echo >> 32) & 0xFFFF);
+		if (opcode == MAGIC_CASTING)
+		{
+			if (op == MAGIC_CASTING) { ok = true; reason = "casting"; }
+			else if (op == MAGIC_FAIL) { reason = "srv_fail"; }
+		}
+		else
+		{
+			if (op == MAGIC_EFFECTING)
+			{
+				ok = true;
+				reason = (code == SKILLMAGIC_FAIL_ATTACKZERO) ? "missed" : "effected";
+			}
+			else if (op == MAGIC_FAIL) { reason = "srv_fail"; }
+		}
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"" + type + "\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"op\":" + std::to_string(op)
+			+ ",\"code\":" + std::to_string(code)
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	CastOutcome out;
+	out.kind = CastOutcome::SENT;
+	out.reason = reason;
+	(void)now;
+	return out;
+}
+
+CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
+	std::chrono::steady_clock::time_point now)
+{
+	CastOutcome out;
+	out.kind = CastOutcome::NOTHING;
+	out.reason = "ok";
+
+	(void)now;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	if (count < 1)
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "bad_skill";
+		return out;
+	}
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(skillId);
+	if (m == nullptr)
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "bad_skill";
+		return out;
+	}
+
+	if (m->sSkill != 0
+		&& (user->m_sClass != m->sSkill / 10 || user->GetLevel() < m->sSkillLevel))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "bad_skill";
+		return out;
+	}
+
+	bool supportedType = (m->bType[0] == 1 || m->bType[0] == 3);
+	if (!supportedType
+		|| m->bType[1] != 0
+		|| m->bFlyingEffect != 0
+		|| m->iUseItem != 0
+		|| m->sEtc != 0
+		|| (m->bMoral != MORAL_SELF && m->bMoral != MORAL_FRIEND_WITHME
+			&& m->bMoral != MORAL_ENEMY && m->bMoral != MORAL_ALL))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "unsupported_skill";
+		return out;
+	}
+
+	bool self = targetName.empty();
+	bool wantedSelf = (m->bMoral == MORAL_SELF);
+	bool wantedTarget = (m->bMoral == MORAL_ENEMY);
+	if ((wantedSelf && !self) || (wantedTarget && self))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "bad_target";
+		return out;
+	}
+
+	s->m_castPhase = BotSession::CAST_ARMED;
+	s->m_castSkillId = skillId;
+	s->m_castTargetName = targetName;
+	s->m_castLeft = count;
+	s->m_castCycle = 0;
+	s->m_castDone = 0;
+	s->m_castPackets = 0;
+	s->m_castSelfId = user->GetID();
+
+	out.kind = CastOutcome::SENT;
+	out.reason = "ok";
+	return out;
+}
+
+CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
+	std::chrono::steady_clock::time_point now)
+{
+	CastOutcome out;
+	out.kind = CastOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (s == nullptr || s->m_castPhase == BotSession::CAST_IDLE)
+		return out;
+
+	CUser * user = s->m_pUser;
+	if (user == nullptr || !user->isInGame())
+	{
+		EndCast(s);
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		EndCast(s);
+		out.kind = CastOutcome::FAILED;
+		out.reason = "dead";
+		return out;
+	}
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(s->m_castSkillId);
+	if (m == nullptr)
+	{
+		EndCast(s);
+		out.kind = CastOutcome::FAILED;
+		out.reason = "bad_skill";
+		return out;
+	}
+
+	// Target view (metres).
+	float dx = target.x - user->GetX();
+	float dz = target.z - user->GetZ();
+	float meters = target.isSelf ? 0.0f : std::sqrt(dx * dx + dz * dz);
+
+	_ITEM_TABLE * weapon = user->GetItemPrototype(RIGHTHAND);
+	bool hasWeapon = weapon != nullptr;
+	uint16 weaponRange = hasWeapon ? weapon->m_sRange : 0;
+
+	int16 distanceField = BotCore::DistanceField(meters);
+	int16 weaponRangeField = BotCore::AttackRangeField(hasWeapon, weaponRange);
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	// Timing inputs from the reuse timers.
+	uint32 sinceSkillLastMs = 0;
+	bool hasSkillLast = false;
+	std::map<uint32, std::chrono::steady_clock::time_point>::iterator skillIt = s->m_castSkillLast.find(s->m_castSkillId);
+	if (skillIt != s->m_castSkillLast.end())
+	{
+		hasSkillLast = true;
+		sinceSkillLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - skillIt->second).count();
+	}
+
+	uint8 type0 = m->bType[0];
+	bool typeGated = (m->iNum < 400000 && type0 >= 1 && type0 <= 7);
+	bool hasTypeLast = false;
+	uint32 sinceTypeLastMs = 0;
+	if (type0 < 8 && s->m_castTypeHas[type0])
+	{
+		hasTypeLast = true;
+		sinceTypeLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_castTypeLast[type0]).count();
+	}
+
+	uint32 sinceAnyLastMs = 0;
+	if (s->m_castAnyHas)
+		sinceAnyLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_castAnyLast).count();
+
+	BotCore::CastStartCheck c;
+	c.distanceM = meters;
+	c.skillRange = m->sRange;
+	c.distanceField = distanceField;
+	c.weaponRangeField = weaponRangeField;
+	c.needsStanding = (m->sUseStanding == 1);
+	c.standing = !s->m_moveActive;
+	c.mana = user->GetMana();
+	c.msp = m->sMsp;
+	c.reCastMs = BotCore::CastRecastMs(m->sReCastTime);
+	c.hasSkillLast = hasSkillLast;
+	c.sinceSkillLastMs = sinceSkillLastMs;
+	c.typeGated = typeGated;
+	c.hasTypeLast = hasTypeLast;
+	c.sinceTypeLastMs = sinceTypeLastMs;
+	c.hasAnyLast = s->m_castAnyHas;
+	c.sinceAnyLastMs = sinceAnyLastMs;
+	c.actionsInWindow = inWindow;
+
+	int16 sData[3];
+	sData[0] = target.isSelf ? 0 : int16(target.x);
+	sData[1] = target.isSelf ? 0 : int16(target.y);
+	sData[2] = target.isSelf ? 0 : int16(target.z);
+
+	if (s->m_castPhase == BotSession::CAST_ARMED)
+	{
+		// Not this tick's turn yet: not a guard rejection, so no FAIRNESS_REJECT is written.
+		if (BotCore::CastWaitMs(c) > 0)
+			return out;
+
+		BotCore::CastVerdict verdict = BotCore::CheckCastStart(c);
+		if (verdict != BotCore::CAST_OK)
+			return RejectCast(s, user, verdict, c, 0, m->bCastTime, inWindow);
+
+		s->m_castCycle++;
+
+		if (m->bCastTime > 0)
+		{
+			CastOutcome cast = SubmitCast(s, user, MAGIC_CASTING, s->m_castSkillId, target, sData,
+				s->m_castCycle, 0, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
+			if (cast.reason != nullptr && std::strcmp(cast.reason, "casting") == 0)
+			{
+				s->m_castPhase = BotSession::CAST_CASTING;
+				s->m_castCastingAt = now;
+				return cast;
+			}
+
+			// CASTING was not accepted (srv_fail / no_result): drop the series.
+			const char * reason = cast.reason;
+			EndCast(s);
+			out.kind = CastOutcome::FAILED;
+			out.reason = reason;
+			return out;
+		}
+		// bCastTime == 0: fall through to EFFECTING now (sinceCastingMs = 0).
+	}
+
+	uint32 sinceCastingMs = 0;
+	if (s->m_castPhase == BotSession::CAST_CASTING)
+	{
+		uint32 wait = BotCore::CastDurationMs(m->bCastTime);
+		long long elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_castCastingAt).count();
+		if (elapsed < (long long)wait)
+			return out;
+
+		sinceCastingMs = (uint32)elapsed;
+	}
+
+	bool inRange = BotCore::CastInRange(meters, m->sRange, distanceField, weaponRangeField);
+	BotCore::CastVerdict effectVerdict = BotCore::CheckCastEffect(inRange, sinceCastingMs, m->bCastTime, inWindow);
+	if (effectVerdict != BotCore::CAST_OK)
+		return RejectCast(s, user, effectVerdict, c, sinceCastingMs, m->bCastTime, inWindow);
+
+	CastOutcome effect = SubmitCast(s, user, MAGIC_EFFECTING, s->m_castSkillId, target, sData,
+		s->m_castCycle, sinceCastingMs, BotCore::CastDurationMs(m->bCastTime), nowMs, now);
+	const char * reason = effect.reason;
+
+	// Reuse timers: the bot is conservative (the server only records a timestamp on success).
+	s->m_castSkillLast[s->m_castSkillId] = now;
+	if (type0 < 8)
+	{
+		s->m_castTypeHas[type0] = true;
+		s->m_castTypeLast[type0] = now;
+	}
+	s->m_castAnyHas = true;
+	s->m_castAnyLast = now;
+
+	if (std::strcmp(reason, "effected") == 0 || std::strcmp(reason, "missed") == 0)
+		s->m_castDone++;
+
+	s->m_castLeft--;
+
+	if (std::strcmp(reason, "no_result") == 0)
+	{
+		EndCast(s);
+		out.kind = CastOutcome::FAILED;
+		out.reason = "no_result";
+		return out;
+	}
+
+	if (s->m_castLeft == 0)
+	{
+		EndCast(s);
+		out.kind = CastOutcome::FINISHED;
+		out.reason = reason;
+		return out;
+	}
+
+	s->m_castPhase = BotSession::CAST_ARMED;
+	out.kind = CastOutcome::SENT;
+	out.reason = reason;
+	return out;
+}
+
+void ActionExecutor::EndCast(BotSession * s)
+{
+	if (s == nullptr)
+		return;
+
+	s->m_castPhase = BotSession::CAST_IDLE;
+	s->m_castLeft = 0;
 }
