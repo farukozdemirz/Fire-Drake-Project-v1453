@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-23` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12, F4-14, F4-16, F4-17, F4-18 (`Perception` dilimleri) — `KAPANDI`; F4-22 — `KAPANDI` (merge `1a42d6a`) |
@@ -250,35 +250,59 @@ git diff --stat gece/2026-10-02...bot/F4-23
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-23` — `<kısa-sha> [F4-23] …`
+- Branch / commit'ler: `bot/F4-23` (taban: `gece/2026-10-02`) — `157b631 [F4-23] Algi sozlesmesi statik denetim araci: bes kural (R1-R5), selftest ve JSON ciktisi`
 - Değişen dosyalar ve neden:
-  - `…`
+  - `tools/check-perception-contract.py` (yeni): tek Python dosyası; `GameServer/Bot/` + `BotCore/` taraması, R1-R5 kuralları, `--selftest` (V1-V7), `--json`, çıkış kodu 0/1/2. Yalnızca standart kütüphane, ASCII, LF.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+  C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\UpgradeHandler.cpp(634): warning C4789: ... [C:\...\proj-GameServer.vcxproj]
+  C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\GameServer\UpgradeHandler.cpp(862): warning C4789: ... [C:\...\proj-GameServer.vcxproj]
+    All 14017 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `rc=0`; yeni uyarı yok (iki C4789 mesajı eski `UpgradeHandler.cpp` satırlarından, `GameServerDlg.cpp(1802)` C4267 da eski). Yalnızca Python eklenip C++ kaynağı değişmedi.
+- `./tools/run-tests.sh` son satırı: `82 tests, 0 failed` (`rc=0`).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: `--selftest` → `selftest OK`, `rc=0` (V1-V7; temiz ağaç, yorum/dizge/blok yorum yok sayma, R2 istisna/taşma/başka işlev/bayat/dosya-statik, R3 kendi oturumu/başkası/izin/taşma, R4 dört biçim + yorum, R5 alan/yapı yok/dosya yok, metin+JSON belirlenim).
+  - K2 ✔: `rc=0`; `files scanned: 19`, `| R1 | ... | 0 | 0 |`, `| R2 | ... | 0 | 28 |`, `| R3 | ... | 0 | 18 |`, `| R4 | ... | 0 | 0 |`, `| R5 | ... | 0 | 0 |`, `RESULT: PASS`; `## Stale allowlist entries` yok.
+  - K3 ✔: enjeksiyon kopyasında `rc=1`; `GameServer/Bot/BotManager.cpp:3301: R1 GetNpcPtr in Injected::Test (forbidden)`, `:3302: R2 GetUserPtr in Injected::Test (not allowlisted)`, `:3303: R3 m_pUser in Injected::Test (not allowlisted)`.
+  - K4 ✔: `PASS 19 ['allowlisted', 'files', 'result', 'rules', 'stale', 'violations']`; iki ardışık `--json` çıktısı `cmp` ile aynı.
+  - K5 ✔: `## Allowlisted` tam 20 satır (15 R2 + 5 R3), her satırda `hits` = `max`; R2 toplamı 28, R3 toplamı 18.
+  - K6 ✔: `file` → `Python script, ASCII text executable` (CRLF yok); `python3 -m py_compile` hatasız; import'lar yalnızca `json, os, re, shutil, sys, tempfile`.
+  - K7 ✔: commit sonrası fark yalnızca `tools/check-perception-contract.py` ve bu plan dosyası; `-- GameServer BotCore Tests shared AIServer docs` boş.
+  - K8 ✔: `tools/build.sh Release` `rc=0`, yeni uyarı yok; `run-tests.sh` `82 tests, 0 failed`.
+- Plandan sapmalar ve gerekçeleri:
+  - Yok. Sabitler, istisna tabloları ve çıktı biçimi planla birebir; gerçek ağaç çıktısı §2'deki beklenen değerlerle aynı (`R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0`, `files 19`, `RESULT: PASS`).
+  - İki küçük uygulama ayrıntısı (plandaki ifadeyi birebir izler, karar değil): işlev başlığı kapısında `;` denetimi `code.rstrip()` üzerinden yapıldı; `--root` hem boşluklu hem `--root=DIR` biçimini kabul eder.
+- Açık sorular: Yok. Çalışma zamanı assert'i (AC-LRN-03'ün ikinci yarısı) ve gözlem alanlarının anlamsal denetimi (`docs/03` §16) plan gereği kapsam dışıdır.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-23` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-23` @ `119809c` (kod commit'i `157b631`; gece modu, `AUTO_LOOP=1`: birleştirmeyi döngü betiği yapar, bu oturumda birleştirme/push yok)
+- Kriter sonuçları (hepsi bu oturumda kendi komutlarımla yeniden çalıştırıldı):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/check-perception-contract.py --selftest` → `selftest OK`, rc=0. V1-V7 vakaları `tools/check-perception-contract.py:431-649` içinde, plandaki her vaka karşılığı var (V3 dosya-statik tek ve iki satırlık başlık dahil). |
+| K2 | ✔ | Gerçek ağaçta rc=0; `files scanned: 19`; `R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0` satırları planın metniyle birebir; `RESULT: PASS`; `## Stale allowlist entries` bölümü yok. |
+| K3 | ✔ | `/tmp` kopyasına plandaki üç enjeksiyon eklendi: rc=1; `GameServer/Bot/BotManager.cpp:3301: R1 GetNpcPtr in Injected::Test (forbidden)`, `:3302: R2 GetUserPtr in Injected::Test (not allowlisted)`, `:3303: R3 m_pUser in Injected::Test (not allowlisted)`. Depoya yazılmadı. |
+| K4 | ✔ | `PASS 19 ['allowlisted', 'files', 'result', 'rules', 'stale', 'violations']`; iki ardışık `--json` çıktısı `cmp` ile aynı (`same`). |
+| K5 | ✔ | `## Allowlisted` tam 20 satır (15 R2 + 5 R3), her satırda `hits` = `max`; R2 hits toplamı 2+1+1+1+1+1+2+2+6+4+1+1+1+2+2 = 28, R3 3+1+3+9+2 = 18. |
+| K6 | ✔ | `file` → `Python script, ASCII text executable`; `\r` sayısı 0; AST ile import'lar `['json', 'os', 're', 'shutil', 'sys', 'tempfile']`; dosya `ast.parse` ile hatasız ayrıştı (`py_compile` yerine, `__pycache__` bırakmamak için). |
+| K7 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-23` yalnızca `plans/F4-23-algi-sozlesme-denetim-araci.md` ve `tools/check-perception-contract.py`; `-- GameServer BotCore Tests shared AIServer docs` boş. Plan dosyasında yalnızca `Durum` satırı ve Uygulayıcı Raporu değişmiş. |
+| K8 | ✔ | Sunucular kapalıydı (`run-servers.sh status` `0/3`). `./tools/build.sh Release` rc=0, çıktıda `error` 0, `warning C` satırı 0; `./tools/run-tests.sh` → `82 tests, 0 failed`. Çalışma ağacı temiz. |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Proje kuralları: mekanik/bot davranışı değişmedi (yalnızca `tools/`), araç kaynak dosyaları yalnızca okur (`open(..., "rb")`), DB/log/telemetri açmaz, sunucu çağrısı yok. Commit mesajları `[F4-23] …` biçiminde. Merge/force izi yok.
+- Uygulayıcı raporu dürüstlüğü: derleme ve test sayıları yeniden üretildi; gerçek ağaç ve enjeksiyon satır numaraları (`3301-3303`) rapordakiyle aynı. İddia–gerçek uyuşmazlığı yok.
+- Bulgular (önem sırasıyla; hiçbiri engel değil, düzeltme istenmiyor):
+  1. `tools/check-perception-contract.py:235-239` — JSON'daki `why` alanı `"exceeds allowlist"` (sayısız); plan §5.3 `why="exceeds allowlist (<adet> > <azami>)"` yazıyordu. Sayılar `detail` alanında ve metin çıktısında planın biçimiyle geçiyor, selftest `why == "exceeds allowlist"` bekliyor. Çıktı kullanıcıya görünür biçimde plana uygun, yalnızca JSON alan ayrıntısı.
+  2. `tools/check-perception-contract.py:246-251` — hiç isabeti olmayan (tamamen bayat) istisna girdisi `allowlisted` listesine girmez, yalnızca `stale`'e düşer. Gerçek ağaçta böyle girdi yok; kural yarıdan fazla sezgiseldir, davranış plan metniyle çelişmiyor.
+  3. Selftest bayat girdiyi yalnızca R2 için sınıyor (V3); R3 bayat yolu aynı kod olduğundan ayrı vaka gerekmedi.
+  4. Araç satır tabanlı ve sütun-0 başlık sezgisine dayanıyor (planın bilinçli kısıtı): tek satırlık `struct X { int hp; };` gibi bir tanım R5'te görünmez. Bugünkü `Perception.h` biçimiyle (çok satırlı) etkisi yok; F4 faz raporunda sınırlama olarak anılmalı.
+- Düzeltme talimatı: yok (DOĞRULANDI).
