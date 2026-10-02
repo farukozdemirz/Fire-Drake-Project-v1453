@@ -86,9 +86,9 @@ Debuff etkisi (aynı model): Malice altındaki hedefe Carving ~460 (tek uygulama
 
 1. Sunucu **saniyede bir Type1 skill** kabul eder (MEC-MAG-03). Skill recast'leri 0,1–0,8 sn olduğundan pratik sınır tip kapısıdır.
 2. Sunucu **saniyede bir başarılı R** kabul eder (MEC-R-07). İstemci tarafında R aralığı silah gecikmesidir: Raptor +7 için 1,64 sn; Outrage ile 1,64/1,2 = 1,37 sn; Frenzy ile 1,26 sn (CLI-01).
-3. R ile skill arasında sunucu bağı yoktur (MEC-MAG-06). Bot ikisini aynı pencerede gönderebilir; yalnızca CLI-02 (skill sonrası kısa R kilidi) uygulanır.
+3. R ile skill arasında sunucu bağı yoktur (MEC-MAG-06). Bot ikisini aynı pencerede gönderebilir; R ile skill arasında **kilit yoktur** (CLI-02, ölçüldü: komşu aksiyon ≥ ~61 ms, `docs/03` §13.2); bot yalnızca kendi zamanlayıcılarını ve CLI-11 toplam sınırını uygular.
 4. Sonuç: W-P için sunucunun izin verdiği teorik tavan saniyede **1 Type1 + en fazla 1 R**'dir. Model tahminiyle hedef başına saniyede ~370–437 (skill) + ~98–117 (R, gecikmeye göre) ≈ **470–550 PvP hasarı/sn** (buff'sız, debuff'sız). Bu sayı davranış tasarımında yalnızca **göreli** karar için kullanılır.
-5. MP tüketimi: Carving döngüsü 90 MP/sn, Howling döngüsü 400 MP/sn. W-P'nin ~4438 MP'si Howling ile ~11 sn, Carving ile ~49 sn yeter. 1920 MP'lik pot 2 sn'de bir kullanılabilir (MEC-POT-02). **MP sınırını pot stoku belirler** ([11](11_RESOURCE_POTION_AND_SURVIVAL_MANAGEMENT.md)).
+5. MP tüketimi: Carving döngüsü 90 MP/sn, Howling döngüsü 400 MP/sn. W-P'nin ~4438 MP'si Howling ile ~11 sn, Carving ile ~49 sn yeter. Sunucu pot başına 2 sn recast verir (MEC-POT-02) ama botun (ve ölçülen istemcinin) pot aralığı ortak **~2,5 sn**'dir (CLI-06): 1920 MP'lik pottan en çok ~768 MP/sn. **MP sınırını pot stoku belirler** ([11](11_RESOURCE_POTION_AND_SURVIVAL_MANAGEMENT.md)).
 
 ### 5.2 "Skill + R" uygulaması
 
@@ -96,10 +96,10 @@ Kural [03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §13.1'dedir. War
 
 ```
 her bot tick'inde (100 ms):
-  if R_hazir (CLI-01 gecikmesi doldu ve CLI-02 kilidi yok ve son R farklı sunucu saniyesinde)
+  if R_hazir (CLI-01 gecikmesi doldu ve son R farklı sunucu saniyesinde; skill ile R arasında kilit yok)
        and hedef R menzilinde: R gönder
   if Type1_hazir (farklı sunucu saniyesi ve skill recast doldu ve ayakta-şartı sağlandı)
-       and hedef skill menzilinde: seçilen Type1 skill'i gönder; CLI-02 kilidini başlat
+       and hedef skill menzilinde: seçilen Type1 skill'i gönder (R kilidi başlatılmaz)
 ```
 
 "Aynı saniye" kontrolü sunucu saatinin (`UNIXTIME`) bot tarafından okunmasıyla yapılır. Böylece sunucunun reddedeceği aksiyon hiç gönderilmez (MET-ACT-02 hedefi ≤ %2).

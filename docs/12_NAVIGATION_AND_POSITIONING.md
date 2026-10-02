@@ -82,7 +82,7 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 
 | Kural | Değer | Dayanak |
 |---|---|---|
-| Hareket paketi | `WIZ_MOVE` gerçek istemci sıklığında (T-MECH-CLIENT-04 ile ölçülecek; ölçülene kadar 250 ms) | MEC-MOV-01 |
+| Hareket paketi | `WIZ_MOVE` gerçek istemci sıklığında: **~1,5 sn'de bir** (ölçüldü, `docs/03` §13.2; eski 250 ms varsayımı kaldırıldı); paket konumu hedef noktadır, ara noktaları sunucu doğrulamaz (§13.1) | MEC-MOV-01, CLI-05 |
 | Hız alanı | Gerçek istemcinin gönderdiği değer; asla > 67 (W/M/P) | MEC-MOV-02 |
 | Adım uzunluğu | Temel koşu hızı × aralık × (hız buff/debuff çarpanı); temel koşu hızı T-NAV-01 ile ölçülür | CLI-05 |
 | Durma | Ayakta skill'ler öncesi `speed=0` paketi | CLI-09 |
@@ -160,6 +160,55 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 - İstemcinin tırmanma/eğim kuralı ve gerçek koşu hızı (T-NAV-01/02).
 - Görüş hattı istemci davranışı (T-NAV-LOS-01).
 - Çarpışma geometrisinin y ±5000 değerli poligonlarının sınır duvarı olup olmadığı (ızgara yaklaşımını etkilemez).
+
+## 13. Değerlendirme düzeltmeleri (2026-10-02)
+
+> Kaynak: `docs/reports/degerlendirme-2026-10-02.md` (DEG-13, 17–21). Bu bölüm **eklemedir**: §4/§6/§7/§10'daki varsayımları ölçümle düzeltir; F5 planlarının (F5-50..F5-55) kabul dayanağıdır. `gece/2026-10-02-nav` hattında F5-08..F5-10 yazılmadan önce okunmalıdır (özellikle §13.3 ve §13.4). Ölçümler WSL `g++ -O2` ile yapıldı, MSVC Release değildir `[V]`.
+
+### 13.1 Hareket paketi, adım modeli ve kiriş denetimi (CLI-08)
+
+- Gerçek istemci sürekli harekette `WIZ_MOVE`'u ~1,5 sn'de bir yollar ve paket **hedef noktayı** taşır (`docs/03` §13.2). Bot da aynısını yapar (`kMovePeriodMs = 1500`): iki paket arası yürüyüşte ~6,75 m, sprintte ~10 m tek adımdır. **Ara noktaları sunucu doğrulamaz** (MEC-MOV-03); 4 m ızgarada bir adım 2–3 hücre atlar.
+- **Kural (CLI-08, `[Ö]`):** bot her hareket paketinden önce *kirişi* (önceki paket konumu → yeni konum) denetler: kirişin dokunduğu **tüm** hücreler (muhafazakâr süpercover; hücre köşesi/vertex'ine değme dahil) `Walk` olmalı ve kiriş boyunca `EdgeOpen` eğim kuralı sağlanmalı. Yalnızca varış noktasına bakmak yetmez. Reddedilen paket gönderilmez (`FAIRNESS_REJECT`, kural `CLI-08`, sebep `blocked_chord`).
+- Planlayıcı çıktısı bu denetimden geçiyor: 998 near64 yolunun 4887 düzleştirilmiş segmenti ve 33 503 paket kirişinde ihlal 0 (rapor §5.1). Denetim buna rağmen **icra tarafında zorunludur**: düz hedef adımı (`/bot move`), planlayıcı dışı kaynaklar ve gelecekteki değişiklikler için tek koruma budur.
+- **Su:** ayrı bir su katmanı yoktur. SMD olay ızgarası göl kıyılarını engelli işaretler, ana bileşen kuralı iç cepleri dışlar `[V]`/`[I]`; istemcinin suya girip girmediği ve suda yavaşlayıp yavaşlamadığı ölçülmedi `[A]` → T-NAV-09 (yeni). **Eğim:** `maxSlope 0,625` `[A]` (T-NAV-02). **Çapraz köşe:** iki ortogonal komşu da `Walk` olmalı (`EdgeOpen`).
+
+### 13.2 Hareketli hedefin gözlemi ve hız kestirimi
+
+Gözlenen hedef (insan veya bot) `WIZ_MOVE`'u ~1,5 sn'de bir gönderir. F5-04'ün 1000 ms'lik hız penceresi bu sıklıkla **her zaman 0 hız** üretir (rapor §5.2: 1500/1540 ms aralıkta %100 sıfır). Kural `[Ö]`: hız, son iki gözlem arasındaki konum farkının süreye oranıdır (aralık 0,4–4,0 sn arasında); en yeni gözlem 4,0 sn'den eskiyse veya son paketin `speed` alanı 0 ise hız 0 (durmuş). `P-NAV-VEL-WINDOW` = 4000 ms, `P-NAV-VEL-MIN-SPAN` = 400 ms `[A]`. Öngörü süresi `min(1,5 sn, …)` aynı kalır; gözlem yaşı lead'e eklenir (gözlem ne kadar eskiyse hedef o kadar ileride).
+
+### 13.3 Takılma tespiti tanımı (§10'u düzeltir)
+
+§10'daki "1,5 sn'de ilerleme < 1 m" pencere paket aralığına eşittir (marj 0); "4 sn'de aynı iki hücre arasında ≥ 3 salınım" ölçütü ≤ 3 konum örneğiyle (paket başına bir) ulaşılamazdır (rapor §5.4). Yerel hareket ilerlemesi ile paket gönderimi **ayrı** izlenir:
+
+| Kavram | Tanım |
+|---|---|
+| Niyet ilerlemesi | Tick hızında (100 ms) yerel simülasyon: botun yol üzerindeki kümülatif ilerlemesi, **gönderilmiş paketlere** göre hesaplanır; paket zamanı beklenirken ilerleme "bekliyor" sayılır, takılma değildir |
+| Paket teyidi | Her paketten sonra botun kendi konumunun (sunucu) paket konumuna eşit olması |
+| `STUCK` | Hareket niyeti etkin ve **ardışık ≥ 2 paket periyodu** (≥ 3,1 sn) boyunca yol üzerindeki ilerleme < 1 m |
+| `BLOCKED_BY_GUARD` | Paket guard tarafından reddedildi (CLI-08/CLI-05); `STUCK` sayılmaz, ayrı sayılır |
+| `OSCILLATION` | Son 8 sn'de ≥ 4 paket konumu ile A→B→A→B desen (≥ 3 yön değişimi) |
+
+Hedefe varış adımı (< 1 m) takılma değildir. Yeniden planlama (500 ms) paket sıklığından bağımsızdır. Tespit saf mantık olarak `BotCore`'da yazılır (F5-54), kurtarma aşamaları (§10) onun üstüne F5-09'da.
+
+### 13.4 Arena sınırı, ölüm, doğuş ve savaşa dönüş
+
+- **Kural `[Ö]`:** arena sınırı yalnızca **arenanın içindeki** bot için "dışarı çıkış yasak"tır. Arena dışındaki bot (doğuş noktası, summon bekleme, dönüş yolu) sınırın içine girebilir ve dışarıda serbest yürür; yasaklı-hücre cezası dışarıda uygulanmaz. Bugünkü `AddForbidOutsideDisc` + `forbiddenPenalty = 10` bunu sağlamaz: ölçüm (rapor §5.3) El Morad doğuşu → arena için `NodeLimit` (20 000 düğüm, yol yok), Karus için 4148 düğüm; arena içinden dışarıdaki doğuş noktasına hedef `InvalidGoal`. Düzeltme planı F5-51.
+- **Geri çekilme:** arena modunda güvenli nokta **arenanın içindedir** (party: arka hat; solo: arenanın kendi ulus tarafı). "Kendi tower halkasına çekil" (`docs/11` §4.3) yalnızca arena modu kapalıyken (serbest Ronark, F11) geçerlidir; arena modunda tower halkası arenanın 233 m (Karus) / 640 m (El Morad) dışındadır. ADR-0033-DEG.
+- **Doğuş ve dönüş:** doğan bot arena dışındadır, dönüş yürüyerek (~52 sn Karus, ~142 sn El Morad, 4,5 m/s) veya summon'la olur; arenaya girdikten sonra "savaş alanında kal" kuralı başlar. Dönüş yolu planı (doğuş → arena kenarı) kısa ömürlü önbellekte tutulur (§13.5).
+
+### 13.5 Çoklu bot yol bütçesi
+
+Ölçüm (rapor §5.5, zone 71, tek iş parçacığı): 16 bot aynı tick'te near64 sorgusu → tick toplamı p95 2,83 ms (max 7,2); mid150 → p95 8,8 ms; tüm harita → p95 30 ms; 64 bot near64 → p95 9,5 ms. MET-PERF-02 hedefi tüm BotManager için 16 bot p95 ≤ 5 ms olduğundan nav için ayrı bütçe şarttır. Strateji `[Ö]` (F5-53):
+
+1. **Tick bütçesi** `P-NAV-TICK-BUDGET-MS` = 1,5 ms (MET-PERF-02'nin ~%30'u): tick başına yürütülen sorgular bütçe dolunca durur; kalanlar sonraki tick'e kalır, bot mevcut yolu izlemeye devam eder.
+2. **Kuyruk + adil sıra:** bekleyen sorgular FIFO; bot sırası her tick döndürülür; bir sorgu bölünmez (`P-NAV-MAX-NODES` zaten üst sınır). Bir bot en çok `P-NAV-MAX-WAIT` = 1 sn bekler (aşılırsa öncelik alır).
+3. **Yeniden planlama fazı:** 500 ms'lik aralık bot başına kaydırılır (`slot % 5 × 100 ms`); hepsi aynı tick'e düşmez.
+4. **Yol önbelleği:** aynı (başlangıç hücresi, hedef hücresi, maliyet alanı sürümü) sorgusu TTL 30 sn içinde yeniden hesaplanmaz (ör. ulus başına doğuş → arena kenarı rotası).
+5. Kabul **AC-NAV-07 (yeni):** 16 bot, yoğun sorgu yükünde nav toplamı p95 ≤ `P-NAV-TICK-BUDGET-MS` ve hiçbir bot `P-NAV-MAX-WAIT`'ten uzun yol beklemez; ölçüm MSVC Release'te tekrarlanır (MET-PERF-03).
+
+### 13.6 Gerçek haritada doğrulama kapısı (G5)
+
+F5 yalnızca saf mantık (`BotCore`) olarak kapanamaz. F5 kabulü için: sunucu entegrasyonu (F5-55: `NavService`, kiriş denetimi, `/bot goto`, `NAV_*` telemetrisi) ve oyun içi T-NAV-04/05/09 ile AC-NAV-01..07 çalışma zamanı kanıtı gerekir (`docs/17` §5 G5).
 
 ## Değişiklik günlüğü
 
