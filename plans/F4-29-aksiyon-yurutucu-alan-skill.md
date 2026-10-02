@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-29` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali, `m_castTargetId`) — `KAPANDI`; F4-26 (`{3, 4}` çifti, iki tipli kapı) — `KAPANDI`; F4-28 (`{4, 0}` tek tipli Type4) — `KAPANDI` (merge `dc61d7d`) |
@@ -285,3 +285,45 @@ git diff --check gece/2026-10-02...bot/F4-29
   - K13: Claude'un çalışma zamanı doğrulaması (S1–S6).
 - Plandan sapmalar: yok. (Küçük not: `ActionExecutor.h` `CastTarget` yorumuna alan cümlesi eklendi; `int16 id` alan yorumu plan gereği değiştirilmedi. `RESPAWN` davranışı için sayaç sıfırlama eklenmedi; plan gereği `SubmitCast` her paketten önce sıfırlar.)
 - Açık sorular: yok; plan ile kod çelişmedi. Doğrulamada dikkat: alan yayını `m_skillEvents` halkasında (F4-52) hızlı dolar ve `victims` direnç/engelli kurbanı da sayar (§8-c/d, bilinen sınır, plan gereği).
+
+---
+
+## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-03
+
+- **Karar: DOĞRULANDI.**
+- İncelenen commit: `bot/F4-29` @ `30f1a86` (kod `c6d686b`; taban `gece/2026-10-02`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | altı dosya `touch` + `tools/build.sh Release` rc=0; günlükte `ActionExecutor.cpp`, `CombatTests.cpp`, `BotSession.cpp` yeniden derlendi, uyarı yok |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` rc=0, ikisinde `106 tests, 0 failed`; `Combat_CastMoral_Supported` ve `Combat_AreaCast_Fields` `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; eklenen satırlarda `std::min/max` yok |
+| K5 | ✔ | `CastMoralSupported` `ActionExecutor.cpp:737` tek eşleşme; `m->bMoral != MORAL_SELF` yok; diff'te `wantedSelf`/`wantedTarget` satırı yok (`bad_target` bloğu `:751-759` değişmedi) |
+| K6 | ✔ | `SubmitCast(s, user` üç satır (`:917`, `:959`, `:1000`), üçünde `sent, area`; `m_castTargetId = sent.id` `:923`, `:965`; `sData` üç satırı `CastCoordField` (`:896-899`); alan dışı `CastTargetIdField(false, id) == id` ve `CastCoordField(false, ...)` birim testte; çalışma zamanında tek hedefli skill'lerde `target` kurban kimliği (S6) |
+| K7 | ✔ | `m_castEchoVictims`: `BotSession.h:166` 1, `BotSession.cpp:25` ctor + `:84` `OnPacket` (2), `ActionExecutor.cpp:615` sıfırlama + `:626` okuma (2); `"victims"` tek eşleşme, `if (area && opcode == MAGIC_EFFECTING)` içinde (`:664-666`) |
+| K8 | ✔ | eklenen satırlarda `Emit(` yok (tek eşleşme plan dosyasındaki rapor metni); `BotManager.cpp`, `Telemetry.*`, `tools/`, vcxproj değişmedi; yeni ini/komut/thread yok; `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K9 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-29`: yalnızca §4'teki 6 dosya + plan dosyası |
+| K10 | ✔ | `file`: altı dosya ASCII + CRLF; `git diff --check` boş (rc=0); altı dosyada LF'li (CR'siz) satır sayısı 0 (`grep -vc $'\r$'`; `core.autocrlf=true` olduğundan `git diff` çıktısı CR göstermez) |
+| K11 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki 104 test geçiyor |
+| K12 | ✔ | `check-perception-contract.py` `RESULT: PASS` (19 dosya); yeni kod yalnızca kendi alınan paketinden sayar (`BotSession::OnPacket`) |
+| K13 | ✔ | S1–S6 çalışma zamanında geçti (aşağıda) |
+
+**Çalışma zamanı** (Release, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-023933.jsonl`, `Logs/Bot_3_10_2026.log`):
+
+- **S1 ✔** Inferno `110545` BotMF_K → BotWP_E (hedef noktası = kurbanın konumu): `CastStart` `"target":-1`, `casting` `op 1`; 1662 ms sonra `CastEffect` `"target":-1`, `effected`, `op 3`, `code 0`, **`victims 3`** (üç El Morad bot); log `cast finished (effected) after 1 cycle(s), 1 ok, 2 packet(s) sent`; MP 6021 → 5821 (−200, bir kez); üç kurbanın HP'si düştü; `snap BotMF_K events`: kurban kimlikli üç `op=3 ... target=2985/2986/2987` olayı + hedef `−1`'li son olay + `op=1`. Supernova `110560`: `victims 3`, MP −400 (+ yenileme, 5941 → 5581).
+- **S2 ✔** Boş alan (`self`, düşman yok): `target -1`, `effected`, `code 0`, **`victims 0`**; iki döngüde ikinci `CastStart` ilk `CastEffect`'ten 15,37 sn sonra (guard `recast`, ≥ 15,3 sn); `self` + iki düşman aynı noktada: `victims 2`.
+- **S3 ✔** (a) Blizzard `110645` `{3, 4}`: `effected`, `code 18`, `victims 2`; `snap BotWP_E`/`BotWG_E` `buff skill=110645 type=6 debuff`. Frost nova `110660` (BotMI_K): `code 20`, `victims 2`, MP 6021 → 5661. (b) Torment `112757` (BotPHD_K) `{4, 0}`: `code 150`, `victims 2`, `snap` ikisinde `skill=112757 type=2 debuff remain=146s/145s`. (c) Torment boş alan (`self`): `effected`, `code 0`, `victims 0`, MP 6322 → 6212.
+- **S4 ✔** hedef 68 m: `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range` (`value 68, limit 56`), `ACTION_SUBMIT` yok, log `cast stopped (out_of_range)`; 50 m: `casting` → `effected`, `victims 1`.
+- **S5 ✔** (a) CASTING'te (1100 ms) `cast off`: `CastCancel` `"target":-1`, `cancelled`, `op 4`, `code -100`; MP değişmedi, hedef HP'si değişmedi. (b) Fire burst `110533`, Sleep Carpet `112751`, Discountis `112772`, Minor Resist `110825` ⇒ `unsupported_skill`; Quake `106760` (BotWP_K, ağaç 52 < 60) ⇒ tek `CastEffect` `srv_fail`, `op 4`, `code -103`, MP değişmedi (KI-016). (c) Inferno ×3: döngü arası 15,3 sn (`recast`), her döngüde `victims 1` (hedef noktası BotWG_E; WP_E 60 m uzakta, `Radius` dışı), üç döngü `effected`, MP −600 + yenileme (6021 → 5701 / 50 sn).
+- **S6 ✔** Ignition ×3 `effected`, `target` kurban kimliği (2985), `victims` alanı **yok**; Ice arrow `110615` CastStart → CastFly → CastEffect (3 paket, `code 12`); Fire ball `110515` 3 paket; Malice `112703` (canlı hedef) `effected`, `code 150`, `victims` yok; Defense `106007` `effected`, `code 15`, `victims` yok; `move` (`ok`) ve `attack` (2 vuruş, `hit`) çalışıyor; `TELEMETRY=summary`: alan cast `cast finished (effected)`, JSONL'de `ACTION_*` yok (yalnızca `PERF_SAMPLE`); `ENABLED=0`: `BotCommands.txt` işlenmedi, `Bot_*.log`'a satır ve yeni JSONL yok; `tick_p50` 1–5 µs, `tick_p95` ortancası 132 µs, 146 pencerenin ikisi > 1 ms (2611 µs, 1226 µs; ikisi de spawn pencereleri: `in_game` 3/6 ve 4/7 oturum, bilinen spawn maliyeti, F4-28 raporu bulgu 1); `Logs/GameServer.log` değişmedi (son yazım 2026-10-02 02:17). Temizlik: botlar despawn, sunucular `stop`, ini yedekten geri yüklendi (`[BOT]` bölümü yok), `BotCommands.txt` silindi, repo temiz.
+
+**Bulgular (engelleyici yok):**
+
+1. *(not)* Quake `srv_fail` yanıtında da `victims 0` yazılır (alan EFFECTING'i; plan §5.3-c gereği). Reddedilmiş alan cast'inde `victims` anlamsızdır; raporlama/analiz araçları `ok:false` satırında `victims`'i yok saymalıdır. Planın bilinen sınırı, kod doğru.
+2. *(not)* MP düşüşü sunucu MP yenilemesiyle (≈ 5–6 MP/sn) karışır; kesin −N yalnızca S1'de (Inferno −200, Frost nova −360 ≈ −400 + yenileme) görüldü. Bu, F4-28 raporunun bulgu 2'siyle aynı ölçüm sınırıdır.
+3. *(not)* Operasyonel: bir bot despawn'da son konumunu saklar; sonraki spawn'da botlar farklı noktalarda doğabilir (BotWP_E 1324, BotWP_K 960 gibi) ve `cast`/`attack` `out_of_range` verir; çalışma zamanı sınamasından önce `list` ile konumlar kontrol edilmelidir. Ayrıca bir cast'in CASTING aşamasında aynı botun `move` komutu cast'i iptal eder (F4-24 davranışı, `CastCancel` `cause:"move"`); `BotCommands.txt`'e art arda iki komut yazılırsa ilki işlenmeden ezilir (komut başına ≥ 1 sn bekle). Hiçbiri bu planın kusuru değil.
+4. *(not)* Sınanmayanlar (plan kapsamı dışı/bilinen sınır): Type4 alanda (Torment) boş alanın sunucu bekleme damgası yazmaması (§8-f, bot muhafazakâr), kurbanın çağırana `>= sRange` kenar kaybı (§8-b), `{4, 0}`/`{3, 4}` alanda kurbanda direnç/engelli son paket `MAGIC_FAIL` (§8-c), güvenli bölge `srv_fail`, gerçek istemcinin alan paketi biçimi (CLI-07 `[Ö]`, §8-a; insan ölçümü T-MECH-AOE adayı).
+5. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme (rc=0, değişen dosyalarda uyarı yok) ve test sayıları (106, 0 failed) kendi çalıştırmamla örtüşüyor; sapma/soru yok.
