@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-24` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, `m_castEcho`) — `KAPANDI`; F4-01 (`TickMove`/`StopMove`) — `KAPANDI`; F4-04 (CLI-11 `m_actionWindow` kullanımı) — `KAPANDI` |
@@ -290,16 +290,41 @@ git diff --check gece/2026-10-02...bot/F4-24
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-24` — `<kısa-sha> [F4-24] …`
+- Branch / commit'ler: `bot/F4-24` — `6ffff94 [F4-24] Cast iptali: MAGIC_FAIL -100, hareketle iptal, UseStanding otomatik durdurma`; plan dosyası bu raporla ayrıca commit edilir.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `kCastCancelCode`, `CastCancelVerdict`/`CheckCastCancel`, `StandingPlan`/`PlanStanding` (saf mantık, `CheckCastEffect`'ten sonra, pot diliminden önce).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastCancel_Guard` ve `Combat_PlanStanding` (82 → 84).
+  - `GameServer/Bot/ActionExecutor.h`: `CancelCast` bildirimi + `CastOutcome` sebep yorumu.
+  - `GameServer/Bot/ActionExecutor.cpp`: `CancelCast` gövdesi (`EndCast`'ten sonra), `TickCast`'te `m_castTargetId` kaydı ve `UseStanding` otomatik durdurma.
+  - `GameServer/Bot/BotSession.h`: `int16 m_castTargetId`.
+  - `GameServer/Bot/BotSession.cpp`: başlatıcı listesi + `ResetForRespawn()` (yalnızca ekleme; `OnPacket()` değişmedi).
+  - `GameServer/Bot/BotManager.cpp`: `TickSessions()` canlı dalında `TickMove`'dan önce hareketle iptal (`moveHeld`), `CommandCast` `off` dalları `CancelCast` ile.
+- Derleme sonucu (`tools/build.sh Release`; değişen yedi dosya `touch` ile yeniden derlendi, ilgili dosyalarda `warning C`/`error C` yok):
   ```
-  …
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` da hatasız bitti (kalan uyarılar yalnızca eski `GameServerDlg.cpp:1143/1802`).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: Release rc=0; `touch` sonrası yedi dosyada `warning C`/`error C` boş.
+  - K2 ✔: Debug rc=0.
+  - K3 ✔: `84 tests, 0 failed` (Release + Debug); çıktıda `Combat_CastCancel_Guard` ve `Combat_PlanStanding` var.
+  - K4 ✔: yasak include/token eşleşmesi yok; `std::min`/`std::max` yeni satır göstermiyor.
+  - K5 ✔: `kCastCancelCode` yalnızca `ActionExecutor.cpp`; `MAGIC_FAIL` yeni satır yalnızca `ActionExecutor.cpp`.
+  - K6 ✔ (kod okuması): `CheckCastCancel` `HandlePacket`'tan önce; `CANCEL_OK` değilse `HandlePacket`'sız `REFUSED "rate"`; iptal `HandlePacket` tek yerde; `rate` reddinde `EndCast` yok.
+  - K7 ✔: BotSession diff `-` satırları yalnızca başlatıcı satırı; `ResetForRespawn` yalnızca `m_castTargetId = -1` ekler.
+  - K8 ✔: `PlanStanding` yalnızca `CAST_ARMED` koşuluyla; `c.standing` ve `CheckCastStart(c)` değişmedi; `RejectCast` `CLI-09`/`not_standing` duruyor.
+  - K9 ✔: `CancelCast(s, "move"` 1 satır, `CancelCast(s, "cmd"` 2 satır, `EndCast` sayısı 3; `TickMove` yalnızca `!moveHeld`; `TickUserIn`/`TickNpcIn` dışarıda.
+  - K10 ✔: BotManager `-` satırları yalnızca plandaki iki `off` dalı, özet biçimi ve `TickMove` sarmalaması.
+  - K11 ✔: `gece/2026-10-02...bot/F4-24` yalnızca §4'teki 7 dosya; vcxproj/sln farkı yok.
+  - K12 ✔: `BotCombat.h`/`CombatTests.cpp` ASCII + CRLF; `git diff --check` boş.
+  - K13 ✔: `ActionExecutor.*` içinde `printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok.
+  - K14 ✔: `CheckMoveStep` 2, `CheckAttack`/`CheckCastStart`/`CheckCastEffect`/`CheckPotion` ≥ 1; önceki 82 testle birlikte 84 geçiyor; `EmitFairnessReject` yeni `"CastCancel"` çağrısı `ActionExecutor.cpp`'de.
+  - K15 ✔: `tools/check-perception-contract.py` → `RESULT: PASS`, `R1 0/0`, `R2 0/28`, `R3 0/18`, `R4 0/0`, `R5 0/0`; yeni kod yalnızca `s->m_pUser` okur.
+  - K16: Claude'un `/plan-dogrula` çalışma zamanı senaryoları (S1–S6) — uygulayıcı yapmaz.
+- Plandan sapmalar ve gerekçeleri: Yok. (Yalnızca `ActionExecutor.h`'deki `CastOutcome` sebep yorumuna "stopping"/"cancelled"/"dropped"/"idle" eklendiği satırda, düzenleme sırasında oluşan çift girinti fark edilip derlemeden önce aslına döndürüldü; `git diff` yalnızca eklenen yorum satırlarını gösterir.)
+- Açık sorular: Yok.
+
 
 ---
 
