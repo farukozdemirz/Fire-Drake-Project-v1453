@@ -129,9 +129,9 @@ Proje hedefi "deneyimlerinden gelişen botlar"dır. Bu projede bu ifade **üç a
 |---|---|---|---|---|---|
 | Oturum içi (L0.5) | Tek botun/takımın rakip kestirimi (rakip heal hızı, burst, hedefin heal'i) | `EnemyIntel`, kısa pencere istatistikleri | Maç bitince silinir | F6–F7 | Öğrenme **değil**, durum kestirimi; MET-STALL-01 |
 | Rol profili (L1/L2) | Aynı rolü oynayan **tüm** botların ortak politikası | Çevrim dışı arama (L1), kısıtlı bandit (L2); `PolicyStore` sürümü | Sürümlü politika dosyası | F9/F10 | AC-LRN-01, AC-LRN-08 |
-| Karakter | — | **Planlı değil**: karakter başına kalıcı politika yok; yalnızca telemetri/teşhis | — | F10 sonrası, ayrı ADR | — |
+| Karakter | Karakter başına kalıcı, sınırlı sapma `δ_c` rol politikasının üstünde; kendi maç geçmişinden | `PolicyStore` karakter anahtarlı sürümlü dosya; kabul kilitli sette | Sürümlü karakter politika dosyası | **F12** (TASLAK, ADR-0030-DEG, ADR kapılı; F9 sonrası) | AC-CHR-01..06 (`docs/17` F12) |
 
-Sonuç: "her bot oynadıkça ustalaşır" beklentisi **bireysel maç geçmişinden değil, filonun toplam deneyiminden** (aynı rolü oynayan tüm botlar aynı politikayı paylaşır) karşılanır. Gerekçe: veri miktarı, rakibe aşırı uyum riski (§6), tekrarlanabilirlik ve açıklanabilirlik. Karakter bazında kalıcı öğrenme istenirse ADR-0030-DEG'deki seçenek B (rol politikasına çekilmiş, sınırlı karakter sapması) ayrı onayla açılır.
+**Aşama 1 (F6–F10):** "her bot oynadıkça ustalaşır" beklentisi önce filonun toplam deneyiminden (aynı rolü oynayan tüm botlar aynı politikayı paylaşır) ve oturum içi kestirimden karşılanır; gerekçe veri miktarı, rakibe aşırı uyum riski (§6), tekrarlanabilirlik ve açıklanabilirlik. **Aşama 2 (F12):** karakter başına kalıcı öğrenme **nihai hedefin parçasıdır ve kapsamdan çıkarılmamıştır** (proje sahibi kararı, ADR-0030-DEG); rol politikası zemin, karakter politikası sınırlı sapmadır, kabul kilitli sette yapılır, `δ_c = 0` her zaman geri alma konumudur. Kapsam, bağımlılıklar ve kabul kriterleri `docs/17` F12'dedir.
 
 ## 7. Ödül fonksiyonu
 

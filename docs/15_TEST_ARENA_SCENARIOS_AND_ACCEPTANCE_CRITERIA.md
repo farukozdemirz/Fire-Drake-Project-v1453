@@ -252,14 +252,14 @@ A grubu profiller eğitimde, B grubu yalnızca kilitli değerlendirmede kullanı
 
 ### 6a. Senaryo başlangıç sıfırlama sözleşmesi (`ScenarioReset`, ADR-0032-DEG)
 
-Bot durumunun bir kısmı DB'de kalıcıdır (bot çıkışında kayıt, AC-ARCH-05): HP/MP/NP, envanter, konum. Her maçın (her tekrarın) başında aşağıdakiler **açıkça** sıfırlanır ve doğrulanır:
+Bot durumunun bir kısmı DB'de kalıcıdır (bot çıkışında kayıt, AC-ARCH-05): konum, HP/MP/NP, envanter. **Maç başlamadan önce** botların konumu ve durumu test kurulumu kapsamında belirlenir (ADR-0032-DEG: bot çevrimdışıyken bot satırına DB yazımı; neden DB ve canlı `CUser` ile tutarlılık ADR'de). **Maç başladıktan sonra** hareket, ölüm, respawn ve savaşa dönüş yalnızca normal oyun mekanikleriyle olur; maç içi ışınlama kurtarma teleportudur ve maçı geçersiz kılar. Her maçın (tekrarın) başında aşağıdakiler sıfırlanır ve **doğrulanır**:
 
 | Durum | Sıfırlama | Kim | Doğrulama |
 |---|---|---|---|
-| Konum | MATCH_START **öncesi kurulum yerleşimi** (başlangıç noktası arena merkezinden ±35 m). Maç içi kurtarma teleportu ayrıdır ve maçı geçersiz kılar (MET-NAV-05) | `ScenarioRunner` Prepare | tüm botlar başlangıç noktasından ≤ 3 m |
-| HP / MP / NP | HP = MaxHP, MP = MaxMP, NP ≥ 1000 (KI-013: NP 0 → `Regene` yok; her ölüm −50) | `ScenarioRunner` (yalnız bot satırlarına `UPDATE`, kişisel veri tablosu okunmadan) | `snap` ile `SelfState` |
+| Konum | MATCH_START **öncesi kurulum yerleşimi** (başlangıç noktası arena merkezinden ±35 m): bot `DESPAWNED` iken satıra yazılır, bot normal giriş yoluyla açılır | `ScenarioRunner` Prepare | tüm botlar başlangıç noktasından ≤ 3 m |
+| HP / MP / NP | HP = MaxHP, MP = MaxMP, NP ≥ 1000 (KI-013: NP 0 → `Regene` yok; her ölüm −50) | `ScenarioRunner` (yalnız `BOT_TABLE` bot satırlarına `UPDATE`, kişisel veri tablosu okunmadan) | `snap` ile `SelfState` |
 | Buff/debuff, DoT, cooldown, cast durumu | Çıkışta bellek içi durum biter; taze oturumda boş olduğu doğrulanır | Prepare doğrulaması | `buffTotal = 0`, `cooldownTotal = 0` |
-| Pot ve tüketilebilir eşyalar | STK-01: tüketilen potlar senaryo stokuna **doldurulur**, tüketilmeyen potlar 1 adet, taş/scroll senaryo listesi (envanter doldurma henüz yok, F8 planı) | `ScenarioRunner` (yalnız bot envanteri) | `hpPotStock`/`mpPotStock` = senaryo |
+| Pot ve tüketilebilir eşyalar | STK-01: tüketilen potlar senaryo stokuna **doldurulur**, tüketilmeyen potlar 1 adet, taş/scroll senaryo listesi (envanter doldurma ADR-0018 m.8 ile ortak) | `ScenarioRunner` (yalnız bot envanteri) | `hpPotStock`/`mpPotStock` = senaryo |
 | Party üyelikleri ve roller | Maç sonunda tüm botlar party'den çıkar; maç başında party **gerçek paketlerle** kurulur (betik/senaryo) ve doğrulanır | `ScenarioRunner` + betik | `TeamView` üye sayısı/lider = senaryo |
 | Hedef, rezervasyon, karar hafızası, `EnemyIntel`, durum makinesi | Her maçta yeni `BotAgent`; `TeamBlackboard.Clear()`; önceki maçtan hiçbir şey taşınmaz | Brain/`TeamBlackboard` | `MATCH_START` sonrası durum `PREPARE`, blackboard boş (assert) |
 | Politika ve rastgelelik | Politika sürümleri senaryo dosyasında sabit; `seed_bot = hash(seed_episode, bot_slot)` `MATCH_START` olayında yazılır | `ScenarioRunner` | `MATCH_START.policy`, `.seed` |
@@ -267,19 +267,40 @@ Bot durumunun bir kısmı DB'de kalıcıdır (bot çıkışında kayıt, AC-ARCH
 
 **Başlangıç doğrulaması:** Prepare sonunda yukarıdaki koşullar denetlenir; biri sağlanmazsa maç **başlamaz**, `MATCH_START` yerine `SETUP_FAIL` (neden listesiyle) yazılır ve maç geçersiz sayılır (`docs/16` §7).
 
-**Karakter seti ve kapasite:** `db/002` 12 karakter üretir (6 profil × 2 ulus). C8-A ulus başına 8 karakter ister (2 W-P, 1 W-G, P-HD, P-HB, 2 M-F, 1 M-I → toplam 16); C8-B 3 W-P, C8-C 3 M-F ister. `MAX_BOTS = 16` yalnızca **eşzamanlı slot** kapasitesidir; 16 kullanılabilir karakter anlamına gelmez. F8 ön koşulu: ulus başına ≥ 10 karakter (3 W-P, 1 W-G, 1 P-HD, 1 P-HB, 3 M-F, 1 M-I → 20) ve `BOT_TABLE`'ın sabit 12 girişten DB/ini kaynaklı tabloya çevrilmesi. F7 küçük takım testleri (≤ C5) mevcut 12 karakterle çalışır. 32/64 bot performans testleri (T-PERF-02..04) için ayrı karakter kümesi veya aynı karakterlerin ardışık yeniden doğuşu tanımlanmalıdır.
+**Karakter seti ve kapasite (kesin döküm).** Eşzamanlı ihtiyaç 8v8 için **16 karakter** (ulus başına 8); `MAX_BOTS = 16` yalnızca eşzamanlı slot kapasitesidir, karakter varlığını karşılamaz. Bugün DB'de 12 karakter vardır (ulus başına 6: W-P, W-G, P-HD, P-HB, M-F, M-I).
 
-### 6b. Kazanma kuralı (ADR-0031-DEG)
+| Hesap | Ulus başına | Toplam | Neden |
+|---|---|---|---|
+| Bugünkü set | 6 | 12 | 6 rol profili × 2 ulus (ADR-0002) |
+| **EVAL-8v8-A için asgari (C8-A: 2 W-P, 1 W-G, P-HD, P-HB, 2 M-F, 1 M-I)** | 8 (+1 W-P, +1 M-F) | **16** | aynı anda 16 karakter |
+| Kompozisyon çeşitliliği (C8-B 3 W-P + 1 M-F; C8-C 1 W-P + 3 M-F; C8-D 3 W-P + 2 M-F) | 10 (+1 W-P, +1 M-F daha) | **20** | 3. W-P ve 3. M-F aynı sabit karakter kümesinden seçilebilsin |
 
-Süre dolması **kendiliğinden kazanma değildir.** `MATCH_END.result` ∈ `win_a` | `win_b` | `draw` | `invalid` (teknik sonlanma `completed`/`aborted` ayrı alandır). Senaryo `win_rule` anahtarıyla kuralı seçer:
+**20 karakter 16'nın üstüne 4 ek karakterdir (ulus başına 3. W-P ve 3. M-F); yedek ya da test profili değildir.** Kaynağı kompozisyon çeşitliliğidir: EVAL-8v8-MIX (C8-B vs C8-C) ve `docs/14` §13 kompozisyon genellemesi. Aynı anda en fazla 16 karakter girişlidir; 4'ü her maçta boştadır. OP-* rakip profilleri, B0-NAIVE ve baseline aynı sınıf karakterlerini farklı politikayla oynatır: ek karakter gerektirmez. Seçenek: yalnızca 16 karakterle başlayıp (EVAL-8v8-A) 20'ye kompozisyon çeşitliliği eklenirken çıkmak; ya da 16 karakter + kompozisyon başına DB'de sınıf/skill/ekipman yeniden yazımı (yavaş ve hata riskli; seçilmedi). F8 ön koşulu: `db/003` ve `BOT_TABLE`'ın sabit 12 girişten DB/ini kaynaklı tabloya çevrilmesi. F7 küçük takım testleri (≤ C5) mevcut 12 karakterle çalışır. 32/64 bot performans testleri (T-PERF-02..04) için ayrı karakter kümesi veya aynı karakterlerin ardışık yeniden doğuşu tanımlanmalıdır.
 
-| `win_rule` | Kural | Kullanım |
+### 6b. Kazanma kuralları (ADR-0031-DEG)
+
+Süre dolması **kendiliğinden kazanma değildir.** `MATCH_END.result` ∈ `win_a` | `win_b` | `draw` | `invalid` | `no_result` (teknik sonlanma `completed`/`aborted` ayrı alandır). Kill = bot–bot PvP öldürme (canavar/kule/intihar/bilinmeyen kaynak sayılmaz); `fark = K_A − K_B`; başlangıç = ilk hasar (`engage`); `engage_timeout_sec` (60) içinde hasar yoksa maç `invalid` (`NO_ENGAGE`). Senaryo `win_rule` ile **tür** seçer; tüm eşikler senaryo anahtarıdır (kodda sabit değil) ve `MATCH_START`'a yazılır:
+
+| `win_rule` | Kural | Anahtarlar (varsayılan) |
 |---|---|---|
-| `killdiff_timed` (EVAL varsayılanı) | Süre (`duration_sec`; EVAL-8v8: 300 sn) **ilk hasardan** (`engage`) itibaren işler. Bitişte takım kill farkı: ≥ +2 galibiyet, ≤ −2 yenilgi, \|fark\| ≤ 1 berabere (0,5 sayılır). Erken bitiş: bir takımın tüm üyeleri aynı anda ölü (WIPE) → diğer takım galip; veya fark ≥ takım büyüklüğü | 2v2..8v8, EVAL-* |
-| `first_death` | İlk ölen tarafın rakibi kazanır | 1v1 |
-| `timed_score` | Yalnızca ölçüm (kazanan ilan edilmez): kill/death, hasar, heal metrikleri | Mekanik/davranış testleri (T-WAR/T-PRI...) |
+| `killdiff_timed` (respawn **açık**; EVAL varsayılanı) | Süre sonunda `fark ≥ win_margin` → `win_a`; `fark ≤ −win_margin` → `win_b`; `\|fark\| < win_margin` → `draw` | `duration_sec` (EVAL-8v8 300, 2v2..5v5 120), `win_margin` (2), `early_end_margin` (0 = kapalı) |
+| `wipe_first` (respawn **kapalı**, ayrı tür) | Bir takımın tüm üyeleri ölü → rakip galip (anında biter); iki takım aynı tick'te 0 canlı → `draw`; süre dolunca canlı sayısı fazla olan galip, eşitse `draw`; 1v1 = ilk ölen kaybeder | `duration_sec` (300), `respawn` (off), `resurrection` (off) |
+| `timed_score` | Yalnızca ölçüm, `no_result` | `duration_sec` |
 
-Kill sayımı yalnızca bot–bot PvP `DEATH` olaylarıdır (canavar/kule/bilinmeyen kaynak sayılmaz; `THIRD_PARTY` maçı geçersiz kılabilir). Süre boyunca hiç hasar olmazsa maç `invalid` (`NO_ENGAGE`). Tek başına "ilk takım tamamen ölür" kuralı seçilmedi: yeniden doğuş varken (≥ 3 sn) tüm takımın aynı anda ölü olması nadirdir ve ölçülemez sonuç üretir.
+**`killdiff_timed` örnekleri (8v8, 300 sn, `win_margin = 2`):**
+
+| K_A | K_B | fark | Sonuç |
+|---|---|---|---|
+| 14 | 11 | +3 | `win_a` (galibiyet) |
+| 10 | 8 | +2 | `win_a` (sınır dahil) |
+| 9 | 8 | +1 | `draw` |
+| 8 | 8 | 0 | `draw` |
+| 8 | 9 | −1 | `draw` |
+| 7 | 9 | −2 | `win_b` (A mağlup) |
+| 0 | 0 | 0 | `draw` (hasar vardı) veya `invalid` `NO_ENGAGE` (hiç hasar yoktu) |
+
+`win_margin = 3` ile (14, 11) `win_a`, (10, 8) ve (7, 9) `draw` olur. **`wipe_first` örnekleri (8v8):** B'nin son botu ölür, A'da 3 canlı → `win_a`; süre dolar, A 4 canlı B 2 canlı → `win_a`; A 3 / B 3 → `draw`; son botlar aynı tick'te ölür → `draw`. **Pilot kalibrasyonu:** `baseline-v1` aynı-aynıya 20 maç (taraf değişimli); `fark` ortalaması/standart sapması ve beraberlik oranı raporlanır; hedef beraberlik %15–35; dışındaysa `win_margin` değiştirilir (ADR-0031-DEG eki, kod değişmez). Tekrar sayıları ve taraf değişimi `docs/16` §7'dedir.
+
 ## 7. İnsan değerlendirmesi
 
 | Unsur | Tanım |
@@ -312,3 +333,4 @@ Kill sayımı yalnızca bot–bot PvP `DEATH` olaylarıdır (canavar/kule/bilinm
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.1 | Değerlendirme: §4.9 oyun içi kabul testleri (T-IGT-*), §6a senaryo başlangıç sıfırlama sözleşmesi ve karakter seti kapasitesi, §6b kazanma kuralı (ADR-0031-DEG) |
+| 2026-10-02 | v1.2 | Değerlendirme eki (proje sahibi kararları): §6a konum kurulumu ve DB gerekçesi, 16/20 karakter dökümü; §6b `killdiff_timed`/`wipe_first`/`timed_score` türleri, örnekler, yapılandırılabilir eşikler, pilot kalibrasyonu |

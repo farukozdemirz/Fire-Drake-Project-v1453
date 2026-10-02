@@ -194,6 +194,7 @@ Hedefe varış adımı (< 1 m) takılma değildir. Yeniden planlama (500 ms) pak
 
 - **Kural `[Ö]`:** arena sınırı yalnızca **arenanın içindeki** bot için "dışarı çıkış yasak"tır. Arena dışındaki bot (doğuş noktası, summon bekleme, dönüş yolu) sınırın içine girebilir ve dışarıda serbest yürür; yasaklı-hücre cezası dışarıda uygulanmaz. Bugünkü `AddForbidOutsideDisc` + `forbiddenPenalty = 10` bunu sağlamaz: ölçüm (rapor §5.3) El Morad doğuşu → arena için `NodeLimit` (20 000 düğüm, yol yok), Karus için 4148 düğüm; arena içinden dışarıdaki doğuş noktasına hedef `InvalidGoal`. Düzeltme planı F5-51.
 - **Geri çekilme:** arena modunda güvenli nokta **arenanın içindedir** (party: arka hat; solo: arenanın kendi ulus tarafı). "Kendi tower halkasına çekil" (`docs/11` §4.3) yalnızca arena modu kapalıyken (serbest Ronark, F11) geçerlidir; arena modunda tower halkası arenanın 233 m (Karus) / 640 m (El Morad) dışındadır. ADR-0033-DEG.
+  *Mod ayrımı (proje sahibi kararı 2026-10-02, ADR-0033-DEG):* bu madde yalnızca **arena modu** içindir; serbest Ronark modunda güvenli konuma çekilme, yeniden gruplanma ve savaşa dönüş ayrıca planlanır (`docs/17` F11-a/b/c).
 - **Doğuş ve dönüş:** doğan bot arena dışındadır, dönüş yürüyerek (~52 sn Karus, ~142 sn El Morad, 4,5 m/s) veya summon'la olur; arenaya girdikten sonra "savaş alanında kal" kuralı başlar. Dönüş yolu planı (doğuş → arena kenarı) kısa ömürlü önbellekte tutulur (§13.5).
 
 ### 13.5 Çoklu bot yol bütçesi
