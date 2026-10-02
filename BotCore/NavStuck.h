@@ -571,4 +571,268 @@ namespace BotCore
 		}
 		return rejected && !sent;
 	}
+
+	// F5-57 (docs/12 s13.3): route progress. The projection of (x, z) onto the polyline, measured
+	// as the cumulative distance (metres) from the first point to that projection. A position off
+	// the polyline clamps to the nearest projection point. n < 2 or a NaN/inf input returns 0.
+	struct NavRoutePoint
+	{
+		float x = 0.0f;
+		float z = 0.0f;
+	};
+
+	inline float NavRouteProgressM(const NavRoutePoint * pts, int n, float x, float z)
+	{
+		if (pts == nullptr || n < 2)
+			return 0.0f;
+		if (std::isnan(x) || std::isnan(z) || std::isinf(x) || std::isinf(z))
+			return 0.0f;
+
+		float bestDist2 = 0.0f;
+		float bestProgress = 0.0f;
+		float cum = 0.0f;
+		bool has = false;
+
+		for (int i = 0; i < n - 1; ++i)
+		{
+			const float ax = pts[i].x;
+			const float az = pts[i].z;
+			const float bx = pts[i + 1].x;
+			const float bz = pts[i + 1].z;
+			const float dx = bx - ax;
+			const float dz = bz - az;
+			const float seg2 = dx * dx + dz * dz;
+
+			float t = 0.0f;
+			if (seg2 > 0.0f)
+			{
+				t = ((x - ax) * dx + (z - az) * dz) / seg2;
+				if (t < 0.0f)
+					t = 0.0f;
+				else if (t > 1.0f)
+					t = 1.0f;
+			}
+
+			const float px = ax + t * dx;
+			const float pz = az + t * dz;
+			const float ddx = x - px;
+			const float ddz = z - pz;
+			const float d2 = ddx * ddx + ddz * ddz;
+
+			if (!has || d2 < bestDist2)
+			{
+				has = true;
+				bestDist2 = d2;
+				bestProgress = cum + t * std::sqrt(seg2);
+			}
+
+			cum += std::sqrt(seg2);
+		}
+
+		return bestProgress;
+	}
+
+	// F5-57 (docs/12 s13.3): the intent + real-progress verdict. A caller feeds the intent
+	// (start/stop), the sent move packets and the guard rejections, then asks Assess() each tick.
+	// AwaitingPacket, BlockedByGuard and Idle are not stuck states; only Stalled is a detection.
+	enum class NavProgressVerdict { Idle, Progressing, AwaitingPacket, Stalled, BlockedByGuard };
+
+	struct NavProgressParams
+	{
+		int   periodMs = 1550;         // [A] expected move-packet period (BotMotion kMovePeriodMs + margin)
+		int   periods = 2;             // [A] packet periods required before Stalled
+		int   toleranceMs = 100;       // [A] slack over the packet period
+		float minProgressM = 1.0f;     // [A] route progress below this over the window is Stalled
+		float arriveM = 1.0f;          // [A] final-packet distance to the goal that counts as arrival
+		int   guardWindowMs = 3200;    // [A] rejection window; matches NavGuardBlockDetector default
+	};
+
+	class NavProgressAssessor
+	{
+	public:
+		static constexpr int kCapacity = 32;   // packet samples
+
+		void Reset();
+		// Movement intent. Starting resets the packet window; ending makes Assess Idle.
+		void SetIntent(bool active, int64_t nowMs);
+		// A new route: the progress baseline restarts, the packet history is kept.
+		void NotifyReplan(int64_t nowMs, float routeProgressM);
+		// A move packet that reached the wire.
+		void OnPacketSent(int64_t tMs, float x, float z, float routeProgressM, float distToGoalM);
+		// A move packet the guard rejected (CLI-05/CLI-08).
+		void OnPacketRejected(int64_t tMs);
+
+		NavProgressVerdict Assess(int64_t nowMs, const NavProgressParams & params) const;
+
+	private:
+		struct Packet
+		{
+			int64_t t = 0;
+			float x = 0.0f;
+			float z = 0.0f;
+			float routeProgressM = 0.0f;
+			float distToGoalM = 0.0f;
+		};
+
+		const Packet & SentAt(int backFromNewest) const;
+		const Packet & NewestSent() const { return SentAt(0); }
+
+		bool m_intent = false;
+		bool m_hasProgressBase = false;
+		float m_progressBaseM = 0.0f;
+		Packet m_packets[kCapacity];
+		int m_count = 0;
+		int m_next = 0;
+		int64_t m_rejectTimes[kCapacity];
+		int m_rejectCount = 0;
+		int m_rejectNext = 0;
+	};
+
+	inline void NavProgressAssessor::Reset()
+	{
+		m_intent = false;
+		m_hasProgressBase = false;
+		m_progressBaseM = 0.0f;
+		m_count = 0;
+		m_next = 0;
+		for (int i = 0; i < kCapacity; ++i)
+			m_rejectTimes[i] = 0;
+		m_rejectCount = 0;
+		m_rejectNext = 0;
+	}
+
+	inline void NavProgressAssessor::SetIntent(bool active, int64_t)
+	{
+		if (active && !m_intent)
+		{
+			m_count = 0;
+			m_next = 0;
+			m_rejectCount = 0;
+			m_rejectNext = 0;
+			m_hasProgressBase = false;
+			m_progressBaseM = 0.0f;
+		}
+		m_intent = active;
+	}
+
+	inline void NavProgressAssessor::NotifyReplan(int64_t, float routeProgressM)
+	{
+		m_hasProgressBase = true;
+		m_progressBaseM = routeProgressM;
+	}
+
+	inline void NavProgressAssessor::OnPacketSent(int64_t tMs, float x, float z, float routeProgressM,
+		float distToGoalM)
+	{
+		Packet & slot = m_packets[m_next];
+		slot.t = tMs;
+		slot.x = x;
+		slot.z = z;
+		slot.routeProgressM = routeProgressM;
+		slot.distToGoalM = distToGoalM;
+		m_next = (m_next + 1) % kCapacity;
+		if (m_count < kCapacity)
+			++m_count;
+	}
+
+	inline void NavProgressAssessor::OnPacketRejected(int64_t tMs)
+	{
+		m_rejectTimes[m_rejectNext] = tMs;
+		m_rejectNext = (m_rejectNext + 1) % kCapacity;
+		if (m_rejectCount < kCapacity)
+			++m_rejectCount;
+	}
+
+	inline const NavProgressAssessor::Packet & NavProgressAssessor::SentAt(int backFromNewest) const
+	{
+		const int idx = (m_next - 1 - backFromNewest + 2 * kCapacity) % kCapacity;
+		return m_packets[idx];
+	}
+
+	inline NavProgressVerdict NavProgressAssessor::Assess(int64_t nowMs,
+		const NavProgressParams & params) const
+	{
+		if (!m_intent)
+			return NavProgressVerdict::Idle;
+
+		const int64_t winStart = nowMs - (int64_t)params.periods * (int64_t)params.periodMs;
+
+		// (2) Arrival of the newest packet: the goal is within the arrival radius.
+		if (m_count > 0 && params.arriveM > 0.0f && NewestSent().distToGoalM <= params.arriveM)
+			return NavProgressVerdict::Progressing;
+
+		// (3) Guard-blocked: at least one rejection inside the guard window and no sent packet there.
+		if (params.guardWindowMs > 0)
+		{
+			const int64_t guardLo = nowMs - (int64_t)params.guardWindowMs;
+			bool rejected = false;
+			for (int i = 0; i < m_rejectCount; ++i)
+			{
+				if (m_rejectTimes[i] >= guardLo && m_rejectTimes[i] <= nowMs)
+				{
+					rejected = true;
+					break;
+				}
+			}
+			if (rejected)
+			{
+				bool sent = false;
+				for (int i = 0; i < m_count; ++i)
+				{
+					const int idx = (m_next - 1 - i + 2 * kCapacity) % kCapacity;
+					if (m_packets[idx].t >= guardLo && m_packets[idx].t <= nowMs)
+					{
+						sent = true;
+						break;
+					}
+				}
+				if (!sent)
+					return NavProgressVerdict::BlockedByGuard;
+			}
+		}
+
+		// (4) Waiting: no packet at all yet, or the expected packet is overdue. Between two
+		// on-cadence packets the bot is not "waiting" but confirmed moving (Progressing), so the
+		// monitor keeps its window; only a gap beyond one period counts as a wait.
+		if (m_count == 0)
+			return NavProgressVerdict::AwaitingPacket;
+		if (nowMs - NewestSent().t > (int64_t)(params.periodMs + params.toleranceMs))
+			return NavProgressVerdict::AwaitingPacket;
+
+		// (5) Enough sent packets spanning the window: judge the route progress. A full window is
+		// an anchor packet at or before winStart plus the required packet count. Falls back to the
+		// Euclidean displacement when the caller supplied no route.
+		int oldestIdx = -1;
+		for (int i = 0; i < m_count; ++i)
+		{
+			const int idx = (m_next - 1 - i + 2 * kCapacity) % kCapacity;
+			if (m_packets[idx].t <= winStart)
+			{
+				oldestIdx = idx;
+				break;
+			}
+		}
+
+		if (m_count >= params.periods && oldestIdx >= 0)
+		{
+			const Packet & newest = NewestSent();
+			if (m_hasProgressBase)
+			{
+				const float oldestProgress = m_packets[oldestIdx].routeProgressM;
+				if (newest.routeProgressM - oldestProgress < params.minProgressM)
+					return NavProgressVerdict::Stalled;
+			}
+			else
+			{
+				const Packet & oldest = m_packets[oldestIdx];
+				const float dx = newest.x - oldest.x;
+				const float dz = newest.z - oldest.z;
+				if (dx * dx + dz * dz < params.minProgressM * params.minProgressM)
+					return NavProgressVerdict::Stalled;
+			}
+		}
+
+		// (6) Otherwise the bot is making progress.
+		return NavProgressVerdict::Progressing;
+	}
 }
