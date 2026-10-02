@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-10` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-09 (`m_partyLeaveEcho`, `OnPacket()` `PARTY_REMOVE`/`PARTY_DELETE` kaydı, `RejectParty*` kalıbı) — `KAPANDI` (merge `6dc7979`); F4-08 (`m_partyJoinEcho`, `PartyOutcome`, `BotManager` test sürücüsü kalıbı) — `KAPANDI` (merge `851afdc`) |
@@ -295,6 +295,25 @@ Beklenmeyen `no_result` bu planın hatası değil, **sonuç olarak raporlanır**
   - `BotSession.cpp` başlatıcı listesinde `m_partyManageHasLast(false)` yeni satır olarak eklendi (silinen satır yok) — `m_partyEnteredHasAt(false)` sonrası, üye bildirim sırasıyla aynı.
   - `ActionExecutor.cpp` dosya-sonu başlığındaki yorumda `WIZ_PARTY` dizgesi kullanılmadı ("one party packet") ki K5 grep'i paket oluşturma satırlarını göstersin.
 - **Açık sorular:** Yok. Çalışma zamanı doğrulamasını (K14, §7 senaryoları 1–8) Claude `/plan-dogrula`'da yapar; planın istediği gibi sunucu bu turda çalıştırılmadı.
+
+### Tur 2
+
+- **Durum:** UYGULANDI
+- **Branch / commit'ler:** `bot/F4-10` (taban: `gece/2026-10-02`); bu turda yalnızca `GameServer/Bot/BotManager.cpp` değişti (düzeltme commit'i ayrı); bu rapor ve `Durum=UYGULANDI` ayrı bir commit'te. Diğer dosyalara dokunulmadı (`ActionExecutor.*`, `BotCombat.h`, testler, `docs/**` dahil).
+- **Değişen dosyalar (1 kod + plan):**
+  - `GameServer/Bot/BotManager.cpp` (`IsSamePartyMember`, ~`2082-2090`): imza `static bool IsSamePartyMember(CUser * leader, BotSession * target)`; dönüş artık `leader->isInParty() && target->m_pUser->isInParty() && leader->GetPartyID() == target->m_pUser->GetPartyID() && (target->m_partyInviteEcho.load() & (1ull << 63)) == 0` (hedefin bekleyen davet kaydı varsa üye sayılmaz; kayıt `PARTY_PERMIT`'te kurulur, kabul/ret'te temizlenir: `ActionExecutor.cpp:1989`, `:2143`). Üst yorum bu gerekçeyle (sunucu davet edileni kabulden önce party'de sayar, `PartyHandler.cpp:154-155`, KI-014) güncellendi. `CommandPartyManage`'deki çağrı `IsSamePartyMember(s->m_pUser, target)` oldu.
+- **Derleme:**
+  - `./tools/build.sh Release` rc=0; son satırlar: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`, `proj-AIServer.vcxproj -> ...\AIServer.exe`, `BotCoreTests.vcxproj -> ...\BotCoreTests.exe`.
+  - `./tools/build.sh Debug` rc=0; son satır: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`.
+  - `BotManager.cpp` için uyarı **yok** (grep eşleşmesi 0). Kalan uyarılar yalnızca eski satırlardan: `GameServerDlg.cpp:816` C4834, `:1143`/`:1802` C4267, `UpgradeHandler.cpp:634`/`:862` C4789.
+- **Testler:** `./tools/run-tests.sh Release` ve `Debug` → `41 tests, 0 failed` (her ikisi de; iki yeni test `Combat_PartyManageCheck_Order`/`_Boundaries` çıktıda göründü).
+- **Düzeltme talimatı öz-değerlendirmesi (maddeler):**
+  - 1 ✔ Yardımcı `BotSession * target` alıyor; dönüş tam olarak istenen ifade; üst yorum güncellendi; çağrı `IsSamePartyMember(s->m_pUser, target)`.
+  - 2 ✔ Yalnızca `BotManager.cpp` değişti; başka dosyaya/fonksiyona dokunulmadı; `git status --short` tek satır `M GameServer/Bot/BotManager.cpp`.
+  - 3 ✔ İki derleme hatasız; `BotManager.cpp` uyarısı yok; iki koşuda `41 tests, 0 failed`; `grep -n "GetPartyID" GameServer/Bot/*.cpp GameServer/Bot/*.h` tek satır (`BotManager.cpp:2088`); `git diff --check` boş (rc=0); `BotManager.cpp` `ASCII text, with CRLF line terminators`; sunucu çalıştırılmadı.
+  - 4 ✔ `Durum` satırı `UYGULANDI`.
+- **Plandan sapmalar:** Yok.
+- **Açık sorular:** Yok.
 
 ---
 
