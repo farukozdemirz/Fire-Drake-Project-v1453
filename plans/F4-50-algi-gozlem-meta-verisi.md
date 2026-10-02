@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
