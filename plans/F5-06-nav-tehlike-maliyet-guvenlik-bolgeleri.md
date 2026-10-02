@@ -332,7 +332,12 @@ git diff gece/2026-10-02-nav...bot/F5-06 -- BotCore/NavPath.h
   - K4 ✔: `build/nav/zone71.navgrid` geçici taşındığında `NavDanger_` rc=0, `NavDanger_RealMap`/`NavDanger_Perf` `SKIPPED`, diğer altı `[ OK ]`; dosya geri kondu.
   - K5 ✔: `./tools/run-tests.sh Debug` rc=0, `114 tests, 0 failed` (`NAVDANGER perf set=zones queries=100`, süre kapısı yok).
   - K6 ✔: band sıfır-olmayan hücre 101 / 553, `223`/`96`/`153`/`19`; S1 `139,882`; S2 `191,255`; S3 `66,142`/`63,314`; S4 start-içeride `251,598` ve `(18,20)→(22,20)` `176,0`; S4b `NoPath`; S5 `32,0`; `InvalidGoal`; Dijkstra eşitliği 3000 çiftte uyuşmazlık 0; gerçek harita `elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232`, `arena A->B cost=660.617 default=689.103`, çapraz çift `plain=310.676 field=315.363` (`field` yolu halkaya girmez, `forbidden=0`), start-içeride `forb=22`, halka taraması `violations=0`.
-  - K7 ✔ (Release): `NAVDANGER perf set=zones … ms_p95=0.676`, `set=threats … ms_p95=0.769`, `rebuild … ms_p95=0.079` (`queries=1000`, üçü de kapıların altında: ≤ 2,000 / ≤ 0,500). Makine: Ryzen 7 7800X3D, WSL, `nproc=16`.
+  - K7 ✔ (Release; üçü de kapıların altında: ≤ 2,000 / ≤ 0,500; `nproc=16`, Ryzen 7 7800X3D, WSL):
+    ```
+    NAVDANGER perf set=zones queries=1000 found=991 nopath=4 nodelimit=5 expanded_p50=357 expanded_p95=2588 ms_p50=0.105 ms_p95=0.676 ms_p99=1.284
+    NAVDANGER perf set=threats queries=1000 found=991 nopath=4 nodelimit=5 expanded_p50=380 expanded_p95=2989 ms_p50=0.111 ms_p95=0.769 ms_p99=1.369
+    NAVDANGER perf rebuild samples=1000 threats=12 ms_p50=0.074 ms_p95=0.079 ms_p99=0.081
+    ```
   - K8 ✔: `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavDanger.h` boş; `include` listesinde `NavPath.h` yok; `git diff --stat gece/2026-10-02-nav...bot/F5-06` yalnızca §4'teki beş dosyayı (+ bu plan dosyası) gösterir; `git diff … -- BotCore/NavPath.h` yalnızca §5.2 değişiklikleri.
   - K9 ✔: `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10, `NavReach_` 8, hepsi `0 failed`; `NAVPATH T-NAV-03 set=near64 found=997 expanded_p50=306 expanded_p95=2431 ms_p95=0.540`; `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400`; `NAVREACH real: components=143 largest=88279 pockets=229`.
 - **Plandan sapmalar:** Yok. (Tek fark, test içi bir parametre sırası: `NavDanger_Penalty` (d)'de `wClear=2.0` ile `clearFree=3` ayrı `NavCostParams` nesneleriyle kuruldu; planın beklenti sayıları bağımsız parametre varsayımına dayanıyordu. Uygulama kodu değişmedi.)
