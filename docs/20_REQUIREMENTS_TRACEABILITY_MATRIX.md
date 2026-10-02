@@ -152,11 +152,11 @@ Davranış → gerekli skill → aksiyon desteği → algı ihtiyacı → oyun i
 
 | Davranış | Skill (05) | Aksiyon (17 §2.1) | Algı (13 §5.2a) | Kabul |
 |---|---|---|---|---|
-| Warrior sürdürülebilir baskı | Type1, R, sprint | F4-02/03 ✔, F4-55 | konum/HP: F4-50/51 | T-IGT-WAR-01 |
-| Priest heal/buff/cure/debuff önceliği, iki priest | Type3/4/5 | F4-03 ✔, F4-55, F4-56, F4-57 | party HP ✔, olay/durum: F4-52/53 | T-IGT-PRI-01 |
-| Mage güvenli summon | Type3 alan, Type8 | F4-56, F4-58 | respawn/ölü: F4-12 ✔ | T-IGT-MAG-01 |
+| Warrior sürdürülebilir baskı | Type1, R, sprint | F4-02/03 ✔; ADR-0018 m.4 (sprint) | konum/HP: F4-50/51 | T-IGT-WAR-01 |
+| Priest heal/buff/cure/debuff önceliği, iki priest | Type3/4/5 | F4-03 ✔; ADR-0018 m.1, m.4, m.5, m.6, m.8 | party HP ✔, olay/durum: F4-52/53 | T-IGT-PRI-01 |
+| Mage güvenli summon | Type3 uçan/alan, Type8 | ADR-0018 m.2, m.3, m.5, m.6 | respawn/ölü: F4-12 ✔ | T-IGT-MAG-01 |
 | Ortak hedef + heal-stall kararı | hepsi | F4-xx + F7 | HP seyrek örnek, olay ring: F4-51/52 | T-IGT-PTY-01 |
-| Geri çekilme ve dönüş | pot, sprint | F4-04 ✔, F4-55, F5-51 | self ✔ | T-IGT-SUR-01 |
+| Geri çekilme ve dönüş | pot, sprint | F4-04 ✔; ADR-0018 m.4; F5-51 | self ✔ | T-IGT-SUR-01 |
 | Tekrarlanabilir 8v8 | — | `ScenarioReset` (15 §6a) | — | T-IGT-EVAL-01 |
 ## Değişiklik günlüğü
 

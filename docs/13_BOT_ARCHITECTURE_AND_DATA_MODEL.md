@@ -168,7 +168,7 @@ struct ActionResult { uint64 decisionId; bool ok; int16 failCode; std::string re
 
 ### 5.2a Gözlem kaynak sınıfları, tazelik ve görünürlük (değerlendirme 2026-10-02)
 
-`PerceptionSnapshot` (§5.2) bugün konum/sınıf/seviye/ölü bilgisini taşır; düşman HP'si, adı, skill olayları, durum etkileri ve zaman içi değişim (hız, hasar/heal hızı) karar katmanına henüz taşınmıyor (planlar F4-50..F4-53, `docs/reports/degerlendirme-2026-10-02.md` DEG-08). Aşağıdaki sözleşme bu alanların nasıl etiketleneceğini belirler.
+`PerceptionSnapshot` (§5.2) bugün konum/sınıf/seviye/ölü bilgisini taşır; düşman HP'si, adı, skill olayları, durum etkileri ve zaman içi değişim (hız, hasar/heal hızı) karar katmanına henüz taşınmıyor (planlar F4-50..F4-53, `docs/reports/degerlendirme-2026-10-02.md` DEG-08). Aşağıdaki sözleşme bu alanların nasıl etiketleneceğini belirler. Sözleşme denetimi `tools/check-perception-contract.py` (F4-23) R5'tir; F4-50/F4-51 onu `UnitView.name` ve `UnitView`/`NpcView` `hp` alanlarına izin verecek biçimde günceller (oyuncu adı ve hasar verilen/seçili hedefin HP'si istemciye gelir, `docs/03` §16); `mp`, cooldown, envanter, pot stoku yasak kalır.
 
 **Kaynak sınıfları** (her gözlem kaydı `src` ve `t_obs` taşır):
 

@@ -5,9 +5,9 @@
 | Durum | HAZIR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
-| Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`) — `KAPANDI` |
+| Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
 | İlgili gereksinim / kabul | `docs/13` §5.2a (gözlem kaynak sınıfları, tazelik, görünürlük, LoS ayrımı); `docs/09` §5.4 `TARGET_LOST_VIS`; `docs/12` §13.2 (hız kestirimi); AC-LRN-03; `docs/reports/degerlendirme-2026-10-02.md` DEG-08/09/10 |
-| Tahmini büyüklük | M (4 kod dosyası, yeni dosya yok) |
+| Tahmini büyüklük | M (4 kod dosyası + 1 araç betiği, yeni dosya yok) |
 | Hazırlayan / tarih | Claude / 2026-10-02 (değerlendirme) |
 
 ---
@@ -35,8 +35,9 @@ Bugün `UnitView` yalnızca konum/sınıf/seviye/ölü/oturuyor taşır; `ageMs`
    - `UnitView`'a: `char name[kObsNameMax]`, `uint32_t posAgeMs` (`nowMs − lastMoveMs`), `int16_t speedField` (-1 bilinmiyor), `bool moving` (`speedField > 0`), `float vx, vz` (m/s), `uint8_t posState` (`POS_*`), `uint8_t src` (`kSrcObserved = 0`, sınıf `O`; sabitler `kSrcObserved/kSrcTeam/kSrcEstimate` tanımlı olsun ama yalnızca `O` kullanılır). `ageMs` **kalır** (davranış değişmez; yorum: son paket yaşı, konum geçerliliği değil).
    - `BuildSnapshot` bu alanları doldurur.
 2. `GameServer/Bot/BotSession.cpp`: `WIZ_MOVE` dalı `ParseMoveFull` + `UpdateMove` kullanır (kilit/ayrıştırma sırası değişmez: ayrıştırma kilitten önce).
-3. `GameServer/Bot/BotManager.cpp`: `CommandSnap` `enemy`/`ally` satırlarına ve `CommandSee` satırlarına `name=<ad> pos_age=<ms> speed=<n|?> v=(<vx>,<vz>) pos=<fresh|stale|lost>` ekler. Başka çıktı değişmez.
-4. Birim testleri (§6 K3).
+3. **Sözleşme aracı (R5 politikası güncellemesi):** `tools/check-perception-contract.py` (F4-23) `VIEW_FORBIDDEN`'i `UnitView` için `"name"` sözcüğünü **kaldıracak** biçimde günceller: oyuncu adı istemciye `WIZ_USER_INOUT` kaydıyla **gelir** (`docs/03` §16 `[D]`; hedef çağrısı `HEDEF: <ad>` ve `docs/07` §9.2 adı ister); `UnitView` için yasak sözcükler `mp, cooldown, stock, inventory, invent, buff, skill, item, potion` olarak kalır; `NpcView` listesi **değişmez** (NPC adı karar girdisi değildir). Araç başlık açıklaması (satır ~10 `R5`) ve `--selftest` vektörleri (satır ~578-604: `UnitView`'a `int32_t hp;` enjekte eden vaka `int32_t mp;` ile değiştirilir; yeni vaka: `UnitView`'a `char name[24];` eklemek **geçer**, `NpcView`'a eklemek **R5 ihlali**) güncellenir; `python3 tools/check-perception-contract.py` ve `--selftest` PASS olmalı.
+4. `GameServer/Bot/BotManager.cpp`: `CommandSnap` `enemy`/`ally` satırlarına ve `CommandSee` satırlarına `name=<ad> pos_age=<ms> speed=<n|?> v=(<vx>,<vz>) pos=<fresh|stale|lost>` ekler. Başka çıktı değişmez.
+5. Birim testleri (§6 K3).
 
 **Kapsam dışı**
 
@@ -53,6 +54,7 @@ Bugün `UnitView` yalnızca konum/sınıf/seviye/ölü/oturuyor taşır; `ageMs`
 | `Tests/BotCoreTests/PerceptionTests.cpp` | değiştir | 4 yeni `TEST_CASE` |
 | `GameServer/Bot/BotSession.cpp` | değiştir | yalnızca `WIZ_MOVE` dalı |
 | `GameServer/Bot/BotManager.cpp` | değiştir | yalnızca `CommandSnap`/`CommandSee` çıktı satırları |
+| `tools/check-perception-contract.py` | değiştir | yalnızca `VIEW_FORBIDDEN` (`UnitView`'dan `name`) + selftest vektörleri + başlık açıklaması |
 
 Bu listede olmayan bir dosyaya dokunmak gerekirse **durup** Uygulayıcı Raporu'nda soru olarak yaz.
 
@@ -74,6 +76,7 @@ Bu listede olmayan bir dosyaya dokunmak gerekirse **durup** Uygulayıcı Raporu'
 - [ ] K2: `./tools/build.sh Debug` rc=0, uyarı yok
 - [ ] K3: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; toplam test sayısı plan başındaki sayıdan **4 fazla**; dört yeni ad `[ OK ]`; mevcut testler değişmeden geçer
 - [ ] K4: `BotCore/Perception.h`'te `windows.h|stdafx|GameServer|shared/` grep'i boş; yeni `#include` yok
+- [ ] K5a: `python3 tools/check-perception-contract.py` `RESULT: PASS` (R1-R5; `UnitView.name` artık R5 ihlali **değil**, `NpcView`'a `name` eklemek ihlal) ve `python3 tools/check-perception-contract.py --selftest` PASS; `UnitView`'a `mp`/`cooldown`/`stock`/`inventory`/`item`/`potion` sözcüklü alan eklemek hâlâ ihlal
 - [ ] K5 (sözleşme, AC-LRN-03): `git diff gece/2026-10-02...bot/F4-50 -- GameServer/Bot | grep '^+' | grep -E 'g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->'` boş (yeni satırlarda sunucu nesnesi erişimi yok; `CommandSnap`'in mevcut kendi-`CUser` okuması hariç, o satırlara dokunulmaz)
 - [ ] K6: `ParseMoveFull` hiçbir girdide sınır dışı okumaz (kısa/null testleri); `ObsTable` kapasite davranışı değişmez (mevcut taşma testi geçer)
 - [ ] K7: mevcut `ageMs` anlamı ve `/bot see` mevcut alanları değişmez (yalnız satır sonuna eklenen alanlar); `git diff ... | grep '^-' | grep -v '^---'` yalnızca yorum/imza satırı içerebilir, davranış satırı yok

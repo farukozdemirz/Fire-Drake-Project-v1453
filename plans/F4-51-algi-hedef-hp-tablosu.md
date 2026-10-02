@@ -5,9 +5,9 @@
 | Durum | HAZIR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-51 (taban: gece/2026-10-02)` |
-| Bağımlı olduğu planlar | F4-06 (`TargetHpReq`, CLI-10) ve F4-16 (`PerceptionSnapshot`) — `KAPANDI`; F4-50 önerilir (aynı `UnitView` alanlarına dokunur: F4-50 önce birleşmeli, aksi halde `UnitView` çakışması çözülür) |
+| Bağımlı olduğu planlar | F4-06 (`TargetHpReq`, CLI-10), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI`; F4-50 önerilir (aynı `UnitView` alanlarına dokunur: F4-50 önce birleşmeli, aksi halde `UnitView` çakışması çözülür) |
 | İlgili gereksinim / kabul | `docs/03` §16 (hasar verilen/seçili hedefin HP'si gözlemlenebilir), CLI-10; `docs/09` §5.1 (HP gözlemi seyrektir), §6.1 (`dmg_rate`); `docs/13` §5.2a; `docs/reports/degerlendirme-2026-10-02.md` DEG-08 |
-| Tahmini büyüklük | S–M (4 kod dosyası, yeni dosya yok) |
+| Tahmini büyüklük | S–M (5 kod dosyası + 1 araç betiği, yeni dosya yok) |
 | Hazırlayan / tarih | Claude / 2026-10-02 (değerlendirme) |
 
 ---
@@ -35,7 +35,8 @@ Düşmanın kesin HP'si bugün yalnızca `/bot target` eyleminin **sonucu** olar
    - `AttachHp(PerceptionSnapshot &, const HpTable &, uint64_t nowMs)`: listelerdeki her `UnitView`/`NpcView` için tabloda aynı kimlik (oyuncu kimlikleri `< 10000`, NPC kimlikleri `>= 10000`; çakışma olmaz) varsa alanları doldurur; yoksa `hpKnown = false`. `BuildSnapshot` imzası **değişmez**.
 2. `GameServer/Bot/BotSession.{h,cpp}`: `HpTable m_hp` (aynı `m_obsLock` altında, `m_obs`/`m_npcs`/`m_team` gibi); `OnPacket()` içinde `WIZ_TARGET_HP` için **mevcut kaydın yanına** ayrı blok: ayrıştırma kilitten önce, `Upsert` kilit altında; geçerli `echo` ≠ 0 ise `reply = true` (seçim `echo=1`), `0` ise hasar bildirimi/yoklama. `WIZ_DEAD` ve `WIZ_USER_INOUT OUT` / `WIZ_NPC_INOUT OUT` ile ilgili kimlik `Invalidate` edilir (yeni gözlem öncesi eski HP'nin yaşlı doğru gibi görünmemesi için). `ResetForRespawn` tabloyu temizler.
 3. `GameServer/Bot/BotManager.cpp` `CommandSnap`: `AttachHp` çağrısı (tabloyu `m_obsLock` altında kopyala) ve `enemy`/`ally`/`npc` satırlarına `hp=<hp>/<max> hp_age=<ms>[ stale]` veya `hp=?` ekle.
-4. Birim testleri (§6 K3).
+4. **Sözleşme aracı (R5 politikası güncellemesi):** `tools/check-perception-contract.py` (F4-23) `VIEW_FORBIDDEN`'de `UnitView` ve `NpcView` için `"hp"` sözcüğünü **kaldırır**: düşman/hedef HP'si `docs/03` §16'da `[D]` serbesttir (yalnızca hasar verilen veya seçili hedef için `WIZ_TARGET_HP` paketinden); `mp, cooldown, stock, inventory, invent, buff, skill, item, potion` ve `NpcView` için `name` yasak olarak **kalır**. Gerekçe ve kaynak güvencesi: HP alanlarının yalnızca alınan pakete bağlı olması R1-R3 (sunucu nesnesine erişim yok) ve K5 ile sağlanır; R5 yalnızca `mp`/`cooldown`/envanter benzeri **gerçekten gönderilmeyen** bilgileri engellemeye devam eder. `--selftest` vektörleri (`UnitView`'a `int32_t hp;` enjekte eden vaka) `int32_t mp;` ile değiştirilir, `hp` alanı eklemenin **geçtiği** bir vaka eklenir; araç başlık açıklaması güncellenir; `python3 tools/check-perception-contract.py` ve `--selftest` PASS olmalı.
+5. Birim testleri (§6 K3).
 
 **Kapsam dışı**
 
@@ -53,8 +54,9 @@ Düşmanın kesin HP'si bugün yalnızca `/bot target` eyleminin **sonucu** olar
 | `GameServer/Bot/BotSession.h` | değiştir | `HpTable m_hp` üyesi |
 | `GameServer/Bot/BotSession.cpp` | değiştir | `OnPacket` ek bloğu, `ResetForRespawn` temizliği |
 | `GameServer/Bot/BotManager.cpp` | değiştir | yalnızca `CommandSnap` |
+| `tools/check-perception-contract.py` | değiştir | yalnızca `VIEW_FORBIDDEN` (`UnitView`/`NpcView`'dan `hp`) + selftest vektörleri + başlık açıklaması |
 
-5 kod dosyası. Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
+5 kod dosyası + 1 araç betiği. Listede olmayan dosyaya dokunmak gerekirse **durup** raporda soru olarak yaz.
 
 ## 5. Uygulama adımları
 
@@ -69,6 +71,7 @@ Düşmanın kesin HP'si bugün yalnızca `/bot target` eyleminin **sonucu** olar
 - [ ] K2: `./tools/build.sh Debug` rc=0, uyarı yok
 - [ ] K3: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`, toplam test sayısı plan başındakinden **4 fazla**, dört yeni ad `[ OK ]`
 - [ ] K4: `BotCore/Perception.h`'te `windows.h|stdafx|GameServer|shared/` grep'i boş
+- [ ] K5a: `python3 tools/check-perception-contract.py` `RESULT: PASS` ve `--selftest` PASS; `UnitView`/`NpcView`'a `mp`/`cooldown`/`stock`/`inventory`/`item`/`potion` sözcüklü alan eklemek hâlâ R5 ihlali, `hp` alanı değil
 - [ ] K5 (sözleşme): yeni satırlarda `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` yok; HP yalnızca alınan `WIZ_TARGET_HP` paketinden gelir (`UnitView`/`NpcView` HP'si kendi `CUser`/sunucu nesnesinden **okunmaz**)
 - [ ] K6: mevcut `m_targetHpValues`/`m_targetHpEcho` yolu ve `/bot target` davranışı değişmez (`git diff` yalnızca ek satır içerir; `-` satırı yok ya da yalnızca yorum)
 - [ ] K7: yeni paket isteği/zamanlayıcı/ini anahtarı/komut yok; `ENABLED=0` davranışı değişmez
