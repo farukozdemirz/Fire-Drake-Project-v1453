@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-22` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-03 (`ScenarioRunner`) — `KAPANDI`; F4-20 (`ScriptRunner`) — `KAPANDI` (merge `e36d9d1`); F4-21 (rapor aracı) — `KAPANDI` (merge `d803438`) |
@@ -281,17 +281,36 @@ file GameServer/Bot/ScenarioRunner.h GameServer/Bot/ScenarioRunner.cpp GameServe
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-22` — `<kısa-sha> [F4-22] …`
+- Branch / commit'ler: `bot/F4-22` (taban: `gece/2026-10-02`) — `73ce876 [F4-22] Senaryo-betik baglamasi: senaryoda 'script:' anahtari, mac acilinca betik baslar, kapanmadan once durur` (bu rapor/Durum commit'i ayrıca atılır)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ScriptRunner.h` — `LoadScript` `public:`'e taşındı, `IsRunning()`/`RunId()` eklendi, `m_runId` üyesi (§5.1).
+  - `GameServer/Bot/ScriptRunner.cpp` — kurucuya `m_runId(0)` ve `CommandRun`'da `m_runId++` (§5.1).
+  - `GameServer/Bot/ScenarioRunner.h` — `Scenario::script`, `StopScript()`, `m_scriptRunId` (§5.2).
+  - `GameServer/Bot/ScenarioRunner.cpp` — `#include "ScriptRunner.h"`, `SCENARIO_SCRIPT_MARGIN_MS`, kurucu `m_scriptRunId(0)`, `LoadScenario` `script:` anahtarı + yükleme doğrulaması + süre denetimi, `CommandRun` "zaten betik çalışıyor" kapısı + bilgi satırı, `StartRun`/`Finish` sıfırlama, PREPARE'de betik başlatma, RUNNING bot-kaybı/süre-doldu ve `Abort` öncesi `StopScript()`, yeni `StopScript()` (§5.3-5.6).
+  - `bots/config/scenario_script_smoke_2bot.yaml` — yeni örnek senaryo (§5.7).
+- Derleme sonucu (`tools/build.sh Release` son satırları):
   ```
-  …
+    All 14017 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Birim testler: `tools/run-tests.sh` son satırı …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  rc=0, `error C` 0. `ScriptRunner.cpp`/`ScenarioRunner.cpp`/`BotManager.cpp` `touch` edilip yeniden derlendi; derleme listesinde bu iki dosya görünür, bu dosyalara atıf yapan uyarı 0 (toplam 5 uyarının tümü eski `GameServerDlg.cpp:816/1143/1802` ve `UpgradeHandler.cpp:634/862` satırlarından).
+- Birim testler: `tools/run-tests.sh` son satırı `82 tests, 0 failed` (rc=0).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (rc=0, hedef dosyalarda uyarı 0)
+  - K2 ✔ (`82 tests, 0 failed`)
+  - K3 ✔ (`git diff --stat gece/2026-10-02...bot/F4-22` yalnızca §4'teki 5 dosya; yasak yollarda fark boş; `docs/` ve `tools/` yok)
+  - K4 ✔ (ScriptRunner.cpp'de tam 3 değişen satır; `LoadScript` `public:` altında, satır 21)
+  - K5 ✔ (`m_script.` satırları yalnızca `loaded.script.empty()`/`m_scenario.script.empty()` denetimleri arkasında ya da `StopScript()` içinde; `m_scriptRunId` yalnızca PREPARE dalında `RunId()` ile atanır, satır 774)
+  - K6 ✔ (`StopScript` koşulu birebir; çağrılar tam üç yerde — `Abort` (878), bot kaybı (806), süre doldu (817) — her biri ilgili `CommandMatch("end ...")` öncesinde)
+  - K7 ✔ (yükleme doğrulaması `out` atamasından önce; `duplicate key 'script'`, `script: bad script name`, `script: no steps`; `SCENARIO_SCRIPT_MARGIN_MS` tanım+2 kullanım)
+  - K8 ✔ (yasak sözcük grep'i boş; `fopen` sayısı 2, değişmedi)
+  - K9 ✔ (yalnızca `m_script.Command("run ...")` ve `Command("stop")`; yeni satırlarda `ExecuteCommand`/`ActionExecutor`/`BotFairnessGuard`/`HandlePacket` yok)
+  - K10 ✔ (örnek senaryo §5.7 metniyle aynı, ASCII+CRLF; son ofset 6000 ms, 6000+1000 ≤ 12000)
+  - K11 ✔ (`file` beş dosyada `ASCII text, with CRLF line terminators`; `git diff --check` boş)
+  - K12 — DeepSeek işaretlemez (Claude `/plan-dogrula` çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri: Yok. §5.4 adım 4'teki `steps.empty()` güvenlik dönüşü plan metnine uygun eklendi; `SCENARIO_SCRIPT_MARGIN_MS` `static const uint32`, senaryo dosyası arasındaki diğer sabitlerle aynı stilde.
+- Açık sorular: Yok.
 
 ---
 
