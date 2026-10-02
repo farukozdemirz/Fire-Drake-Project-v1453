@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-50 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`) — `KAPANDI` |
@@ -304,3 +304,26 @@ Dokunulabilecek dosyalar değişmez: BotCore/NavSegment.h, Tests/BotCoreTests/Na
 3. NavSegmentTests.cpp `NavSegment_Symmetry_Oracle` (ve gerekirse `RealMap_Straight`): oracle kirişlerinin bir kısmını (en az 1000) uçları `unit` katı köşelere / ızgara çizgilerine oturtarak üret ve ayrıca engel yoğunluğu düşük (%5) ikinci bir sentetik ızgara kullan ki `Ok` kiriş sayısı yüzlerce olsun. Kural aynı: güvenlik ihlali 0, simetri ihlali 0, ve `OutOfBounds` yalnızca kiriş gerçekten ızgara dışına çıkıyorsa dönsün (oracle: `OutOfBounds` ise ızgara dışına değen hücre olmalı). Bir `printf` satırıyla `ok`, `blocked`, `vertex_chords` sayılarını yaz.
 4. `./tools/build.sh Release` ve `Debug` (rc=0, uyarı 0), `./tools/run-tests.sh Release` ve `Debug` (`0 failed`) koş; raporuna `NAVSEG planner:` (beklenen `segment_bad=0 chord_violations=0`), `NAVSEG oracle/straight/perf` ve yeni satırları yapıştır. `NAVSEG planner` `chord_violations=0` kalmalı, `perf` `ms_p95 <= 0.02` kalmalı. `git diff --check` boş, dosyalar ASCII + CRLF.
 ```
+
+### Tur 3 — 2026-10-02 (otonom döngü kurtarma adımında Claude)
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `4c2dfd0` (`bot/F5-50`; Tur 3 kodu `5a803fe`; taban `gece/2026-10-02-nav` @ `196857d`). Çalışma ağacı temiz. Döngü, `/plan-dogrula` sınırına takılıp kurtarma çağırdığı için bu doğrulamayı kurtarma oturumunda yaptım; birleştirme/push yapılmadı (gece modu: döngü betiği birleştirir).
+- **Özet:** Tur 2 bulgusu (kiriş köşede biterken bitiş hücresinin aşılması) giderildi: traversal sonlanması t-tabanlı. Bağımsız çapraz denetimde güvenlik ve simetri ihlali yok; R/Q sınıflarında (sürekli ve köşe/çizgi uçlu 5000 kiriş) gereksiz ret ve yanlış hücre raporu **0** (Tur 2'de 255 vaka).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, uyarı yok | ✔ | `tools/build.sh Release` rc=0, `grep -ci warning` = 0 |
+| K2 Debug rc=0, uyarı yok | ✔ | `tools/build.sh Debug` rc=0, uyarı 0 |
+| K3 `0 failed`, yedi yeni ad + `NavSegment_EndVertex` `[ OK ]` | ✔ | Release ve Debug `170 tests, 0 failed`; harita var, SKIPPED yok |
+| K4/K5 include, dinamik bellek, global-static | ✔ | Tur 2'den beri `NavSegment.h` yalnızca döngü koşulunu değiştirdi; yeni include/bellek yok |
+| K6 oracle | ✔ | `oracle: chords=4494 ok=425 blocked=4002 vertex_chords=1494 sym=0 safety=0 graze=0 vgraze=68 excess=0 oob=67 oob_bad=0`; `straight: sym=0 safety=0 graze=2 excess=0` |
+| K7 planlayıcı | ✔ | `planner: paths=997 segments=4876 segment_bad=0 chords=35878 chord_violations=0 chord_slope_opt=691` |
+| K8 Perf | ✔ | Release `ms_p95=0.000200` |
+| K9 yalnızca §4 dosyaları | ✔ | `git diff --stat gece/2026-10-02-nav...bot/F5-50`: `NavSegment.h`, `NavSegmentTests.cpp`, iki `.vcxproj`, plan + Claude'un `docs/12`, `docs/STATUS.md`, `plans/README.md` satırları; `GameServer/`, `shared/`, `AIServer/` farkı 0 |
+| K10 ASCII + CRLF, `git diff --check` | ✔ | iki dosya ASCII + CRLF; `git diff --check` rc=0 |
+| K11 bağımsız Python tam-rasyonel denetim | ✔ | Aşağıda |
+
+**K11.** Tur 2 harness'i (`/tmp/f550k11`, commit edilmez) yeni `NavSegment.h` ile yeniden koşuldu: 6000 kiriş (R 2500 sürekli, Q 2500 köşe/çizgi/merkez-çapraz uçlu, N 1000 köşeye `1e-13..1e-4` m yakın uçlu). **Güvenlik ihlali 0, simetri ihlali 0.** R ve Q: gereksiz ret 0, yanlış hücre 0. N: 29 gereksiz ret ve 46 "ret doğru ama raporlanan hücre tam kesişimle uyuşmuyor"; hepsinde uç, köşeye ~1e-9 m mertebesinde (vertex toleransı içinde, örn. `683.9999999995`) yakındır, yani kasıtlı muhafazakâr tolerans sınıfıdır (plan §8: "eşitlik toleransı `1e-9` ölçeğindedir; büyütme"; yön her zaman fail-closed). Tur 2'deki köşe-bitişi hatası (Q'da 136, N'de 102 vaka) kalmadı.
+
+**Not (engel değil).** `chord_slope_opt=691` bilgi amaçlıdır: eğim katmanı isteğe bağlı ve varsayılan kapalı (Tur 1 kararı). F5-55 guard'ı kirişleri Walk-only çağırmalı; bağlamlı eğim denetimi gerekirse orada değerlendirilir.
