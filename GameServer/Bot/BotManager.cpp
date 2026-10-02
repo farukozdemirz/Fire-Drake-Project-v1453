@@ -28,6 +28,7 @@ static const char * COMMAND_FILE_CLAIMED = "./BotCommands.processing";
 static const uint32 COMMAND_POLL_MS = 1000;
 static const size_t COMMAND_QUEUE_MAX = 64;
 static const size_t COMMAND_FILE_MAX_LINES = 64;
+static const uint32 STATUS_REFRESH_MS = 1000;
 
 BotManager & BotManager::Instance()
 {
@@ -382,6 +383,7 @@ void BotManager::Tick()
 
 	ProcessCommands();
 	TickSessions();
+	RefreshStatusSnapshot(std::chrono::steady_clock::now());
 	m_scenario.Tick(std::chrono::steady_clock::now());
 
 	if (Telemetry::Instance().IsEnabled(TEL_SUMMARY))
@@ -724,8 +726,10 @@ void BotManager::CommandDespawn(const std::string & args)
 	}
 }
 
-void BotManager::CommandList()
+void BotManager::BuildStatusLines(std::vector<std::string> & out)
 {
+	out.clear();
+
 	size_t poolFree;
 	{
 		std::lock_guard<std::recursive_mutex> lock(g_pMain->m_socketMgr.GetLock());
@@ -734,9 +738,9 @@ void BotManager::CommandList()
 
 	char message[192];
 	snprintf(message, sizeof(message),
-		"BotManager: cmd list: %u session(s), pool free %u/%u",
+		"%u session(s), pool free %u/%u",
 		(unsigned)m_sessions.size(), (unsigned)poolFree, (unsigned)m_poolSize);
-	WriteBotLog(message);
+	out.push_back(message);
 
 	for (size_t i = 0; i < m_sessions.size(); i++)
 	{
@@ -748,10 +752,43 @@ void BotManager::CommandList()
 			snprintf(slot, sizeof(slot), "-");
 
 		snprintf(message, sizeof(message),
-			"BotManager: cmd list:   %s phase=%s slot=%s despawns=%u",
+			"  %s phase=%s slot=%s despawns=%u",
 			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount);
-		WriteBotLog(message);
+		out.push_back(message);
 	}
+}
+
+void BotManager::RefreshStatusSnapshot(std::chrono::steady_clock::time_point now)
+{
+	if (now - m_lastStatusRefresh < std::chrono::milliseconds(STATUS_REFRESH_MS))
+		return;
+
+	m_lastStatusRefresh = now;
+
+	std::vector<std::string> lines;
+	BuildStatusLines(lines);
+
+	std::lock_guard<std::mutex> lock(m_statusLock);
+	m_statusLines.swap(lines);
+}
+
+bool BotManager::GetStatusSnapshot(std::vector<std::string> & out)
+{
+	if (!m_enabled)
+		return false;
+
+	std::lock_guard<std::mutex> lock(m_statusLock);
+	out = m_statusLines;
+	return true;
+}
+
+void BotManager::CommandList()
+{
+	std::vector<std::string> lines;
+	BuildStatusLines(lines);
+
+	for (size_t i = 0; i < lines.size(); i++)
+		WriteBotLog(("BotManager: cmd list: " + lines[i]).c_str());
 }
 
 void BotManager::CommandMatch(const std::string & args)

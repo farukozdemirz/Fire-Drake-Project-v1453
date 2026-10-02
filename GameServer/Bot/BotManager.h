@@ -41,6 +41,11 @@ public:
 	// IOCP thread. Returns false when the bot system is disabled or the queue is full (64 lines).
 	bool EnqueueCommand(const std::string & line);
 
+	// Any thread. Copies the last status snapshot (refreshed by Tick() about once a second) into 'out':
+	// first the header line, then one line per session. Returns false when the bot system is
+	// disabled. 'out' is empty until the first refresh (about one tick after the AI start delay).
+	bool GetStatusSnapshot(std::vector<std::string> & out);
+
 private:
 	friend class ScenarioRunner;
 
@@ -63,6 +68,8 @@ private:
 	void CommandSpawn(const std::string & args);
 	void CommandDespawn(const std::string & args);
 	void CommandList();
+	void BuildStatusLines(std::vector<std::string> & out);                         // IOCP thread only
+	void RefreshStatusSnapshot(std::chrono::steady_clock::time_point now);         // IOCP thread only
 	void CommandMatch(const std::string & args);
 	BotSession * FindSession(const char * charName);
 	static bool IsKnownBotName(const std::string & name);   // BOT_TABLE lookup, case-insensitive
@@ -101,6 +108,10 @@ private:
 	std::mutex m_commandLock;                // guards m_commandQueue only
 	std::vector<std::string> m_commandQueue; // filled by any thread, drained on the IOCP thread
 	std::chrono::steady_clock::time_point m_lastCommandPoll; // IOCP thread only
+
+	std::mutex m_statusLock;                  // guards m_statusLines only
+	std::vector<std::string> m_statusLines;   // written on the IOCP thread, copied by any thread
+	std::chrono::steady_clock::time_point m_lastStatusRefresh; // IOCP thread only
 
 	std::vector<uint32> m_tickUs;                             // IOCP thread only: Tick() durations (us) of the current 5 s window
 	std::chrono::steady_clock::time_point m_perfWindowStart;  // IOCP thread only

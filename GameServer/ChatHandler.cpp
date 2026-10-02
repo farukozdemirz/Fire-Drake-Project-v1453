@@ -81,6 +81,7 @@ void CUser::InitChatCommands()
 		{ "summonknights",		&CUser::HandleKnightsSummonCommand,				"Teleport the clan users. Arguments: clan name" },
 		{ "warresult",			&CUser::HandleWarResultCommand,					"Set result for War"},
 		{ "resetranking",		&CUser::HandleResetPlayerRankingCommand,		"Reset player ranking. Arguments : Zone ID"},
+		{ "bot",				&CUser::HandleBotCommand,						"Bot test commands. Arguments: spawn <name>[,<name>...] | despawn <name>|all | list | match start|end ... | scenario run|stop|status ..." },
 	};
 
 	init_command_table(CUser, commandTable, s_commandTable);
@@ -1174,6 +1175,59 @@ COMMAND_HANDLER(CGameServerDlg::HandleBotCommand)
 		printf("Bot command queued; result in Logs/Bot_*.log\n");
 	else
 		printf("Bot command rejected (queue full)\n");
+
+	return true;
+}
+
+COMMAND_HANDLER(CUser::HandleBotCommand)
+{
+	// Runs on an IOCP worker thread: never touches BotManager state, only queues the command
+	// or copies the status snapshot (ADR-0005, ADR-0015 F3-04 addendum).
+	if (!isGM())
+		return false;
+
+	if (!BotManager::Instance().isEnabled())
+	{
+		g_pMain->SendHelpDescription(this, "Bot system is disabled ([BOT] ENABLED=0 in GameServer.ini)");
+		return true;
+	}
+
+	if (vargs.empty())
+	{
+		g_pMain->SendHelpDescription(this, "Using Sample : +bot spawn BotWP_K,BotMF_K | +bot despawn all | +bot list");
+		g_pMain->SendHelpDescription(this, "Also : +bot match start <scenario> [seed] | +bot match end [result] | +bot scenario run <name>|stop|status");
+		return true;
+	}
+
+	// "+bot list" is answered from the status snapshot (up to ~1 s old) and is not queued.
+	if (vargs.size() == 1 && _stricmp(vargs.front().c_str(), "list") == 0)
+	{
+		std::vector<std::string> lines;
+		BotManager::Instance().GetStatusSnapshot(lines);
+		if (lines.empty())
+		{
+			g_pMain->SendHelpDescription(this, "Bot status not available yet, try again in a second");
+			return true;
+		}
+
+		g_pMain->SendHelpDescription(this, "Bots: " + lines[0]);
+		for (size_t i = 1; i < lines.size(); i++)
+			g_pMain->SendHelpDescription(this, lines[i]);
+		return true;
+	}
+
+	std::string line;
+	for (const std::string & word : vargs)
+	{
+		if (!line.empty())
+			line += " ";
+		line += word;
+	}
+
+	if (BotManager::Instance().EnqueueCommand(line))
+		g_pMain->SendHelpDescription(this, "Bot command queued; result in Logs/Bot_*.log");
+	else
+		g_pMain->SendHelpDescription(this, "Bot command rejected (queue full)");
 
 	return true;
 }
