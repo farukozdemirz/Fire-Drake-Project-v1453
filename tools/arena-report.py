@@ -43,9 +43,11 @@ AXIS_DISTANCE = 35.0
 AXIS_CLUSTER_RADIUS = 6.0
 
 DOC_MARGINS = {
-    "A": {"monster": 144.0, "tower": 133.0},
-    "B": {"monster": 160.0, "tower": 146.0},
+    "A": {"spawn": 144.0, "tower": 133.0},
+    "B": {"spawn": 160.0, "tower": 146.0},
 }
+
+SPAWN_MARGIN_CLASSES = ("monster", "monster_boss", "soldier_npc", "monument", "gate")
 
 SPAWN_QUERY = (
     "SELECT p.NpcID, p.ActType, p.LeftX, p.TopZ, p.RightX, p.BottomZ, p.NumNPC, "
@@ -250,6 +252,15 @@ def confined_axis_path(events, n, unit, center, p1, p2, radius):
     return None if distance is None else distance * unit
 
 
+def axis_candidate(entry):
+    """Acceptance filter for one AXIS scan entry (both ends walkable and flat)."""
+    return (entry["p1_walk"] and entry["p2_walk"]
+            and entry["c1"][0] * 100.0 / entry["c1"][1] >= 90.0
+            and entry["c2"][0] * 100.0 / entry["c2"][1] >= 90.0
+            and entry["line"] >= 0.98 and entry["dh"] <= 2.0
+            and entry["confined"] is not None)
+
+
 def axis_scan(point_name, center, events, heights, n, unit, out):
     scans = []
     for angle in range(0, 180, 15):
@@ -278,11 +289,7 @@ def axis_scan(point_name, center, events, heights, n, unit, out):
                       c1w, c1t, c2w, c2t, line, dh,
                       "none" if confined is None else "%.1f" % confined))
 
-    accepted = [e for e in scans
-                if e["p1_walk"] and e["p2_walk"]
-                and e["c1"][0] * 100.0 / e["c1"][1] >= 90.0
-                and e["c2"][0] * 100.0 / e["c2"][1] >= 90.0
-                and e["line"] >= 0.98 and e["dh"] <= 2.0 and e["confined"] is not None]
+    accepted = [e for e in scans if axis_candidate(e)]
     if accepted:
         best = min(accepted, key=lambda e: (e["dh"], -e["line"]))
         out.write("AXIS_BEST pt=%s angle=%d reason=dh=%.2f,line_walk=%.2f,cluster_min=%.1f%%\n" % (
@@ -317,12 +324,18 @@ def write_report(spawns, events, heights, n, unit, start_row, out):
                               distance, margin, margin_trace, spawn["num"]))
             within = sum(1 for item in scored if item[0] < 120.0)
             summary[kind] = (within, scored[0][0] if scored else None)
+        spawn_margins = [
+            rect_dist(point[0], point[1], spawn["rect"]) - spawn["search"]
+            for spawn in spawns if spawn["class"] in SPAWN_MARGIN_CLASSES
+        ]
+        summary["spawn"] = (None, min(spawn_margins) if spawn_margins else None)
         summaries[point_name] = summary
         out.write("SPAWN_SUMMARY pt=%s within_120_monster=%d within_120_tower=%d within_120_other=%d "
-                  "min_margin_monster=%s min_margin_tower=%s\n" % (
+                  "min_margin_monster=%s min_margin_tower=%s min_margin_spawn=%s\n" % (
                       point_name, summary["monster"][0], summary["tower"][0], summary["npc"][0],
                       "none" if summary["monster"][1] is None else "%.1f" % summary["monster"][1],
-                      "none" if summary["tower"][1] is None else "%.1f" % summary["tower"][1]))
+                      "none" if summary["tower"][1] is None else "%.1f" % summary["tower"][1],
+                      "none" if summary["spawn"][1] is None else "%.1f" % summary["spawn"][1]))
 
     out.write("== GRID ==\n")
     for point_name, point in (("A", POINT_A), ("B", POINT_B)):
@@ -368,14 +381,25 @@ def write_report(spawns, events, heights, n, unit, start_row, out):
 
     out.write("== CHECK ==\n")
     for point_name in ("A", "B"):
-        for kind, key in (("monster", "min_margin_monster"), ("tower", "min_margin_tower")):
-            calc = summaries[point_name][kind][1]
-            doc = DOC_MARGINS[point_name][kind]
-            if calc is None:
-                out.write("CHECK pt=%s %s calc=none doc=%.0f diff=none\n" % (point_name, key, doc))
-            else:
-                out.write("CHECK pt=%s %s calc=%.1f doc=%.0f diff=%.1f\n" % (
-                    point_name, key, calc, doc, calc - doc))
+        spawn_calc = summaries[point_name]["spawn"][1]
+        spawn_doc = DOC_MARGINS[point_name]["spawn"]
+        if spawn_calc is None:
+            out.write("CHECK pt=%s min_margin_spawn calc=none doc=%.0f diff=none\n" % (
+                point_name, spawn_doc))
+        else:
+            out.write("CHECK pt=%s min_margin_spawn calc=%.1f doc=%.0f diff=%.1f\n" % (
+                point_name, spawn_calc, spawn_doc, spawn_calc - spawn_doc))
+        tower_calc = summaries[point_name]["tower"][1]
+        tower_doc = DOC_MARGINS[point_name]["tower"]
+        if tower_calc is None:
+            out.write("CHECK pt=%s min_margin_tower calc=none doc=%.0f diff=none\n" % (
+                point_name, tower_doc))
+        else:
+            out.write("CHECK pt=%s min_margin_tower calc=%.1f doc=%.0f diff=%.1f\n" % (
+                point_name, tower_calc, tower_doc, tower_calc - tower_doc))
+        monster_calc = summaries[point_name]["monster"][1]
+        out.write("CHECK pt=%s min_margin_monster calc=%s doc=n/a\n" % (
+            point_name, "none" if monster_calc is None else "%.1f" % monster_calc))
 
 
 def run_selftest():
@@ -401,11 +425,23 @@ def run_selftest():
     walk, total, _h_min, _h_max = circle_stats(open_events, open_heights, 20, 4.0, 40.0, 40.0, 20.0)
     assert walk == total and walk > 0, (walk, total)
 
-    # (d) axis candidate: a blocked endpoint is rejected
+    # (d) axis candidate: blocked endpoint and each acceptance condition
     blocked = [1] * (20 * 20)
     blocked[5 * 20 + 5] = 0
     assert walkable_xy(blocked, 20, 4.0, 22.0, 22.0) is False
     assert walkable_xy(blocked, 20, 4.0, 30.0, 30.0) is True
+
+    def axis_entry(p1_walk=True, p2_walk=True, c1=(29, 29), c2=(29, 29),
+                   line=1.0, dh=0.8, confined=70.0):
+        return {"p1_walk": p1_walk, "p2_walk": p2_walk, "c1": c1, "c2": c2,
+                "line": line, "dh": dh, "confined": confined}
+
+    assert axis_candidate(axis_entry()) is True
+    assert axis_candidate(axis_entry(p1_walk=False)) is False
+    assert axis_candidate(axis_entry(c1=(89, 100))) is False
+    assert axis_candidate(axis_entry(line=0.97)) is False
+    assert axis_candidate(axis_entry(dh=2.1)) is False
+    assert axis_candidate(axis_entry(confined=None)) is False
 
     print("selftest OK")
     return 0
