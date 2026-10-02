@@ -72,7 +72,7 @@ Düzeltme talimatı şu satırla başlar:
 plans/<FAZ>-<NN>-<ad>.md — Doğrulama Turu N düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur N+1" ekle:
 ```
 
-Planın `Durum` satırını kararla güncelle. **Kodu kendin düzeltme.** Uygulama DeepSeek'in işidir. Kullanıcı açıkça isterse istisna olur.
+Planın `Durum` satırını kararla güncelle: satırda **yalnızca durum sözcüğü** olsun (`DOĞRULANDI`, `DÜZELTME GEREKLİ`, `REDDEDİLDİ`); tarih, parantez veya açıklama ekleme (döngü bu satırı olduğu gibi okur; ayrıntı Doğrulama Raporu'ndadır). **Kodu kendin düzeltme.** Uygulama DeepSeek'in işidir. Kullanıcı açıkça isterse istisna olur.
 
 ## 5. Kayıtları güncelle
 

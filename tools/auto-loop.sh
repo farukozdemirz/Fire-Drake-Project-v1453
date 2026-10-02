@@ -120,7 +120,13 @@ plan_durum() {
 	local t
 	t="$(plan_text "$1")"
 	[ -n "$t" ] || { echo "YOK"; return; }
-	printf '%s\n' "$t" | grep -m1 -E '^\| Durum \|' | sed -E 's/^\| Durum \| *([^|]*) *\|.*/\1/' | xargs
+	local raw
+	raw="$(printf '%s\n' "$t" | grep -m1 -E '^\| Durum \|' | sed -E 's/^\| Durum \| *([^|]*) *\|.*/\1/' | xargs)"
+	# "DOĞRULANDI (2026-10-02, ...)" gibi sonradan eklenmis aciklamalari at; UYGULANIYOR (BLOKE) korunur.
+	case "$raw" in
+	UYGULANIYOR*) printf '%s\n' "$raw" ;;
+	*) printf '%s\n' "$raw" | sed -E 's/ *[(—–].*$//' | xargs ;;
+	esac
 }
 
 plan_branch() { # plan dosyasindaki bot/<FAZ>-<NN> dal adi
