@@ -140,6 +140,17 @@ struct ChatOutcome
 	int length;            // message length in bytes (0 when refused before the text was looked at)
 };
 
+// Result of ActionExecutor::TickUserIn (ADR-0017 Ek F4-13).
+struct UserInOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "received" (the reply arrived). FAILED: "no_result" (no reply).
+	                       // REFUSED: "bad_count" (guard CLI-19; FAIRNESS_REJECT written). NOTHING: "ok".
+	int requested;         // ids in the request (0 when NOTHING)
+	int received;          // units the reply carried; valid only when kind == SENT
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -280,4 +291,11 @@ public:
 	// sender == its id, same text hash) -> SENT "sent"; none -> FAILED "no_result".
 	static ChatOutcome RequestChatParty(BotSession * s, const std::string & text,
 		std::chrono::steady_clock::time_point now);
+
+	// Called once per Tick() for every in-game, living session. Sends one WIZ_REQ_USERIN through CUser::HandlePacket()
+	// for the ids the last WIZ_REGIONCHANGE listed and the observation table does not know (at most kUserInMaxIds; the
+	// bot's own id is never requested) when the CLI-19 guard allows it (>= 1 s since the previous request). NOTHING when
+	// there is nothing to ask or the gap has not passed (the ids stay pending). Result only from the reply the server
+	// published (m_userInEcho). Not counted in the CLI-11 window (automatic client traffic).
+	static UserInOutcome TickUserIn(BotSession * s, std::chrono::steady_clock::time_point now);
 };
