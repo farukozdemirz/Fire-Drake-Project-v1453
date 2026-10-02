@@ -14,9 +14,11 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
 		m_stanceHasLast(false),
 		m_hpReqTargetId(-1), m_hpReqHasLast(false), m_deadSeen(false),
+		m_partyInviteHasLast(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
-		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0)
+		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
+		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -93,6 +95,35 @@ void BotSession::OnPacket(Packet & pkt)
 		uint16 y = pkt.read<uint16>(4);
 		m_regeneEcho = (1ull << 63) | (uint64(x) << 32) | (uint64(z) << 16) | uint64(y);
 	}
+
+	// Party packets (PartyHandler.cpp): u8 sub-opcode first. PARTY_PERMIT (2) = an invitation arrived: u16 inviter sid + name.
+	// PARTY_INSERT (3) with a 3-byte payload = the bot's own invitation was refused: i16 error code. PARTY_INSERT with
+	// a longer payload = a member joined: u16 sid, u8 flag (1 = success, 100 = leader moved), name, ...
+	// ActionExecutor::RequestPartyInvite / RequestPartyAccept clear the records before their request and read them
+	// afterwards, on the same thread.
+	if (opcode == WIZ_PARTY && pkt.size() >= 1)
+	{
+		uint8 sub = pkt.read<uint8>(0);
+		if (sub == PARTY_PERMIT && pkt.size() >= 5)
+		{
+			uint16 sid = pkt.read<uint16>(1);
+			uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+				std::chrono::steady_clock::now().time_since_epoch()).count();
+			m_partyInviteAtMs = nowMs;
+			m_partyInviteEcho = (1ull << 63) | uint64(sid);
+		}
+		else if (sub == PARTY_INSERT && pkt.size() == 3)
+		{
+			int16 code = pkt.read<int16>(1);
+			m_partyErrorEcho = (1ull << 63) | uint64(uint16(code));
+		}
+		else if (sub == PARTY_INSERT && pkt.size() >= 4)
+		{
+			uint16 sid = pkt.read<uint16>(1);
+			uint8 flag = pkt.read<uint8>(3);
+			m_partyJoinEcho = (1ull << 63) | (uint64(sid) << 8) | uint64(flag);
+		}
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -140,6 +171,11 @@ void BotSession::ResetForRespawn()
 	m_targetHpEcho = 0;
 	m_targetHpValues = 0;
 	m_regeneEcho = 0;
+	m_partyInviteHasLast = false;
+	m_partyInviteAtMs = 0;
+	m_partyInviteEcho = 0;
+	m_partyErrorEcho = 0;
+	m_partyJoinEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

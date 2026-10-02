@@ -106,6 +106,9 @@ public:
 	bool m_deadSeen;                                       // IOCP thread only: the bot was seen dead and m_deadSince is valid
 	std::chrono::steady_clock::time_point m_deadSince;     // IOCP thread only: when its death was first noticed (TickSessions or the first regene request)
 
+	bool m_partyInviteHasLast;                             // IOCP thread only: m_partyInviteLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_partyInviteLast;   // IOCP thread only: when the last party invitation went out
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
@@ -116,4 +119,8 @@ public:
 	std::atomic<uint64> m_targetHpEcho;                    // written by OnPacket(): valid bit | echo << 16 | tid of the last WIZ_TARGET_HP reply
 	std::atomic<uint64> m_targetHpValues;                  // written by OnPacket() BEFORE m_targetHpEcho: hp << 32 | maxHp
 	std::atomic<uint64> m_regeneEcho;                      // written by OnPacket(): valid bit | x << 32 | z << 16 | y (all x10) of the last WIZ_REGENE reply
+	std::atomic<uint64> m_partyInviteAtMs;                 // written by OnPacket() BEFORE m_partyInviteEcho: steady_clock ms when the invitation arrived
+	std::atomic<uint64> m_partyInviteEcho;                 // written by OnPacket(): valid bit | inviter sid of the last PARTY_PERMIT; cleared by PartyAccept
+	std::atomic<uint64> m_partyErrorEcho;                  // written by OnPacket(): valid bit | uint16(error code) of the last PARTY_INSERT refusal (payload of 3 bytes)
+	std::atomic<uint64> m_partyJoinEcho;                   // written by OnPacket(): valid bit | sid << 8 | flag of the last PARTY_INSERT member packet
 };

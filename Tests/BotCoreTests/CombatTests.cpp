@@ -543,3 +543,118 @@ TEST_CASE("Combat_RegeneCheck_Boundaries")
 
 	CHECK_EQ((int)BotCore::kRegeneMinDeadMs, 3000);
 }
+
+static BotCore::PartyInviteCheck OkInvite()
+{
+	BotCore::PartyInviteCheck c;
+	c.inParty = false;
+	c.isLeader = false;
+	c.regionDelta = 0;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 0;
+	return c;
+}
+
+TEST_CASE("Combat_PartyInviteCheck_Order")
+{
+	BotCore::PartyInviteCheck c = OkInvite();
+	c.inParty = true;
+	c.isLeader = false;
+	c.regionDelta = 2;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_LEADER);
+
+	c = OkInvite();
+	c.inParty = true;
+	c.isLeader = true;
+	c.regionDelta = 2;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_VIEW);
+
+	c = OkInvite();
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_GAP);
+
+	c = OkInvite();
+	c.hasLast = true;
+	c.sinceLastMs = 1000;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_RATE);
+
+	c = OkInvite();
+	c.hasLast = true;
+	c.sinceLastMs = 1000;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+
+	c = OkInvite();
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+
+	c = OkInvite();
+	c.inParty = true;
+	c.isLeader = true;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+}
+
+TEST_CASE("Combat_PartyInviteCheck_Boundaries")
+{
+	BotCore::PartyInviteCheck c = OkInvite();
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_GAP);
+
+	c = OkInvite();
+	c.hasLast = true;
+	c.sinceLastMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+
+	c = OkInvite();
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+
+	c = OkInvite();
+	c.regionDelta = 1;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_OK);
+
+	c = OkInvite();
+	c.regionDelta = 2;
+	CHECK_EQ((int)BotCore::CheckPartyInvite(c), (int)BotCore::PARTYINVITE_REJECT_VIEW);
+
+	CHECK_EQ((int)BotCore::kPartyInviteGapMs, 1000);
+}
+
+TEST_CASE("Combat_PartyAcceptCheck")
+{
+	BotCore::PartyAcceptCheck c;
+	c.sinceInviteMs = 999;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_REJECT_WAIT);
+
+	c.sinceInviteMs = 1000;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_OK);
+
+	c.sinceInviteMs = 0;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_REJECT_WAIT);
+
+	c.sinceInviteMs = 0;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_REJECT_WAIT);
+
+	c.sinceInviteMs = 1000;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_REJECT_RATE);
+
+	c.sinceInviteMs = 1000;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckPartyAccept(c), (int)BotCore::PARTYACCEPT_OK);
+
+	CHECK_EQ((int)BotCore::kPartyAcceptMinMs, 1000);
+}

@@ -1711,3 +1711,313 @@ RegeneOutcome ActionExecutor::RequestRegene(BotSession * s, std::chrono::steady_
 	}
 	return out;
 }
+
+// --- party slice (ADR-0017 Ek F4-08) ---
+
+// Maps a party invitation guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PartyOutcome RejectPartyInvite(BotSession * s, CUser * user, BotCore::PartyInviteVerdict verdict,
+	const BotCore::PartyInviteCheck & c, int peerId)
+{
+	const char * rule = "CLI-15";
+	const char * reason = "not_leader";
+	float value = 0.0f;
+	float limit = 0.0f;
+
+	switch (verdict)
+	{
+	case BotCore::PARTYINVITE_REJECT_VIEW:
+		rule = "CLI-15"; reason = "out_of_view"; value = (float)c.regionDelta; limit = (float)BotCore::kViewRegionRadius;
+		break;
+	case BotCore::PARTYINVITE_REJECT_GAP:
+		rule = "CLI-15"; reason = "invite_gap"; value = (float)c.sinceLastMs; limit = (float)BotCore::kPartyInviteGapMs;
+		break;
+	case BotCore::PARTYINVITE_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "PartyInvite", rule, reason, value, limit);
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::REFUSED;
+	out.reason = reason;
+	out.peerId = peerId;
+	return out;
+}
+
+// Maps a party acceptance guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static PartyOutcome RejectPartyAccept(BotSession * s, CUser * user, BotCore::PartyAcceptVerdict verdict,
+	const BotCore::PartyAcceptCheck & c, int peerId)
+{
+	const char * rule = "CLI-15";
+	const char * reason = "accept_wait";
+	float value = (float)c.sinceInviteMs;
+	float limit = (float)BotCore::kPartyAcceptMinMs;
+
+	if (verdict == BotCore::PARTYACCEPT_REJECT_RATE)
+	{
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "PartyAccept", rule, reason, value, limit);
+
+	PartyOutcome out;
+	out.kind = PartyOutcome::REFUSED;
+	out.reason = reason;
+	out.peerId = peerId;
+	return out;
+}
+
+PartyOutcome ActionExecutor::RequestPartyInvite(BotSession * s, const PartyInviteTarget & target,
+	std::chrono::steady_clock::time_point now)
+{
+	PartyOutcome out;
+	out.kind = PartyOutcome::NOTHING;
+	out.reason = "ok";
+	out.peerId = -1;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// 20 = MAX_ID_SIZE, the same bound the server applies to the invited name.
+	if (target.id < 0 || target.id == (int16)user->GetID() || target.name.empty() || target.name.size() > 20)
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "bad_target";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	uint32 sinceLastMs = 0;
+	if (s->m_partyInviteHasLast)
+		sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_partyInviteLast).count();
+
+	BotCore::PartyInviteCheck c;
+	c.inParty = user->isInParty();
+	c.isLeader = user->isPartyLeader();
+	c.regionDelta = BotCore::RegionDelta(user->GetX(), user->GetZ(), target.x, target.z);
+	c.hasLast = s->m_partyInviteHasLast;
+	c.sinceLastMs = sinceLastMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::PartyInviteVerdict verdict = BotCore::CheckPartyInvite(c);
+	if (verdict != BotCore::PARTYINVITE_OK)
+		return RejectPartyInvite(s, user, verdict, c, target.id);
+
+	bool create = !c.inParty;
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyInvite\",\"target\":" + std::to_string((int)target.id)
+			+ ",\"invite_mode\":\"" + (create ? "create" : "insert") + "\"";
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 sub-opcode + a KO string (PartyHandler.cpp:11-16); the default double-byte length is what it reads.
+	Packet pkt(WIZ_PARTY, uint8(create ? PARTY_CREATE : PARTY_INSERT));
+	pkt << target.name;
+
+	s->m_castSelfId = user->GetID();
+	s->m_partyErrorEcho = 0;
+	s->m_stateEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+	s->m_partyInviteHasLast = true;
+	s->m_partyInviteLast = now;
+
+	// Result only from published replies; never from the server object.
+	uint64 e = s->m_partyErrorEcho.load();
+	int code = 0;
+	const char * reason = nullptr;
+	bool failed = false;
+	if ((e & (1ull << 63)) != 0)
+	{
+		code = (int)(int16)(e & 0xFFFF);
+		if (code == -1)
+			reason = "refused_target";
+		else if (code == -2)
+			reason = "refused_level";
+		else if (code == -3)
+			reason = "refused_zone";
+		else
+			reason = "refused_other";
+		failed = true;
+	}
+	else if (create)
+	{
+		// PARTY_CREATE is confirmed by the bot's own leader state broadcast (WIZ_STATE_CHANGE type 6, nBuff 1).
+		uint64 st = s->m_stateEcho.load();
+		bool created = (st & (1ull << 63)) != 0
+			&& ((st >> 32) & 0xFF) == 6
+			&& (uint32)(st & 0xFFFFFFFF) == 1;
+		if (created)
+			reason = "created";
+		else
+		{
+			reason = "no_result";
+			failed = true;
+		}
+	}
+	else
+	{
+		// PARTY_INSERT has no positive reply for the inviter; "sent" = no refusal reply ([A]).
+		reason = "sent";
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyInvite\""
+			+ ",\"ok\":" + (failed ? "false" : "true")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		if ((e & (1ull << 63)) != 0)
+			fields += ",\"code\":" + std::to_string(code);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (failed)
+	{
+		out.kind = PartyOutcome::FAILED;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = PartyOutcome::SENT;
+		out.reason = reason;
+	}
+	out.peerId = target.id;
+	return out;
+}
+
+PartyOutcome ActionExecutor::RequestPartyAccept(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	PartyOutcome out;
+	out.kind = PartyOutcome::NOTHING;
+	out.reason = "ok";
+	out.peerId = -1;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// The pending invitation is the one OnPacket() recorded; none -> refuse without an event.
+	uint64 inv = s->m_partyInviteEcho.load();
+	if ((inv & (1ull << 63)) == 0)
+	{
+		out.kind = PartyOutcome::REFUSED;
+		out.reason = "no_invite";
+		return out;
+	}
+	int inviter = (int)(inv & 0xFFFF);
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	uint64 invMs = s->m_partyInviteAtMs.load();
+	uint32 sinceInviteMs = nowMs >= invMs ? (uint32)(nowMs - invMs) : 0;
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	BotCore::PartyAcceptCheck c;
+	c.sinceInviteMs = sinceInviteMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::PartyAcceptVerdict verdict = BotCore::CheckPartyAccept(c);
+	if (verdict != BotCore::PARTYACCEPT_OK)
+		return RejectPartyAccept(s, user, verdict, c, inviter);
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyAccept\",\"inviter\":" + std::to_string(inviter);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 sub-opcode + u8 permit (PartyHandler.cpp:28-31).
+	Packet pkt(WIZ_PARTY, uint8(PARTY_PERMIT));
+	pkt << uint8(1);
+
+	s->m_castSelfId = user->GetID();
+	s->m_partyJoinEcho = 0;
+	s->m_partyInviteEcho = 0;   // the invitation is consumed
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+
+	// The server sends the existing members first and the accepter's own member packet last, so the record is the
+	// accepter's own packet (sid == its id, flag 1).
+	uint64 j = s->m_partyJoinEcho.load();
+	bool joined = (j & (1ull << 63)) != 0
+		&& (int)((j >> 8) & 0xFFFF) == (int)user->GetID()
+		&& (uint8)(j & 0xFF) == 1;
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"PartyAccept\""
+			+ ",\"ok\":" + (joined ? "true" : "false")
+			+ ",\"reason\":\"" + (joined ? "joined" : "no_result") + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"inviter\":" + std::to_string(inviter);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (joined)
+	{
+		out.kind = PartyOutcome::SENT;
+		out.reason = "joined";
+	}
+	else
+	{
+		out.kind = PartyOutcome::FAILED;
+		out.reason = "no_result";
+	}
+	out.peerId = inviter;
+	return out;
+}
