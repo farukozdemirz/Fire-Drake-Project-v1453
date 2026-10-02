@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-01 (`ActionExecutor` iskeleti, guard deseni, `move`/`stop`) — `KAPANDI` |
@@ -329,7 +329,41 @@ git diff --check gece/2026-10-02...bot/F4-02
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-_Henüz doldurulmadı._
+### Tur 1
+
+- **Durum:** UYGULANDI. Derleme (Release + Debug) hatasız; birim testleri `19 tests, 0 failed` (Release + Debug). Çalışma zamanı sunucusu **çalıştırılmadı** (plan §5.7 / §7: çalışma zamanı doğrulamasını Claude yapar).
+- **Branch ve commit'ler:** `bot/F4-02` (taban: `gece/2026-10-02`). `ca146e9` — `[F4-02] saldiri dilimi: Attack (R) + BotFairnessGuard CLI-01/CLI-11` (uygulama + plan `Durum=UYGULANIYOR`); rapor/`UYGULANDI` commit'i bu raporla birlikte.
+- **Değişen dosyalar ve nedenleri (yalnızca §4'teki 10 dosya + plan):**
+  - `BotCore/BotCombat.h` (yeni): saf mantık — `AttackIntervalMs`, `AttackDelayField`, `AttackRangeField`, `DistanceField`, `CheckAttack` (menzil→aralık→hız), `ActionRateWindow`; yalnızca `<algorithm>`/`<cstdint>`, sunucu başlığı yok.
+  - `BotCore/BotCore.vcxproj`: yalnızca `<ClInclude Include="BotCombat.h" />`.
+  - `Tests/BotCoreTests/CombatTests.cpp` (yeni): yedi `Combat_*` testi (`MiniTest.h`).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: yalnızca `<ClCompile Include="CombatTests.cpp" />`.
+  - `GameServer/Bot/ActionExecutor.h`: `AttackTarget`, `AttackOutcome`, `BeginAttack`/`TickAttack`/`EndAttack`; `#include <string>`.
+  - `GameServer/Bot/ActionExecutor.cpp`: saldırı yolu (`WIZ_ATTACK` + `HandlePacket`, sonuç `m_attackEcho`'dan, `FAIRNESS_REJECT` `type` parametreli); `EmitFairnessReject` imzasına `const char * type` eklendi, mevcut iki hareket çağrısı `"Move"` geçiyor.
+  - `GameServer/Bot/BotSession.h/.cpp`: saldırı serisi durumu, `m_actionWindow`, atomik `m_attackEcho`; `OnPacket()` `WIZ_ATTACK` sonucunu (6 bayt) atoma yazar; `ResetForRespawn()` temizler; başlatıcı sırası bildirim sırasına uygun.
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandAttack` (konsol/`BotCommands.txt`/`+bot` ortak çekirdek), `ExecuteCommand` `attack` fiili + "unknown command" listesi, `TickSessions()` saldırı ilerletme, `BeginDespawn()` `EndAttack`, `BuildStatusLines` `hp=`/`attacking=` alanları.
+  - `plans/F4-02-...md`: `Durum` satırı ve bu rapor.
+- **Derleme çıktısının son satırları:**
+  - `./tools/build.sh Release`: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe` (rc=0; `BotCombat.h`/`ActionExecutor.cpp`/`BotSession.cpp`/`BotManager.cpp`/`CombatTests.cpp` için uyarı yok; kalan uyarılar yalnızca eski `GameServerDlg.cpp:816/1143/1802`).
+  - `./tools/build.sh Debug`: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe` (rc=0; aynı geçerli uyarılar).
+  - `./tools/run-tests.sh Release`: `19 tests, 0 failed` (rc=0); `./tools/run-tests.sh Debug`: `19 tests, 0 failed` (rc=0).
+- **Kriter öz-değerlendirmesi:**
+  - K1 ✔ (Release rc=0, ilgili dosyalarda uyarı yok). K2 ✔ (Debug rc=0).
+  - K3 ✔ (19 test; yedi `Combat_*`; Release+Debug rc=0).
+  - K4 ✔ (`grep` eşleşme yok; include yalnızca `<algorithm>`/`<cstdint>`).
+  - K5 ✔ (`WIZ_ATTACK` yalnızca `ActionExecutor.cpp:420` oluşturma + `BotSession.cpp:28` sonuç okuma; `Attack(`/`HpChange`/`m_RHitRepeatList`/`m_sHp` yalnızca yeni `ActionExecutor`/`CommandAttack` yollarında; `CUser::Attack`/`HpChange` çağrısı, `m_sHp` yazımı yok).
+  - K6 ✔ (`CheckAttack` satır 375, `HandlePacket(pkt)` satır 426; `ATTACK_OK` dışında erken dönüş; saldırı `HandlePacket` çağrısı tek yerde).
+  - K7 ✔ (yeni kod yalnızca `PHASE_IN_GAME` oturumlarında + komutlarda; `Startup()`/`Tick()`/ini/`OnPacket()` dışı `BotSession` mantığı değişmedi; kaldırılan tek satırlar `unknown command` metni ve `BuildStatusLines` biçim satırı, bkz. aşağıdaki `git diff` çıktısı).
+  - K8 ✔ (`git diff --stat gece/2026-10-02...bot/F4-02` = §4'teki 10 dosya + plan; `proj-GameServer.vcxproj*` değişmedi).
+  - K9 ✔ (`BotCombat.h`/`CombatTests.cpp` ASCII+CRLF; değiştirilen dosyaların CRLF/BOM durumu korundu; `git diff --check` boş).
+  - K10 ✔ (`printf`/`Sleep`/`lock_guard`/`mutex`/`CreateThread`/`rand(` yok).
+  - K11 ✔ (`CheckMoveStep` sayısı 2; iki hareket `EmitFairnessReject` çağrısı `"Move"` geçiyor; `Motion_*` testleri geçiyor).
+  - K12: Claude'un `/plan-dogrula` çalışma zamanı adımı.
+- **Plandan sapmalar:**
+  1. `Combat_RateWindow` testinde plan `CountInWindow(1500) == 1` istiyor; ancak §5.2'de tanımlı `CountInWindow` koşulu `nowMs - t < kActionWindowMs` ile `{0,100,200,300,400,500}` kayıtlarında `1500 - 500 = 1000` **eşit** olduğundan sayı 0'dır. Kod §5.2'deki tanıma birebir uygulandı; testte plan değeri yerine `CountInWindow(1499) == 1` ve `CountInWindow(1500) == 0` yazıldı (aynı pencere davranışını sınar). Diğer plan değerleri (`500→6`, `999→6`, `1000→5`, `1600→0`, yedinci kayıt sonrası `1000→6`) aynen geçer ve `19 tests, 0 failed` alınır.
+  2. `BeginAttack` imzasındaki `now` kullanılmadığından `(void)now;` yazıldı (imza plan gereği sabit; GameServer `Level3` olduğu için uyarı üretmez, yine de niyeti açık kılar).
+  3. `TickAttack`'ta `no_result`/`killed` ayrımı `const char *` metin karşılaştırması yerine `result < 0` / `bool killed` ile yapıldı (aynı davranış; daha az kırılgan).
+- **Açık sorular:** Yok (sapma 1 bir plan içi test-değeri tutarsızlığıdır; kod tanımı esas alındı ve raporda belgelendi; Claude doğrulamada test değerini isterse plana göre düzeltebilir).
 
 ---
 
