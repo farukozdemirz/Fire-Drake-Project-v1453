@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-02, gece/2026-10-02, merge `6dc7979`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-09` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-08 (`PartyOutcome`, `m_partyInviteEcho`/`m_partyInviteAtMs` kayıtları, `OnPacket()` `WIZ_PARTY` bloğu, `RejectParty*` kalıbı) — `KAPANDI` (merge `851afdc`); F4-07, F4-01 — `KAPANDI` |
