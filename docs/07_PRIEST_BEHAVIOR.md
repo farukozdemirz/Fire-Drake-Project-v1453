@@ -163,7 +163,7 @@ Cure gecikmesi hedefi: MET-CURE-01 p95 ≤ 3 sn.
 
 | Koşul | Debuff | Gerekçe |
 |---|---|---|
-| Takımın ortak hedefi var, hedefte AC debuff'ı yok | **Malice** (40 MP, AC %75, AC buff'ını siler) | Ucuz açıcı. AC iki kez uygulanıyor olabilir (MB-04). |
+| Takımın ortak hedefi var, hedefte AC debuff'ı yok | **Malice** (40 MP, AC %75, AC buff'ını siler) | Ucuz açıcı. AC iki kez uygulanıyor (MB-04, ölçüldü `[V]`). |
 | ≥ 3 düşman 10 m içinde kümelenmiş ve hedef noktası menzilde | **Torment** (alan AC %70) | Malice ile aynı tip; hedefte Malice varsa Torment onu ezer (gereksiz değil, alan değeri) |
 | Hedefte gözlenen HP buff'ı (massiveness/Undying) var veya hedef yüksek HP'li warrior | **Parasite** (HP buff'ını siler, maks HP %80) | Bitirilebilirliği artırır |
 | Düşman warrior kendi priest'imize/mage'imize baskı yapıyor | Massive (saldırı %80) veya Slow | Hasar azaltma (Slow yalnızca istemcide etkili) |

@@ -80,7 +80,7 @@ Tam tablo: `appendix/A1`. Aşağıdaki tablo davranış dokümanının ([06](06_
 | 106650 | descent | Savunma 50 (W-G) | 50 | 9,1 sn | T8 warp 25: party üyesine ışınlan, r=30 | — | — | — | Peel: tehdit altındaki priest/mage'e git |
 | 106630/106645 | Binding / provoke | Savunma 30/45 (W-G) | 30/60 | 6,5/15 sn | T7 (bağlama/kışkırtma) | — | — | — | T7 dönüş hatası (MB-10); sunucu etkisi `[A]` |
 
-Debuff etkisi (aynı model): Malice altındaki hedefe Carving ~460 (tek uygulama modeli) ile ~563 (çift uygulama modeli, MB-04) arasında. Hangi modelin doğru olduğu T-MECH-DMG-02 ile ölçülür.
+Debuff etkisi (aynı model): Malice altındaki hedefe Carving ~460 (tek uygulama modeli) ile ~563 (çift uygulama modeli, MB-04) arasında. T-MECH-DMG-02 (2026-10-02) çift uygulama modelini doğruladı `[V]` (`docs/03` MB-04): Malice altındaki hedefin etkili AC'si ~%56'ya (0,75²) iner; bu yüzden ~563 değeri kullanılır, ~460 değil.
 
 ### 5.1 Warrior baskı döngüsünün mekanik sınırları
 

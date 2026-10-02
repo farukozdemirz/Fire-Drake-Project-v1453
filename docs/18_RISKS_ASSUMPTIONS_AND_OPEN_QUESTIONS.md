@@ -52,7 +52,7 @@ ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kar
 | **Q-05** | İstemcinin ekipmanda sınıf/ırk kısıtı | CHR-05, referans setler | Her referans item'ı istemcide kuşanma (T-DATA-02) | **F1** |
 | Q-06 | HP ve MP potları istemcide ortak zamanlayıcı mı? Pot hareketi durdurur mu? | CLI-06 | T-MECH-POT-03/04 | F1 |
 | Q-07 | ~~Pot `UseItem` düzeltmesi kararı~~ — **KAPANDI** (2026-10-01): K-5, veri olduğu gibi kalır | — | — | — |
-| Q-08 | AC debuff'ının çift uygulanmasının gerçek etkisi (MB-04) | Debuff değerinin doğru modellenmesi | T-MECH-DMG-02 | F1 |
+| Q-08 | AC debuff'ının çift uygulanmasının gerçek etkisi (MB-04) | Debuff değerinin doğru modellenmesi | T-MECH-DMG-02 | F1 — cevaplandı (2026-10-02): çift uygulama gerçek, ölçüm ve kod uyumlu (`docs/03` MB-04); örnek n=4, isteğe bağlı 10+ vuruşla tekrar |
 | Q-09 | Yüzde HP buff'ı (Undying) hangi maks HP bileşenine uygulanıyor | Buff matrisi BUF-HP-01 | T-MECH-BUF-03 | F7 |
 | Q-10 | İstemci engel arkasına skill/saldırıya izin veriyor mu | `P-NAV-LOS-MODE` | T-NAV-LOS-01 | F5 |
 | **Q-11** | Arena A'da gerçekten canavar/NPC yok mu; tower'ların kapı önündeki davranışı | Test geçerliliği | T-ENV-ARENA-01..03 | **F1** |
