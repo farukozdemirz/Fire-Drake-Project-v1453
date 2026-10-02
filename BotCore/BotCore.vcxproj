@@ -73,6 +73,7 @@
     <ClInclude Include="BotMotion.h" />
     <ClInclude Include="NavGrid.h" />
     <ClInclude Include="NavPath.h" />
+    <ClInclude Include="NavSmooth.h" />
     <ClInclude Include="Perception.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
