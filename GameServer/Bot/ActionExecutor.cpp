@@ -1831,7 +1831,7 @@ PartyOutcome ActionExecutor::RequestPartyInvite(BotSession * s, const PartyInvit
 	{
 		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
 			+ ",\"type\":\"PartyInvite\",\"target\":" + std::to_string((int)target.id)
-			+ ",\"mode\":\"" + (create ? "create" : "insert") + "\"";
+			+ ",\"invite_mode\":\"" + (create ? "create" : "insert") + "\"";
 		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
 			s->m_charName.c_str(), fields, false);
 	}
