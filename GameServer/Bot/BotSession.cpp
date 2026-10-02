@@ -13,10 +13,10 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_potActive(false), m_potItemId(0), m_potSkillId(0), m_potKind(0),
 		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
 		m_stanceHasLast(false),
-		m_hpReqTargetId(-1), m_hpReqHasLast(false),
+		m_hpReqTargetId(-1), m_hpReqHasLast(false), m_deadSeen(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
-		m_targetHpEcho(0), m_targetHpValues(0)
+		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -83,6 +83,16 @@ void BotSession::OnPacket(Packet & pkt)
 		m_targetHpValues = (uint64(uint32(hp)) << 32) | uint64(uint32(maxHp));
 		m_targetHpEcho = (1ull << 63) | (uint64(echo) << 16) | uint64(tid);
 	}
+
+	// Respawn reply: u16 x*10, u16 z*10, u16 y*10 (AttackHandler.cpp:196-198). ActionExecutor::RequestRegene clears the
+	// record before its request and reads it afterwards, on the same thread.
+	if (opcode == WIZ_REGENE && pkt.size() >= 6)
+	{
+		uint16 x = pkt.read<uint16>(0);
+		uint16 z = pkt.read<uint16>(2);
+		uint16 y = pkt.read<uint16>(4);
+		m_regeneEcho = (1ull << 63) | (uint64(x) << 32) | (uint64(z) << 16) | uint64(y);
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -126,8 +136,10 @@ void BotSession::ResetForRespawn()
 	m_stanceHasLast = false;
 	m_hpReqTargetId = -1;
 	m_hpReqHasLast = false;
+	m_deadSeen = false;
 	m_targetHpEcho = 0;
 	m_targetHpValues = 0;
+	m_regeneEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

@@ -1561,3 +1561,153 @@ TargetHpOutcome ActionExecutor::RequestTargetHp(BotSession * s, const TargetHpTa
 	}
 	return out;
 }
+
+// --- respawn slice (ADR-0017 Ek F4-07) ---
+
+// Maps a regene guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static RegeneOutcome RejectRegene(BotSession * s, CUser * user, BotCore::RegeneVerdict verdict,
+	const BotCore::RegeneCheck & c)
+{
+	const char * rule = "CLI-14";
+	const char * reason = "dead_wait";
+	float value = (float)c.sinceDeadMs;
+	float limit = (float)BotCore::kRegeneMinDeadMs;
+
+	switch (verdict)
+	{
+	case BotCore::REGENE_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "Regene", rule, reason, value, limit);
+
+	RegeneOutcome out;
+	out.kind = RegeneOutcome::REFUSED;
+	out.reason = reason;
+	out.x = 0.0f;
+	out.z = 0.0f;
+	return out;
+}
+
+RegeneOutcome ActionExecutor::RequestRegene(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	RegeneOutcome out;
+	out.kind = RegeneOutcome::NOTHING;
+	out.reason = "ok";
+	out.x = 0.0f;
+	out.z = 0.0f;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = RegeneOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (!user->isDead())
+	{
+		out.kind = RegeneOutcome::REFUSED;
+		out.reason = "not_dead";
+		return out;
+	}
+
+	// Server would kick a loyalty-0 bot out of the PK zone after the respawn (AttackHandler.cpp:240-243, KI-013).
+	if (user->GetLoyalty() == 0)
+	{
+		out.kind = RegeneOutcome::REFUSED;
+		out.reason = "no_np";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+
+	// First time the death is noticed here: remember it (TickSessions() usually got there first).
+	if (!s->m_deadSeen)
+	{
+		s->m_deadSeen = true;
+		s->m_deadSince = now;
+	}
+
+	uint32 sinceDeadMs = 0;
+	if (now > s->m_deadSince)
+		sinceDeadMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_deadSince).count();
+
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	BotCore::RegeneCheck c;
+	c.sinceDeadMs = sinceDeadMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::RegeneVerdict verdict = BotCore::CheckRegene(c);
+	if (verdict != BotCore::REGENE_OK)
+		return RejectRegene(s, user, verdict, c);
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"Regene\",\"regene_type\":1";
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 type (User.cpp:334-336).
+	Packet pkt(WIZ_REGENE);
+	pkt << uint8(1);
+
+	s->m_regeneEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+
+	// Result only from the reply the server published (m_regeneEcho); never from the server object.
+	uint64 e = s->m_regeneEcho.load();
+	bool respawned = (e & (1ull << 63)) != 0;
+
+	float x = 0.0f, z = 0.0f;
+	if (respawned)
+	{
+		x = (float)((e >> 32) & 0xFFFF) / 10.0f;
+		z = (float)((e >> 16) & 0xFFFF) / 10.0f;
+		s->m_deadSeen = false;
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"Regene\""
+			+ ",\"ok\":" + (respawned ? "true" : "false")
+			+ ",\"reason\":\"" + (respawned ? "respawned" : "no_result") + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"alive\":" + (user->isDead() ? "false" : "true");
+		if (respawned)
+			fields += ",\"x\":" + FormatFixed(x, 1) + ",\"z\":" + FormatFixed(z, 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (respawned)
+	{
+		out.kind = RegeneOutcome::SENT;
+		out.reason = "respawned";
+		out.x = x;
+		out.z = z;
+	}
+	else
+	{
+		out.kind = RegeneOutcome::FAILED;
+		out.reason = "no_result";
+	}
+	return out;
+}

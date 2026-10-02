@@ -85,6 +85,16 @@ struct TargetHpOutcome
 	int32 maxHp;
 };
 
+struct RegeneOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed: "respawned" (SENT), "no_result" (FAILED),
+	                       // REFUSED: "not_in_game", "not_dead", "no_np", "dead_wait", "rate"
+	float x;               // metres, from the server's reply; valid only when kind == SENT
+	float z;
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -168,4 +178,11 @@ public:
 	// "rate"; FAIRNESS_REJECT written).
 	static TargetHpOutcome RequestTargetHp(BotSession * s, const TargetHpTarget & target,
 		std::chrono::steady_clock::time_point now);
+
+	// One-shot respawn: sends one WIZ_REGENE (type 1) through CUser::HandlePacket() after the guard (CLI-14: at least
+	// 3 s after the death was noticed; CLI-11) and maps the result from the WIZ_REGENE reply the server published
+	// (m_regeneEcho). SENT "respawned": the reply arrived (x / z filled). FAILED "no_result": no reply.
+	// REFUSED without an event: "not_in_game", "not_dead", "no_np" (loyalty 0: the server would kick the bot out of the
+	// zone, KI-013); with FAIRNESS_REJECT: "dead_wait", "rate".
+	static RegeneOutcome RequestRegene(BotSession * s, std::chrono::steady_clock::time_point now);
 };
