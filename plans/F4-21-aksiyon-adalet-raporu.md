@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-21` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F3-06 (`tools/bot-telemetry-report.py`) — `KAPANDI`; F4-20 (`SCRIPT_*` telemetrisi) — `KAPANDI` (merge `e36d9d1`); F4-01..F4-18 (`ACTION_*`/`FAIRNESS_REJECT` yazan kod) — `KAPANDI` |
@@ -216,20 +216,29 @@ git diff --stat gece/2026-10-02...bot/F4-21
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-21` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-21` @ `c468b3a` (2 commit: `ad760d4` kod, `c468b3a` rapor; ikisi de `[F4-21]` önekli, merge/force izi yok). Gece modu (`AUTO_LOOP=1`): birleştirme ve push döngü betiğinde, bu turda yapılmadı. Sunucular kapalıydı (`run-servers.sh status` 0/3).
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/bot-telemetry-report.py --selftest` → `selftest OK`, rc=0 (kendi çalıştırmam). Diff'te Vaka 7-9 `run_selftest` sonuna, `print("selftest OK")` öncesine eklenmiş; Vaka 1-6'ya dokunulmamış (`git diff ... \| grep -c '^-[^-]'` = 0). |
+| K2 | ✔ | Vaka 8: 8 `classify_action_result` + 8 `act_verdict` assert'i (`bot-telemetry-report.py` Vaka 8 bloğu), planın tüm eşleşmeleri; selftest geçti. Kod: `classify_action_result` `tools/bot-telemetry-report.py:99` (`ok is True/False` denetimi, `refused_` öneki), `act_verdict` `:113` (tam sayı karşılaştırması). |
+| K3 | ✔ | `/tmp/f4-21-sample.jsonl` (Vaka 7 kayıtları, kendim yazdım): `\| f4-21-sample.jsonl \| 4 \| 4 \| 2 \| 1 \| 1 \| 0 \| 25.0 \| FAIL \|`; MET-FAIR-01 `2 / 2 / 2.0 / 0.0011 / 1800.0`; Scripts `s1 / 2 / 2 / completed / 2000 / 10 / 4 / 1 / 1 / 2`; Warnings `(none)`. |
+| K4 | ✔ | `--strict` örnekle `rc=1`; aksiyonsuz (`PERF_SAMPLE`) dosyayla `rc=0`; gerçek koşu (`live-184432.jsonl`, PASS) ile de `rc=0`. |
+| K5 | ✔ | Bölüm sırası: `## Files`, `## Matches`, `## MET-PERF-02`, (yeni beş bölüm), `## Events`, `## Warnings`. Araç dosyası diff'inde silinen satır 0; `gather`/`has_violation`/`render_markdown` yalnızca ekleme. |
+| K6 | ✔ | `--json` anahtarları: `['action_reasons','actions','events','fairness','fairness_reasons','files','ignored_selftest','matches','perf','scripts','warnings']`. |
+| K7 | ✔ | `file` → "Python script, ASCII text executable"; CR sayısı 0; ASCII dışı karakter yok; `py_compile` hatasız; importlar `json/os/statistics/sys/tempfile`. |
+| K8 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-21` yalnızca `tools/bot-telemetry-report.py` (+545) ve plan dosyası; plan diff'inde yalnızca `Durum` satırı ve Uygulayıcı Raporu şablonu dolduruldu. |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning C`/`error C` sayısı 0 (çıktı `/tmp/f4-21-build.log`); `./tools/run-tests.sh` → `82 tests, 0 failed`, rc=0. |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Ek doğrulama (plan §8: gerçek koşu Claude'da): F4-20 doğrulamasından kalan gerçek dosya `/mnt/c/dev/fdp/server/Logs/bots/2026-10-02/live-184432.jsonl` araçla çalıştırıldı. Ham sayım (`grep -c`): SUBMIT 3, RESULT 3, FAIRNESS_REJECT 1, SCRIPT_START 3, SCRIPT_STEP 18, SCRIPT_END 3 = araç çıktısı (submit 3, result 3, ok 3, invalid 0, `PASS`; rejects 1, `State/CLI-13/toggle`, 2 bot, 166.165 sn, bot-saat 0.0923, 10.83/bot-saat). Betik satırları F4-20 çalışma zamanı kaydıyla uyuşuyor: `smoke` 7/7 `completed` (max_late 99), `longrun` 7/10 `stopped`, `fair` 4/4 `completed` ve `rejects` 1. Bu veride `srv_fail`/`no_result` yok; `invalid` yolu yalnızca sentetik veriyle sınandı.
+- Proje kuralları: sunucu/`BotCore`/`docs` dosyasına dokunulmamış, mekanik ve bot avantajı etkilenmez; bot sistemi varsayılanı değişmez (yalnızca Python aracı); araç yalnızca sayaç/küme tutuyor, ham satır saklamıyor, `name` alanı rapora yazılmıyor (gerçek koşu çıktısında bot adı yok); JSON'da demet anahtarlı sözlük yok (sebep tabloları satır listesi), sıralar `(-count, ...)` tam sıralı, iki `gather` çıktısı birebir aynı (Vaka 9).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `ACTION_SUBMIT`/`ACTION_RESULT` fark uyarısı dosya geneli ve gece/canlı bir dosyada, sonuç henüz gelmemiş son aksiyon varken (ör. sunucu kapanışı) yanlış alarm üretebilir; plan §5 adım 2 bunu böyle istiyor, uygulayıcı da raporunda belirtti. Kabul edilebilir.
+  2. Not: betik penceresi dosya sırasıyla atanıyor; `SCRIPT_END` sonrası gelen son-adım sonuçları sayılmaz (rapor notu bunu söylüyor). Planla uyumlu.
+  3. Not: üst üste binen `SCRIPT_START` ile kapanan koşuda `steps_run` `-` görünür (yalnızca `result=NO_END`); plan yalnızca `result`'ı istiyor.
+  4. Sapmalar kabul: `bot_hours_est` kontrolü `abs(..) < 1e-9` ile (değer aynı), `build_action_total` dosya adı argümansız `"(total)"` sabitiyle.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
