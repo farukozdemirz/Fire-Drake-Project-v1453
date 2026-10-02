@@ -80,6 +80,7 @@
     <ClInclude Include="NavRetreat.h" />
     <ClInclude Include="NavFormation.h" />
     <ClInclude Include="Perception.h" />
+    <ClInclude Include="ScriptPlan.h" />
     <ClInclude Include="Rng.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

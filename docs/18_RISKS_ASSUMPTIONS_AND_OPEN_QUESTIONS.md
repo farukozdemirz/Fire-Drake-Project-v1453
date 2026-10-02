@@ -15,7 +15,7 @@ Aşağıdaki kararlar proje sahibiyle tek tek görüşülerek verildi. Her biri 
 | K-2 | Level 80 ve master sınıf | Bot karakterleri sunucu kapalıyken DB kurulum betiğiyle oluşturulur (level 80, master sınıf, stat, skill, ekipman, NP); betik kuralları doğrular | [ADR-0002](adr/ADR-0002-karakter-kurulum-betigi.md) | 04 §3.3, 13 §4.3, 17 F1–F2 |
 | K-3 | Test insanlarının karakterleri | İnsan test hesapları da aynı betikle, aynı stat ve aynı referans ekipmanla hazırlanır | [ADR-0002](adr/ADR-0002-karakter-kurulum-betigi.md) | 15 §7 |
 | K-4 | `MAGIC.Etc = 1 → 0` düzeltmesi | Depoda, geri alma adımı olan SQL betiği; her temiz kurulumda uygulanır | [ADR-0003](adr/ADR-0003-magic-etc-duzeltmesi.md) | 17 F1, KI-001 |
-| K-5 | Tüketilmeyen potlar (MB-01) | **Olduğu gibi kalır.** Kural insan ve bot için aynıdır: envanterde en az bir adet varsa kullanılabilir, sayı azalmaz. Pot cooldown'u (2 sn) geçerlidir. | [ADR-0009](adr/ADR-0009-tuketilmeyen-potlar.md) | 03 MB-01/CLI-06, 04 §6.5, 11 §2/§6, 01 REQ-NEW-09 |
+| K-5 | Tüketilmeyen potlar (MB-01) | **Olduğu gibi kalır.** Kural insan ve bot için aynıdır: envanterde en az bir adet varsa kullanılabilir, sayı azalmaz. Pot cooldown'u (2 sn) geçerlidir. *(Not, 2026-10-02: ölçülen istemci/bot ortak pot aralığı 2,5 sn, `docs/03` CLI-06; karar değişmedi.)* | [ADR-0009](adr/ADR-0009-tuketilmeyen-potlar.md) | 03 MB-01/CLI-06, 04 §6.5, 11 §2/§6, 01 REQ-NEW-09 |
 | K-6 | Test arenası | **Yalnızca arena A** (1274, 890), Karus kapısı açıklığı. Maçlar taraf değiştirerek oynanır; ölüm sonrası dönüş ölçümleri ulus bazında ayrı raporlanır. B yedek aday olarak kayıtta kalır. | [ADR-0004](adr/ADR-0004-test-arenasi.md) | 15 §2.4, 17 F8, 01 REQ-NEW-12 |
 | K-7 | Görev kapılı master skill'ler (Etc 510–523) | İlk sürümde kullanılmaz; görevler doğrulanınca "ileri profil" | [ADR-0010](adr/ADR-0010-gorev-kapili-master-skilller.md) | 04 CHR-08, 05 SK-08 |
 | K-8 | Sunucu mekanik hataları (MB-*) | Şimdilik olduğu gibi oynanır; kayıt altında tutulur; her düzeltme ayrı kararla | [ADR-0011](adr/ADR-0011-mekanik-hatalar.md) | 03 §15 |
@@ -23,6 +23,8 @@ Aşağıdaki kararlar proje sahibiyle tek tek görüşülerek verildi. Her biri 
 | K-10 | Upstream PR #10 | **Hiç alınmaz** (küçük `break;` düzeltmesi dahil) | [ADR-0013](adr/ADR-0013-upstream-pr10.md) | 17 F0 |
 
 ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kararıyla kabul edildi ([adr](adr/ADR-0005-bot-tick-thread-modeli.md); gözden geçirilmeli). ADR-0014 (bot oturumu hesap doğrulamasını ve `SET_LOGIN_INFO`'yu atlar) aynı şekilde kabul edildi ([adr](adr/ADR-0014-bot-oturumu-hesap-dogrulamasi.md); gözden geçirilmeli). ADR-0015 (bot çalışma zamanı komut kanalı: konsol `/bot` + `BotCommands.txt`) aynı şekilde kabul edildi ([adr](adr/ADR-0015-bot-calisma-zamani-komut-kanali.md); gözden geçirilmeli). ADR-0007 (telemetri biçimi: JSONL, sınırlı kuyruk, ayrı yazıcı thread) aynı şekilde kabul edildi ([adr](adr/ADR-0007-telemetri-formati-ve-depolama.md); gözden geçirilmeli). Henüz açık olan teknik kararlar faz içinde verilecektir: ADR-0006 (navigasyon verisi/navmesh), ADR-0008 (L1 yöntemi).
+
+Değerlendirme (2026-10-02) ADR'leri, arka plan ajanında Claude kararı, **gözden geçirilmeli**: [ADR-0030-DEG](adr/ADR-0030-DEG-ogrenme-duzeyi.md) (öğrenme düzeyi: rol profili), [ADR-0031-DEG](adr/ADR-0031-DEG-senaryo-kazanma-kurali.md) (kazanma kuralı), [ADR-0032-DEG](adr/ADR-0032-DEG-senaryo-baslangic-yerlesimi.md) (senaryo başlangıç yerleşimi ve sıfırlama), [ADR-0033-DEG](adr/ADR-0033-DEG-arena-siniri-ve-geri-cekilme.md) (arena sınırı ve geri çekilme).
 
 ## 2. Varsayımlar
 
@@ -69,6 +71,9 @@ ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kar
 | Q-22 | Binding/provoke (Type7) sunucu etkisi (MB-10) | W-G kullanımı | T-MECH-SKILL-W | F6 |
 | Q-23 | Mage armor yansıma hatası (MB-03) düzeltilsin mi (K-8) | Dengelenme | Karar | F6 |
 | Q-24 | Değerlendirme için gerekli maç sayısına ulaşmak üzere paralel sunucu örnekleri çalıştırılabilir mi (ayrı DB/port) | R-10 | Deneme | F8 |
+| Q-25 | Priest/mage insan aksiyon hızı ve cast döngüsü dağılımı (heal/cure rotasyonu, toplam aksiyon/sn); CLI-11 6/sn emniyet ağının ve cast sınırlarının insanla eşdeğerliği | Adalet (üç katman, `docs/03` §13.4) | Priest ve mage ile T-MECH-CLIENT-01..04 yeniden (insan) | F6 |
+| Q-26 | İstemci suya/göl cebine girebiliyor mu, suda yavaşlıyor mu, kıyı olay ızgarasıyla uyumlu mu (T-NAV-09) | Su katmanı gerekir mi (`docs/12` §13.1) | İstemcide göl kıyısında yürüme + sunucu konum kaydı | F5 |
+| Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-DEG-01, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
 
 ## 4. Riskler
 
@@ -103,3 +108,4 @@ ADR-0005 (bot tick'i IOCP thread'inde) 2026-10-02'de otonom döngüde Claude kar
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: Q-25..Q-27, ADR-0030..0033-DEG bağlantıları |

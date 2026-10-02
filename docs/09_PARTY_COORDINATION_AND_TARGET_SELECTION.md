@@ -78,16 +78,33 @@ Botlar takım bilgisini chat ayrıştırmadan, paylaşılan bir veri yapısı ü
 |---|---|---|---|
 | `TeamPlan` | mod, regroup noktası, direnç planı, odak listesi | Lider | Sürekli |
 | `TargetCall` | hedef_id, hedef_adı, sebep (`DEBUFF_SUCCESS`, `LOW_HP`, `HEALER_PRESSURE`, `LEADER`), debuff, zaman, durum (`aktif`, `zayıfladı`, `geçersiz`) | Caller, lider | Hedef ölene / 20 sn |
-| `Reservation` | tür (`heal`, `cure`, `res`, `summon`, `peel`), hedef, sahip, bitiş | Herkes | Bitişe kadar |
+| `Reservation` | tür (`heal`, `cure`, `res`, `summon`, `peel`), hedef, sahip, skill, beklenen miktar, bitiş, durum | Herkes | Yaşam döngüsü §4.3 |
 | `MemberStatus` | rol, durum (COMBAT/RETREAT/DEAD/RESPAWN_HOLD/READY_FOR_SUMMON/REINTEGRATE), HP/MP, konum, stok (taş/pot) | Her bot kendisi | Sürekli |
 | `EnemyIntel` | düşman id, sınıf, son konum, son 5 sn'de aldığı hasar/heal, gözlenen buff/debuff, "healer" etiketi | Gözlemleyen | 10 sn sonra bayatlar |
 | `PeelRequest` | destekçi, saldırgan | Priest/mage | Tehdit bitene kadar |
+
+### 4.3 Rezervasyon yaşam döngüsü (değerlendirme 2026-10-02)
+
+| Aşama | Kural |
+|---|---|
+| Yazma | Sahip karar verince, `CASTING` göndermeden önce: `{id, tür, hedef, sahip, skill, beklenen miktar, başlangıç, bitiş = şimdi + cast + 0,3 sn, durum = bekliyor}`. Aynı (tür, hedef, sahip) için tek açık kayıt |
+| `TAMAMLANDI` | EFFECTING sonucu OK (veya bitiş + 0,3 sn): miktar `pending`'den düşer ve "uygulanmış bilinen heal"e geçer (07 §5.1 madde 3). Aynı HP artışı bir daha gelen hasar hesabına girmez (çift sayım yok) |
+| `IPTAL` | Sahibin cast'i iptal/başarısız (`MAGIC_FAIL`, hareket, silence, MP yetersiz, guard reddi): hemen silinir |
+| `HEDEF_OLDU` / `MENZIL_DISI` | Hedef öldü, görünmez oldu veya heal menzilinden çıktı ve sahip yaklaşamıyor: silinir |
+| `SAHIP_OLDU` | Sahip öldü/ayrıldı/despawn: silinir |
+| `ZAMAN_ASIMI` | bitiş + 1,0 sn'de sonuç gelmediyse silinir; telemetri `RES_EXPIRED` |
+| Okuma | `pending_heals(u)` yalnızca `bekliyor` ve bitişi tahmin ufkundaki kayıtları, kendi kaydı dahil toplar |
+| Gecikme | Diğer bot kaydı `P-TEAM-COMMS-DELAY` (300 ms) sonra görür; bu pencerede iki priest aynı hedefe karar verebilir → birincil healer kuralı (07 §6) ve belirlenimli eşitlik bozma (slot kimliği); çift heal MET-HEAL-04 ile ölçülür |
+| Telemetri | `RES_CREATE`, `RES_DONE`, `RES_CANCEL` (neden), `RES_EXPIRED` |
+| Test | `BotCore` birim testi (her silinme nedeni), T-PRI-03, AC-PRI-09 |
 
 ## 5. Hedef seçimi
 
 ### 5.1 Gözlemlenebilir girdiler
 
 Hedef skoru yalnızca şunları kullanır: görünür düşmanların konumu, sınıfı, ekipmanı; vurulan veya seçili düşmanın kesin HP'si; gözlenen hasar/heal olayları; gözlenen buff/debuff olayları. Düşman MP'si, cooldown'u, envanteri **kullanılmaz** ([03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §16).
+
+**HP gözlemi seyrektir:** düşmanın kesin HP'si yalnızca (a) botun kendi hasarından sonra gelen `WIZ_TARGET_HP` ve (b) seçili hedef için en çok 2 sn'de bir yoklama ile (CLI-10) bilinir. Takım birleşik örneklemesi blackboard'dan 300 ms gecikmeyle paylaşılır (kaynak sınıfı P, `docs/13` §5.2a). `dmg_rate`/`heal_rate` pencerelerinde (§6.1) en az 3 örnek (en az 2 farklı gözlemci) yoksa `stall` kararı **verilmez**; HP örnekleri `hp_age_ms` ile saklanır.
 
 ### 5.2 Skor
 
@@ -179,7 +196,7 @@ DEATH(u):
   if u.role is not priest and P-HD alive and res_conditions_likely(u):   # 07 §10
       P-HD posts ResIntent(u); u enters RESPAWN_HOLD for P-PTY-RES-WAIT (12 s)
   else:
-      u respawns immediately (WIZ_REGENE type 1)
+      u respawns as soon as the guard allows (WIZ_REGENE type 1 after CLI-14 dead_wait >= 3.0 s [A]; 'immediately' = no RESPAWN_HOLD)
 AFTER RESPAWN(u):
   u.RECOVER: MP pot to role threshold [11]; stay inside own guard-tower ring
   if team has alive summoner and team mode != RETREAT: u posts READY_FOR_SUMMON
@@ -266,3 +283,4 @@ leader_tick(team):
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §4.3 rezervasyon yaşam döngüsü, §5.1 HP gözlemi seyrekliği ve stall örnek şartı, §9 respawn CLI-14 ile hizalandı |

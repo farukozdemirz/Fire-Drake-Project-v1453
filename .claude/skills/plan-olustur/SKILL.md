@@ -74,6 +74,7 @@ Planda adı geçecek her fonksiyonu, satırı ve sabiti **depoda aç ve doğrula
   - **Kabul kriterleri:** her biri komutla, dosya:satırla veya ölçümle doğrulanabilir olmalı. `tools/build.sh Release` hatasız kriteri her planda bulunur.
   - **Kapsam dışı:** DeepSeek'in "iyileştirme" yapıp kapsamı büyütmesini önleyecek açıklıkta yaz.
   - **Kısıtlar:** ilgili `MEC-*`, `CLI-*` kuralları, thread kuralı, kodlama/satır sonu uyarıları.
+- **Plan numarası:** `NN` o fazdaki **sıradaki serbest** numaradır; `50`–`59` aralığı değerlendirme düzeltme planlarına ayrılmıştır (`F4-50..59`, `F5-50..59`, `plans/README.md` "değerlendirme" tablosu) ve **atlanır**. Yani README'deki en yüksek numaradan değil, son *döngü* planından devam et (örn. `F4-24`'ten sonra `F4-25`; `F4-50..54` zaten yazılmıştır, onlar `plans/.queue` ile sırayla uygulanır, yeniden yazma).
 - Durum: tüm bölümler tamamsa `HAZIR`, değilse `TASLAK`.
 
 ## 5. Kayıtları güncelle

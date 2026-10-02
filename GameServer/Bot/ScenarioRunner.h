@@ -29,6 +29,7 @@ private:
 		std::vector<uint32> seeds;
 		uint32 repeat;
 		uint32 durationSec;
+		std::string script;                // optional ./Scripts/<name>.txt, empty = none
 	};
 
 	static bool LoadScenario(const std::string & name, Scenario & out, std::string & error);
@@ -39,6 +40,7 @@ private:
 	void Abort(const std::string & reason, std::chrono::steady_clock::time_point now);
 	void BeginCleanup(std::chrono::steady_clock::time_point now);
 	void Finish(const std::string & abortNote);   // logs the summary, back to STATE_IDLE
+	void StopScript();             // stops the script this scenario started, if still running
 
 	BotManager & m_mgr;
 	State m_state;
@@ -48,6 +50,7 @@ private:
 	uint32 m_completedRuns;
 	std::string m_abortReason;                    // empty = no abort pending
 	std::vector<BotSession *> m_sessions;         // the scenario's bots, resolved in StartRun()
+	uint32 m_scriptRunId;                 // ScriptRunner::RunId() of the script started by this scenario, 0 = none
 	std::chrono::steady_clock::time_point m_stateSince;   // when the current state began
 	std::chrono::steady_clock::time_point m_matchSince;   // when the match opened
 };

@@ -1074,6 +1074,26 @@ static PotionOutcome SubmitPotion(BotSession * s, CUser * user, uint32 stockBefo
 	return out;
 }
 
+// The server-side shape of a pot the bot can drink (ADR-0017 Ek F4-04). Shared by BeginPotion and PotKindOf.
+static bool PotMagicSupported(const _MAGIC_TABLE * m, const _MAGIC_TYPE3 * t3, uint32 itemId)
+{
+	return
+		m->bType[0] == 3
+		&& m->bType[1] == 0
+		&& m->bMoral == MORAL_SELF
+		&& m->sSkill == 0
+		&& m->sMsp == 0
+		&& m->sUseStanding == 0
+		&& m->sEtc == 0
+		&& m->bFlyingEffect == 0
+		&& (m->iUseItem == 0 || m->iUseItem == itemId)
+		&& BotCore::PotSupported(m->sReCastTime)
+		&& t3 != nullptr
+		&& (t3->bDirectType == 1 || t3->bDirectType == 2)
+		&& t3->sFirstDamage > 0
+		&& t3->sTimeDamage == 0;
+}
+
 PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 count,
 	std::chrono::steady_clock::time_point now)
 {
@@ -1132,21 +1152,7 @@ PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 
 
 	_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(it->m_iEffect1);
 
-	bool supported =
-		m->bType[0] == 3
-		&& m->bType[1] == 0
-		&& m->bMoral == MORAL_SELF
-		&& m->sSkill == 0
-		&& m->sMsp == 0
-		&& m->sUseStanding == 0
-		&& m->sEtc == 0
-		&& m->bFlyingEffect == 0
-		&& (m->iUseItem == 0 || m->iUseItem == itemId)
-		&& BotCore::PotSupported(m->sReCastTime)
-		&& t3 != nullptr
-		&& (t3->bDirectType == 1 || t3->bDirectType == 2)
-		&& t3->sFirstDamage > 0
-		&& t3->sTimeDamage == 0;
+	bool supported = PotMagicSupported(m, t3, itemId);
 	if (!supported)
 	{
 		out.kind = PotionOutcome::REFUSED;
@@ -1166,6 +1172,31 @@ PotionOutcome ActionExecutor::BeginPotion(BotSession * s, uint32 itemId, uint32 
 	out.kind = PotionOutcome::SENT;
 	out.reason = "ok";
 	return out;
+}
+
+// Same item checks as BeginPotion, without arming a series (perception snapshot only; the bag stock is not read).
+uint8 ActionExecutor::PotKindOf(CUser * user, uint32 itemId)
+{
+	if (user == nullptr)
+		return 0;
+
+	_ITEM_TABLE * it = g_pMain->GetItemPtr(itemId);
+	if (it == nullptr || it->m_iEffect1 == 0)
+		return 0;
+
+	if ((it->m_bClass != 0 && !user->JobGroupCheck(it->m_bClass))
+		|| (it->m_bReqLevel != 0 && user->GetLevel() < it->m_bReqLevel))
+		return 0;
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(it->m_iEffect1);
+	if (m == nullptr)
+		return 0;
+
+	_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(it->m_iEffect1);
+	if (!PotMagicSupported(m, t3, itemId))
+		return 0;
+
+	return t3->bDirectType;
 }
 
 PotionOutcome ActionExecutor::TickPotion(BotSession * s, std::chrono::steady_clock::time_point now)
@@ -2761,6 +2792,115 @@ UserInOutcome ActionExecutor::TickUserIn(BotSession * s, std::chrono::steady_clo
 	else
 	{
 		out.kind = UserInOutcome::FAILED;
+		out.reason = reason;
+	}
+	out.requested = n;
+	out.received = received;
+	return out;
+}
+
+// --- region-change NPC request slice (ADR-0017 Ek F4-15) ---
+
+NpcInOutcome ActionExecutor::TickNpcIn(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	NpcInOutcome out;
+	out.kind = NpcInOutcome::NOTHING;
+	out.reason = "ok";
+	out.requested = 0;
+	out.received = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame() || user->isDead())
+		return out;
+
+	uint16 batch[BotCore::kNpcInMaxIds];
+	int n = s->PeekNpcInBatch(batch, BotCore::kNpcInMaxIds);
+	if (n == 0)
+		return out;
+
+	BotCore::NpcInCheck c;
+	c.count = n;
+	c.hasLast = s->m_npcInHasLast;
+	c.sinceLastMs = c.hasLast ? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_npcInLast).count() : 0;
+
+	BotCore::NpcInVerdict verdict = BotCore::CheckNpcIn(c);
+
+	// A gap is a harmless timing wait, not a violation: no event, the ids stay pending.
+	if (verdict == BotCore::NPCIN_REJECT_GAP)
+		return out;
+
+	if (verdict != BotCore::NPCIN_OK)
+	{
+		uint32 rejectId = NextDecisionId(s);
+		EmitFairnessReject(s, user, rejectId, "NpcInReq", "CLI-20", "bad_count",
+			(float)n, (float)BotCore::kNpcInMaxIds);
+		s->DropNpcInBatch(batch, n);
+
+		out.kind = NpcInOutcome::REFUSED;
+		out.reason = "bad_count";
+		out.requested = n;
+		return out;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"NpcInReq\",\"count\":" + std::to_string(n);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u16 count then count x u16 id (User.cpp:1260-1280).
+	Packet pkt(WIZ_REQ_NPCIN);
+	pkt << uint16(n);
+	for (int i = 0; i < n; i++)
+		pkt << uint16(batch[i]);
+
+	s->m_npcInEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	// The packet went out, so the timing/counters move even when the reply never comes. Not counted in the CLI-11
+	// window: this is automatic client traffic, not a player action.
+	s->DropNpcInBatch(batch, n);
+	s->m_npcInHasLast = true;
+	s->m_npcInLast = now;
+	s->m_npcInRequests++;
+
+	uint64 e = s->m_npcInEcho.load();
+	bool ok = (e & (1ull << 63)) != 0;
+	int received = ok ? (int)(e & 0xFFFF) : 0;
+	if (ok)
+		s->m_npcInUnits += (uint32)received;
+
+	const char * reason = ok ? "received" : "no_result";
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"NpcInReq\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"count\":" + std::to_string(n)
+			+ ",\"received\":" + std::to_string(received);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (ok)
+	{
+		out.kind = NpcInOutcome::SENT;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = NpcInOutcome::FAILED;
 		out.reason = reason;
 	}
 	out.requested = n;

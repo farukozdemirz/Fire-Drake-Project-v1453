@@ -59,13 +59,14 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 | `NAV_STUCK` / `NAV_RECOVERY` | Takılma tespiti / kurtarma aşaması | konum, aşama, süre, sonuç |
 | `TEST_TELEPORT` | Test kurtarma teleportu | **eval modunda olması maçı geçersiz kılar** |
 | `POLICY_LOAD` / `POLICY_ROLLBACK` | Politika yüklendi/geri alındı | sürümler, gerekçe |
+| `SCRIPT_START` / `SCRIPT_STEP` / `SCRIPT_END` | Betik (`/bot script run`, F4-20) başlayınca / her adım çalıştırılırken (komuttan hemen önce) / bitince veya durdurulunca; `bot:-1`, `name` yok | `SCRIPT_START`: `script`, `steps`, `duration_ms`; `SCRIPT_STEP`: `script`, `step` (1 tabanlı), `line`, `offset_ms`, `late_ms` (gerçek − planlanan, ≥ 0), `verb`; `SCRIPT_END`: `script`, `result` (`completed`/`stopped`), `steps_run`, `steps_total`, `elapsed_ms`, `max_late_ms`. Sonraki `ACTION_*`/`FAIRNESS_REJECT` olayları aynı `t` damgasıyla adıma bağlanır |
 | `PERF_SAMPLE` | Periyodik (5 sn) | tick süreleri, kuyruk uzunluğu, bot sayısı |
 
 ### 3.3 Uygulama notları (ADR-0007, F3-01)
 
 - **Alan kuralı:** Uygulanabilir olmayan ortak alanlar yazılmaz (alan yok = geçerli değil): `role`, `policy` yalnızca rol profili olan botlarda; `name` yalnızca bot olaylarında; `bot` sistem olaylarında `-1`. Maç bağlamı yokken (`ScenarioRunner` gelene kadar, F3-03) `match` = `"-"`, `mode` = `"live"`.
 - **`t`:** `steady_clock` zamanı, milisaniye (süreç içi karşılaştırma için; duvar saati yalnızca `MATCH_START/END`).
-- **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
+- **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `SCRIPT_*`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
 - **Düşürülebilir olaylar:** `PERF_SAMPLE`, `DECISION` (kuyruk yumuşak sınırı aşılınca düşer); diğerleri yalnızca sert sınırda düşer. Düşürme sayaçları `PERF_SAMPLE` kaydındaki `dropped_soft`/`dropped_hard` alanlarındadır.
 - **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir.
 - **`SELFTEST`:** yalnızca `[BOT] TELEMETRY_SELFTEST=1` iken yazıcı/taşma öz-sınaması üretir (`i` alanı); analiz araçları yok sayar.
@@ -131,6 +132,8 @@ Tanımlarda "fırsat", botun **o anda** aksiyon yapabileceği durumdur: canlı, 
 | MET-ACT-02 | Geçersiz aksiyon oranı | `ACTION_RESULT` içinde `SRV_FAIL_*` / tüm `ACTION_SUBMIT` | ≤ %2; sebep dağılımı raporlanır |
 | MET-ACT-03 | Fırsat → aksiyon gecikmesi | p50/p95 | p95 ≤ 400 ms |
 | MET-FAIR-01 | Fairness guard reddi | `FAIRNESS_REJECT` sayısı / bot-saat | Bilgi amaçlı; reddin **kendisi** sorun değildir ama sunucuya giden ihlal 0 olmalı. Sunucuya ihlalli aksiyon ulaşması (guard atlatılmışsa) = 0 |
+
+MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetrideki karşılığı `ACTION_RESULT.ok=false` ve `reason` ∈ {`srv_fail`, `handler_noop`, `refused_*`} (geçersiz); `no_result` ayrı sütundur, paya girmez; payda tüm `ACTION_SUBMIT`. Hüküm: PASS ≤ %1 (F4 kapısı), WARN ≤ %2, FAIL > %2. MET-FAIR-01 bot-saat oranı tahmindir. Hesaplayan araç: `tools/bot-telemetry-report.py` (F4-21).
 
 ### 6.2 Hedefleme ve baskı
 
@@ -204,10 +207,11 @@ Tanımlarda "fırsat", botun **o anda** aksiyon yapabileceği durumdur: canlı, 
 
 | Kimlik | Ad | Tanım |
 |---|---|---|
-| MET-OUT-01 | Kazanma oranı | Senaryo hedefine göre; Wilson %95 GA ile |
+| MET-OUT-01 | Kazanma oranı | `docs/15` §6b `win_rule` sonucuna göre (`draw` = 0,5, `invalid` paya girmez); Wilson %95 GA ile |
 | MET-OUT-02 | Kill/death farkı | Takım bazında |
 | MET-OUT-03 | Maç süresi | Zaman aşımı oranı ile birlikte |
 | MET-OUT-04 | Elo/TrueSkill | Politika sürümleri ve taktik profilleri arası lig |
+| MET-OUT-05 | Sonuç kodu dağılımı | `win_a`/`win_b`/`draw`/`invalid` oranı ve `invalid` nedenleri (`NO_ENGAGE`, `SETUP_FAIL`, `TEST_TELEPORT`, `THIRD_PARTY`) |
 
 ### 6.8 Performans
 
@@ -221,6 +225,21 @@ Tanımlarda "fırsat", botun **o anda** aksiyon yapabileceği durumdur: canlı, 
 
 Eşikler başlangıç hipotezidir. F3–F6 fazlarında ölçülen dağılımlara göre güncellenir; güncelleme [17](17_IMPLEMENTATION_ROADMAP_AND_PHASE_GATES.md)'deki karar kaydı şablonuyla yapılır.
 
+### 6.9 Rol bilinçli yorum ve ek metrikler (değerlendirme 2026-10-02)
+
+**Yorum kuralı:** her metrik rolün görevine göre okunur; bir rolün birincil olmayan metriği başarısızlık sayılmaz. Örnek: kritik heal atan priest o sırada ortak hedefe saldırmadığı için MET-TGT-03/MET-DMG-01'de **başarısız sayılmaz**; payda yalnızca o anda yüksek öncelikli görevde olmayan üyeleri içerir.
+
+| Kimlik | Ad | Tanım | Başlangıç eşiği `[Ö]` |
+|---|---|---|---|
+| MET-ROLE-01 | Rol bilinçli katılım | MET-TGT-03 ve MET-DMG-01 paydasından, `DECISION.override = true` ve gerekçesi `EMERGENCY_HEAL_RULE`/cure/res/`PEEL`/`DEATH_AVOID_RULE` olan üyelerin o süreleri çıkarılır; "görevde geçen süre" ayrıca raporlanır | MET-TGT-03 eşiği aynı |
+| MET-HEAL-05 | Kaçırılan kritik heal | Müttefik tahmini HP < `P-PRI-HEAL-EMERG`, menzilde, MP/cooldown uygun iken `P-ACT-LATENCY` + cast süresi içinde heal başlamayan fırsat oranı | ≤ %5 |
+| MET-HEAL-06 | Gereksiz heal/buff | Hedefte aşırı overheal (`P-PRI-OVERHEAL-MAX` üstü) veya ayakta buff'ı varken yapılan heal/buff sayısı / tüm heal/buff (MET-BUFF-03 dahil) | ≤ %10 |
+| MET-CURE-02 | Kaçırılan cure | Kritik debuff başladı, cure fırsatı var, 3 sn içinde cure başlamadı oranı | ≤ %10 |
+| MET-IDLE-01 | Boşta süre ve ulaşamama | Canlı + aksiyon fırsatı yok + hareket yok süre / canlı süre; ayrıca hedef atandı ama 10 sn içinde etkili menzile girilemedi oranı (MET-TGT-01 ile) | Guard metrik (artış = alarm) |
+| MET-SUR-07 | Başarısız savaşa dönüş | `REENTER` sonrası 10 sn içinde ölüm veya aynı geri çekilmeye yeniden giriş / tüm dönüşler | ≤ %20 |
+| MET-STALL-01 | Heal-stall kararı | Stall tespiti → karar (`HEALER_SWITCH`/`SPLIT`/`BURST_NOW`) ve 15 sn sonucu (hedef öldü / healer öldü / sonuçsuz); "karar yok" oranı | Karar yok ≤ %10; sonuç dağılımı raporlanır |
+
+Öğrenme ile değerlendirme rakipleri ayrıdır; kilitli sete erişim denetimi `docs/14` §9'dadır.
 ## 7. İstatistik kuralları
 
 - **Tek maç kanıt değildir.** Her karşılaştırma en az: N tekrar × 2 taraf (Karus/El Morad değişimi) × aynı seed listesi. Başlangıç N = 20 (8 vs 8 için), 1 vs 1 için N = 50.
@@ -264,3 +283,4 @@ Ayrıntılı senaryolar [15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md)
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.1 | Değerlendirme: §6.9 rol bilinçli yorum ve yeni metrikler (MET-ROLE-01, MET-HEAL-05/06, MET-CURE-02, MET-IDLE-01, MET-SUR-07, MET-STALL-01), MET-OUT-01 tanımı, MET-OUT-05 |

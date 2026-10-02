@@ -151,6 +151,17 @@ struct UserInOutcome
 	int received;          // units the reply carried; valid only when kind == SENT
 };
 
+// Result of ActionExecutor::TickNpcIn (ADR-0017 Ek F4-15).
+struct NpcInOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "received" (the reply arrived). FAILED: "no_result" (no reply).
+	                       // REFUSED: "bad_count" (guard CLI-20; FAIRNESS_REJECT written). NOTHING: "ok".
+	int requested;         // ids in the request (0 when NOTHING)
+	int received;          // NPCs the reply carried; valid only when kind == SENT
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -202,6 +213,11 @@ public:
 
 	// Clears the cast state without sending anything (stop, despawn, target lost). Keeps the reuse timers.
 	static void EndCast(BotSession * s);
+
+	// Classifies one bag item for the perception snapshot: 1 = HP pot, 2 = MP pot, 0 = this bot cannot drink it
+	// (unknown item, no Effect1, class/level mismatch, unknown skill, or not a supported pot shape). Applies the same
+	// rules as BeginPotion (keep them in sync). Touches nothing; the stock is NOT checked.
+	static uint8 PotKindOf(CUser * user, uint32 itemId);
 
 	// Validates and arms a series of 'count' pots of ITEM 'itemId'; sends nothing yet (the same Tick()'s TickPotion()
 	// does). REFUSED (nothing armed): "not_in_game", "dead", "bad_item" (count < 1, unknown item, no Effect1, level or
@@ -298,4 +314,11 @@ public:
 	// there is nothing to ask or the gap has not passed (the ids stay pending). Result only from the reply the server
 	// published (m_userInEcho). Not counted in the CLI-11 window (automatic client traffic).
 	static UserInOutcome TickUserIn(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// Called once per Tick() for every in-game, living session. Sends one WIZ_REQ_NPCIN through CUser::HandlePacket()
+	// for the ids the last WIZ_NPC_REGION listed and the NPC table does not know (at most kNpcInMaxIds) when the CLI-20
+	// guard allows it (>= 1 s since the previous request). NOTHING when there is nothing to ask or the gap has not
+	// passed (the ids stay pending). Result only from the reply the server published (m_npcInEcho). Not counted in the
+	// CLI-11 window (automatic client traffic).
+	static NpcInOutcome TickNpcIn(BotSession * s, std::chrono::steady_clock::time_point now);
 };

@@ -49,6 +49,12 @@ public:
 	// IOCP thread only. Removes the ids from the pending list (call after the request went out).
 	void DropUserInBatch(const uint16 * ids, int n);
 
+	// IOCP thread only. Copies up to 'cap' NPC ids the NPC table still does not know (ids learned meanwhile are dropped) without removing them.
+	int PeekNpcInBatch(uint16 * out, int cap);
+
+	// IOCP thread only. Removes the ids from the NPC pending list (call after the request went out).
+	void DropNpcInBatch(const uint16 * ids, int n);
+
 	const std::string m_charName;
 	const std::string m_accountName;
 
@@ -134,15 +140,23 @@ public:
 	uint32 m_userInRequests;                               // IOCP thread only: WIZ_REQ_USERIN requests sent in this spawn
 	uint32 m_userInUnits;                                  // IOCP thread only: total units carried by the replies in this spawn
 
+	bool m_npcInHasLast;                                   // IOCP thread only: m_npcInLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_npcInLast;     // IOCP thread only: when the last WIZ_REQ_NPCIN request went out
+	uint32 m_npcInRequests;                                // IOCP thread only: WIZ_REQ_NPCIN requests sent in this spawn
+	uint32 m_npcInUnits;                                   // IOCP thread only: total NPCs carried by the replies in this spawn
+
 	std::mutex m_obsLock;                                  // guards m_obs and m_obsPending: OnPacket() may run on any thread
 	BotCore::ObsTable m_obs;                               // guarded by m_obsLock: players in view, from received packets only (Perception, ADR-0017 Ek F4-12)
 	BotCore::PendingIds m_obsPending;                      // guarded by m_obsLock: ids of the last WIZ_REGIONCHANGE the table did not know (Perception, ADR-0017 Ek F4-13)
 	BotCore::NpcTable m_npcs;                              // guarded by m_obsLock (the same mutex as m_obs): NPCs in view, from received packets only (Perception, ADR-0017 Ek F4-14)
+	BotCore::PendingIds m_npcPending;                      // guarded by m_obsLock: ids of the last WIZ_NPC_REGION the NPC table did not know (Perception, ADR-0017 Ek F4-15)
+	BotCore::TeamTable m_team;                             // guarded by m_obsLock (the same mutex as m_obs): the bot's party members, from received WIZ_PARTY packets only (Perception, ADR-0017 Ek F4-18)
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
 	std::atomic<uint64> m_attackEcho;                      // written by OnPacket() (same thread as HandlePacket for own hits)
+	std::atomic<int> m_selfSid;                            // written by BotManager::TickSessions() (IOCP thread) when the bot enters the game, read by OnPacket(): own socket id, -1 = none
 	std::atomic<int> m_castSelfId;                         // set by ActionExecutor (IOCP thread), read by OnPacket(): own caster id, -1 = none
 	std::atomic<uint64> m_castEcho;                        // written by OnPacket(): skill result packet, see BotSession.cpp
 	std::atomic<uint64> m_stateEcho;                       // written by OnPacket(): own WIZ_STATE_CHANGE broadcast, see BotSession.cpp
@@ -159,4 +173,5 @@ public:
 	std::atomic<uint32> m_obsUnresolved;                   // written by OnPacket(): ids of the last WIZ_REGIONCHANGE that were not in m_obs, the bot itself included
 	std::atomic<uint64> m_userInEcho;                      // written by OnPacket(): valid bit (63) | number of units parsed from the last WIZ_REQ_USERIN reply
 	std::atomic<uint32> m_npcUnresolved;                   // written by OnPacket(): ids of the last WIZ_NPC_REGION that were not in m_npcs
+	std::atomic<uint64> m_npcInEcho;                       // written by OnPacket(): valid bit (63) | number of NPCs parsed from the last WIZ_REQ_NPCIN reply
 };

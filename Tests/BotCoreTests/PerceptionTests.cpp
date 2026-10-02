@@ -869,3 +869,910 @@ TEST_CASE("Perception_NpcTable")
 	CHECK_EQ(table.Count(), 0);
 	CHECK_EQ(int(table.Overflow()), 0);
 }
+
+static BotCore::NpcObs MakeNpc(uint16_t id)
+{
+	BotCore::NpcObs n;
+	memset(&n, 0, sizeof(n));
+	n.id = id;
+	strcpy(n.name, "n");
+	return n;
+}
+
+TEST_CASE("Perception_PendingIds_Npc")
+{
+	BotCore::NpcTable npcs;
+	BotCore::PendingIds pending;
+
+	{
+		const uint16_t ids[4] = { 10001, 10002, 10001, 10003 };
+		pending.Set(ids, 4, npcs);
+		CHECK_EQ(pending.Count(), 3);
+	}
+
+	npcs.Upsert(MakeNpc(10002));
+	{
+		const uint16_t ids[3] = { 10001, 10002, 10003 };
+		pending.Set(ids, 3, npcs);
+		CHECK_EQ(pending.Count(), 2);
+
+		uint16_t out[10];
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 10), 2);
+		CHECK_EQ(int(out[0]), 10001);
+		CHECK_EQ(int(out[1]), 10003);
+
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 1), 1);
+		CHECK_EQ(pending.Count(), 2);
+	}
+
+	npcs.Upsert(MakeNpc(10001));
+	{
+		uint16_t out[10];
+		CHECK_EQ(pending.Peek(npcs, 0xFFFF, out, 10), 1);
+		CHECK_EQ(int(out[0]), 10003);
+		CHECK_EQ(pending.Count(), 1);
+	}
+
+	const uint16_t drop[1] = { 10003 };
+	pending.Remove(drop, 1);
+	CHECK_EQ(pending.Count(), 0);
+
+	BotCore::ObsTable obs;
+	const uint16_t one[1] = { 7 };
+	pending.Set(one, 1, obs);
+	CHECK_EQ(pending.Count(), 1);
+}
+
+TEST_CASE("Perception_CheckNpcIn")
+{
+	CHECK_EQ(int(BotCore::kNpcInMaxIds), 32);
+	CHECK_EQ(int(BotCore::kNpcInMinGapMs), 1000);
+
+	BotCore::NpcInCheck c;
+	c.count = 1;
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.count = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+
+	c.count = 33;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+
+	c.count = 32;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.hasLast = true;
+	c.sinceLastMs = 999;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_GAP);
+
+	c.sinceLastMs = 1000;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_OK);
+
+	c.count = 0;
+	c.sinceLastMs = 0;
+	CHECK(BotCore::CheckNpcIn(c) == BotCore::NPCIN_REJECT_COUNT);
+}
+
+static BotCore::SelfState MakeSelf()
+{
+	BotCore::SelfState s;
+	memset(&s, 0, sizeof(s));
+	s.sid = 1;
+	s.nation = 1;
+	s.x = 1000.0f;
+	s.z = 1000.0f;
+	s.hp = s.maxHp = 5000;
+	s.mp = s.maxMp = 3000;
+	return s;
+}
+
+TEST_CASE("Perception_Snapshot_Split")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	{
+		BotCore::UnitObs u = MakeUnit(1);       // the bot itself: skipped
+		u.nation = 1;
+		u.x10 = 10000;
+		u.z10 = 10000;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(2);       // ally, dist 5
+		u.nation = 1;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(3);       // enemy, dist 10
+		u.nation = 2;
+		u.cls = 205;
+		u.level = 77;
+		u.race = 12;
+		u.partyLeader = true;
+		u.invisibility = 3;
+		u.resHpType = 3;                        // dead
+		u.x10 = 10060;
+		u.z10 = 10080;
+		u.lastSeenMs = 4750;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(4);       // enemy, dist 50, sitting
+		u.nation = 2;
+		u.resHpType = 2;                        // sitting
+		u.x10 = 10300;
+		u.z10 = 10400;
+		u.lastSeenMs = 6000;                    // ahead of the snapshot clock
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 5000, out);
+
+	CHECK_EQ(out.tMs, (uint64_t)5000);
+	CHECK_EQ(int(out.self.sid), 1);
+	CHECK_EQ(out.self.hp, 5000);
+	CHECK_EQ(out.enemyCount, 2);
+	CHECK_EQ(out.enemyTotal, 2);
+	CHECK_EQ(out.allyCount, 1);
+	CHECK_EQ(out.allyTotal, 1);
+	CHECK_EQ(out.npcCount, 0);
+
+	CHECK_EQ(int(out.enemies[0].id), 3);
+	CHECK(out.enemies[0].dist == 10.0f);
+	CHECK_EQ(int(out.enemies[0].cls), 205);
+	CHECK_EQ(int(out.enemies[0].level), 77);
+	CHECK_EQ(int(out.enemies[0].race), 12);
+	CHECK(out.enemies[0].partyLeader);
+	CHECK_EQ(int(out.enemies[0].invisibility), 3);   // raw byte, not filtered
+	CHECK(out.enemies[0].dead);
+	CHECK(!out.enemies[0].sitting);
+	CHECK_EQ(out.enemies[0].ageMs, 250u);
+
+	CHECK_EQ(int(out.enemies[1].id), 4);
+	CHECK(out.enemies[1].dist == 50.0f);
+	CHECK(out.enemies[1].sitting);
+	CHECK(!out.enemies[1].dead);
+	CHECK_EQ(out.enemies[1].ageMs, 0u);
+
+	CHECK_EQ(int(out.allies[0].id), 2);
+	CHECK(out.allies[0].dist == 5.0f);
+	CHECK(out.allies[0].x == 1003.0f);
+	CHECK(out.allies[0].z == 1004.0f);
+
+	// ageMs is clamped to 32 bits when the packet clock is far behind.
+	{
+		BotCore::ObsTable old;
+		BotCore::UnitObs u = MakeUnit(9);
+		u.nation = 2;
+		u.x10 = 10000;
+		u.z10 = 10000;
+		u.lastSeenMs = 0;
+		old.Upsert(u);
+
+		BotCore::PerceptionSnapshot clip;
+		BotCore::BuildSnapshot(self, old, npcs, 0x100000000ULL + 5, clip);
+		CHECK_EQ(clip.enemyCount, 1);
+		CHECK_EQ(clip.enemies[0].ageMs, 0xFFFFFFFFu);
+	}
+}
+
+TEST_CASE("Perception_Snapshot_OrderCap")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	for (int i = 0; i < 40; i++)   // added far to near: i=0 -> dist 40, i=39 -> dist 1
+	{
+		BotCore::UnitObs u = MakeUnit((uint16_t)(100 + i));
+		u.nation = 2;
+		u.x10 = (uint16_t)(10000 + 10 * (40 - i));
+		u.z10 = 10000;
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.enemyTotal, 40);
+	CHECK_EQ(out.enemyCount, 32);
+	CHECK(out.enemies[0].dist == 1.0f);
+	CHECK_EQ(int(out.enemies[0].id), 139);
+	CHECK(out.enemies[31].dist == 32.0f);
+	CHECK_EQ(int(out.enemies[31].id), 108);
+	for (int i = 0; i < out.enemyCount - 1; i++)
+		CHECK(out.enemies[i].dist < out.enemies[i + 1].dist);
+
+	// A second call with empty tables reuses (and clears) the same output.
+	BotCore::ObsTable emptyObs;
+	BotCore::NpcTable emptyNpcs;
+	BotCore::BuildSnapshot(self, emptyObs, emptyNpcs, 2000, out);
+	CHECK_EQ(out.enemyCount, 0);
+	CHECK_EQ(out.enemyTotal, 0);
+}
+
+TEST_CASE("Perception_Snapshot_TieAndNation")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+
+	{
+		BotCore::UnitObs u = MakeUnit(20);      // enemy (nation 2), dist 5
+		u.nation = 2;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(10);      // enemy (nation 2), dist 5
+		u.nation = 2;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+	{
+		BotCore::UnitObs u = MakeUnit(30);      // ally (nation 1)
+		u.nation = 1;
+		u.x10 = 10030;
+		u.z10 = 10040;
+		obs.Upsert(u);
+	}
+
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.enemyCount, 2);
+	CHECK_EQ(int(out.enemies[0].id), 10);       // tie on dist: lower id first
+	CHECK_EQ(int(out.enemies[1].id), 20);
+	CHECK_EQ(out.allyCount, 1);
+	CHECK_EQ(int(out.allies[0].id), 30);
+
+	// Classification follows the bot's own nation.
+	self.nation = 2;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+	CHECK_EQ(out.enemyCount, 1);
+	CHECK_EQ(int(out.enemies[0].id), 30);
+	CHECK_EQ(out.allyCount, 2);
+	CHECK_EQ(int(out.allies[0].id), 10);
+	CHECK_EQ(int(out.allies[1].id), 20);
+}
+
+TEST_CASE("Perception_Snapshot_Npcs")
+{
+	BotCore::SelfState self = MakeSelf();
+	BotCore::ObsTable obs;
+	BotCore::NpcTable npcs;
+
+	for (int i = 0; i < 40; i++)   // added far to near: i=0 -> dist 40, i=39 -> dist 1
+	{
+		BotCore::NpcObs n = MakeNpc((uint16_t)(10001 + i));
+		n.x10 = (uint16_t)(10000 + 10 * (40 - i));
+		n.z10 = 10000;
+		npcs.Upsert(n);
+	}
+
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1000, out);
+
+	CHECK_EQ(out.npcTotal, 40);
+	CHECK_EQ(out.npcCount, 32);
+	CHECK(out.npcs[0].dist == 1.0f);
+	CHECK_EQ(int(out.npcs[0].id), 10040);
+	CHECK(out.npcs[31].dist == 32.0f);
+	CHECK_EQ(int(out.npcs[31].id), 10009);
+	for (int i = 0; i < out.npcCount - 1; i++)
+		CHECK(out.npcs[i].dist < out.npcs[i + 1].dist);
+
+	// A small NPC with all view fields set; a dead NPC stays in the list.
+	BotCore::NpcTable one;
+	{
+		BotCore::NpcObs n = MakeNpc(20001);
+		n.protoId = 5400;
+		n.type = 62;
+		n.nation = 1;
+		n.level = 60;
+		n.x10 = 10030;
+		n.z10 = 10040;
+		n.dead = true;
+		n.gateOpen = true;
+		n.lastSeenMs = 900;                     // nowMs 1000 -> age 100
+		one.Upsert(n);
+	}
+
+	BotCore::PerceptionSnapshot small;
+	BotCore::BuildSnapshot(self, obs, one, 1000, small);
+
+	CHECK_EQ(small.npcCount, 1);
+	CHECK_EQ(int(small.npcs[0].id), 20001);
+	CHECK_EQ(int(small.npcs[0].protoId), 5400);
+	CHECK_EQ(int(small.npcs[0].type), 62);
+	CHECK_EQ(int(small.npcs[0].nation), 1);
+	CHECK_EQ(int(small.npcs[0].level), 60);
+	CHECK(small.npcs[0].dead);
+	CHECK(small.npcs[0].gateOpen);
+	CHECK(small.npcs[0].dist == 5.0f);
+	CHECK_EQ(small.npcs[0].ageMs, 100u);
+	CHECK_EQ(small.enemyTotal, 0);
+	CHECK_EQ(small.allyTotal, 0);
+}
+
+TEST_CASE("Perception_Self_Remaining")
+{
+	CHECK_EQ(BotCore::SnapRemainingSec(100, 40), 60u);
+	CHECK_EQ(BotCore::SnapRemainingSec(40, 100), 0u);
+	CHECK_EQ(BotCore::SnapRemainingSec(100, 100), 0u);
+	CHECK_EQ(BotCore::SnapRemainingSec(4000000000000LL, 0), 0xFFFFFFFFu);
+
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 1000), 1500u);
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 2500), 0u);
+	CHECK_EQ(BotCore::SnapRemainingMs(2500, 9999999999ULL), 0u);
+	CHECK_EQ(BotCore::SnapRemainingMs(0, 0), 0u);
+}
+
+TEST_CASE("Perception_Self_AddBuff")
+{
+	BotCore::SelfState s = MakeSelf();
+
+	CHECK(BotCore::SelfAddBuff(s, 1001, 3, true, 20));
+	CHECK(BotCore::SelfAddBuff(s, 1002, 5, false, 7));
+	CHECK(BotCore::SelfAddBuff(s, 1003, 8, true, 1));
+	CHECK_EQ(s.buffCount, 3);
+	CHECK_EQ(s.buffTotal, 3);
+	CHECK_EQ(int(s.buffs[0].skillId), 1001);
+	CHECK_EQ(int(s.buffs[0].buffType), 3);
+	CHECK(s.buffs[0].isBuff);
+	CHECK_EQ(s.buffs[0].remainingSec, 20u);
+	CHECK_EQ(int(s.buffs[1].skillId), 1002);
+	CHECK_EQ(int(s.buffs[1].buffType), 5);
+	CHECK(!s.buffs[1].isBuff);
+	CHECK_EQ(s.buffs[1].remainingSec, 7u);
+	CHECK_EQ(int(s.buffs[2].skillId), 1003);
+	CHECK_EQ(s.buffs[2].remainingSec, 1u);
+
+	CHECK(!BotCore::SelfAddBuff(s, 1004, 1, true, 0));   // expired: ignored
+	CHECK_EQ(s.buffCount, 3);
+	CHECK_EQ(s.buffTotal, 3);
+
+	for (int i = 3; i < BotCore::kSnapMaxBuffs; i++)
+		CHECK(BotCore::SelfAddBuff(s, (uint32_t)(2000 + i), 1, true, 10));
+	CHECK_EQ(s.buffCount, BotCore::kSnapMaxBuffs);
+	CHECK_EQ(s.buffTotal, BotCore::kSnapMaxBuffs);
+
+	CHECK(!BotCore::SelfAddBuff(s, 3001, 1, true, 10));
+	CHECK(!BotCore::SelfAddBuff(s, 3002, 1, true, 10));
+	CHECK_EQ(s.buffCount, BotCore::kSnapMaxBuffs);
+	CHECK_EQ(s.buffTotal, BotCore::kSnapMaxBuffs + 2);
+	CHECK_EQ(int(s.buffs[0].skillId), 1001);             // the first entries are unchanged
+	CHECK_EQ(s.buffs[0].remainingSec, 20u);
+}
+
+TEST_CASE("Perception_Self_AddCooldown")
+{
+	BotCore::SelfState s = MakeSelf();
+
+	CHECK(BotCore::SelfAddCooldown(s, 110518, 3000));
+	CHECK(BotCore::SelfAddCooldown(s, 110519, 100));
+	CHECK_EQ(s.cooldownCount, 2);
+	CHECK_EQ(s.cooldownTotal, 2);
+	CHECK_EQ(int(s.cooldowns[0].skillId), 110518);
+	CHECK_EQ(s.cooldowns[0].remainingMs, 3000u);
+	CHECK_EQ(int(s.cooldowns[1].skillId), 110519);
+	CHECK_EQ(s.cooldowns[1].remainingMs, 100u);
+
+	CHECK(!BotCore::SelfAddCooldown(s, 110520, 0));      // expired: ignored
+	CHECK_EQ(s.cooldownCount, 2);
+	CHECK_EQ(s.cooldownTotal, 2);
+
+	for (int i = 2; i < BotCore::kSnapMaxCooldowns; i++)
+		CHECK(BotCore::SelfAddCooldown(s, (uint32_t)(200000 + i), 500));
+	CHECK_EQ(s.cooldownCount, BotCore::kSnapMaxCooldowns);
+	CHECK_EQ(s.cooldownTotal, BotCore::kSnapMaxCooldowns);
+
+	CHECK(!BotCore::SelfAddCooldown(s, 300001, 500));
+	CHECK(!BotCore::SelfAddCooldown(s, 300002, 500));
+	CHECK_EQ(s.cooldownCount, BotCore::kSnapMaxCooldowns);
+	CHECK_EQ(s.cooldownTotal, BotCore::kSnapMaxCooldowns + 2);
+	CHECK_EQ(int(s.cooldowns[0].skillId), 110518);       // the first entries are unchanged
+}
+
+TEST_CASE("Perception_Snapshot_SelfExtras")
+{
+	BotCore::SelfState self = MakeSelf();
+	self.hpPotStock = 12;
+	self.mpPotStock = 7;
+	self.potWaitMs = 1500;
+	self.castGapWaitMs = 90;
+	CHECK(BotCore::SelfAddBuff(self, 106500, 4, true, 30));
+	CHECK(BotCore::SelfAddCooldown(self, 110518, 2500));
+	CHECK(BotCore::SelfAddCooldown(self, 110519, 800));
+
+	BotCore::ObsTable obs;
+	BotCore::NpcTable npcs;
+	BotCore::PerceptionSnapshot out;
+	BotCore::BuildSnapshot(self, obs, npcs, 1234, out);
+
+	CHECK_EQ(out.self.hpPotStock, 12u);
+	CHECK_EQ(out.self.mpPotStock, 7u);
+	CHECK_EQ(out.self.potWaitMs, 1500u);
+	CHECK_EQ(out.self.castGapWaitMs, 90u);
+	CHECK_EQ(out.self.buffCount, 1);
+	CHECK_EQ(out.self.buffTotal, 1);
+	CHECK_EQ(int(out.self.buffs[0].skillId), 106500);
+	CHECK_EQ(int(out.self.buffs[0].buffType), 4);
+	CHECK(out.self.buffs[0].isBuff);
+	CHECK_EQ(out.self.buffs[0].remainingSec, 30u);
+	CHECK_EQ(out.self.cooldownCount, 2);
+	CHECK_EQ(out.self.cooldownTotal, 2);
+	CHECK_EQ(int(out.self.cooldowns[0].skillId), 110518);
+	CHECK_EQ(out.self.cooldowns[0].remainingMs, 2500u);
+	CHECK_EQ(int(out.self.cooldowns[1].skillId), 110519);
+	CHECK_EQ(out.self.cooldowns[1].remainingMs, 800u);
+	CHECK_EQ(out.enemyCount, 0);
+	CHECK_EQ(out.allyCount, 0);
+	CHECK_EQ(out.npcCount, 0);
+}
+
+// Writes a PARTY_INSERT member record (sub-opcode 0x03).
+static void AddPartyMember(Buf & b, uint16_t sid, uint8_t flag, const char * name,
+	int16_t maxHp, int16_t hp, uint8_t level, uint16_t cls, int16_t maxMp, int16_t mp, uint8_t nation)
+{
+	b.U8(0x03);
+	b.U16(sid);
+	b.U8(flag);
+	uint16_t nameLen = (uint16_t)strlen(name);
+	b.U16(nameLen);
+	for (uint16_t i = 0; i < nameLen; i++)
+		b.U8((uint8_t)name[i]);
+	b.U16((uint16_t)maxHp);
+	b.U16((uint16_t)hp);
+	b.U8(level);
+	b.U16(cls);
+	b.U16((uint16_t)maxMp);
+	b.U16((uint16_t)mp);
+	b.U8(nation);
+}
+
+static bool ApplyPartyMember(BotCore::TeamTable & table, uint16_t sid, uint8_t flag, uint16_t selfSid, const char * name)
+{
+	Buf b;
+	AddPartyMember(b, sid, flag, name, 1000, 900, 80, 101, 500, 400, 1);
+	BotCore::PartyEvent ev;
+	if (!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 1, ev))
+		return false;
+	return table.Apply(ev, selfSid);
+}
+
+static bool ApplyPartyHp(BotCore::TeamTable & table, uint16_t sid, uint16_t selfSid,
+	int16_t maxHp, int16_t hp, int16_t maxMp, int16_t mp, uint64_t nowMs)
+{
+	Buf b;
+	b.U8(0x06);
+	b.U16(sid);
+	b.U16((uint16_t)maxHp);
+	b.U16((uint16_t)hp);
+	b.U16((uint16_t)maxMp);
+	b.U16((uint16_t)mp);
+	BotCore::PartyEvent ev;
+	if (!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), nowMs, ev))
+		return false;
+	return table.Apply(ev, selfSid);
+}
+
+static bool ApplyPartyRemove(BotCore::TeamTable & table, uint16_t sid, uint16_t selfSid)
+{
+	Buf b;
+	b.U8(0x04);
+	b.U16(sid);
+	BotCore::PartyEvent ev;
+	if (!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 1, ev))
+		return false;
+	return table.Apply(ev, selfSid);
+}
+
+static bool ApplyPartyDelete(BotCore::TeamTable & table, uint16_t selfSid)
+{
+	Buf b;
+	b.U8(0x05);
+	BotCore::PartyEvent ev;
+	if (!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 1, ev))
+		return false;
+	return table.Apply(ev, selfSid);
+}
+
+TEST_CASE("Perception_Party_ParseMember")
+{
+	BotCore::PartyEvent ev;
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "BotWP_K", 3000, 2500, 80, 106, 1200, 900, 1);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 5000, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK_EQ(int(ev.flag), 1);
+		CHECK_EQ(int(ev.member.sid), 7);
+		CHECK(strcmp(ev.member.name, "BotWP_K") == 0);
+		CHECK_EQ(int(ev.member.maxHp), 3000);
+		CHECK_EQ(int(ev.member.hp), 2500);
+		CHECK_EQ(int(ev.member.level), 80);
+		CHECK_EQ(int(ev.member.cls), 106);
+		CHECK_EQ(int(ev.member.maxMp), 1200);
+		CHECK_EQ(int(ev.member.mp), 900);
+		CHECK_EQ(int(ev.member.nation), 1);
+		CHECK(ev.member.lastSeenMs == 5000);
+	}
+
+	{
+		// Hand-written server packet: u16 member-name length (ByteBuffer default, PartyHandler.cpp never calls SByte()).
+		const uint8_t raw[25] = {0x03,0x07,0x00,0x01,0x07,0x00,0x42,0x6F,0x74,0x57,0x50,0x5F,0x4B,0xB8,0x0B,0xC4,0x09,0x50,0x6A,0x00,0xB0,0x04,0x84,0x03,0x01};
+		CHECK(BotCore::ParsePartyEvent(raw, 25, 5000, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK_EQ(int(ev.flag), 1);
+		CHECK_EQ(int(ev.member.sid), 7);
+		CHECK(strcmp(ev.member.name, "BotWP_K") == 0);
+		CHECK_EQ(int(ev.member.maxHp), 3000);
+		CHECK_EQ(int(ev.member.hp), 2500);
+		CHECK_EQ(int(ev.member.level), 80);
+		CHECK_EQ(int(ev.member.cls), 106);
+		CHECK_EQ(int(ev.member.maxMp), 1200);
+		CHECK_EQ(int(ev.member.mp), 900);
+		CHECK_EQ(int(ev.member.nation), 1);
+		CHECK(!BotCore::ParsePartyEvent(raw, 24, 5000, ev));   // last byte cut off
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "", 3000, 2500, 80, 106, 1200, 900, 1);   // u16 length 0
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK(strcmp(ev.member.name, "") == 0);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "abcdefghijklmnopqrstuvw", 1, 1, 1, 1, 1, 1, 1);   // 23 chars (max)
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK(strcmp(ev.member.name, "abcdefghijklmnopqrstuvw") == 0);
+	}
+
+	{
+		Buf b;
+		b.U8(0x03);
+		b.U16(7);
+		b.U8(1);
+		b.U16(24);                        // u16 length 24 > kObsNameMax - 1
+		for (int i = 0; i < 24; i++)
+			b.U8((uint8_t)'a');
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x03);
+		b.U16(7);
+		b.U8(1);
+		b.U16(0xFFFF);                    // absurd u16 length
+		b.U8(0x41);
+		b.U8(0x42);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 100, "BotWP_K", 3000, 2500, 80, 106, 1200, 900, 1);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 1, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK_EQ(int(ev.flag), 100);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 0, "BotWP_K", 1, 1, 1, 1, 1, 1, 1);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 2, "BotWP_K", 1, 1, 1, 1, 1, 1, 1);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x03);
+		b.U16(0xFFFF);                    // refusal: 3 bytes
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "BotWP_K", 3000, 2500, 80, 106, 1200, 900, 1);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size() - 1, 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "abcdefghijklmnopqrstuvwx", 1, 1, 1, 1, 1, 1, 1);   // 24 chars
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		CHECK(!BotCore::ParsePartyEvent(nullptr, 0, 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+}
+
+TEST_CASE("Perception_Party_ParseOthers")
+{
+	BotCore::PartyEvent ev;
+
+	{
+		Buf b;
+		b.U8(0x06); b.U16(7); b.U16(3000); b.U16(2500); b.U16(1200); b.U16(900);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 7000, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_HP);
+		CHECK_EQ(int(ev.sid), 7);
+		CHECK_EQ(int(ev.maxHp), 3000);
+		CHECK_EQ(int(ev.hp), 2500);
+		CHECK_EQ(int(ev.maxMp), 1200);
+		CHECK_EQ(int(ev.mp), 900);
+		CHECK(ev.nowMs == 7000);
+	}
+
+	{
+		Buf b;
+		b.U8(0x06); b.U16(7); b.U16(3000); b.U16((uint16_t)-5); b.U16(1200); b.U16(900);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK_EQ(int(ev.hp), -5);
+	}
+
+	{
+		Buf b;
+		b.U8(0x06); b.U16(7); b.U16(3000); b.U16(2500); b.U16(1200);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x04); b.U16(9);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_REMOVE);
+		CHECK_EQ(int(ev.sid), 9);
+	}
+
+	{
+		Buf b;
+		b.U8(0x04); b.U8(9);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x05);
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_DELETE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x02);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+	}
+
+	{
+		Buf b;
+		b.U8(0x07);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+	}
+
+	{
+		Buf b;
+		b.U8(0x09);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+	}
+}
+
+TEST_CASE("Perception_Team_Table")
+{
+	BotCore::TeamTable table;
+
+	CHECK(ApplyPartyMember(table, 7, 1, 1, "A"));
+	CHECK(ApplyPartyMember(table, 8, 1, 1, "B"));
+	CHECK(ApplyPartyMember(table, 9, 1, 1, "C"));
+	CHECK_EQ(table.Count(), 3);
+	CHECK(strcmp(table.Find(8)->name, "B") == 0);
+
+	CHECK(ApplyPartyHp(table, 8, 1, 2000, 1500, 600, 500, 99));
+	CHECK_EQ(table.Count(), 3);
+	CHECK_EQ(int(table.Find(8)->maxHp), 2000);
+	CHECK_EQ(int(table.Find(8)->hp), 1500);
+	CHECK_EQ(int(table.Find(8)->maxMp), 600);
+	CHECK_EQ(int(table.Find(8)->mp), 500);
+	CHECK(table.Find(8)->lastSeenMs == 99);
+
+	CHECK(!ApplyPartyHp(table, 99, 1, 1, 1, 1, 1, 0));
+	CHECK_EQ(int(table.UnknownHp()), 1);
+
+	CHECK(ApplyPartyMember(table, 8, 1, 1, "B2"));   // refresh: count unchanged
+	CHECK_EQ(table.Count(), 3);
+
+	CHECK(ApplyPartyRemove(table, 7, 1));
+	CHECK_EQ(table.Count(), 2);
+	CHECK(table.Find(7) == nullptr);
+
+	CHECK(ApplyPartyRemove(table, 8, 8));            // own id: the table empties
+	CHECK_EQ(table.Count(), 0);
+
+	{
+		BotCore::TeamTable full;
+		for (int i = 0; i < BotCore::kTeamMaxMembers; i++)
+			CHECK(ApplyPartyMember(full, (uint16_t)(200 + i), 1, 1, "m"));
+		CHECK_EQ(full.Count(), BotCore::kTeamMaxMembers);
+
+		CHECK(!ApplyPartyMember(full, 999, 1, 1, "x"));
+		CHECK_EQ(int(full.Overflow()), 1);
+		CHECK_EQ(full.Count(), BotCore::kTeamMaxMembers);
+
+		CHECK(ApplyPartyMember(full, 205, 1, 1, "m2"));   // refresh instead of a fresh sid
+		CHECK_EQ(full.Count(), BotCore::kTeamMaxMembers);
+	}
+
+	CHECK(ApplyPartyDelete(table, 1));
+	CHECK_EQ(table.Count(), 0);
+	CHECK_EQ(int(table.Overflow()), 0);
+	CHECK_EQ(int(table.UnknownHp()), 0);
+}
+
+TEST_CASE("Perception_Team_Leader")
+{
+	BotCore::TeamTable table;
+
+	CHECK_EQ(int(table.LeaderSid(1, false)), int(BotCore::kTeamNone));
+	CHECK_EQ(int(table.LeaderSid(1, true)), 1);
+
+	CHECK(ApplyPartyMember(table, 7, 1, 1, "A"));   // first record
+	CHECK(ApplyPartyMember(table, 8, 1, 1, "B"));
+	CHECK_EQ(int(table.LeaderSid(1, false)), 7);
+	CHECK_EQ(int(table.LeaderSid(1, true)), 1);
+
+	CHECK(ApplyPartyMember(table, 8, 100, 1, "B")); // leader moved
+	CHECK_EQ(int(table.LeaderSid(1, false)), 8);
+	CHECK_EQ(int(table.LeaderSid(1, true)), 8);
+
+	CHECK(ApplyPartyRemove(table, 8, 1));           // promoted hint cleared
+	CHECK_EQ(int(table.LeaderSid(1, false)), 7);
+
+	CHECK(ApplyPartyRemove(table, 7, 1));
+	CHECK_EQ(int(table.LeaderSid(1, false)), int(BotCore::kTeamNone));
+
+	CHECK(ApplyPartyMember(table, 5, 1, 1, "E"));
+	table.Clear();
+	CHECK_EQ(table.Count(), 0);
+	CHECK_EQ(int(table.LeaderSid(1, false)), int(BotCore::kTeamNone));
+	CHECK_EQ(int(table.LeaderSid(1, true)), 1);
+
+	CHECK(ApplyPartyMember(table, 3, 1, 1, "C"));   // first into the empty table
+	CHECK(ApplyPartyMember(table, 4, 1, 1, "D"));   // later record does not change the hint
+	CHECK_EQ(int(table.LeaderSid(1, false)), 3);
+}
+
+TEST_CASE("Perception_Team_Build")
+{
+	BotCore::SelfState self = MakeSelf();
+	self.inParty = true;
+	self.partyLeader = false;
+
+	BotCore::TeamTable team;
+	{
+		Buf b;
+		AddPartyMember(b, 3, 1, "C", 3000, 2500, 80, 106, 1200, 900, 1);
+		BotCore::PartyEvent ev;
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 100, ev));
+		CHECK(team.Apply(ev, 1));
+	}
+	{
+		Buf b;
+		AddPartyMember(b, 2, 1, "B", 2000, 0, 70, 102, 800, 500, 1);
+		BotCore::PartyEvent ev;
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 200, ev));
+		CHECK(team.Apply(ev, 1));
+	}
+	{
+		Buf b;
+		AddPartyMember(b, 1, 1, "SELF", 5000, 5000, 80, 105, 3000, 3000, 1);
+		BotCore::PartyEvent ev;
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 300, ev));
+		CHECK(team.Apply(ev, 1));
+	}
+
+	BotCore::ObsTable obs;
+	{
+		BotCore::UnitObs u = MakeUnit(3);
+		u.nation = 1;
+		u.x10 = 10300;
+		u.z10 = 10400;
+		obs.Upsert(u);
+	}
+
+	BotCore::TeamView tv;
+	BotCore::BuildTeam(self, team, obs, 1000, tv);
+
+	CHECK(tv.inParty);
+	CHECK(!tv.selfLeader);
+	CHECK_EQ(tv.memberCount, 2);
+	CHECK_EQ(tv.memberTotal, 2);
+	CHECK_EQ(int(tv.members[0].id), 2);
+	CHECK_EQ(int(tv.members[1].id), 3);
+	CHECK_EQ(int(tv.leaderId), 3);                 // first record [A]
+	CHECK(tv.members[1].leader);
+	CHECK(!tv.members[0].leader);
+	CHECK(strcmp(tv.members[1].name, "C") == 0);
+	CHECK_EQ(int(tv.members[1].nation), 1);
+	CHECK_EQ(int(tv.members[1].cls), 106);
+	CHECK_EQ(int(tv.members[1].level), 80);
+	CHECK_EQ(tv.members[1].hp, 2500);
+	CHECK_EQ(tv.members[1].maxHp, 3000);
+	CHECK_EQ(tv.members[1].mp, 900);
+	CHECK_EQ(tv.members[1].maxMp, 1200);
+	CHECK(tv.members[1].inView);
+	CHECK(tv.members[1].x == 1030.0f);
+	CHECK(tv.members[1].z == 1040.0f);
+	CHECK(tv.members[1].dist == 50.0f);
+	CHECK(!tv.members[1].dead);
+	CHECK_EQ(tv.members[1].ageMs, 900u);           // nowMs 1000 - lastSeen 100
+	CHECK(!tv.members[0].inView);
+	CHECK(tv.members[0].x == 0.0f);
+	CHECK(tv.members[0].z == 0.0f);
+	CHECK(tv.members[0].dist == 0.0f);
+	CHECK(tv.members[0].dead);                     // hp == 0
+
+	{
+		BotCore::ObsTable obs2;
+		BotCore::UnitObs u = MakeUnit(3);
+		u.nation = 1;
+		u.resHpType = BotCore::kObsUserDead;
+		u.x10 = 10000;
+		u.z10 = 10000;
+		obs2.Upsert(u);
+		BotCore::TeamView tv2;
+		BotCore::BuildTeam(self, team, obs2, 100, tv2);
+		CHECK(tv2.members[1].dead);                // observation table marks it dead
+	}
+
+	self.partyLeader = true;
+	{
+		BotCore::TeamView tv3;
+		BotCore::BuildTeam(self, team, obs, 1000, tv3);
+		CHECK(tv3.selfLeader);
+		CHECK_EQ(int(tv3.leaderId), 1);
+		CHECK(!tv3.members[0].leader);
+		CHECK(!tv3.members[1].leader);
+	}
+
+	self.inParty = false;
+	{
+		BotCore::TeamView tv4;
+		BotCore::BuildTeam(self, team, obs, 1000, tv4);
+		CHECK(!tv4.inParty);
+		CHECK_EQ(tv4.memberCount, 0);
+		CHECK_EQ(int(tv4.leaderId), int(BotCore::kTeamNone));
+	}
+}

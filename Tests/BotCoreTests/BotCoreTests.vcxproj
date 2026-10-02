@@ -89,6 +89,7 @@
     <ClCompile Include="NavFormationTests.cpp" />
     <ClCompile Include="PerceptionTests.cpp" />
     <ClCompile Include="RngTests.cpp" />
+    <ClCompile Include="ScriptTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MiniTest.h" />
