@@ -121,9 +121,12 @@ Uygulama (`BotCore/NavRetreat.h`, ADR-0006 Eki F5-07, F5-07 planı `[Ö]`/`[A]`)
 
 ## 9. Formasyon ve yığılmanın önlenmesi
 
-- Rol halkaları: warrior'lar hedefin etrafında 8 yuvadan birini alır (AIServer kuşatma yuvası fikri, [`AIServer/AIUser.cpp:71-121`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L71-L121), bot katmanında yeniden uygulanır).
-- Ayrışma vektörü: aynı party üyeleri arası < 1,5 m ise karşılıklı itme (MET-NAV-06).
-- Priest'ler arası ≥ 8 m ([07](07_PRIEST_BEHAVIOR.md) §11).
+Uygulama (`BotCore/NavFormation.h`, ADR-0006 Eki F5-08, F5-08 planı `[Ö]`/`[A]`):
+
+- **Kuşatma yuvaları:** hedefin etrafında 8 pusula yönünde (sıra: 0 = +z, saat yönünün tersine; AIServer kuşatma yuvası fikri, [`AIServer/AIUser.cpp:12-13`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L12-L13), [`:71-121`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L71-L121), bot katmanında yeniden uygulanır) çağıranın verdiği yarıçapta yuva noktası (testlerde 2,5 m `[A]`: komşu yuvalar 1,91 m). Yuva **kullanılabilir** = yuva noktasının hücresi `Walk`; kullanılamaz yuva verilmez, yerine taşıma (snap) yoktur. Zone 71'de 88 508 `Walk` hedef hücresinin 72 459'unda sekiz yuvanın hepsi kullanılabilir, en kötüsünde 5 `[V]`. Atama **yapışkan** (üye geçerli yuvasını korur) + **açgözlü en yakın çift** (eşitlikte küçük üye, sonra küçük yuva indeksi); fazla üye yuvasız (`-1`) kalır (ikinci halka/bekleme karar katmanının işidir).
+- **Ayrışma vektörü (MET-NAV-06):** aynı party üyelerinden biri başka bir üyeye < 1,5 m ise karşılıklı itme: çift başına `0,5 · (1,5 − d)` (iki üye de uygularsa uzaklık tam 1,5 m), çakışık üyelerde indeks tabanlı belirlenimci yön, toplam 1,0 m'ye kırpılır `[A]`; uygulama duvara çarpmaz (tam, yalnızca-x, yalnızca-z sırasıyla dener). İtme bir yol değildir: hareket katmanı her tick uygular. Ham ölçü `NavCountStackedPairs` (< 1 m çift sayısı; "2 sn'den uzun" süre kuralı telemetri katmanındadır).
+- **Priest aralığı:** iki priest birbirinden ≥ 8 m ([07](07_PRIEST_BEHAVIOR.md) §11) kuvvet değil **seçimdir**: aday hücreler arasından diğer priest'lere ≥ 8 m (sınır dahil) olan ilk aday; yoksa en yakın priest'e en uzak aday (`NavPickSpaced`).
+- **T-NAV-08 `[V]`:** 8 üye 0,6 m içinde yığılı başlar, hedef etrafında yerleşir: tick 3'ten sonra < 1 m çift yok, yerleşmiş formasyonda en küçük çift uzaklığı 1,91 m (düz ızgara); duvar yanı hedefte 6 yuva atanır, yuvasız iki üye birbirinden 1,5 m'ye ayrışır (zone 71).
 
 ## 10. Takılma tespiti ve aşamalı kurtarma
 
@@ -180,3 +183,4 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 | 2026-10-02 | v1.0+ | §4.3 ulaşılamaz hedef: bileşen tabanlı kesin tespit, `Detour` kuralı, `NodeLimit` = bilinmiyor, 1,5 sn bırakma süresi `[A]` (ADR-0006 Eki F5-05, F5-05 planı) |
 | 2026-10-02 | v1.0+ | §2 `danger_*`, §4.1 maliyet formülü, §7 güvenlik bölgeleri: hücre cezası modeli, yasaklı (sert, içeriden çıkış serbest) ve güvenli bayrağı, bant ilkeli tehlike, ağırlıklar `[A]` (ADR-0006 Eki F5-06, F5-06 planı) |
 | 2026-10-02 | v1.0+ | §8 güvenli geri çekilme noktası: tek geçişli sel, normalleştirilmiş puan ve ağırlıklar `[A]`, 8 m melee kuralının kesin biçimi (yaklaşmayan adım), yasaklı kuralı, `Safe` bonusu, `NoCandidate` = `last_stand` sinyali (ADR-0006 Eki F5-07, F5-07 planı) |
+| 2026-10-02 | v1.0+ | §9 formasyon ve yığılma: 8 pusula kuşatma yuvası (kullanılabilir = yuva hücresi `Walk`), yapışkan + açgözlü atama, ayrışma vektörü formülü ve kırpma `[A]`, priest ≥ 8 m seçim olarak, MET-NAV-06 ham ölçü (ADR-0006 Eki F5-08, F5-08 planı) |
