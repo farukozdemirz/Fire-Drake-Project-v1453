@@ -3,7 +3,9 @@
 #include "IBotSink.h"
 #include "BotSession.h"
 #include "Telemetry.h"
+#include "ActionExecutor.h"
 #include "ScenarioRunner.h"
+#include "../../BotCore/BotMotion.h"
 #include "../../shared/Ini.h"
 
 #include <algorithm>
@@ -114,6 +116,46 @@ static void SplitNames(const std::string & text, std::vector<std::string> & out)
 			break;
 		pos = sep + 1;
 	}
+}
+
+static void SplitWords(const std::string & text, std::vector<std::string> & out)
+{
+	size_t pos = 0;
+	while (pos < text.size())
+	{
+		size_t start = text.find_first_not_of(" \t\r\n", pos);
+		if (start == std::string::npos)
+			break;
+
+		size_t end = text.find_first_of(" \t\r\n", start);
+		out.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+		pos = end == std::string::npos ? text.size() : end + 1;
+	}
+}
+
+// Rejects NaN/inf and trailing characters (strtod alone would accept both).
+static bool ParseDoubleStrict(const std::string & text, double & out)
+{
+	char * end = nullptr;
+	double value = strtod(text.c_str(), &end);
+	if (end == text.c_str() || *end != '\0')
+		return false;
+	if (!(value == value) || value > 1e30 || value < -1e30)
+		return false;
+
+	out = value;
+	return true;
+}
+
+static bool ParseIntStrict(const std::string & text, long & out)
+{
+	char * end = nullptr;
+	long value = strtol(text.c_str(), &end, 10);
+	if (end == text.c_str() || *end != '\0')
+		return false;
+
+	out = value;
+	return true;
 }
 
 bool BotManager::Startup()
@@ -576,10 +618,14 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandMatch(args);
 	else if (_stricmp(verb.c_str(), "scenario") == 0)
 		m_scenario.Command(args);
+	else if (_stricmp(verb.c_str(), "move") == 0)
+		CommandMove(args);
+	else if (_stricmp(verb.c_str(), "stop") == 0)
+		CommandStop(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -751,9 +797,16 @@ void BotManager::BuildStatusLines(std::vector<std::string> & out)
 		else
 			snprintf(slot, sizeof(slot), "-");
 
+		char pos[32];
+		if (s->m_pUser != nullptr)
+			snprintf(pos, sizeof(pos), "%.1f,%.1f", s->m_pUser->GetX(), s->m_pUser->GetZ());
+		else
+			snprintf(pos, sizeof(pos), "-");
+
 		snprintf(message, sizeof(message),
-			"  %s phase=%s slot=%s despawns=%u",
-			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount);
+			"  %s phase=%s slot=%s despawns=%u pos=%s moving=%d moverx=%u",
+			s->m_charName.c_str(), PhaseName(s->m_phase), slot, (unsigned)s->m_despawnCount,
+			pos, s->m_moveActive ? 1 : 0, (unsigned)s->m_opcodeCount[WIZ_MOVE].load());
 		out.push_back(message);
 	}
 }
@@ -950,6 +1003,158 @@ void BotManager::CommandMatch(const std::string & args)
 	}
 
 	WriteBotLog("BotManager: cmd match: usage: match start <scenario> [seed] | match end [result]");
+}
+
+void BotManager::CommandMove(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() < 3 || words.size() > 4)
+	{
+		WriteBotLog("BotManager: cmd move: usage: move <bot> <x> <z> [speed]");
+		return;
+	}
+
+	const std::string & name = words[0];
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd move: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd move: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	double x = 0.0, z = 0.0;
+	if (!ParseDoubleStrict(words[1], x) || !ParseDoubleStrict(words[2], z))
+	{
+		WriteBotLog("BotManager: cmd move: usage: move <bot> <x> <z> [speed]");
+		return;
+	}
+
+	long speedField = BotCore::kWalkSpeedField;
+	if (words.size() == 4)
+	{
+		if (!ParseIntStrict(words[3], speedField) || speedField < -32768 || speedField > 32767)
+		{
+			WriteBotLog("BotManager: cmd move: usage: move <bot> <x> <z> [speed]");
+			return;
+		}
+	}
+
+	MoveOutcome outcome = ActionExecutor::BeginMove(s, (float)x, (float)z, (int16)speedField,
+		std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == MoveOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd move: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd move: %s walking to (%.1f, %.1f) at speed %d",
+			s->m_charName.c_str(), x, z, (int)speedField);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandStop(const std::string & args)
+{
+	if (args.empty())
+	{
+		WriteBotLog("BotManager: cmd stop: no names given");
+		return;
+	}
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+	std::string lower = args;
+	STRTOLOWER(lower);
+
+	if (lower == "all")
+	{
+		uint32 stopped = 0, notMoving = 0;
+		for (size_t i = 0; i < m_sessions.size(); i++)
+		{
+			BotSession * s = m_sessions[i];
+			if (s->m_phase != BotSession::PHASE_IN_GAME)
+				continue;
+
+			MoveOutcome outcome = ActionExecutor::StopMove(s, now);
+			char message[224];
+			if (outcome.kind == MoveOutcome::ARRIVED)
+			{
+				snprintf(message, sizeof(message),
+					"BotManager: cmd stop: %s stopped at (%.1f, %.1f)",
+					s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ());
+				stopped++;
+			}
+			else
+			{
+				snprintf(message, sizeof(message),
+					"BotManager: cmd stop: %s not moving", s->m_charName.c_str());
+				notMoving++;
+			}
+			WriteBotLog(message);
+		}
+
+		char summary[128];
+		snprintf(summary, sizeof(summary),
+			"BotManager: cmd stop all: %u stopped, %u not moving", (unsigned)stopped, (unsigned)notMoving);
+		WriteBotLog(summary);
+		return;
+	}
+
+	std::vector<std::string> names;
+	SplitNames(args, names);
+
+	for (size_t i = 0; i < names.size(); i++)
+	{
+		const std::string & name = names[i];
+		BotSession * s = FindSession(name.c_str());
+		if (s == nullptr)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd stop: unknown or not spawned bot '%s'",
+				IsKnownBotName(name) ? name.c_str() : "?");
+			WriteBotLog(message);
+			continue;
+		}
+
+		if (s->m_phase != BotSession::PHASE_IN_GAME)
+		{
+			char message[224];
+			snprintf(message, sizeof(message),
+				"BotManager: cmd stop: %s not in game (phase %s)",
+				s->m_charName.c_str(), PhaseName(s->m_phase));
+			WriteBotLog(message);
+			continue;
+		}
+
+		MoveOutcome outcome = ActionExecutor::StopMove(s, now);
+
+		char message[224];
+		if (outcome.kind == MoveOutcome::ARRIVED)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd stop: %s stopped at (%.1f, %.1f)",
+				s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ());
+		else
+			snprintf(message, sizeof(message),
+				"BotManager: cmd stop: %s not moving", s->m_charName.c_str());
+		WriteBotLog(message);
+	}
 }
 
 void BotManager::ParseSpawnList(const std::string & list)
@@ -1165,6 +1370,43 @@ void BotManager::TickSessions()
 				s->m_updateCount++;
 				s->m_pUser->Update();
 			}
+
+			// BeginDespawn() moved the session out of PHASE_IN_GAME; only advance walks that are still live.
+			if (s->m_phase == BotSession::PHASE_IN_GAME)
+			{
+				if (s->m_pUser->isDead())
+				{
+					if (s->m_moveActive)
+					{
+						ActionExecutor::AbandonMove(s);
+						char message[192];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s move stopped (dead)", s->m_charName.c_str());
+						WriteBotLog(message);
+					}
+				}
+				else
+				{
+					MoveOutcome outcome = ActionExecutor::TickMove(s, now);
+					if (outcome.kind == MoveOutcome::ARRIVED)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s arrived at (%.1f, %.1f) after %u packets",
+							s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
+							(unsigned)s->m_movePackets);
+						WriteBotLog(message);
+					}
+					else if (outcome.kind == MoveOutcome::REFUSED || outcome.kind == MoveOutcome::FAILED)
+					{
+						char message[224];
+						snprintf(message, sizeof(message),
+							"BotManager: bot %s move stopped (%s)",
+							s->m_charName.c_str(), outcome.reason);
+						WriteBotLog(message);
+					}
+				}
+			}
 			break;
 
 		case BotSession::PHASE_DESPAWN_WAIT:
@@ -1233,6 +1475,7 @@ void BotManager::TickSessions()
 void BotManager::BeginDespawn(BotSession * s, std::chrono::steady_clock::time_point now)
 {
 	CUser * pUser = s->m_pUser;
+	ActionExecutor::AbandonMove(s);
 	// Socket::Disconnect() does nothing without a socket, so run what a real disconnect runs:
 	// OnDisconnect() removes the account/character names, takes the bot out of its region
 	// and queues WIZ_LOGOUT (LogOut() sets m_deleted until the DB thread has saved the bot).

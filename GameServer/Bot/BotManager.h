@@ -71,6 +71,8 @@ private:
 	void BuildStatusLines(std::vector<std::string> & out);                         // IOCP thread only
 	void RefreshStatusSnapshot(std::chrono::steady_clock::time_point now);         // IOCP thread only
 	void CommandMatch(const std::string & args);
+	void CommandMove(const std::string & args);
+	void CommandStop(const std::string & args);
 	BotSession * FindSession(const char * charName);
 	static bool IsKnownBotName(const std::string & name);   // BOT_TABLE lookup, case-insensitive
 
