@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-08` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-07 (`OnPacket()` ekleme kalıbı, `Regene` iskeleti) — `KAPANDI`; F4-06 (`RegionDelta` görüş denetimi, `TargetHpTarget` test sürücüsü kalıbı) — `KAPANDI`; F4-05 (`m_stateEcho` kullanımı) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -441,3 +441,33 @@ plans/F4-08-aksiyon-yurutucu-party.md — Doğrulama Turu 1 düzeltmeleri. Aynı
 2. ./tools/build.sh Release ve ./tools/build.sh Debug hatasız, ActionExecutor.cpp için uyarı yok. ./tools/run-tests.sh Release ve Debug: 36 tests, 0 failed. grep -n '\\"mode\\"' GameServer/Bot/ActionExecutor.cpp çıktısı boş olmalı. Çıktıları raporuna yaz.
 3. Başka dosyaya dokunma (docs/**, BotCombat.h, testler, GameServer/** içindeki diğer dosyalar dahil). Sunucuyu çalıştırma. Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: **DOĞRULANDI**
+- İncelenen: `bot/F4-08` @ `bb80817` (Tur 2 düzeltme commit'i `40b8304`; taban `gece/2026-10-02`; gece modu, `AUTO_LOOP=1`: birleştirme/push yapılmadı). Çalışma ağacı temizdi; sunucular kapalıydı (`0/3 hazır`).
+- Kriter sonuçları:
+
+| # | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `ActionExecutor.cpp` `touch` + `tools/build.sh Release` rc=0, `ActionExecutor.cpp` yeniden derlendi; log'daki 2 uyarı eski dosyalarda (Bot/, BotCore, Tests için `warning` yok) |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, Bot/BotCore/Tests için uyarı yok |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug` rc=0, `36 tests, 0 failed`; üç yeni test `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş (Tur 1'den beri değişmedi) |
+| K5 | ✔ | `WIZ_PARTY` yalnızca `ActionExecutor.cpp:1840`, `:1978`, `BotSession.cpp:104`; doğrudan party çağrısı deseni boş |
+| K6 | ✔ | Tur 1 kod okuması geçerli (Tur 2 farkı tek JSON anahtarı); guard ve `HandlePacket` sırası değişmedi |
+| K7 | ✔ | Tur 2 farkı kodu etkilemiyor; Tur 1 bulguları geçerli |
+| K8 | ✔ | `BotSession.cpp` silinen tek satır başlatıcı listesindeki `m_regeneEcho(0)` satırı |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı |
+| K10 | ✔ | Dört `.vcxproj`/`.filters` farkı 0; kod farkı yalnızca §4'teki 8 dosya |
+| K11 | ✔ | `file`: `Bot/*.cpp,*.h`, `BotCombat.h`, `CombatTests.cpp` ASCII+CRLF; `git diff --check` yalnızca `docs/STATUS.md` (Claude'un kendi doküman satırlarında markdown sonda boşluk) gösteriyor, kod dosyalarında boş |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(\|SByte\|DByte` `ActionExecutor.*`'de boş |
+| K13 | ✔ | Tur 2 farkı yalnızca bir alan adı; önceki 33 test geçiyor (`36 tests, 0 failed`) |
+| K14 | ✔ | Çalışma zamanı §7 senaryoları 1–7 Tur 1'de geçti (bkz. Tur 1); tek bulgu (yinelenen `mode` anahtarı) `ActionExecutor.cpp:1834`'te `"invite_mode"` olarak düzeltildi, `grep -n '\"mode\"' ActionExecutor.cpp` boş |
+
+- **Tur 1 düzeltme talimatı denetimi:** (1) `git show 40b8304`: tek satır, `"mode"` → `"invite_mode"`, değerler (`create`/`insert`) aynı; (2) derleme/test çıktıları rapordaki iddialarla uyuşuyor (kendim yeniden çalıştırdım); (3) başka dosyaya dokunulmadı (`40b8304` yalnızca `ActionExecutor.cpp`; `bb80817` yalnızca plan dosyası).
+- Bulgular: yok. Notlar:
+  1. **[Not]** Çalışma zamanında `invite_mode` anahtarı Tur 2'de yeniden sınanmadı: değişiklik tek bir string sabiti, derleme ve kod okuması (`ActionExecutor.cpp:1832-1836`) yeterli bulundu. Telemetri okuyucuları (`tools/bot-telemetry-report.py`) `mode` alanını okur, `invite_mode` kullanmaz; etki yok.
+  2. **[Not]** Sunucu reddi `-2` (seviye) ve `-3` (ulus/zone), `RESPAWN_CYCLES=2` ile `pinvite` reddi ve öldürerek ölü bot sınanmadı (Tur 1'deki notla aynı); kod yolları `-1` ile aynı eşleme tablosunu kullanır.
+  3. **[Not]** İnsan testleri bekliyor: `T-ARCH-13` (gerçek istemcide party paneli) ve `T-PARTY-01` (CLI-15 alt sınır ölçümü) `docs/STATUS.md` "Proje sahibi testleri".
+- Birleştirme: gece modu, döngü betiği `gece/2026-10-02`'ye birleştirir; bu oturumda birleştirme/push yapılmadı.
