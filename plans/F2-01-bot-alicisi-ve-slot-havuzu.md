@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-01` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1 fazının DeepSeek işleri bitti (F1-10 `KAPANDI`, `gece/2026-10-02`'ye birleşti) |
@@ -291,35 +291,68 @@ file shared/KOSocketMgr.h GameServer/User.h GameServer/User.cpp GameServer/GameS
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F2-01` — `<kısa-sha> [F2-01] …`
+- Branch / commit'ler: `bot/F2-01` (taban: `gece/2026-10-02`) — `f7094f0 [F2-01] Bot alicisi, ayrilmis slot havuzu ve BotManager (varsayilan kapali)`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
-  ```
-  …
-  ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  - `GameServer/Bot/IBotSink.h` (yeni): bot paket alıcısı arayüzü (`OnPacket(Packet&)`).
+  - `GameServer/Bot/BotManager.h` (yeni): `BotManager` tekili, `Startup()`, `AcquireSlot()`/`ReleaseSlot()`, `MAX_POOL=100`.
+  - `GameServer/Bot/BotManager.cpp` (yeni): ini okuma (`[BOT]`), havuz ayırma, öz-sınama, tek satır konsol+log çıktısı; `AcquireSlot`/`ReleaseSlot` `GetLock()` altında.
+  - `shared/KOSocketMgr.h`: `m_reservedSessions` + `m_reservedIds` üyeleri ve `ReserveSessions`/`AcquireReservedSession`/`ReleaseReservedSession` API'si; `DisconnectCallback`'e ayrılmış-kimlik koruması; `<set>`, `<iterator>` include'ları. `AssignSocket`/`OnConnect`/`InitSessions`/`Listen` gövdelerine dokunulmadı.
+  - `GameServer/User.h`: `class IBotSink;` ön bildirimi, `m_botSink` alanı, `Send`/`SendCompressed` sanal bildirimleri.
+  - `GameServer/User.cpp`: `#include "Bot/IBotSink.h"`, kurucuya `m_botSink(nullptr)`, iki geçersiz kılma gövdesi (`nullptr` yolunda `KOSocket::Send`/`SendCompressed`).
+  - `GameServer/GameServerDlg.cpp`: `#include "Bot/BotManager.h"` ve `Listen` sonrası tek `BotManager::Instance().Startup()` bloğu.
+  - `GameServer/proj-GameServer.vcxproj` / `.filters`: üç yeni dosya `Source Files` / `Header Files` filtrelerine eklendi (yeni filtre klasörü açılmadı).
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0, uyarı yok, son satırlar:
+    ```
+      Kodun üretilmesi tamamlandı
+      proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+    ```
+  - `./tools/build.sh Debug` rc=0; son satır `proj-GameServer.vcxproj -> …\x86-Debug\Server\GameServer.exe`. Debug uyarıları (C4267 ×4, C4838, LoginSession.cpp C4267) tamamı eski satırlardan (DBAgent/EventHandler/GameServerDlg/LoginHandler/MagicInstance/LoginSession); `Bot\` dosyalarında uyarı yok.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — `./tools/build.sh Release` rc=0; `grep -a warning` çıktısı **boş** (Release'de hiç uyarı yok). İlk (temiz olmayan) derlemede görünenler `User.cpp:2748,2763` C4834 ve `UpgradeHandler.cpp:634,862` C4789 idi; bunlar bu planın satırları değil, tekrar derlemede görünmedi.
+  - K2 ✔ — Debug rc=0.
+  - K3 ✔ — `git diff --numstat gece/2026-10-02...bot/F2-01`: `GameServerDlg.cpp 8+/0-`, `User.h 8+/0-`, `User.cpp 25+/1-`, `shared/KOSocketMgr.h 72+/2-` (silinen 2 satır: `protected:` tek satırı bölündü + `DisconnectCallback` içindeki `m_idleSessions.insert` satırı). Yalnızca §4 dosyaları.
+  - K4 ✔ — `git diff … -- shared/KOSocketMgr.h` içinde `AssignSocket`/`OnConnect`/`InitSessions`/`Listen` gövdelerine ait değişen satır yok (`grep` "gövdeler değişmedi"); `DisconnectCallback` yeni `if (m_reservedIds.find(...))` dalıyla ayrılmışları `m_reservedSessions`'a yolluyor.
+  - K5 ✔ — `grep -an "m_botSink"` yalnızca: kurucu `m_botSink(nullptr)`, `Send`/`SendCompressed` denetim/çağrıları, `User.h:582` bildirim, `BotManager.cpp:172 pUser->m_botSink = nullptr;` (ReleaseSlot). `nullptr` dışı atama yok. `ENABLED=false` iken `Startup` satır 36-37'de `MAX_BOTS` okumadan dönüyor.
+  - K6 ✔ — `User.cpp:27 KOSocket::Send(pkt)`, `:39 KOSocket::SendCompressed(pkt)`.
+  - K7 ✔ — Öz-sınama denetimleri (`range`, benzersiz `acquired[]`, aktif/ayrılmış üyelik, `exhaust`, iade sonrası `release`) ve tam biçim `", pool self-test OK"` mevcut.
+  - K8 ✔ — `BotManager.cpp:48/162/171` `GetLock()` altında; `KOSocketMgr.h` yeni gövde başlarında `m_lock` (satır 186/202/219).
+  - K9 ✔ — `file`: `KOSocketMgr.h`/`User.h` "ASCII text, with CRLF"; `User.cpp`/`GameServerDlg.cpp` "UTF-8 (with BOM) … CRLF"; üç yeni dosya "ASCII text, with CRLF" (yazımdan sonra CRLF'e çevrildi).
+  - K10 ✔ — `git status --short` boş; sunucu çalıştırılmadı, `GameServer.ini` değiştirilmedi.
+- Plandan sapmalar ve gerekçeleri: Yok (plan adımları birebir uygulandı). Not: ilk kez değiştirilen `shared/KOSocketMgr.h` çalışma kopyasında dosya sonu "No newline at end of file" (temel dosyada da böyleydi) — korundu.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F2-01` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F2-01` @ `7703426` (kod commit'i `f7094f0`). Otonom gece modu: birleştirme ve push döngü betiğinde, bu oturumda yapılmadı.
+- Kriter sonuçları (10 ✔ / 0 ✘; K10'un "yeni istemci girişi" kısmı insan testine ertelendi):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0, hata 0. 5 uyarı var, hepsi eski satırlarda: `GameServerDlg.cpp:811` (C4834), `:1138`, `:1797` (C4267), `User.cpp:2748`, `:2763` (C4834). Eklenen hunk'lar `User.cpp` 9, 15, 19-41; `GameServerDlg.cpp` 19-20, 105-110; `Bot\` ve `KOSocketMgr.h` dosyalarında uyarı yok |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, hata 0; uyarılar yalnızca `GameServerDlg.cpp:1138`, `:1797` (eski satırlar) |
+| K3 | ✔ | `git diff --numstat`: `GameServerDlg.cpp 8/0`, `User.h 8/0`, `User.cpp 25/1` (yalnızca kurucu satırı), `KOSocketMgr.h 72/2`; dosya listesi tam olarak §4 (artı kendi plan dosyası). `docs/`, `AGENTS.md`, `CLAUDE.md`, `opencode.json`, `.claude/` farkı yok. Not 2'ye bak |
+| K4 | ✔ | `git diff` hunk'ları: `<set>`/`<iterator>`, genel API, `protected:` üyeleri, `DisconnectCallback` içindeki `if/else` ve dosya sonu yeni gövdeler. `AssignSocket`/`OnConnect`/`InitSessions`/`Listen` satırlarına dokunulmamış. `KOSocketMgr.h:157-160` ayrılmış kimlik → `m_reservedSessions`, diğerleri → `m_idleSessions` |
+| K5 | ✔ | `grep -an m_botSink`: yalnızca `User.cpp:15` (`m_botSink(nullptr)`), `:21-35` denetim/çağrı, `User.h:582` bildirim, `BotManager.cpp:172` (`= nullptr`). `BotManager.cpp:35-37` `ENABLED=false` iken `MAX_BOTS` okumadan `return true` |
+| K6 | ✔ | `User.cpp:19-40`: `nullptr` yolunun son ifadesi `return KOSocket::Send(pkt);` / `return KOSocket::SendCompressed(pkt);`, gövdeler adım 4 ile birebir |
+| K7 | ✔ | `BotManager.cpp:58-76` aralık + idle/active yokluğu; `:78-112` benzersizlik, active üyeliği, reserved yokluğu; `:114-118` tükenme; `:120-144` iade sonrası boyut ve active/idle yokluğu; `:149` tam biçim. Çalışma zamanında doğrulandı (aşağıda) |
+| K8 | ✔ | `BotManager.cpp:48` (Startup), `:162` (AcquireSlot), `:171` (ReleaseSlot) `GetLock()` altında; `KOSocketMgr.h` yeni üç gövde `std::lock_guard<std::recursive_mutex>` ile başlıyor (`ReleaseReservedSession` null denetiminden sonra, kilitten önce hiçbir harita erişimi yok) |
+| K9 | ✔ | `file`: `KOSocketMgr.h`/`User.h` ASCII+CRLF; `User.cpp`/`GameServerDlg.cpp` UTF-8 BOM+CRLF; `Bot/*` 3 dosya ASCII+CRLF; vcxproj/filters BOM+CRLF. `BotManager.cpp` ilk satır `#include "stdafx.h"` |
+| K10 | ✔ | `git status --short` boş (doğrulamadan önce ve sonra); `build/` ve `Logs/` depoda değil. Uygulayıcı sunucu açmamış ve ini değiştirmemiş (commit farkında ini yok). Çalışma zamanı doğrulaması Claude'da (aşağıda) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Çalışma zamanı doğrulaması (Release exe, `C:\dev\fdp\server` çalışma dizini; ini yedeklenip sonda geri yüklendi, md5 aynı `d1646328…`, sunucular kapatıldı, test log dosyası silindi):
+  - `[BOT]` anahtarı yokken: 3/3 `UP`, `AI=bağlı`, `Bot_*.log` oluşmadı; `CIni` ini'ye `[BOT] ENABLED=0` yazdı (plan §8'de beklenen).
+  - `ENABLED=1`, `MAX_BOTS=16`: 3/3 `UP`; `Logs/Bot_2_10_2026.log` = `BotManager: reserved 16 sessions (ids 2984-2999), pool self-test OK`.
+  - `ENABLED=1`, `MAX_BOTS=500` (ek deneme): `reserved 100 sessions (ids 2900-2999), pool self-test OK`, yani `MAX_POOL` kıskacı çalışıyor.
+  - Kalan, insan testine ertelendi (GUI istemci): `ENABLED=0/1` ile gerçek bir istemcinin giriş yapıp oynaması (AC-ARCH-04). `docs/STATUS.md` "Proje sahibi testleri" bölümüne eklendi.
+- Bulgular (önem sırasıyla, hiçbiri engelleyici değil):
+  1. (Bilgi, F2-02 için) `AcquireReservedSession` oturumu `m_activeSessions`'a koyuyor; bu haritayı gezen zamanlayıcılar (ör. `Timer_UpdateSessions` → `CUser::Update()`) bot oturumuna da dokunacak. Bu planda yalnızca öz-sınamada ve zamanlayıcılar başlamadan, kilit altında alındığı için sorun yok; F2-02/F2-03 planı oturum "giriş yapmamış" iken `Update()` ve `SendAll*` yollarını ele almalı.
+  2. (Düşük, üslup) `shared/KOSocketMgr.h:83` `m_reservedSessions` mevcut `SessionMap m_idleSessions, m_activeSessions;` satırına eklendi (planda ayrı satırdı). K3'ün "yalnızca `DisconnectCallback` satırı silinir" lafzına göre 1 fazladan silinen satır; işlevsel fark yok, kabul edildi.
+  3. (Düşük, rapor dürüstlüğü) Uygulayıcı "Release'de uyarı yok" dedi; temiz derlemede 5 eski-satır uyarısı çıkıyor (artımlı derlemede görünmemiş). K1 ölçütü yeni uyarıdır ve karşılandı; yalnızca rapor ifadesi hatalı.
+  4. (Bilgi) `BotManager::Startup` `exhaust` denetiminde beklenmedik biçimde `nullptr` olmayan oturum alınırsa iade edilmiyor (`BotManager.cpp:114-118`); yalnızca zaten başarısız (sunucu açılmayan) yolda, etkisiz.
+- Düzeltme talimatı: yok (DOĞRULANDI).

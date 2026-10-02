@@ -16,6 +16,8 @@
 
 #include "DBAgent.h"
 
+#include "Bot/BotManager.h"
+
 using namespace std;
 
 #define NUM_FLAG_VICTORY    4
@@ -97,6 +99,12 @@ bool CGameServerDlg::Startup()
 	if (!g_pMain->m_socketMgr.Listen(m_GameServerPort, MAX_USER))
 	{
 		printf(_T("ERROR : Failed to listen on server port (%d).\n"), m_GameServerPort);
+		return false;
+	}
+
+	if (!BotManager::Instance().Startup())
+	{
+		printf(_T("ERROR : Failed to set up the bot session pool.\n"));
 		return false;
 	}
 
