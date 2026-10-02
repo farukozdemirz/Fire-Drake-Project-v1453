@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-18` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-17 (`SelfState` genişletme, `FillSelfExtras`, `/bot snap`) — `KAPANDI` (merge `6f66164`); F4-16 (`PerceptionSnapshot`, `BuildSnapshot`) — `KAPANDI`; F4-12 (`ObsTable`, `OnPacket()` gözlem kalıbı) — `KAPANDI`; F4-08..F4-10 (party aksiyonları: üyelik oluşturmak için) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -467,3 +467,40 @@ plans/F4-18-algi-takim-gorunumu.md — Doğrulama Turu 1 düzeltmeleri. Aynı br
 2. Tests/BotCoreTests/PerceptionTests.cpp: AddPartyMember adı u16 uzunlukla yazsın (b.U16((uint16_t)strlen(name)) + her karakter b.U8); Buf'a yeni yöntem ekleme, bu yardımcıda Buf::Str kullanma. Perception_Party_ParseMember içine (yeni TEST_CASE açma; toplam 76 kalır) şunları ekle: (a) elle yazılmış gerçek paket: `const uint8_t raw[25] = {0x03,0x07,0x00,0x01,0x07,0x00,0x42,0x6F,0x74,0x57,0x50,0x5F,0x4B,0xB8,0x0B,0xC4,0x09,0x50,0x6A,0x00,0xB0,0x04,0x84,0x03,0x01};` ParsePartyEvent(raw, 25, 5000, ev) true; kind MEMBER; flag 1; member.sid 7; ad "BotWP_K"; maxHp 3000; hp 2500; level 80; cls 106; maxMp 1200; mp 900; nation 1; raw[0..23] (24 bayt, son bayt kesik) false ve kind NONE; (b) ad uzunluğu 0 (u16 0) olan kayıt true ve ad ""; (c) 23 karakterlik ad true; 24 karakterlik ad (u16 24) false; (d) nameLen = 0xFFFF (ardından birkaç bayt) false ve kind NONE. Var olan vakalar (flag 0/2, 3 baytlık ret, kesik, nullptr) kalır.
 3. Dört doğrulama: ./tools/build.sh Release, ./tools/build.sh Debug, ./tools/run-tests.sh Release, ./tools/run-tests.sh Debug (76 test, 0 failed); Perception.h ve PerceptionTests.cpp touch edilip uyarısız derlendiğini kontrol et; ASCII + CRLF korunur; git diff gece/2026-10-02...bot/F4-18 -- BotCore/Perception.h Tests/BotCoreTests/PerceptionTests.cpp GameServer/Bot/BotSession.h GameServer/Bot/BotSession.cpp | grep '^-' | grep -v '^---' boş kalır. Başka dosyaya dokunma. Çalışma zamanı sınamasını (snap çıktısında ad/sınıf/seviye/HP/MP doğruluğu) Claude yapar; sen yapma.
 ```
+
+### Tur 2 — 2026-10-02
+
+**Karar:** DOĞRULANDI (gece modu, `AUTO_LOOP=1`; birleştirmeyi döngü betiği yapar, ben birleştirme/push yapmadım). İncelenen commit: `4fb25c9` (`bot/F4-18`; düzeltme kodu `f824c15`, taban `gece/2026-10-02`). Çalışma ağacı temiz. Tur 1 düzeltme talimatının üç maddesi de uygulandı; DeepSeek'in Tur 2 commit'leri yalnızca `BotCore/Perception.h`, `Tests/BotCoreTests/PerceptionTests.cpp` ve plan dosyasına dokundu (`git show --stat f824c15 4fb25c9`).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | beş dosya `touch` edilip `build.sh Release` rc=0; yalnızca eski `UpgradeHandler.cpp(634,862)` C4789 uyarıları (plan dışı, değişmedi) |
+| K2 | ✔ | `build.sh Debug` rc=0; `warning`/`error` satırı 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `76 tests, 0 failed`; beş yeni ad `[ OK ]` |
+| K4 | ✔ | `windows.h\|stdafx\|GameServer\|shared/` grep'i boş; `#include` yalnızca `<cstddef> <cstdint> <cstring> <cmath>`; yasak sözcük grep'i boş |
+| K5 | ✔ | `UnitView`/`NpcView`/`TeamMemberView` grep'leri boş; `CommandSnap` ve `FillSelfExtras` yasak-erişim grep'leri (CRLF temizlenerek) boş |
+| K6 | ✔ | `std::mutex` = 1; `m_team` yalnızca `BotSession.cpp:158` (lock altında), `:372` (`ResetForRespawn` `m_obsLock` bloğu), `BotManager.cpp:2510` (kopyalama bloğu); `CommandSnap`'te `m_obsLock` = 1; ayrıştırma kilit öncesi |
+| K7 | ✔ | dört dosyada `-` satırı yok; `BotManager.cpp`'de tek `-` satırı izinli yorum |
+| K8 | ✔ | eklenen satırlarda `m_party*Echo`/`m_partyInviteAtMs` yok |
+| K9 | ✔ | statik: yeni ini anahtarı yok, `GameServer/` içinde yalnızca `Bot/`; çalışma zamanında `ENABLED=1` ile denendi, `ENABLED=0` bu turda denenmedi (kod yalnızca `OnPacket()`/`/bot snap` yolunda) |
+| K10 | ✔ | kod farkı yalnızca §4'teki 5 dosya; `*.vcxproj*`, `BotManager.h`, `ActionExecutor.*`, `Telemetry.*`, `ScenarioRunner.*` farkı 0 satır (diğer dosyalar Claude'un kayıt güncellemeleri) |
+| K11 | ✔ | `file`: ASCII + CRLF (5 dosya); kod dosyalarında `git diff --check` boş (yalnızca Claude'un `docs/STATUS.md` markdown satırlarında sondaki boşluk uyarısı) |
+| K12 | ✔ | eklenen satırlarda `printf`(`snprintf` dışı)/`Sleep`/`CreateThread`/`rand(` yok |
+| K13 | ✔ | `CheckMoveStep` 2; diğer 14 `Check*` her biri 1; `BuildSnapshot` (`BotManager.cpp:2535`) ve `BuildTeam` (`:2536`) `CommandSnap`'ten çağrılır |
+| K14 | ✔ | çalışma zamanı, aşağıda (S1–S5; S4 MP değişimiyle gözlendi) |
+
+**Düzeltme incelemesi:** `Perception.h:921-947` üye adı artık `u16 nameLen` + bayt döngüsü (`nameLen > kObsNameMax - 1` → false; `r.ok()` denetimleri; `m.name[nameLen] = '\0'`); alan sırası ve dalın kalanı değişmedi. Testte elle yazılmış 25 baytlık gerçek sunucu paketi (`raw[25]`) ve ad uzunluğu 0 / 23 / 24 / `0xFFFF` vakaları var; `AddPartyMember` ad uzunluğunu `u16` yazıyor, `Buf`'a yeni yöntem eklenmedi.
+
+**Çalışma zamanı (`Release`, `GameServer.ini` değiştirilmedi: md5 öncesi/sonrası `265a8e1c...`, `ENABLED=1`, `MAX_BOTS=16`, `SPAWN_ON_START` boş; üç sunucu `[UP]`, `AI=bağlı`; iş bitince `run-servers.sh stop`, `0/3`; `BotCommands.*` kalmadı; botlar zone 71'de birbirine ~3-5 m yakın doğdu):**
+
+1. **S1 ✔.** `pinvite BotWP_K BotMF_K` + `paccept BotMF_K`: `snap BotWP_K` → `team in_party=1 self_leader=1 leader=self members 1 (total 1)`, `member id=2985 name=BotMF_K class=110 lvl=80 hp=1541/1541 mp=6021/6021 alive dist=5.0` (Tur 1'deki `name=` boş / `class=28240 lvl=6` hatası düzeldi; HP/MP `list` çıktısıyla birebir, sınıf 110 aynı bot için `ally` satırındaki sınıfla aynı); `snap BotMF_K` → `self_leader=0 leader=id=2984`, üye `BotWP_K class=106 lvl=80 hp=5650/5650 mp=5370/5370 leader` (`out_of_view`; "ilk kayıt = lider" `[A]` kuralı teyit); `snap BotPHD_K` → `in_party=0 leader=unknown members 0 (total 0)`.
+2. **S2 ✔.** `pinvite BotWP_K BotPHD_K` + `paccept`: üç botun `snap`'i aynı kimlik kümesini (2984, 2985, 2986) gösteriyor, adlar/sınıflar/HP/MP doğru, lider `id=2984` işaretli.
+3. **S3 ✔.** `ppromote BotWP_K BotMF_K`: `snap BotPHD_K` → `leader=id=2985`, `leader` öneki `BotMF_K` satırında; `snap BotMF_K` → `self_leader=1 leader=self`; `snap BotWP_K` → `self_leader=0 leader=id=2985`.
+4. **S4 ✔ (MP).** `cast BotMF_K 110518 BotWP_E` (El Morad botu `BotWP_E` açıldı): `list` `BotMF_K mp=5961/6021`, aynı komut dosyasındaki `snap BotWP_K` → `member id=2985 … mp=5961/6021 … age=2005ms` (değer birebir, `age` küçük); önceki denemede `snap BotPHD_K` `mp=6001/6021 age=2218ms` (yenilenme güncellemesi). HP değişimi ayrıca tetiklenmedi; `PARTY_HPCHANGE` aynı paketle (`maxHp, hp, maxMp, mp`) hem HP'yi hem MP'yi taşıdığı için kriteri düşürmez.
+5. **S5 ✔.** `pkick BotMF_K BotPHD_K` → `snap BotPHD_K` `in_party=0 members 0`, `snap BotMF_K` bir üye (`BotWP_K`); `pleave BotMF_K` (lider ayrılır) → üç botta `in_party=0 members 0`; yeni party `pinvite BotPHD_K BotWP_K` + `paccept BotWP_K` → `snap BotPHD_K` yalnızca `BotWP_K` (`self_leader=1`), `snap BotWP_K` yalnızca `BotPHD_K` (`leader=id=2986`); eski üyelerden kalıntı yok. Gerilemesiz: `snap` argümansız → `usage: snap <bot>`; `snap NoSuch` → `unknown or not spawned bot '?'`; `see`, `npcs`, `list`, `cast`, `pinvite/paccept/ppromote/pkick/pleave`, `despawn all` (4 bot temiz çıktı) çalıştı; `Bot_*.log`'da `WARN`/`ERROR` 0; tick aralığı ortalaması 110,8 ms (periyot 100 ms), `skipped 0`.
+
+**Bulgular:**
+
+1. **[Çözüldü]** Tur 1 bulgu 1 (üye adı `u16` uzunluklu): düzeltildi, çalışma zamanında doğrulandı; bulgu 2 (gerçek bayt dizili test): eklendi.
+2. **[Not]** `ageMs` yalnızca üyeye dokunan son party paketinin yaşıdır (HP değişimi olmayan üyede dakikalar büyür; örnek `age=113338ms`): tasarım gereği, karar katmanı bunu bilmeli (ADR-0017 Eki F4-18'de not).
+3. **[Not, F4-18 dışı gözlem, teşhis edilmedi]** S1-S5 boyunca görüş tablosu (`ObsTable`) bazı bot çiftlerinde tek yönlüydü (ör. `BotMF_K` aynı bölgede 5 m'deki `BotWP_K`'yi görmüyor, `BotWP_K` `BotMF_K`'yi görüyor; `member … out_of_view` bu yüzdendi). F4-18'in kodu `ObsTable`'a dokunmaz; kaynağı F4-12/F4-13 kapsamıdır. Karar katmanı planlanırken ayrıca incelenmesi gerekebilir.
