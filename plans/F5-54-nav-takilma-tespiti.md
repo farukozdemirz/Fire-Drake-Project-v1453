@@ -2,10 +2,10 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | TASLAK |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-54 (taban: gece/2026-10-02-nav)` |
-| Bağımlı olduğu planlar | F5-02/F5-03 (yol) — `KAPANDI`; F5-09 (kurtarma aşamaları, nav hattı) bu detektörü **kullanır**: F5-09 yazılmadan önce bu plan ve `docs/12` §13.3 okunmalı |
+| Bağımlı olduğu planlar | F5-02/F5-03 (yol) — `KAPANDI`; F5-09 (kurtarma aşamaları, nav hattı) bu detektörü **kullanır**: F5-09 yazılmadan önce bu plan ve `docs/12` §13.3 okunmalı **UYARLAMA GEREKLİ (2026-10-02, birleştirme sırasında):** nav döngüsü F5-09'u bu plandan ÖNCE yazıp uyguladı; `BotCore/NavStuck.h` F5-09'da zaten var (`NavStuckDetector`/`NavStuckMonitor`/`NavPickSideStep`/`NavStuckPenalties`). Bu plan "yeni dosya" değil, F5-09 doğrulanıp birleştikten sonra **F5-09'un dedektörüne niyet ilerlemesi (tick bazlı yerel konum örneği, paket konumundan bağımsız) ve paket aralığından bağımsızlık testleri ekleyen değişiklik** planına çevrilecek; çevrilene kadar TASLAK ve `plans/.queue`'da atlanır. |
 | İlgili gereksinim / kabul | `docs/12` §10 ve §13.3 (tanım), MET-NAV-01 (≤ 2/bot-saat), MET-NAV-02, AC-NAV-01; `docs/reports/degerlendirme-2026-10-02.md` DEG-17 |
 | Tahmini büyüklük | S–M (2 yeni dosya + 2 proje satırı) |
 | Hazırlayan / tarih | Claude / 2026-10-02 (değerlendirme) |
