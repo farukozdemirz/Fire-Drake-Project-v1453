@@ -60,6 +60,7 @@ private:
 	void CommandSpawn(const std::string & args);
 	void CommandDespawn(const std::string & args);
 	void CommandList();
+	void CommandMatch(const std::string & args);
 	BotSession * FindSession(const char * charName);
 
 	// Spawn list from [BOT] SPAWN_ON_START (parsed in Startup(); sessions are never freed).
@@ -100,4 +101,8 @@ private:
 	std::vector<uint32> m_tickUs;                             // IOCP thread only: Tick() durations (us) of the current 5 s window
 	std::chrono::steady_clock::time_point m_perfWindowStart;  // IOCP thread only
 	bool m_perfWindowOpen = false;                            // IOCP thread only
+
+	uint32 m_matchPerfSamples = 0;   // IOCP thread only: PERF_SAMPLEs emitted since the last "match start"
+	uint32 m_matchP95MaxUs = 0;      // IOCP thread only: highest tick_p95_us among them
+	uint32 m_matchTickMaxUs = 0;     // IOCP thread only: highest tick_max_us among them
 };

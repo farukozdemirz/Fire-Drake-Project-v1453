@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdio>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -17,13 +18,24 @@ enum TelemetryLevel
 	TEL_TRACE = 3
 };
 
+// Control events travel in the same queue as normal events, so the writer thread sees
+// match boundaries in emit order. They are never dropped (at most two per match).
+enum TelemetryControl
+{
+	TELCTL_NONE = 0,
+	TELCTL_MATCH_START = 1,
+	TELCTL_MATCH_END = 2
+};
+
 // One queued event. 'ev' is a constant code (never freed); the writer thread builds the JSON line.
 struct TelemetryEvent
 {
 	int64 t;               // steady_clock milliseconds
 	const char * ev;
 	int bot;
-	std::string name;      // empty = field omitted
+	int ctl = 0;           // TelemetryControl
+	// MATCH_START only: path of the match .jsonl (not written as a name)
+	std::string name;
 	std::string fields;    // ready JSON fragment
 };
 
@@ -66,12 +78,37 @@ public:
 
 	TelemetryStats GetStats();
 
+	// Any thread (serialized by an internal mutex; BotManager calls them on the IOCP thread).
+	// Opens a match: validates 'scenario' ([A-Za-z0-9_.-]{1,32}, not starting with '.'), picks the
+	// first free id "<scenario>-<seed>-<run>" (run = 1,2,... ; skips ids whose Logs/bots/<date>/<id>.jsonl
+	// or .summary.json already exists), creates the directory and queues MATCH_START.
+	// 'extraFields' is a ready JSON fragment (no braces, no leading comma, may be empty).
+	// Returns false and sets 'error' (short English text) when telemetry is off/stopped, a match
+	// is already active, or the arguments are invalid.
+	bool BeginMatch(const std::string & scenario, uint32 seed, const std::string & extraFields,
+		std::string & matchId, std::string & error);
+	// Queues MATCH_END for the active match ('result' same character rule as 'scenario',
+	// default handled by the caller). Returns false (error "no active match" / "telemetry is off")
+	// otherwise. 'durationMs' = steady_clock milliseconds since BeginMatch.
+	bool EndMatch(const std::string & result, const std::string & extraFields,
+		std::string & matchId, long long & durationMs, std::string & error);
+	bool IsMatchActive();
+	static std::string EscapeJson(const std::string & in);
+
 private:
 	Telemetry();
 	static uint32 THREADCALL WriterThreadProc(void * lpParam);
 	void WriterLoop();
 	void WriteBatch(std::vector<TelemetryEvent> & batch);
 	bool RunSelfTest();
+
+	bool EmitControl(int ctl, const char * ev, const std::string & path, const std::string & fields); // ignores limits
+	bool EndMatchLocked(const std::string & result, const std::string & extraFields,
+		std::string & matchId, long long & durationMs, std::string & error); // m_matchLock held
+	void AppendLine(std::string & buffer, const TelemetryEvent & e);
+	void FlushBuffer(std::string & buffer, uint64 & pending, FILE * target);
+	void OpenMatchFile(const TelemetryEvent & e);   // writer thread
+	void CloseMatch(const TelemetryEvent & e);      // writer thread
 
 	int m_level;                       // set once in Start(), before the writer thread exists
 	std::atomic<bool> m_running;       // Emit() accepts events
@@ -86,4 +123,22 @@ private:
 	uint64 m_written;
 	uint64 m_droppedSoft;
 	uint64 m_droppedHard;
+
+	// Caller-side match state, guarded by m_matchLock (lock order: m_matchLock, then m_lock; never the reverse).
+	std::mutex m_matchLock;
+	bool m_matchActive;
+	std::string m_matchId;
+	std::string m_matchPath;            // .jsonl path of the active match
+	long long m_matchStartMs;           // steady_clock ms
+	uint64 m_matchBaseSoft;             // m_droppedSoft / m_droppedHard when the match began
+	uint64 m_matchBaseHard;
+	uint32 m_matchRun;                  // last run number handed out (process lifetime)
+
+	// Writer-side match state (writer thread only; Start()/Stop() touch it only while no writer runs).
+	FILE * m_matchFile;                 // nullptr = no match file (also when it could not be opened)
+	std::string m_curMatchId;           // empty = not inside a match
+	std::string m_curMatchPath;
+	std::string m_curStartFields;
+	uint64 m_matchLines;
+	std::map<std::string, uint64> m_matchCounts;   // ev -> lines written in the current match
 };
