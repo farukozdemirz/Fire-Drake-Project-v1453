@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4, §5) |
 | Branch | `bot/F4-50 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`), F4-16 (`PerceptionSnapshot`), F4-23 (`tools/check-perception-contract.py`, R5) — `KAPANDI` |
@@ -188,3 +188,39 @@ plans/F4-50-algi-gozlem-meta-verisi.md — Doğrulama Turu 1 düzeltmeleri. Ayn�
 5. Derle ve sına: `./tools/build.sh Release`, `./tools/build.sh Debug`, `./tools/run-tests.sh Release` ve `Debug` (88 tests, 0 failed), `python3 tools/check-perception-contract.py` (RESULT: PASS) ve `--selftest`. Değişen dosyalar yalnızca bu üçü olmalı (Perception.h, BotManager.cpp, PerceptionTests.cpp); `git diff --check` boş.
 6. Uygulayıcı Raporu'na "Tur 2" ekle: "Plandan sapmalar" bölümünde `moving` sapmasının kaldırıldığını yaz; Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- **Karar: DOĞRULANDI**
+- İncelenen commit: `95d8797` (`bot/F4-50`, taban `gece/2026-10-02` @ `0dfeca1`). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı; birleştirmeyi döngü betiği yapar. Çalışma ağacı temiz. Tur 2 farkı (`44434b5..95d8797`) yalnızca `Perception.h`, `BotManager.cpp`, `PerceptionTests.cpp` ve plan dosyası; Tur 1 düzeltme talimatındaki 6 maddeyle birebir örtüşüyor.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release | ✔ | Dört dosya `touch` + `./tools/build.sh Release` rc=0; `warning`/`error` yalnızca eski `UpgradeHandler.cpp` C4789 (2 satır) |
+| K2 Debug | ✔ | `./tools/build.sh Debug` rc=0; `UpgradeHandler` dışında uyarı/hata 0 |
+| K3 testler | ✔ | `run-tests.sh Release` ve `Debug`: `88 tests, 0 failed` (taban 84 + 4); `Perception_ParseMoveFull`, `_Obs_MoveHistory`, `_Obs_PosClassify`, `_Snap_MetaFields` `[ OK ]` |
+| K4 | ✔ | Eklenen `Perception.h` satırlarında `windows.h|stdafx|GameServer|shared/|#include` grep'i boş |
+| K5a | ✔ | `check-perception-contract.py` `RESULT: PASS`; `--selftest` `selftest OK` rc=0 |
+| K5 AC-LRN-03 | ✔ | `GameServer/Bot` eklenen satırlarında `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` boş |
+| K6 | ✔ | `ParseMoveFull` ve `ObsTable` mantığı Tur 2'de değişmedi (Tur 1'de doğrulandı); kısa/null testleri geçiyor |
+| K7 | ✔ (not) | Tur 2 yalnızca `!= 0` → `> 0` karşılaştırması ve yorumlar; `ageMs` ve `/bot see` mevcut alanları aynı. `^-` lafzı Tur 1 notundaki gerekçeyle |
+| K8 | ✔ | Yeni ini/komut/paket/thread/mutex yok; `GameServer.ini` md5 öncesi/sonrası `265a8e1c...` (ini değiştirilmedi) |
+| K9 | ✔ | Dört kod dosyası tamamen CRLF, eklenen satırlarda ASCII dışı 0; `git diff --check` rc=0; `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok |
+| K10 çalışma zamanı | ✔ | Aşağıda |
+
+**Tur 1 bulgusu kapandı:** `Perception.h:1511` `v.moving = (u.lastSpeed > 0)`, `BotManager.cpp:2354` `bool moving = (u.lastSpeed > 0)`; alan ve `ClassifyPos` yorumları düzeltildi, `ClassifyPos` gövdesi dokunulmadı. `Perception_Snap_MetaFields` ilk blok bilinmeyen hız = durağan = `POS_FRESH`, yeni üçüncü blok `speed 45` MOVE sonrası posAge 4000 → `POS_STALE`, 6500 → `POS_LOST` (yeni `TEST_CASE` yok, toplam 88). Uygulayıcı raporu "Tur 2" dürüst: `moving` sapmasının kaldırıldığını yazıyor, derleme/test iddiaları bağımsız çalıştırmayla uyuşuyor.
+
+**Çalışma zamanı (K10; `Release`, `GameServer.ini` değiştirilmedi (`ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, `SPAWN_ON_START` boş); üç sunucu `[UP]`, `AI=bağlı`; iş bitince `run-servers.sh stop`, `0/3`; `BotCommands.*` kalmadı; Karus botları `BotWP_K`, `BotMF_K`, `BotPHD_K` zone 71'de birbirine ~3-5 m yakın doğdu):**
+
+1. **Yürüyen birim ✔.** `move BotMF_K 1280 970` (45 m, varsayılan hız alanı 45): `snap BotWP_K` yürüyüşün ortasında `ally id=2985 … pos=(1280.0, 940.7) … age=222ms name=BotMF_K pos_age=222ms speed=45 v=(0.00,4.51) pos=fresh`; sonraki `snap`: `pos=(1280.0, 968.5) pos_age=658ms speed=45 v=(0.00,4.50) pos=fresh`. Hız yönü +z (hedef yönü), büyüklük 4,50-4,51 m/s (beklenen 4,5; sapma < %1).
+2. **Durunca ✔.** `arrived at (1280.0, 970.0) after 8 packets` sonrası `snap`: `pos=(1280.0, 970.0) pos_age=11167ms speed=0 v=(0.00,0.00) pos=fresh`; 8 sn sonra `pos_age=18911ms` hâlâ `pos=fresh` (durağan birim bayatlamaz).
+3. **Tur 1 bulgusunun çalışma zamanı kanıtı ✔.** Hiç `WIZ_MOVE` göndermeyen `BotPHD_K`: `speed=? v=(0.00,0.00) pos=fresh`, `pos_age` 62 sn → 104 sn boyunca `fresh` (düzeltmeden önce 6 sn'de `lost` olacaktı). `BotPHD_K`'nin kendi `snap`'inde `ally id=2984 … name=BotWP_K … speed=? pos=fresh`.
+4. **`name=` ✔.** `snap`/`see` satırlarındaki adlar (`BotMF_K`, `BotPHD_K`, `BotWP_K`) `list` çıktısıyla ve spawn loglarıyla aynı; `see` satırında `sid=2985 BotMF_K …` ön adı ile `name=BotMF_K` tutarlı.
+5. **Gerileme ✔.** `list`, `see BotWP_K`, `npcs BotWP_K`, `snap` (üç farklı bot), `move`, `despawn all` (üç bot temiz: `names cleared yes`) çalıştı; `Bot_2_10_2026.log`'da koşu boyunca `WARN`/`ERROR` 0. Mevcut `snap`/`see` alanları (id, nation, class, lvl, pos, dist, alive, age) aynı sırada, yeni alanlar satır sonunda.
+
+**Bulgular**
+
+1. **[Not] `/bot see`/`snap` satırında `pos=` iki kez geçer** (`pos=(x, z)` ve satır sonunda `pos=<fresh|stale|lost>`; plan §3.4 böyle istedi). Betik/ayrıştırıcı yazarken ilk `pos=` konum, son `pos=` tazeliktir; ileride anahtar adı değiştirmek (ör. `pos_state=`) bir plan işi olur. Engel değil.
+2. **[Not] `age=` ve `pos_age=` bilgi kaydı sonrası hiç hareket etmeyen birimde eşit** (örn. 62196 ms): `ageMs` (son paket) ile `posAgeMs` (son `WIZ_MOVE`/kayıt) ayrışması ancak MOVE sonrası başka paket (ör. HP, durum) geldiğinde görünür; birim testi ayrımı kapsıyor, çalışma zamanında yalnızca eşit durum gözlendi. Engel değil.
+3. **[Not] `CommandSee` `moving/posState/v` hesabını `BuildSnapshot`'tan ayrı tekrarlıyor** (`BotManager.cpp:2352-2359`); iki yerin aynı kalması gerekir (şu an aynı: `> 0`). `CommandSee` snapshot kullanmadığı için kabul edilebilir.
+4. **[Not] Plan §6'daki `ageMs` gerilemesi** çalışma zamanında `see`/`snap`'te `age=` değerinin önceki anlamıyla (son paketin yaşı) aynı kalmasıyla doğrulandı.

@@ -108,7 +108,7 @@ Kaynak: `docs/reports/degerlendirme-2026-10-02.md`. Bu planlar F4/F5 döngüleri
 
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
-| [F4-50](F4-50-algi-gozlem-meta-verisi.md) | `Perception` dilim 8 — gözlem meta verisi: oyuncu adı, konum yaşı/hız/kısa geçmiş, kaynak etiketi, tazelik sınıfı; sözleşme aracı R5 güncellemesi (`UnitView.name`) | F4 | DÜZELTME GEREKLİ | `bot/F4-50` (taban: `gece/2026-10-02`) |
+| [F4-50](F4-50-algi-gozlem-meta-verisi.md) | `Perception` dilim 8 — gözlem meta verisi: oyuncu adı, konum yaşı/hız/kısa geçmiş, kaynak etiketi, tazelik sınıfı; sözleşme aracı R5 güncellemesi (`UnitView.name`) | F4 | DOĞRULANDI | `bot/F4-50` (taban: `gece/2026-10-02`) |
 | [F4-51](F4-51-algi-hedef-hp-tablosu.md) | `Perception` dilim 9 — düşman/hedef HP gözlem tablosu (`WIZ_TARGET_HP`), yaşıyla; R5 (`hp`) güncellemesi | F4 | HAZIR | `bot/F4-51` (taban: `gece/2026-10-02`) |
 | [F4-52](F4-52-algi-skill-olay-halkasi.md) | `Perception` dilim 10 — görülen skill olayları (`WIZ_MAGIC_PROCESS` bölge yayını) olay halkası | F4 | HAZIR | `bot/F4-52` (taban: `gece/2026-10-02`) |
 | [F4-53](F4-53-algi-gozlenen-durum-tablosu.md) | `Perception` dilim 11 — gözlenen buff/debuff/heal tablosu (skill olaylarından, tahmin sınıfı `E`) | F4 | TASLAK | `bot/F4-53` (taban: `gece/2026-10-02`) |
