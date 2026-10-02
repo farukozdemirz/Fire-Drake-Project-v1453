@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-01` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | Yok (`BotCore` + `BotCoreTests` zaten var: F3-05 `KAPANDI`) |
@@ -226,5 +226,33 @@ git diff --stat gece/2026-10-02-nav...bot/F5-01
 ---
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
+
+### Tur 1
+
+- **Durum:** UYGULANDI
+- **Branch / commit:** `bot/F5-01` (taban `gece/2026-10-02-nav`); `41f47db` (6 kod dosyası) + bu rapor/Durum commit'i.
+- **Değişen dosyalar:**
+  - `BotCore/NavGrid.h` (yeni, 374 satır): `NavParams` + `NavGrid` (§5.2); `walk` (kenara değmeyen en büyük 4-bağlantılı olay-1 bileşeni, iteratif BFS), `clearance` (8 komşu çok kaynaklı BFS → Chebyshev, 255'te doyum), `EdgeOpen` (eğim + köşe kesme yok, simetrik), `HeightAt` (köşe bilinear + clamp), `Load`/`LoadFile` (§5.1, tam boyut), `Event`/`Height`/`Walk`/`Clearance`/`CellOf`. Yalnızca standart başlıklar; `GameServer`/`shared`/`windows.h` yok.
+  - `Tests/BotCoreTests/NavGridTests.cpp` (yeni, 469 satır): §5.3'teki 10 test; sentetik ızgaralar (`MakeNav`, `RingEvents`, `Filled`, `HeightZeros`, `CellIndex`) + gerçek harita testi.
+  - `tools/nav-export.py` (yeni, 214 satır): `write_navgrid`/`read_navgrid`/`main_component_cells`, `--map-dir`/`--map`/`--out`/`--selftest`; özet satırı + `crc32`; `smd_parse.py`, `arena-report.py` kalıbıyla içe aktarılır.
+  - `BotCore/BotCore.vcxproj`: `<ClInclude Include="NavGrid.h" />` (BOM/CRLF korundu).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: `<ClCompile Include="NavGridTests.cpp" />` (BOM/CRLF korundu).
+  - `tools/run-tests.sh`: EXE kontrolünden sonra `cd "$ROOT"` (göreli `build/nav/...` için).
+- **Derleme çıktısı (son satırlar):**
+  - Release: `NavGridTests.cpp` → `BotCoreTests.vcxproj -> ...\x86-Release\Tests\BotCoreTests.exe`, rc=0; `NavGrid` geçen `warning` satırı yok.
+  - Debug: `71 tests, 0 failed`, rc=0.
+- **Kabul kriterleri (öz-değerlendirme):**
+  - K1 ✔ `--selftest` → son satır `SELFTEST OK`, rc 0.
+  - K2 ✔ satır birebir: `NAVGRID file=… bytes=1579030 n=513 unit=4.0 events0=29522 events1=233647 hmin=-30.633 hmax=82.122 main_component=88508 crc32=4fd154bc`; `stat -c %s` = `1579030`.
+  - K3 ✔ iki koşu aynı `crc32=4fd154bc` (belirlenimli).
+  - K4 ✔ Release rc=0; derleme çıktısında `NavGrid` içeren uyarı yok.
+  - K5 ✔ `--list` on yeni test adını içeriyor.
+  - K6 ✔ `71 tests, 0 failed`; `NAVGRID real map: n=513 main=88508 clearance_max=13 build_ms=8.0`; `SKIPPED` yok.
+  - K7 ✔ dosya taşınınca `SKIPPED`, rc 0; dosya geri konuldu.
+  - K8 ✔ Debug (derleme dahil) rc=0, 71 test.
+  - K9 ✔ saflık grep'i boş; `git diff --stat gece/2026-10-02-nav...bot/F5-01` yalnızca 6 dosya.
+  - K10 ✔ (ölçüm) gerçek haritada `build_ms=8.0` (Release), `clearance_max=13`.
+- **Plandan sapmalar:** Yok. Test dosyasına planın listesine ek olarak `<cstdlib>` eklendi (`std::abs(int)`; plan "gibi" diyor). Plandaki doğrulanmış sayılar (29 522 / 233 647 / 88 508 / −30,633 / 82,122) aynen tuttu.
+- **Açık sorular:** Yok.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
