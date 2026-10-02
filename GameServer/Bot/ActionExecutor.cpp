@@ -548,6 +548,10 @@ static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict
 	case BotCore::CAST_REJECT_TOO_EARLY:
 		rule = "CLI-03"; reason = "too_early"; value = (float)sinceCastingMs; limit = (float)BotCore::CastDurationMs(castTime);
 		break;
+	// MEC-MAG-11: skill range in metres, or the 0.1 m attack field for a weapon-bound Type1.
+	case BotCore::CAST_REJECT_OUT_OF_RANGE:
+		rule = "MEC-MAG-11"; reason = "out_of_range"; value = (c.skillRange > 0) ? c.distanceM : (float)c.distanceField; limit = (c.skillRange > 0) ? (float)c.skillRange : (float)c.weaponRangeField;
+		break;
 	default:
 		break;
 	}
