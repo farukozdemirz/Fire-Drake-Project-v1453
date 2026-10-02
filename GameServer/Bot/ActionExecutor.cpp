@@ -1403,3 +1403,161 @@ StanceOutcome ActionExecutor::SetStance(BotSession * s, bool sit, std::chrono::s
 	}
 	return out;
 }
+
+// --- target HP slice (ADR-0017 Ek F4-06) ---
+
+// Maps a target HP guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static TargetHpOutcome RejectTargetHp(BotSession * s, CUser * user, BotCore::TargetHpVerdict verdict,
+	const BotCore::TargetHpCheck & c)
+{
+	const char * rule = "CLI-10";
+	const char * reason = "out_of_view";
+	float value = (float)c.regionDelta;
+	float limit = (float)BotCore::kViewRegionRadius;
+
+	switch (verdict)
+	{
+	case BotCore::TARGETHP_REJECT_POLL:
+		rule = "CLI-10"; reason = "poll"; value = (float)c.sinceLastMs; limit = (float)BotCore::kTargetHpPollMs;
+		break;
+	case BotCore::TARGETHP_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "TargetHp", rule, reason, value, limit);
+
+	TargetHpOutcome out;
+	out.kind = TargetHpOutcome::REFUSED;
+	out.reason = reason;
+	out.hp = 0;
+	out.maxHp = 0;
+	return out;
+}
+
+TargetHpOutcome ActionExecutor::RequestTargetHp(BotSession * s, const TargetHpTarget & target,
+	std::chrono::steady_clock::time_point now)
+{
+	TargetHpOutcome out;
+	out.kind = TargetHpOutcome::NOTHING;
+	out.reason = "ok";
+	out.hp = 0;
+	out.maxHp = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = TargetHpOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = TargetHpOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	if (target.id < 0 || target.id == (int16)user->GetSocketID())
+	{
+		out.kind = TargetHpOutcome::REFUSED;
+		out.reason = "bad_target";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+
+	uint32 sinceLastMs = 0;
+	if (s->m_hpReqHasLast)
+		sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_hpReqLast).count();
+
+	BotCore::TargetHpCheck c;
+	c.regionDelta = BotCore::RegionDelta(user->GetX(), user->GetZ(), target.x, target.z);
+	c.sameTarget = (s->m_hpReqTargetId == (int)target.id);
+	c.hasLast = s->m_hpReqHasLast;
+	c.sinceLastMs = sinceLastMs;
+	c.actionsInWindow = inWindow;
+
+	BotCore::TargetHpVerdict verdict = BotCore::CheckTargetHp(c);
+	if (verdict != BotCore::TARGETHP_OK)
+		return RejectTargetHp(s, user, verdict, c);
+
+	// New/different target = selection (echo=1); re-polling the selected target = echo=0 (ADR-0017 Ek F4-06 item 3).
+	uint8 echo = c.sameTarget ? 0 : 1;
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"TargetHpReq\",\"target\":" + std::to_string((int)target.id)
+			+ ",\"echo\":" + std::to_string((unsigned)echo);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u16 uid + u8 echo (User.cpp:358-359).
+	Packet pkt(WIZ_TARGET_HP);
+	pkt << uint16(target.id) << uint8(echo);
+
+	s->m_targetHpEcho = 0;
+	s->m_targetHpValues = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	s->m_actionWindow.Record(nowMs);
+	s->m_hpReqTargetId = target.id;
+	s->m_hpReqHasLast = true;
+	s->m_hpReqLast = now;
+
+	// Result only from the reply the server published (m_targetHpEcho / m_targetHpValues); never from the server object.
+	uint64 e = s->m_targetHpEcho.load();
+	bool observed = (e & (1ull << 63)) != 0
+		&& (uint16)(e & 0xFFFF) == (uint16)target.id
+		&& (uint8)((e >> 16) & 0xFF) == echo;
+
+	int32 hp = 0, maxHp = 0;
+	if (observed)
+	{
+		uint64 v = s->m_targetHpValues.load();
+		maxHp = (int32)(uint32)(v & 0xFFFFFFFF);
+		hp = (int32)(uint32)(v >> 32);
+	}
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"TargetHpReq\""
+			+ ",\"ok\":" + (observed ? "true" : "false")
+			+ ",\"reason\":\"" + (observed ? "observed" : "no_result") + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		if (observed)
+			fields += ",\"hp\":" + std::to_string((int)hp)
+				+ ",\"max_hp\":" + std::to_string((int)maxHp);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (observed)
+	{
+		out.kind = TargetHpOutcome::SENT;
+		out.reason = "observed";
+		out.hp = hp;
+		out.maxHp = maxHp;
+	}
+	else
+	{
+		out.kind = TargetHpOutcome::FAILED;
+		out.reason = "no_result";
+	}
+	return out;
+}

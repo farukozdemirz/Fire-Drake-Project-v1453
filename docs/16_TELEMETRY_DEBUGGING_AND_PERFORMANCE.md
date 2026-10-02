@@ -42,7 +42,7 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 |---|---|---|
 | `MATCH_START` / `MATCH_END` | Senaryo başı/sonu | senaryo, seed, kompozisyonlar, ekipman seti, sonuç, süre, commitler, veri hash'leri |
 | `DECISION` | Karar katmanı bir aksiyon seçtiğinde (her tick değil; **seçim değiştiğinde** veya en az 1 sn'de bir) | §4 şeması |
-| `ACTION_SUBMIT` | Aksiyon sunucu handler'ına verildiğinde | aksiyon tipi, skill/item kimliği, hedef, konum; `UsePotion` için `item`, `skill`, `kind` (`hp`/`mp`), `stock` (paket öncesi çanta adedi), `use` (seri sırası); `ACTION_RESULT` `stock_after` taşır (yalnızca operatör içindir, sonuç eşlemesi buna bakmaz) |
+| `ACTION_SUBMIT` | Aksiyon sunucu handler'ına verildiğinde | aksiyon tipi, skill/item kimliği, hedef, konum; `UsePotion` için `item`, `skill`, `kind` (`hp`/`mp`), `stock` (paket öncesi çanta adedi), `use` (seri sırası); `ACTION_RESULT` `stock_after` taşır (yalnızca operatör içindir, sonuç eşlemesi buna bakmaz); `TargetHpReq` için `target` (hedef kimliği), `echo` (1 seçim, 0 yoklama), `ACTION_RESULT` `reason` `observed`/`no_result` ve `observed` iken `hp`/`max_hp` (yalnızca sunucunun `WIZ_TARGET_HP` cevabından); `FAIRNESS_REJECT` `type:"TargetHp"` (`CLI-10` `out_of_view`/`poll`, `CLI-11` `rate`) |
 | `ACTION_RESULT` | Handler sonucu (başarılı/başarısız + sebep) | sonuç kodu, sunucu fail sebebi, gecikme |
 | `FAIRNESS_REJECT` | `BotFairnessGuard` bir aksiyonu reddettiğinde | ihlal edilen kural, beklenen bekleme süresi |
 | `DAMAGE` | Bot hasar verdiğinde/aldığında | kaynak, hedef, miktar, skill, hedef HP önce/sonra |

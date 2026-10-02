@@ -13,8 +13,10 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_potActive(false), m_potItemId(0), m_potSkillId(0), m_potKind(0),
 		m_potLeft(0), m_potSent(0), m_potOk(0), m_potHasLast(false),
 		m_stanceHasLast(false),
+		m_hpReqTargetId(-1), m_hpReqHasLast(false),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
-		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0)
+		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
+		m_targetHpEcho(0), m_targetHpValues(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -67,6 +69,20 @@ void BotSession::OnPacket(Packet & pkt)
 		if ((int)sid == m_castSelfId.load())
 			m_stateEcho = (1ull << 63) | (uint64(bType) << 32) | uint64(nBuff);
 	}
+
+	// Target HP reply: u16 tid, u8 echo, i32 maxHp, i32 hp, u16 damage (User.cpp:2384-2386). Every WIZ_TARGET_HP the bot
+	// receives is recorded (request replies and attacker-side damage notices alike); ActionExecutor::RequestTargetHp
+	// clears the record before its request and matches tid + echo afterwards, on the same thread.
+	// The values word is written first so a reader that sees the valid bit also sees the values.
+	if (opcode == WIZ_TARGET_HP && pkt.size() >= 13)
+	{
+		uint16 tid = pkt.read<uint16>(0);
+		uint8 echo = pkt.read<uint8>(2);
+		int32 maxHp = pkt.read<int32>(3);
+		int32 hp = pkt.read<int32>(7);
+		m_targetHpValues = (uint64(uint32(hp)) << 32) | uint64(uint32(maxHp));
+		m_targetHpEcho = (1ull << 63) | (uint64(echo) << 16) | uint64(tid);
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -108,6 +124,10 @@ void BotSession::ResetForRespawn()
 	m_potOk = 0;
 	m_potHasLast = false;
 	m_stanceHasLast = false;
+	m_hpReqTargetId = -1;
+	m_hpReqHasLast = false;
+	m_targetHpEcho = 0;
+	m_targetHpValues = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;
