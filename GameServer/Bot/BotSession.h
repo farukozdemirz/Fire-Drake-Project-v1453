@@ -115,6 +115,11 @@ public:
 	bool m_partyManageHasLast;                             // IOCP thread only: m_partyManageLast is valid for this spawn
 	std::chrono::steady_clock::time_point m_partyManageLast;   // IOCP thread only: when the last party promote / kick went out
 
+	bool m_chatHasLast;                                    // IOCP thread only: m_chatLast and m_chatLastHash are valid for this spawn
+	std::chrono::steady_clock::time_point m_chatLast;      // IOCP thread only: when the last party chat message went out
+	uint32 m_chatLastHash;                                 // IOCP thread only: BotCore::ChatTextHash of that message
+	BotCore::ChatRateWindow m_chatWindow;                  // IOCP thread only: CLI-18 per-minute window
+
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;
 	std::atomic<uint32> m_opcodeCount[256];
@@ -130,4 +135,6 @@ public:
 	std::atomic<uint64> m_partyErrorEcho;                  // written by OnPacket(): valid bit | uint16(error code) of the last PARTY_INSERT refusal (payload of 3 bytes)
 	std::atomic<uint64> m_partyJoinEcho;                   // written by OnPacket(): valid bit | sid << 8 | flag of the last PARTY_INSERT member packet
 	std::atomic<uint64> m_partyLeaveEcho;                  // written by OnPacket(): valid bit | kind << 16 | sid of the last PARTY_REMOVE (kind 1, sid = the removed member) or PARTY_DELETE (kind 2, sid 0)
+	std::atomic<uint32> m_chatEchoHash;                    // written by OnPacket() BEFORE m_chatEcho: BotCore::ChatTextHash of the last WIZ_CHAT message received (0 when longer than kChatMaxLen)
+	std::atomic<uint64> m_chatEcho;                        // written by OnPacket(): valid bit | chat type << 32 | uint16 sender sid of the last WIZ_CHAT received
 };

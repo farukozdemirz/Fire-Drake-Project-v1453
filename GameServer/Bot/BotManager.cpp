@@ -648,10 +648,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandPartyManage(args, false);
 	else if (_stricmp(verb.c_str(), "pkick") == 0)
 		CommandPartyManage(args, true);
+	else if (_stricmp(verb.c_str(), "pchat") == 0)
+		CommandPartyChat(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -2170,6 +2172,54 @@ void BotManager::CommandPartyManage(const std::string & args, bool kick)
 	else
 		snprintf(message, sizeof(message),
 			"BotManager: cmd %s: %s failed (%s)", verb, s->m_charName.c_str(), outcome.reason);
+	WriteBotLog(message);
+}
+
+void BotManager::CommandPartyChat(const std::string & args)
+{
+	size_t space = args.find(' ');
+	std::string name = space == std::string::npos ? args : args.substr(0, space);
+	std::string text = space == std::string::npos ? "" : Trim(args.substr(space + 1));
+
+	if (name.empty() || text.empty())
+	{
+		WriteBotLog("BotManager: cmd pchat: usage: pchat <bot> <text>");
+		return;
+	}
+
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pchat: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pchat: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	ChatOutcome outcome = ActionExecutor::RequestChatParty(s, text, std::chrono::steady_clock::now());
+
+	char message[256];
+	if (outcome.kind == ChatOutcome::REFUSED)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pchat: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	else if (outcome.kind == ChatOutcome::SENT)
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pchat: %s sent (%d chars)", s->m_charName.c_str(), outcome.length);
+	else
+		snprintf(message, sizeof(message),
+			"BotManager: cmd pchat: %s failed (%s)", s->m_charName.c_str(), outcome.reason);
 	WriteBotLog(message);
 }
 

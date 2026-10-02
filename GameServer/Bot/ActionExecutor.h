@@ -128,6 +128,18 @@ struct PartyMemberTarget
 	bool inMyParty;       // the target is in the acting bot's party (the party panel lists it)
 };
 
+// Result of ActionExecutor::RequestChatParty (ADR-0017 Ek F4-11).
+struct ChatOutcome
+{
+	enum Kind { NOTHING, SENT, REFUSED, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "sent" (the bot's own party chat broadcast came back).
+	                       // FAILED: "no_result" (no matching broadcast: muted, jailed, no longer in a party...).
+	                       // REFUSED: "not_in_game", "dead", "invite_pending", "not_in_party", or a guard verdict
+	                       // ("bad_text", "chat_gap", "chat_dup", "chat_minute", "rate")
+	int length;            // message length in bytes (0 when refused before the text was looked at)
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -258,5 +270,14 @@ public:
 	// as RequestPartyPromote. Result only from published replies: the sender's own PARTY_REMOVE with sid == target ->
 	// SENT "kicked"; PARTY_DELETE (only the leader remained) -> SENT "disbanded"; neither -> FAILED "no_result".
 	static PartyOutcome RequestPartyKick(BotSession * s, const PartyMemberTarget & target,
+		std::chrono::steady_clock::time_point now);
+
+	// One-shot party chat message (WIZ_CHAT: PARTY_CHAT + the text through CUser::HandlePacket()) after the guard (CLI-18:
+	// printable ASCII 1..128 bytes not starting with '+', >= 4 s since the last message, not the same text within 8 s,
+	// <= 6 messages per minute; CLI-11). Preconditions without an event: REFUSED "not_in_game", "dead", "invite_pending"
+	// (an invitation must be accepted or declined first), "not_in_party". Result only from the published reply: the server
+	// broadcasts the message to every party member including the sender -> the bot's own WIZ_CHAT (type PARTY_CHAT,
+	// sender == its id, same text hash) -> SENT "sent"; none -> FAILED "no_result".
+	static ChatOutcome RequestChatParty(BotSession * s, const std::string & text,
 		std::chrono::steady_clock::time_point now);
 };
