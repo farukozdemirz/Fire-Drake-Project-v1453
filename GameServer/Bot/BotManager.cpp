@@ -654,10 +654,12 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandSee(args);
 	else if (_stricmp(verb.c_str(), "npcs") == 0)
 		CommandNpcs(args);
+	else if (_stricmp(verb.c_str(), "snap") == 0)
+		CommandSnap(args);
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -2407,6 +2409,118 @@ void BotManager::CommandNpcs(const std::string & args)
 			(unsigned)n.id, (unsigned)n.protoId, (unsigned)n.type, n.name, (unsigned)n.nation,
 			(unsigned)n.level, nx, nz, dist, n.dead ? "dead" : "alive",
 			n.gateOpen ? "open" : "closed", (unsigned)n.objectType, (unsigned long long)age);
+		WriteBotLog(message);
+	}
+}
+
+void BotManager::CommandSnap(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() != 1)
+	{
+		WriteBotLog("BotManager: cmd snap: usage: snap <bot>");
+		return;
+	}
+
+	BotSession * s = FindSession(words[0].c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap: unknown or not spawned bot '%s'",
+			IsKnownBotName(words[0]) ? words[0].c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	// Copy both tables under the lock (only these two assignments), then build and format with the lock released.
+	BotCore::ObsTable obsCopy;
+	BotCore::NpcTable npcCopy;
+	{
+		std::lock_guard<std::mutex> lock(s->m_obsLock);
+		obsCopy = s->m_obs;
+		npcCopy = s->m_npcs;
+	}
+
+	// The only read of the bot's own session: its CUser, which the contract allows.
+	CUser * me = s->m_pUser;
+	BotCore::SelfState self;
+	memset(&self, 0, sizeof(self));
+	self.sid = me->GetID();
+	self.nation = me->GetNation();
+	self.cls = me->GetClass();
+	self.level = me->GetLevel();
+	self.x = me->GetX();
+	self.z = me->GetZ();
+	self.hp = me->GetHealth();
+	self.maxHp = me->GetMaxHealth();
+	self.mp = me->GetMana();
+	self.maxMp = me->GetMaxMana();
+	self.dead = me->isDead();
+	self.sitting = (me->m_bResHpType == USER_SITDOWN);
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
+
+	BotCore::PerceptionSnapshot snap;
+	BotCore::BuildSnapshot(self, obsCopy, npcCopy, nowMs, snap);
+
+	char message[320];
+
+	snprintf(message, sizeof(message),
+		"BotManager: cmd snap: %s t=%llu self sid=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) hp=%d/%d mp=%d/%d %s %s",
+		s->m_charName.c_str(), (unsigned long long)snap.tMs, (unsigned)snap.self.sid, (unsigned)snap.self.nation,
+		(unsigned)snap.self.cls, (unsigned)snap.self.level, snap.self.x, snap.self.z,
+		snap.self.hp, snap.self.maxHp, snap.self.mp, snap.self.maxMp,
+		snap.self.dead ? "dead" : "alive", snap.self.sitting ? "sitting" : "standing");
+	WriteBotLog(message);
+
+	snprintf(message, sizeof(message),
+		"BotManager: cmd snap:   enemies %d (total %d), allies %d (total %d), npcs %d (total %d)",
+		snap.enemyCount, snap.enemyTotal, snap.allyCount, snap.allyTotal, snap.npcCount, snap.npcTotal);
+	WriteBotLog(message);
+
+	const int kPrintMax = 10;
+
+	for (int i = 0; i < snap.enemyCount && i < kPrintMax; i++)
+	{
+		const BotCore::UnitView & u = snap.enemies[i];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   enemy id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums",
+			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
+			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs);
+		WriteBotLog(message);
+	}
+
+	for (int i = 0; i < snap.allyCount && i < kPrintMax; i++)
+	{
+		const BotCore::UnitView & u = snap.allies[i];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   ally id=%u nation=%u class=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s%s age=%ums",
+			(unsigned)u.id, (unsigned)u.nation, (unsigned)u.cls, (unsigned)u.level, u.x, u.z, u.dist,
+			u.dead ? "dead" : "alive", u.sitting ? " sitting" : "", (unsigned)u.ageMs);
+		WriteBotLog(message);
+	}
+
+	for (int i = 0; i < snap.npcCount && i < kPrintMax; i++)
+	{
+		const BotCore::NpcView & n = snap.npcs[i];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   npc id=%u proto=%u type=%u nation=%u lvl=%u pos=(%.1f, %.1f) dist=%.1f %s gate=%s age=%ums",
+			(unsigned)n.id, (unsigned)n.protoId, (unsigned)n.type, (unsigned)n.nation, (unsigned)n.level,
+			n.x, n.z, n.dist, n.dead ? "dead" : "alive", n.gateOpen ? "open" : "closed", (unsigned)n.ageMs);
 		WriteBotLog(message);
 	}
 }

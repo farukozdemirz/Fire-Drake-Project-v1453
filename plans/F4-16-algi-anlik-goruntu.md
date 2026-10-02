@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-16` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`, `UnitObs`, `/bot see`) — `KAPANDI` (merge `dcd8f80`); F4-14 (`NpcTable`, `NpcObs`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F4-15 (NPC tablosu bölge değişiminde dolar) — `KAPANDI` (merge `bfdd839`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -252,14 +252,79 @@ git diff --check gece/2026-10-02...bot/F4-16
 
 ### Tur 1
 
-**Durum:** —
+**Durum:** UYGULANDI
 
 **Branch ve commit'ler:**
+- Branch: `bot/F4-16` (taban: `gece/2026-10-02`, `3ae9e17`).
+- `7e19210` — `[F4-16] PerceptionSnapshot ve /bot snap uygulandı` (4 kod dosyası).
 
 **Değişen dosyalar ve nedenleri:**
+- `BotCore/Perception.h` (+168): `#include <cmath>`; dosya sonuna `kSnap*` sabitleri, `SelfState`/`UnitView`/`NpcView`/`PerceptionSnapshot`, `SnapInsertNearest` şablonu ve `BuildSnapshot` eklendi (saf mantık, yalnızca ekleme).
+- `Tests/BotCoreTests/PerceptionTests.cpp` (+249): `MakeSelf` yardımcısı ve dört `TEST_CASE` (`Perception_Snapshot_Split`, `_OrderCap`, `_TieAndNation`, `_Npcs`) eklendi; mevcut testlere dokunulmadı.
+- `GameServer/Bot/BotManager.h` (+1): `CommandSnap` bildirimi.
+- `GameServer/Bot/BotManager.cpp` (+115/−1): `snap` dağıtım dalı, bilinmeyen komut metnine `snap` eklendi (bilinçli tek değişen mevcut satır), `CommandSnap` eklendi (`CommandSee`/`CommandNpcs` kalıbı: tablolar `m_obsLock` altında tek blokta kopyalanır, `BuildSnapshot` ve log kilit dışında).
 
 **Derleme çıktılarının son satırları:**
+- Release: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`, rc=0; `Perception.h`/`PerceptionTests.cpp`/`BotManager.cpp`/`BotManager.h` touch'lanıp yeniden derlendi, bu dosyalarda uyarı 0 (kalan uyarılar `GameServerDlg.cpp`'nin eski 816/1143/1802 satırlarında).
+- Debug: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`, rc=0.
+- `tools/run-tests.sh Release`: `67 tests, 0 failed`, rc=0; dört yeni test adı `[ OK ]` (önceki 63 test değişmedi).
+- `tools/run-tests.sh Debug`: `67 tests, 0 failed`, rc=0.
 
 **Kriter öz-değerlendirmesi:**
+- K1 ✔ Release rc=0; dört dokunulan dosyada uyarı yok (`USER_SITDOWN` `stdafx.h` üzerinden görünüyor, yeni include gerekmedi).
+- K2 ✔ Debug rc=0.
+- K3 ✔ Release ve Debug `67 tests, 0 failed`; dört yeni ad çıktıda; önceki 63 test geçiyor.
+- K4 ✔ `grep` sunucusuzluk ve include denetimleri boş; include'lar yalnızca `<cstddef>`, `<cstdint>`, `<cstring>`, `<cmath>`; `std::min/max`/`new`/`malloc`/`vector`/`string` yok.
+- K5 ✔ `UnitView`/`NpcView` sözleşme grep'i boş; `CommandSnap` yalnızca sayılan `CUser` üyelerini okur, yasak erişim grep'i boş.
+- K6 ✔ `invisibility` snapshot bölümünde alan + tek kopyalama ataması; koşul yok; test `invisibility == 3` doğrular.
+- K7 ✔ `CommandSnap`'te `m_obsLock` tek blok (grep -c = 1), yorumda ad yok; `BuildSnapshot`/`WriteBotLog` kilit dışında; `BotSession.h` mutex sayısı 1.
+- K8 ✔ Üç dosyada `-` satırı yok; `BotManager.cpp`'de tek `-` bilinmeyen komut metni satırı.
+- K9 ✔ Yeni kod yalnızca `/bot snap`; `Startup/Tick/TickSessions/BuildStatusLines`/ini değişmedi, yeni anahtar yok.
+- K10 ✔ `git diff --stat` yalnızca 4 dosya; `*.vcxproj*` farkı boş; `BotSession/ActionExecutor/Telemetry/ScenarioRunner` farkta yok.
+- K11 ✔ `file` dört dosyada ASCII + CRLF (değişmedi); `git diff --check` boş.
+- K12 ✔ Yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok; grep'in bulduğu iki satır (54 `fprintf`, 307 `printf`) taban dosyada da var (eski).
+- K13 ✔ `CheckMoveStep` 2; diğer on dört `Check*` her biri ≥ 1.
+- K14 — Claude'un `/plan-dogrula` çalışma zamanı işi.
 
 **Sorular / sapmalar:**
+- Yok. Planın kabul ettiği `BuildSnapshot`'ın `SnapInsertNearest` şablon yardımcısı planla uyumlu biçimde yazıldı; ek bir yardımcı gerekmedi.
+
+---
+
+## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+**Karar:** DOĞRULANDI (gece modu; birleştirmeyi döngü betiği yapar, push yok). İncelenen commit: `fee1f9a` (`bot/F4-16`; kod `7e19210`, taban `gece/2026-10-02`). Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `build.sh Release` rc=0; `Perception.h`, `PerceptionTests.cpp`, `BotManager.cpp`, `BotManager.h` `touch` edilip yeniden derlendi: bu dosyalarda uyarı/hata satırı yok (kalan uyarı yalnızca eski `UpgradeHandler.cpp` C4789) |
+| K2 | ✔ | `build.sh Debug` rc=0 |
+| K3 | ✔ | `run-tests.sh Release` rc=0, `67 tests, 0 failed`, dört yeni ad `[ OK ]`; `Debug` aynı `67 tests, 0 failed`. Test gövdeleri okundu: plandaki değerler (dist 5/10/50, `ageMs` 250/0/0xFFFFFFFF, 40→32 kırpma, eşitlikte küçük kimlik, ulus değişimi, ölü NPC listede) birebir sınanıyor |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `Perception.h:8-11` (`<cstddef>`, `<cstdint>`, `<cstring>`, `<cmath>`); `std::min/max/new/malloc/vector/string` grep'i boş |
+| K5 | ✔ | `UnitView` ve `NpcView` grep'leri boş; `CommandSnap` yasak-erişim grep'i boş; `CommandSnap` `CUser`'dan yalnızca `GetID/GetNation/GetClass/GetLevel/GetX/GetZ/GetHealth/GetMaxHealth/GetMana/GetMaxMana/isDead/m_bResHpType` okur (`BotManager.cpp:2449-2461`) |
+| K6 | ✔ | `invisibility` snapshot bölümünde yalnızca `Perception.h:813` (alan) ve `:906` (kopyalama ataması); koşul yok; `Perception_Snapshot_Split` `invisibility == 3` doğrular |
+| K7 | ✔ | `CommandSnap` içinde `m_obsLock` 1 kez (`:2443`, yalnızca iki kopyalama ataması); `BuildSnapshot` ve `WriteBotLog` kilit dışında; `BotSession.h` `std::mutex` sayısı 1 |
+| K8 | ✔ | `Perception.h`, `PerceptionTests.cpp`, `BotManager.h` farkında `-` satırı yok; `BotManager.cpp` tek `-` satırı: bilinmeyen komut metni (`... see, npcs)` → `... npcs, snap)`) |
+| K9 | ✔ | yeni kod yalnızca `snap` dağıtım dalı ve `CommandSnap`; `Startup/Tick/TickSessions/BuildStatusLines` farkta yok; `GameServer/` içinde yalnızca `Bot/`; yeni ini anahtarı yok. `ENABLED=0` çalışma zamanında bu turda denenmedi (statik denetim; komut kanalı kapalıyken tüketilmez, F4-15 turunda çalışma zamanında doğrulanmış kalıp) |
+| K10 | ✔ | `--stat`: 4 kod dosyası + plan; `*.vcxproj*` farkı 0 satır; `BotSession/ActionExecutor/Telemetry/ScenarioRunner` farkta yok |
+| K11 | ✔ | dört dosya `ASCII text, with CRLF line terminators`; `git diff --check` boş (rc=0) |
+| K12 | ✔ | `GameServer/Bot` farkının eklenen satırlarında `printf/Sleep/CreateThread/rand(` yok (yalnızca `snprintf`) |
+| K13 | ✔ | `CheckMoveStep` 2; diğer 14 `Check*` (`CheckAttack`..`CheckNpcIn`) her biri 1 |
+| K14 | ✔ | çalışma zamanı, aşağıda |
+
+**Çalışma zamanı (K14; `Release`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions` (ini değiştirilmedi; plan `summary` demişti, `decisions` yalnızca daha çok jsonl satırı üretir), `SPAWN_ON_START` boş, zone 71; üç sunucu `[UP]`; `GameServer.ini` md5 aynı `265a8e1c...`; iş bitince `run-servers.sh stop`, `BotCommands.txt` kalmadı):**
+
+1. **Tek bot, ham tablolarla tutarlılık:** `spawn BotWP_K` → `snap`: `self sid=2984 nation=1 class=106 lvl=80 pos=(1380.0, 1060.0) hp=5650/5650 mp=5370/5370 alive standing` (`list` konumu ve `hp=5650/5650` ile aynı); `enemies 0, allies 0, npcs 25 (total 25)`; `npcs` çıktısı `sees 25 npc(s)`. İlk 10 NPC satırı (`12688` dist 16.1, `13023` 18.0, `13014` 23.8, `13026` 25.1 ... `13009` 34.7) `npcs` satırlarındaki `id/proto/type/pos/dist` ile aynı, dist artan.
+2. **Üç bot, sınıflandırma:** `BotMF_K` spawn edilince `snap BotWP_K` → `allies 1 (total 1)`, `ally id=2985 ... dist=30.4`; `see` aynı (`sid=2985`, `dist=30.4`). `BotWG_E` spawn noktası (630, 920) diğerlerinin bölgesinde olmadığından `move BotWG_E 1380 1070` ile yürütüldü (hız 90 `speed_field` ile reddedildi, varsayılan 45; ~3 dk); kule ateşiyle öldü (hp 266 → 0, `dead`). Sonra: `see BotWP_K` `enemies 1, allies 1` = `snap BotWP_K` `enemies 1 (total 1), allies 1 (total 1)`; `enemy id=2986 nation=2 class=206 pos=(1328.2, 1059.7) dist=51.8 dead` (`see` satırı `sid=2986 ... dist=51.8 dead`); `snap BotWG_E`: `self ... nation=2 hp=0/5650 dead standing`, `enemies 2 (total 2)` (`id=2984 dist=51.8`, `id=2985 dist=64.4`, dist artan) = `see BotWG_E` `enemies 2`, `sid=2984/2985` ve aynı dist; `snap BotMF_K`: `enemy id=2986 dist=64.4 dead`, `ally id=2984 dist=30.4`.
+3. **Durum bayrakları:** `sit BotWP_K` → `snap` self `alive sitting`; `stand` → `standing`. Ölü bot: self `dead` ve başkasının tablosunda `dead` (yukarıda). Başkalarının oturma yayını (bilinen sınır) bu turda ayrıca incelenmedi.
+4. **Gerilemesiz ve hata yolları:** `snap` (argümansız) ve `snap BotWP_K extra` → `usage: snap <bot>`; `snap NoSuch` → `unknown or not spawned bot '?'`; despawn edilmiş botta `not in game (phase despawned)`; `move`, `stop`, `sit`, `stand`, `regene` (`respawned at (630.0, 920.0)`), `see`, `npcs`, `list`, `despawn all` (`pool free 16/16`) çalıştı; `pot/target/pchat/attack/cast/pinvite` argümansız yalnızca kullanım satırı yazdı (tam senaryolar bu turda denenmedi). Sunucu çökmedi. `PERF_SAMPLE` 77 örnek: `skipped_ticks` 0, sessiz pencerelerde `tick_p95_us` 65-152 (medyan ~99), `tick_p50_us` 2.
+
+**Bulgular (önem sırasıyla; hiçbiri engel değil):**
+1. `tick_p95_us` plandaki "≤ 500" sınırını yalnızca komut yoklaması/komut yürütme pencerelerinde aştı (9/77 pencere, en çok 3143 µs); aynı pencerelerde `see`, `snap`, `regene`, `despawn all` komutlarım vardı (komut dosyası işleme + çok satırlı günlük yazımı). Yalnızca `snap` içeren pencereyi komutlardan ayırmak mümkün olmadı; F4-15 turunda `list` komutlarında görülen ölçüm artefaktıyla aynı örüntü. Komutsuz pencerelerde sınır karşılanıyor. İzlenecek: sonraki dilimde `Tick()` içinde periyodik görüntü kurulursa `BuildSnapshot` maliyeti ayrıca ölçülmeli.
+2. `BotManager.cpp:2447` `s->m_pUser` boşluk denetimi yok; `CommandNpcs` ile aynı kalıp (faz `PHASE_IN_GAME` denetiminden sonra okunuyor); davranış tutarlı, not.
+3. `age` hareketsiz birimde büyür (ör. `ally ... age=242047ms`): plan gereği yalnızca raporlanır, bayatlama kararı sonraki dilim.
+4. Uygulayıcı Raporu'ndaki iddialar (commit'ler, derleme rc, 67 test, K1-K13, sapma yok) bağımsız olarak doğrulandı.
+
+**Düzeltme talimatı:** yok (karar `DOĞRULANDI`).
