@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-08` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-07 (`OnPacket()` ekleme kalıbı, `Regene` iskeleti) — `KAPANDI`; F4-06 (`RegionDelta` görüş denetimi, `TargetHpTarget` test sürücüsü kalıbı) — `KAPANDI`; F4-05 (`m_stateEcho` kullanımı) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -381,4 +381,48 @@ git diff --check gece/2026-10-02...bot/F4-08
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Doğrulama sırasında doldurulur.)
+### Tur 1 — 2026-10-02
+
+- Karar: **DÜZELTME GEREKLİ**
+- İncelenen: `bot/F4-08` @ `aecc6ed` (uygulama commit'i `234880f`; taban `gece/2026-10-02`; gece modu, `AUTO_LOOP=1`: birleştirme/push yapılmadı). Çalışma ağacı temizdi.
+- Kriter sonuçları:
+
+| # | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `ActionExecutor.cpp`, `BotSession.cpp`, `BotManager.cpp`, `CombatTests.cpp` `touch`'lanıp `tools/build.sh Release` yeniden derlendi: rc=0, 4 dosya derlendi, değişen dosyalarda `warning` yok (toplam 2 uyarı, eski dosyalarda) |
+| K2 | ✔ | `tools/build.sh Debug` rc=0 |
+| K3 | ✔ | `tools/run-tests.sh Release` ve `Debug`: `36 tests, 0 failed`; `Combat_PartyInviteCheck_Order`, `Combat_PartyInviteCheck_Boundaries`, `Combat_PartyAcceptCheck` `[ OK ]` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş (rc=1); `#include` yalnızca `<algorithm>`, `<cstdint>` (`:6-7`); eklenen satırlarda `std::min/max` yok |
+| K5 | ✔ | `WIZ_PARTY` yalnızca `ActionExecutor.cpp:1840`, `:1978` ve `BotSession.cpp:104`; doğrudan party çağrısı/kalıntı deseni `GameServer/Bot/*.cpp,*.h` içinde boş |
+| K6 | ✔ | `CheckPartyInvite` `:1823` → `HandlePacket` `:1848`; `no_invite` `:1946-1953` → `CheckPartyAccept` `:1964` → `HandlePacket` `:1986`; her ikisinde `!= OK` erken dönüş; her fonksiyonda tek `HandlePacket`. Çalışma zamanı: reddedilen `accept_wait`/`invite_gap`/`out_of_view`/`rate`/`not_leader` durumlarında JSONL'de `ACTION_SUBMIT` yok |
+| K7 | ✔ | `isInParty`/`isPartyLeader` yalnızca `:1816-1817` (guard girdisi, `HandlePacket`'tan önce); `m_sHp\|m_iMaxHp\|GetHealth\|GetMaxHealth` yeni aralıkta boş; sonuç yalnızca `m_partyErrorEcho`/`m_stateEcho`/`m_partyJoinEcho`/`m_partyInviteEcho` |
+| K8 | ✔ | `BotSession.cpp` silinen tek satır başlatıcı listesindeki `m_regeneEcho(0)` satırı; `OnPacket()` mevcut blokları değişmedi, party bloğu yalnızca ekleme |
+| K9 | ✔ | `BotManager.cpp` silinen tek satır `unknown command` mesajı. `ENABLED=0` çalışma zamanında: `pinvite`/`paccept` dosyası tüketilmedi (`BotCommands.txt` yerinde), `Bot_*.log` satır farkı 0, `Logs/bots` oluşmadı |
+| K10 | ✔ | `diff --stat`: yalnızca §4'teki 8 dosya + plan; dört `.vcxproj`/`.filters` farkı 0 satır; `docs/`, `CLAUDE.md`, `AGENTS.md`, `.claude/`, `tools/` değişmemiş |
+| K11 | ✔ | `file`: 8 dosya `ASCII text, with CRLF line terminators`; `git diff --check` rc=0 |
+| K12 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(\|SByte\|DByte` `ActionExecutor.*`'de boş |
+| K13 | ✔ | `CheckMoveStep` 2, diğer altı guard 1; `EmitFairnessReject` tipleri `Move`(2)/`Attack`/`Cast`/`Potion`/`State`/`TargetHp`/`Regene` + yeni `PartyInvite`/`PartyAccept`; önceki 33 test geçiyor; çalışma zamanında F4-01..F4-07 komutları (aşağıda 7) önceki çıktıyı verdi |
+| K14 | ✘ | Çalışma zamanı §7 senaryoları 1–7 davranış olarak geçti (aşağıda), ancak `PartyInvite` `ACTION_SUBMIT` satırı ortak `mode` alanını yinelenen anahtarla gölgeliyor (bulgu 1) |
+
+- **Çalışma zamanı (K14, Release, AIServer bağlı, `TELEMETRY=decisions`, zone 71; `BotWP_K`/`BotMF_K`/`BotPHD_K`/`BotWG_K`/`BotWP_E`):**
+  1. Mutlu yol: `pinvite BotWP_K BotMF_K` → `invited BotMF_K (created)`; JSONL `ACTION_SUBMIT` (`PartyInvite`, `target:2985`) → `ACTION_RESULT` (`ok:true`, `reason:"created"`, `latency_us:76`). Aynı dosyada hemen `paccept BotMF_K` → `refused (accept_wait)`, `FAIRNESS_REJECT` `CLI-15 accept_wait value:1.00 limit:1000.00`, `PartyAccept` `ACTION_SUBMIT` yok; 2,5 sn sonra `paccept BotMF_K` → `joined party of #2984`, `ACTION_RESULT` `ok:true`, `reason:"joined"`, `inviter:2984`, `latency_us:80`; tekrar `paccept` → `refused (no_invite)`, JSONL'de olay yok. **`[A]`(c) doğrulandı:** sunucunun `WIZ_STATE_CHANGE` (lider bayrağı) ve `WIZ_PARTY` (`PARTY_PERMIT`, kendi `PARTY_INSERT`) cevapları botun alıcısına geliyor.
+  2. Insert: `pinvite BotWP_K BotPHD_K` → `invited BotPHD_K (sent)` (`mode:insert`, `latency_us:6`); 2,5 sn sonra `paccept BotPHD_K` → `joined party of #2984`. Üç botluk party kuruldu; `GameServer.log` 32→32 satır (yeni hata yok). Lider `BotWP_K` sonradan `sit`/`stand`/`target`/`pot` komutlarını çalıştırdı.
+  3. Guard/ret: `pinvite BotMF_K BotWP_K` → `refused (not_leader)` (`CLI-15`, `value:0 limit:0`); `BotWG_K` için aynı dosyada iki `pinvite` → `sent` + `refused (invite_gap)` (`value:0.00 limit:1000.00`), `paccept BotWG_K` → `joined`; `pinvite BotWP_K BotWP_E` → `refused (out_of_view)` (`value:13.00 limit:1.00`); zaten üye `BotMF_K` için `pinvite` → `failed (refused_target)`, `ACTION_RESULT` `ok:false`, `code:-1`. Sunucu reddi `-2`/`-3` sınanmadı.
+  4. CLI-11: altı ardışık `target` + `pinvite BotWP_K BotWG_K` → `refused (rate)`, `FAIRNESS_REJECT` `CLI-11 rate value:6.00 limit:6.00`. Ölü bot: `BotWG_K` `despawn` (party üyesi) sonrası bot satırı `Hp=0` ile hedefli `UPDATE`'lenip `spawn` (`hp 0/5650`): `pinvite BotWG_K BotWP_K` ve `paccept BotWG_K` → `refused (dead)`, JSONL'de olay 0 (öldürerek üretilmedi; F4-07 ile aynı kısayol).
+  5. `despawn BotMF_K` sonrası `pinvite BotWP_K BotMF_K` → `target BotMF_K not in game (phase despawned)`; `pinvite Ghost BotWP_K` → `unknown or not spawned bot '?'`; argümansız, `pinvite BotWP_K`, `paccept`, `paccept BotWP_K BotMF_K` → kullanım satırı (tek satır); `paccept Ghost` → `unknown or not spawned bot '?'`; `pinvite BotWP_K BotWP_K` → `refused (bad_target)`. `RESPAWN_CYCLES=2` reddi yeniden sınanmadı (bu planda dokunulmadı).
+  6. Party üyesi (`BotWG_K`, `BotMF_K`) ve lider (`BotWP_K`) `despawn` edildi: sunucu çökmedi, `GameServer.log` değişmedi (32 satır), kalan botlar `in_game` kaldı (`list`), AIServer bağlı kaldı. Sonuç: `[A]`(f) bot oturumunda sorunsuz.
+  7. Gerilemesiz: `sit`/`stand`, `target` (`observed hp 3491/3491`), `pot ... 2` (`effected`), `regene` (`not_dead`), `move` (`arrived`) önceki çıktıyı verdi; `PERF_SAMPLE` `tick_p95_us` 83–132 (≤ 1 ms). `attack`/`cast` yeniden çalıştırılmadı (bu planda kod yolu değişmedi; party botlarında karşılıklı El Morad hedefi 750 m uzakta). `TELEMETRY=summary`: `pinvite` → `created`, `paccept` → `joined`, ikinci `paccept` → `no_invite`; JSONL'de `ACTION_*`/`FAIRNESS_*` 0, `PERF_SAMPLE` 6. `ENABLED=0`: komut dosyası tüketilmedi, bot logu 0 satır, `Logs/bots` oluşmadı.
+- Bulgular (önem sırasına göre):
+  1. **[Orta] `ActionExecutor.cpp:1834`:** `PartyInvite` `ACTION_SUBMIT` alanlarına `"mode":"create"|"insert"` yazılıyor, ama telemetri satırının ortak alanı zaten `"mode":"live"` (`Telemetry.cpp:549`; `docs/16` §ortak alanlar: `mode` = `train/eval/live/debug`). Satır yinelenen anahtar içeriyor: `..."mode":"live","decision_id":34,"type":"PartyInvite","target":2985,"mode":"create"`. Python `json` ve `jq` son değeri alır → `mode` `create`/`insert` okunur; ortak alan bozulur, `tools/bot-telemetry-report.py:147` gibi okuyucular yanlış mod görebilir. Kaynak planın kendi metnidir (§5.4 "mode":"create"|"insert"); uygulayıcı planı birebir izledi, ama düzeltilmeli: alan adı `invite_mode` olur (değerler aynı). Ortak alan adlarını başka bir aksiyon alanı yeniden kullanmamalı; önceki dilimlerde (`regene_type`, `kind`) bu yapılmamıştı.
+  2. **[Not] Sınanmadı:** sunucu reddi `-2` (seviye) ve `-3` (ulus/zone); `RESPAWN_CYCLES=2` ile `pinvite` reddi; öldürülerek (yalnızca `Hp=0` açılışıyla) ölü bot. Kod yolları `-1` ile aynı eşleme tablosunu kullanır.
+  3. **[Not]** `RejectPartyInvite`/`RejectPartyAccept` `decision_id` tüketir (önceki dilimlerle aynı); `invite_gap` aynı dosyada ardışık `pinvite`'ta `value:0.00` (aynı `Tick()`, beklenen).
+  4. **[Not]** `PartyInviteTarget.id`, `target->m_pUser->GetSocketID()`'den geliyor ve `bad_target` self kontrolü `GetID()` ile yapılıyor (aynı değer; sınandı: `pinvite BotWP_K BotWP_K` → `bad_target`).
+- Temizlik: `GameServer.ini` doğrulama öncesi bulunduğu hâle (proje sahibinin yarım kalan test oturumundan `[BOT] ENABLED=1, TELEMETRY=decisions`; md5 `265a8e1c35ea12df46f6d006fe894d9b`) geri yüklendi; `BotCommands.txt` kaldırıldı; eski `Logs/bots` içeriği `bots_old_f408pre`/`bots_old_f408a`/`bots_old_f408b` altına taşındı; sunucular kapatıldı (`0/3 hazır`). Beş bot satırı (`BotWP_K`, `BotMF_K`, `BotPHD_K`, `BotWG_K`, `BotWP_E`) hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000`, `Loyalty=1000` geri yazıldı (5 satır; kişisel veri tablosu okunmadı). Not: `BotWP_K` satırının proje sahibinin testinden kalan konumu (1371.9, 1093.9) bu geri yazımla standart başlangıç konumuna döndü; ekipman/dayanıklılık alanlarına dokunulmadı. `pid=4336` `GameServer.exe` (yol okunamadı) doğrulamadan önce de vardı, dokunulmadı.
+- **Düzeltme talimatı** (DeepSeek'e aynen verilecek)
+
+```
+plans/F4-08-aksiyon-yurutucu-party.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. GameServer/Bot/ActionExecutor.cpp:1834 (RequestPartyInvite, ACTION_SUBMIT alanları): "\"mode\":\"" ifadesini "\"invite_mode\":\"" yap. Değerler aynı kalsın ("create" / "insert"); telemetri satırının ortak "mode" alanı (Telemetry.cpp) ile çakışma biter. Başka satıra, başka fonksiyona ve ACTION_RESULT alanlarına dokunma.
+2. ./tools/build.sh Release ve ./tools/build.sh Debug hatasız, ActionExecutor.cpp için uyarı yok. ./tools/run-tests.sh Release ve Debug: 36 tests, 0 failed. grep -n '\\"mode\\"' GameServer/Bot/ActionExecutor.cpp çıktısı boş olmalı. Çıktıları raporuna yaz.
+3. Başka dosyaya dokunma (docs/**, BotCombat.h, testler, GameServer/** içindeki diğer dosyalar dahil). Sunucuyu çalıştırma. Durum satırını UYGULANDI yap.
+```
