@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-17` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-16 (`PerceptionSnapshot`, `SelfState`, `/bot snap`) — `KAPANDI` (merge `bee4fe4`); F4-04 (pot dilimi, `BeginPotion`, `PotionWaitMs`) — `KAPANDI`; F4-03 (cast dilimi, `m_castSkillLast`, `CastRecastMs`, `kCastGapMs`) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -273,13 +273,36 @@ git diff --check gece/2026-10-02...bot/F4-17
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-17` (taban: `gece/2026-10-02`), kod commit'i `05d7c64` `[F4-17] SelfState: pot stoku, soğuma ve buff listesi uygulandı`; bu rapor + `Durum` commit'i arkadan.
+- Değişen dosyalar ve neden:
+  - `BotCore/Perception.h`: `kSnapMaxBuffs`/`kSnapMaxCooldowns`; `BuffView`/`CooldownView`; `SelfState`'e `hpPotStock`, `mpPotStock`, `potWaitMs`, `castGapWaitMs`, `buffs[]`, `buffCount`, `buffTotal`, `cooldowns[]`, `cooldownCount`, `cooldownTotal`; dosya sonuna `SnapRemainingSec`, `SnapRemainingMs`, `SelfAddBuff`, `SelfAddCooldown` (hepsi saf, sunucusuz). `BuildSnapshot` değişmedi (`out.self = self` yeni alanları kopyalar).
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: dört yeni `TEST_CASE` (`Perception_Self_Remaining`, `Perception_Self_AddBuff`, `Perception_Self_AddCooldown`, `Perception_Snapshot_SelfExtras`). 67 → 71.
+  - `GameServer/Bot/ActionExecutor.h`: `static uint8 PotKindOf(CUser *, uint32)` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginPotion`'ın `supported` ifadesi dosya-statik `PotMagicSupported(const _MAGIC_TABLE *, const _MAGIC_TYPE3 *, uint32)`'a taşındı (ifade birebir aynı); `PotKindOf` tanımı aynı sınıf/seviye/skill kapılarını kullanır, `PotMagicSupported` değilse 0, aksi halde `t3->bDirectType`.
+  - `GameServer/Bot/BotManager.cpp`: dosya-statik `FillSelfExtras` (yalnızca botun kendi çantası `INVENTORY_INVENT..+HAVE_MAX`, kendi `m_pot*`/`m_cast*` zamanlayıcıları, kendi `m_buffMap`'i `m_buffLock` altında); `CommandSnap` çağırır ve bir özet + her listenin ≤ 10 kaydını yazar. Yeni include/ini/vcxproj satırı yok.
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0 (beş dosya `touch` ile yeniden derlendi; bu dosyalarda uyarı **yok**; kalan uyarılar eski `GameServerDlg.cpp` satırları).
+  - `./tools/build.sh Debug` rc=0 (aynı; bu dosyalarda uyarı yok).
+  - `./tools/run-tests.sh Release` → `71 tests, 0 failed` (dört yeni test adı çıktıda).
+  - `./tools/run-tests.sh Debug` → `71 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme: K1–K14 statik/derleme düzeyinde öz-değerlendirildi, hepsi ✔:
+  - K1–K2: iki derleme rc=0, beş dosyada uyarı yok (`touch` edilip bakıldı; `UNIXTIME` `shared/stdafx.h`→`TimeThread.h`, `INVENTORY_INVENT`/`HAVE_MAX` ve `_BUFF_TYPE4_INFO`/`Type4BuffMap` zaten `stdafx.h`/`Unit.h` üzerinden görünür; yeni include gerekmedi).
+  - K3: Release+Debug `71 tests, 0 failed`, dört yeni test adı çıktıda, önceki 67 test korundu.
+  - K4: `Perception.h` sunucusuz; include'lar yalnızca `<cstddef>`, `<cstdint>`, `<cstring>`, `<cmath>`; yasaklı `std::min/max/new/malloc/vector/string` grep'i boş.
+  - K5: `UnitView`/`NpcView` sözleşme grep'leri boş; `CommandSnap` gövdesinde yasak okuma yok (hepsi `FillSelfExtras`'ta); `FillSelfExtras`'ta `GetItem(`/`m_buffMap`/`m_buffLock` yalnızca `me->` ile.
+  - K6: `FillSelfExtras`'ta `m_buffLock` sayısı 1; kilit yalnızca `m_buffMap` döngüsünü kapsıyor (içinde günlük/`snprintf`/`ActionExecutor::` yok); `CommandSnap`'te `m_obsLock` 1; `BotSession.h` `std::mutex` 1.
+  - K7: `BeginPotion`'da `"bad_item"` 4, `"unsupported_item"` 1; `PotMagicSupported` sayısı 3; ActionExecutor.cpp'deki `-` satırları yalnızca eski `supported` zinciri (15 satır).
+  - K8–K9: diğer dört dosyada `-` satırı yok (yalnızca ekleme), `BotManager.cpp`'de `-` yok; `BuildSnapshot` gövdesi ve `SelfState`'in eski alanları değişmedi.
+  - K10: yeni kod yalnızca `/bot snap` ile çalışır; yeni ini anahtarı yok; `GameServer/` içinde `Bot/` dışı değişmedi; `Startup/Tick/TickSessions/BuildStatusLines` değişmedi.
+  - K11: `git diff --stat gece/2026-10-02...bot/F4-17` yalnızca §4'teki 5 dosya + plan; vcxproj/BotManager.h/BotSession/Telemetry/ScenarioRunner farkta yok.
+  - K12: `file` çıktısı beş dosyada ASCII + CRLF (değişmeden); `git diff --check` boş.
+  - K13: yeni `printf`/`Sleep`/`CreateThread`/`rand(` eklenmedi (mevcut `printf`/`fprintf` satırları önceden vardı).
+  - K14: guard fonksiyonlarının tümü ≥ 1 (`CheckMoveStep`=2), `BuildSnapshot` hâlâ `CommandSnap`'ten çağrılıyor.
+  - K15 çalışma zamanı doğrulaması Claude'da (`/plan-dogrula`), DeepSeek yapmaz.
+- Plandan sapmalar ve gerekçeleri:
+  - Yazdırma bloğunda `kPrintMax` (10) fonksiyonun sonraki satırında tanımlı olduğundan ve `BotManager.cpp` farkında `-` satırı yasak olduğundan, mevcut `kPrintMax` taşınmadı; eklenen blokta ayrı bir `const int kPrintMaxSelf = 10;` kullanıldı (plan "en çok 10" diyor, değer aynı). Plan metni tek bir sabit adı dayatmıyor.
+- Açık sorular: yok.
 
 ---
 
