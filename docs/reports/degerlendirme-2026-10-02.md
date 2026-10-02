@@ -24,13 +24,13 @@ Durum sözlüğü: **Doğrulandı** (tespit güncel durumda geçerli), **Zaten g
 | DEG-05 | 4: priest `pending_heals` işareti | `docs/07` §5.1 `hp_pred = u.hp − K·incoming·H − pending_heals`: bekleyen heal **çıkarılıyor**. Kod yok (F7) | **Doğrulandı** (doküman hatası) | F7 (priest koordinasyonu) | **Şimdi düzeltildi**: docs/07 §5.1 `+ pending_heals`, `min(maxHP, …)` | T-PRI-03 + `BotCore` birim testi (F7 planında kabul kriteri olarak yazıldı) |
 | DEG-06 | 4: rezervasyon temizliği | `docs/09` §4.2 `Reservation` ömrü "Bitişe kadar"; iptal/ölüm/menzil dışı/tamamlanma temizliği ve çift sayım koruması tanımsız | **Doğrulandı** | F7 | **Şimdi**: docs/09 §4.3 rezervasyon yaşam döngüsü | AC-PRI-03 (çift heal ≤ %5) + T-PRI-03 |
 | DEG-07 | 4: HP değişimi ≠ gelen hasar | `docs/07` §2 `incoming_*` "HP değişim akışından"; `PARTY_HPCHANGE` **net** HP taşır (`User.cpp:2057-2065`) | **Doğrulandı** | F7; algı F4-50..52 | **Şimdi**: docs/07 §5.1 `incoming_est = max(0, −ΔHP + etkisi_bilinen_heal)` | T-PRI-02 patlama senaryosu |
-| DEG-08 | 5: düşman HP, isim, skill olayları, durum etkileri, zaman içi değişim algı katmanına taşınmamış | `UnitView` yalnızca konum/sınıf/seviye/ölü/oturuyor (`Perception.h:~800`); ad `UnitObs`'ta var ama `UnitView`'a geçmiyor ("client never learns" yorumu yanlış: ad istemciye gelir, `docs/03` §16); `WIZ_TARGET_HP` yalnız eylem sonucu için tek kayıt (`BotSession.cpp:79-90`); `WIZ_MAGIC_PROCESS` yalnız **kendi** cast yankısı (`:60-67`); `WIZ_STATE_CHANGE` yalnız kendi (`:71-79`); birim başına konum geçmişi/hız yok | **Doğrulandı** | F4 kapsamı (`docs/17` F4 "Perception"); F6/F7 karar katmanı bağımlı | **Şimdi planlandı**: F4-50 (meta/ad/geçmiş), F4-51 (düşman HP tablosu), F4-52 (skill olay halkası), F4-53 (gözlenen durum, TASLAK) | Plan kabul kriterleri; oyun içi: `/bot snap` çıktısı sunucu `list` ile çapraz |
+| DEG-08 | 5: düşman HP, isim, skill olayları, durum etkileri, zaman içi değişim algı katmanına taşınmamış | `UnitView` yalnızca konum/sınıf/seviye/ölü/oturuyor (`Perception.h:~800`); ad `UnitObs`'ta var ama `UnitView`'a geçmiyor ("client never learns" yorumu yanlış: ad istemciye gelir, `docs/03` §16); `WIZ_TARGET_HP` yalnız eylem sonucu için tek kayıt (`BotSession.cpp:79-90`); `WIZ_MAGIC_PROCESS` yalnız **kendi** cast yankısı (`:60-67`); `WIZ_STATE_CHANGE` yalnız kendi (`:71-79`); birim başına konum geçmişi/hız yok | **Doğrulandı** | F4 kapsamı (`docs/17` F4 "Perception"); F6/F7 karar katmanı bağımlı | **Şimdi planlandı**: F4-50 (meta/ad/geçmiş), F4-51 (düşman HP tablosu), F4-52 (skill olay halkası), F4-53 (gözlenen durum, TASLAK). ADR-0018 m.10 yalnızca oturma bayrağı ve seviye/sınıf değişimini kapsıyor: bu planlar onun **dışında** kalan doğrulanmış eksiklerdir. Not: F4-23 aracı `check-perception-contract.py` R5 `UnitView`/`NpcView`'da `hp`/`name` sözcüklerini yasaklıyor; `docs/03` §16 bunların istemciye geldiğini gösterdiğinden F4-50/F4-51 R5 politikasını da günceller | Plan kabul kriterleri; oyun içi: `/bot snap` çıktısı sunucu `list` ile çapraz |
 | DEG-09 | 5: bilgi kaynak sınıfları ayrı tanımlanmalı | docs/13/14'te yalnız "sözleşme" var; doğrudan gözlem / party'den gelen / tahmin / yalnız-test gerçeği ayrımı yok; `list` komutu sunucu nesnesini okur (test amaçlı) | **Doğrulandı** | F4 (sözleşme), F6+ | **Şimdi**: docs/13 §5.3 kaynak sınıfları (O/P/E/G); F4-50 `src` alanı, statik denetim | AC-LRN-03 genişletmesi: `G` sınıfı yalnız `Eval/test` koduna |
 | DEG-10 | 5: görünürlük ≠ son güncelleme; bayatlama; bölge ≠ LoS | `UnitObs.lastSeenMs` "paketin zamanı" (adı yanıltıcı); durağan görünür birim `ageMs` büyür; bayatlama eşiği yok (`EnemyIntel` 10 sn tek yer); `TARGET_LOST_VIS` "3 sn görünmüyor" tanımsız; `docs/03` §16 3×3 bölgeyi LoS yerine koymuyor ama bunu karar katmanına bağlayan kural yok | **Doğrulandı** | F4 + F6 | **Şimdi**: docs/13 §5.3 (üç ayrı kavram: `in_region`, `pos_age`, `los`), F4-50 | `/bot snap` her birim için ayrı `pos_age`/`seen` alanı |
-| DEG-11 | 6: buff/debuff/cure/summon/alan/eşya skill desteği hangi fazda | `ActionExecutor.cpp:721-729`: yalnız Type1/Type3, `bType[1]==0`, `bFlyingEffect==0`, `iUseItem==0`, `sEtc==0`; tek hedef adıyla. Mage ana skill'leri (110533 Fire burst) uçan/alan → `unsupported_skill`. `docs/17` hiçbir faza bu aksiyonları atamıyor | **Doğrulandı** (F4'te eksik tek başına hata değil; F6/F7 başlamadan planlı değil) | F6 (mage alan/uçan; priest kendine buff), F7 (buff/debuff/cure/diriltme/summon) | **Şimdi doküman**: docs/17 §2 "aksiyon desteği matrisi" + docs/20 zinciri + docs/13 §8 | Her aksiyon için "oyun içi kabul" satırı (docs/17 §5) |
+| DEG-11 | 6: buff/debuff/cure/summon/alan/eşya skill desteği hangi fazda | `ActionExecutor.cpp:721-729`: yalnız Type1/Type3, `bType[1]==0`, `bFlyingEffect==0`, `iUseItem==0`, `sEtc==0`; tek hedef adıyla. Mage ana skill'leri (110533 Fire burst) uçan/alan → `unsupported_skill`. `docs/17` hiçbir faza bu aksiyonları atamıyor | **Doğrulandı**, ancak ana hat bunu **ADR-0018** (F4 kapsam genişletmesi, `gece/2026-10-02` @ `43ad337`, dilimler m.1..m.10, F4-24 ve sonrası) ile F4'ün parçası yaptı: tespit "planlanmış" olarak sınıflanır; eksikler §4'te "ADR-0018'e eklenmeli" listesinde | F6 (mage uçan/çift tipli/alan, warrior sprint), F7 (buff/debuff/cure/diriltme/summon) | **Şimdi doküman**: docs/17 §2.1 zincir ADR-0018 dilimlerine eşlendi (plan kimliği ayrılmadı), docs/20 zinciri, docs/13 §8 | Her dilim için oyun içi kabul satırı (docs/17 §5, docs/15 §4.9) |
 | DEG-12 | 7: skill + R kilidi | `docs/03` §13 tablosu CLI-02 hâlâ "0,3 sn"; §13.2/13.3 ölçüm **kilit yok** (61/62 ms komşu aksiyon); `docs/05` §5.1(3), §5.2, `docs/06` satır 74 kilidi sürdürüyor; kod kilit uygulamıyor (`BotCombat.h`) | **Doğrulandı** | F6 warrior | **Şimdi doküman** (03 §13.4, 05, 06) | `war-combo` yeniden ölçümü (T-MECH-CLIENT-01, insan) |
 | DEG-13 | 7: hareket sıklığı | `docs/12` §6 "ölçülene kadar 250 ms"; ölçüm ~1,5 sn (CLI-05); kod `kMovePeriodMs=1500` (`BotMotion.h:14`) | **Doğrulandı** | F5 | **Şimdi doküman** (12 §6 + §13) | — |
-| DEG-14 | 7: pot aralığı | CLI-06 ortak **2,5 sn**; `docs/11` §3.3 "2 sn'de bir pot ile ~960 MP/sn", `docs/05` §5.1(5) "2 sn'de bir", `docs/11` AC-SUR-04 "2 sn grup cooldown", `docs/10` §? "2 sn pencere", `docs/00` §95; ortak sayaçla kapasite 1920/2,5 = 768 MP/sn (HP+MP birlikte yarıya iner) | **Doğrulandı** | F6 pot kararı | **Şimdi doküman** (11, 05, 10, 00; 18 K-5 metnine ölçüm notu) | T-MECH-POT-03 (HP/MP ayrı sayaç mı) |
+| DEG-14 | 7: pot aralığı | CLI-06 ortak **2,5 sn**; `docs/11` §3.3 "2 sn'de bir pot ile ~960 MP/sn", `docs/05` §5.1(5) "2 sn'de bir", `docs/11` AC-SUR-04 "2 sn grup cooldown", `docs/10` §6 "2 sn pencere", `docs/00` madde 7; ortak sayaçla kapasite 1920/2,5 = 768 MP/sn (HP+MP birlikte yarıya iner) | **Doğrulandı** | F6 pot kararı | **Şimdi doküman** (11, 05, 10, 00; 18 K-5 metnine ölçüm notu) | T-MECH-POT-03 (HP/MP ayrı sayaç mı) |
 | DEG-15 | 7: respawn | `docs/09` §9 sözde kodu "u respawns immediately" ↔ CLI-14 `dead_wait` ≥ 3,0 sn (`BotCombat.h:409`, `[A]`); T-REGENE-01 insan ölçümü bekliyor | **Doğrulandı** | F6/F7 | **Şimdi doküman** (09 §9, 03 CLI-14 notu) | T-REGENE-01 |
 | DEG-16 | 7: aksiyon sınırı gerekçesi | CLI-11 6/sn toplam (`BotCombat.h:14`); ölçülen insan ≤ 3/sn tek karakter/tek oturum; sunucu: R ≤ 1/sn, Type1 ≤ 1/sn, pot kendi recast'i; "insanı aşmaz" gerekçesi yanlış (6 > 3). Tek toplam sınır skill/R/pot zamanlamasının insanla eşdeğerliğini kanıtlamaz | **Doğrulandı** | F4 kapısı, F6 | **Şimdi doküman**: docs/03 §13.4 üç katman (ölçülen / sunucu / bot sınırı); Q-25 | Priest/mage insan ölçümü (T-MECH-CLIENT-01..04 yeniden) |
 | DEG-17 | 8: takılma tespiti paket sıklığıyla | `docs/12` §10 "1,5 sn ilerleme < 1 m", "4 sn'de ≥ 3 salınım"; konum gözlemi paket başına (~1,55 sn); salınım ölçütü paket hızında **ulaşılamaz** (4 sn'de ≤ 3 örnek); 1,5 sn pencere paket aralığına eşit (marj 0). Simülasyon (§5.4): kendi zamanlamasıyla yanlış alarm **üretmedi** (0/5000+ tick); yani sorun ölçülmüş yanlış alarm değil, tanım hatası | **Doğrulandı** (kısmen: yanlış alarm ölçülmedi, tanım gerekçesi geçerli) | F5 (nav loop F5-09 öncesi) | **Şimdi**: docs/12 §13.3 tanım; plan F5-54 (`NavStuckDetector`, algı/niyet ayrımı) | Birim test + F5-55 çalışma zamanı T-NAV-04 |
@@ -49,15 +49,64 @@ Durum sözlüğü: **Doğrulandı** (tespit güncel durumda geçerli), **Zaten g
 
 ## 2. Şimdi yapılan düzeltmeler
 
-(artımlı doldurulur; commit listesi §7)
+Üretim koduna dokunulmadı. Yapılanlar doküman, ADR, plan ve takip kayıtlarıdır (kimlikler değişmez; yalnızca ekleme/ölçümle hizalama).
+
+| Konu | Dosya ve bölüm | Ne yapıldı | Doğrulama |
+|---|---|---|---|
+| Skill + R (DEG-12) | `docs/03` §13 CLI-02 satırı, §13.4; `docs/05` §5.1(3), §5.2; `docs/06` satır 74 | 0,3 sn kilit kaldırıldı (ölçüm: kilit yok, ≥ 61 ms komşu); kod zaten kilit uygulamıyor | `grep -n "0,3 sn" docs/03 docs/05 docs/06` yalnızca tarihsel notta |
+| Hareket 1,5 sn (DEG-13) | `docs/03` CLI-05; `docs/12` §6 satırı ve §13.1 | 250 ms varsayımı kaldırıldı, adım modeli yazıldı | `BotMotion.h` `kMovePeriodMs=1500` ile uyumlu |
+| Pot (DEG-14) | `docs/11` §3.1, §3.3, AC-SUR-04; `docs/05` §5.1(5); `docs/10`; `docs/00` madde 7; `docs/18` K-5 notu | Ortak 2,5 sn, kapasite 768 MP/sn, 200 ms notu "guard'da yok" | `BotCombat.h` `kPotCooldownMs=2500` |
+| Respawn (DEG-15) | `docs/09` §9 sözde kod | "hemen" = guard bekleme (`dead_wait` ≥ 3 sn) sonrası | `BotCombat.h` `kRegeneMinDeadMs=3000` |
+| Aksiyon sınırı üç katman (DEG-16) | `docs/03` CLI-11 satırı ve §13.4 tablosu; Q-25 | Ölçülen / sunucu / bot sınırı ayrıldı; 6/sn "kaba emniyet ağı" | tablo satırları kod sabitleriyle eşlendi |
+| Priest işaret ve rezervasyon (DEG-05..07) | `docs/07` §2, §5.1, §6, AC-PRI-09; `docs/09` §4.2/§4.3 | `+ pending_heals`, `maxhp` üst sınırı, net HP'den `incoming_est`, rezervasyon yaşam döngüsü | birim testi/AC kriterleri F7 planına |
+| Algı sözleşmesi (DEG-08..10) | `docs/13` §5.2a (kaynak sınıfları O/P/E/G, `in_region`/`pos_age`/`los`, tazelik süreleri); `docs/14` §5.2 güncelleme notu; `docs/09` §5.1 HP seyrekliği; `docs/13` §5.2 "HAZIR" kalıntısı temizlendi | Sözleşme yazıldı; R5 aracıyla uyum F4-50/51 planlarında | — |
+| Navigasyon düzeltmeleri (DEG-17..21) | `docs/12` §13.1–§13.6 | kiriş denetimi, hız kestirimi, takılma tanımı, arena/doğuş, çoklu bot bütçesi, G5 kapısı | ölçümler §5; F5-50..F5-55 |
+| Senaryo ve öğrenme (DEG-22..26) | `docs/15` §4.9, §6a, §6b; `docs/16` §6.9, MET-OUT-01/05; `docs/14` §6.1, AC-LRN-05/07/08, §9; `docs/04` §3.3; ADR-0030..0033-DEG | Sıfırlama sözleşmesi, kazanma kuralı, 20 karakter seti, öğrenme düzeyi, rol bilinçli metrikler | ADR'ler; F8 planı kabulü |
+| Yol haritası (DEG-01, 02, 28) | `docs/17` §2.1, F11 taslağı, §3, §4, §5; `docs/01` §2 notu; `docs/20` zincir | F11 (ADR kapılı), G-IGT kapıları, oyun içi kabul zorunluluğu | `docs/15` §4.9 testleri |
+| Takip kayıtları (DEG-29) | `docs/KNOWN_ISSUES.md` KI-DEG-01..05; `docs/STATUS.md` ek bölümü ("Faz kabul takibi"); `plans/README.md` ek tablo | Yalnızca ekleme | — |
 
 ## 3. Plan eşlemesi (hangi madde hangi plana)
 
-(artımlı doldurulur)
+| Tespit | Şimdi (düzeltme planı, DeepSeek) | İlgili faz planına işlendi (hangi dosya/bölüm) |
+|---|---|---|
+| DEG-04 tek yönlü görüş | **F4-54** (HAZIR, KI-DEG-01) | docs/18 Q-27 |
+| DEG-08..10 algı eksikleri | **F4-50** (ad/yaş/hız/geçmiş/kaynak), **F4-51** (düşman HP), **F4-52** (skill olay halkası), F4-53 (TASLAK, gözlenen durum); R5 aracı güncellemesi F4-50/51 içinde | docs/13 §5.2a, docs/14 §5.2, docs/09 §5.1; docs/17 §5 G4 |
+| DEG-11 skill desteği | — (ana hat ADR-0018 m.1..m.10) | docs/17 §2.1 zincir ve "ADR-0018'e eklenmeli" listesi; docs/20 |
+| DEG-17 takılma tespiti | **F5-54** (HAZIR) | docs/12 §13.3 |
+| DEG-18 kiriş/segment | **F5-50** (HAZIR); sunucu guard'ı F5-55 (TASLAK) | docs/12 §13.1; docs/03 CLI-05/08 |
+| DEG-19 hız kestirimi | **F5-52** (HAZIR) | docs/12 §13.2 |
+| DEG-20 arena/doğuş | **F5-51** (HAZIR) | docs/12 §13.4, ADR-0033-DEG |
+| DEG-21 çoklu bot bütçe | **F5-53** (HAZIR) | docs/12 §13.5, AC-NAV-07 |
+| DEG-05..07 priest | — (kod yok, F7) | docs/07 §5.1, AC-PRI-09; docs/09 §4.3 |
+| DEG-12..16 mekanik tutarsızlıkları | — (yalnızca doküman) | docs/03 §13.4 ve ilgili belgeler |
+| DEG-22..24 8v8, sıfırlama, kazanma | — (F8 ön koşulu, plan F7 kabulünden sonra) | docs/15 §6a/§6b, docs/04 §3.3, docs/17 F8/§5 G8, ADR-0031/0032-DEG |
+| DEG-25..27 öğrenme/metrik | — (F9 ve faz kapıları) | docs/14 §6.1/AC-LRN, docs/16 §6.9, ADR-0030-DEG |
+| DEG-01/02/28 yol haritası | — | docs/17 F11, §4, §5; docs/15 §4.9 |
+
+**Önerilen sıra** (kullanıcının 12. maddesiyle uyumlu): (1) F4 paket/algı doğruluğu: F4-50, F4-51, F4-52, F4-54 + ADR-0018 dilimleri; (2) F5: F5-54 ve F5-52 **F5-09'dan önce** (nav döngüsü kurtarma aşamalarını yanlış tanıma bağlamasın), F5-51, F5-50, F5-53, sonra F5-55 ile gerçek harita; (3) G6a warrior; (4) G7a priest/iki priest; (5) G6c/G7b mage ve summon; (6) G7c takım; (7) G8 8v8; (8) G9 öğrenme; (9) F11 serbest Ronark (ADR kapılı).
 
 ## 4. Açık kararlar ve bağımlılıklar
 
-(artımlı doldurulur)
+**Proje sahibi onayı gereken (ADR'ler arka plan ajanında Claude kararıyla yazıldı, gözden geçirilmeli):**
+
+1. **ADR-0030-DEG öğrenme düzeyi:** rol profili düzeyi + oturum içi kestirim; karakter bazlı kalıcı öğrenme **planlanmadı**. "Her bot kendi geçmişinden bireysel öğrensin" isteniyorsa seçenek B (sınırlı karakter sapması) ayrı onay ister.
+2. **ADR-0031-DEG kazanma kuralı:** `killdiff_timed` (süre ilk hasardan, fark ≥ ±2, beraberlik ±1, WIPE erken bitiş). Eşikler pilot koşularda kalibre edilmeli.
+3. **ADR-0032-DEG senaryo başlangıcı:** MATCH_START öncesi *kurulum yerleşimi* teleport sayılmaz; DB'ye yalnızca bot satırı yazımı (NP, envanter, konum).
+4. **ADR-0033-DEG arena sınırı:** arena modunda geri çekilme arena içinde; "kendi tower halkası" yalnızca arena kapalıyken.
+5. **F11 (serbest Ronark) ve A-03:** özel sunucuda onaylı katılımcılarla serbest oyun kapsamı için yeni ADR gerekir; F11 taslak, planı yok.
+6. **Hat birleşmesi:** `gece/2026-10-02-nav` F4-14 sonrasından ayrıldı; F5-55 ve nav/F4 entegrasyonu için iki hattın ne zaman birleşeceği kararı. F5-54 ve F5-52'nin F5-09'dan önce uygulanması nav döngüsüne bildirilmeli (plan sırası değişikliği).
+
+**ADR-0018'e eklenmeli** (ADR değiştirilmedi; ana hat çalışıyor):
+
+- m.6 ("ilk dilim(ler)") Type5 cure, diriltme (Stone of Life), summon (Type8) + güvenlik koşulları, Type8 warp/descent/Gate ve `UseItem` tüketimi (sınıf taşları `BeforeAction`, Stone of Warrior/Priest) ayrı dilimlere bölünmeli ve F7'den önce bitmeli.
+- m.5: party hedefli skill'ler (group heal/buff) için hedef çözümü ayrı yazılmalı.
+- Type7 (Binding/provoke, Q-22) için gerekli/opsiyonel kararı.
+- m.2 ve m.5: mage'in ana alan skill'leri hem uçan hem alan; FLYING fazı iki dilimde tutarlı kurulmalı.
+- m.8: pot yanında taş/scroll doldurma ve `ScenarioReset` ortak sözleşmesi (`docs/15` §6a).
+- m.10: algı eksikleri yalnızca oturma/seviye değil; F4-50..F4-53 ile eşlenmeli.
+- Her dilimin oyun içi kabulü (`docs/15` §4.9 T-IGT-*) ve G4 kapısına bağlanması.
+
+**Bağımlılıklar (hedefe ulaşmayı etkileyen):** G6a/G6c için ADR-0018 m.2/m.3/m.4/m.5 bitmeden warrior sprint ve mage ana skill'leri atılamaz; G7a için m.4/m.6/m.8 ve F4-52/53; 8v8 için 20 karakter (`db/003`) ve `ScenarioReset`/`win_rule`; G5 için F5-55 sunucu entegrasyonu; insan ölçümleri (Q-25 priest/mage hız, T-REGENE-01, T-PERC-01, T-NAV-09/Q-26) hâlâ açık.
 
 ## 5. Ölçümler (WSL `g++ -O2`, geçici betikler, depoda yok)
 
@@ -100,14 +149,38 @@ Zone 71, `NavPathfinder::Find`, aynı tick'te N bot tek sorgu (süreler tek iş 
 
 ## 6. Doğrulanamayanlar / çalışma zamanı gerektirenler
 
-(artımlı doldurulur)
+Bunlar bu çalışmada **yapılmadı** ve tamamlanmış gösterilmez:
+
+- F4-18 `PARTY_HPCHANGE` yalnız HP değişimiyle (MP değişimi gözlendi; aynı paket): bir sonraki party testinde HP düşüşüyle gözlenebilir (düşük öncelik).
+- DEG-04 (`ObsTable` simetrisi) kök nedeni: çalışma zamanı koşusu (F4-54 K8) gerekir; hipotezler H1..H4 doğrulanmadı.
+- DEG-17 yanlış alarm oranı gerçek sunucuda ölçülmedi; simülasyon yalnızca botun kendi zamanlamasını modeller (F5-55 T-NAV-04).
+- DEG-18 su/göl: istemcinin suya girip girmediği, sudaki hız (T-NAV-09, Q-26); eğim kalibrasyonu T-NAV-02; kiriş denetimi sunucuya bağlı değil.
+- DEG-20/21 ölçümleri WSL `g++ -O2`; MSVC Release değeri F5-51/F5-53 kabul koşusunda ölçülecek.
+- DEG-12/16 priest/mage insan zamanlaması (Q-25) ve T-REGENE-01 (respawn gecikmesi) hâlâ insan testi.
+- F4 çalışma zamanı kanıtı olarak bu çalışmada sunucu çalıştırılmadı (sert kural 3); ADR-0017/0018 kapsamındaki plan doğrulamaları ana hatta.
 
 ## 7. Commit listesi
 
-(sonda doldurulur)
+Dal `degerlendirme/2026-10-02` (taban `3a6b408`, `gece/2026-10-02` ucundan geride; birleştirmede F4-22/F4-23/ADR-0018 ilerlemesiyle yalnızca STATUS/README/KNOWN_ISSUES/docs/17 gibi ortak dosyalarda eklemeye dayalı çakışma beklenir):
+
+```
+3525a4a Ana rapor iskeleti: tespit tablosu ve ölçümler
+7e37000 Mekanik dokümanları hizalandı (CLI-02/05/06/11, pot, hareket); docs/12 §13
+826fec8 docs/07 pending_heals, docs/09 rezervasyon yaşam döngüsü, docs/13 gözlem kaynak sınıfları
+da0e32d docs/14-17,20: öğrenme düzeyi, senaryo sıfırlama/kazanma kuralı, metrikler, aksiyon matrisi, F11, G-IGT
+2065346 ADR-0030..0033-DEG
+c0d4790 F4-50..F4-54 planları
+6b79a5a ADR-0018 eşlemesi; F5-50..F5-54 planları; F4-50/51 R5 güncellemesi
+d506a05 F5-55 taslağı, KNOWN_ISSUES, plans/README, STATUS ekleri
+(son) Ana rapor: §2-§4, §6, §7 tamamlandı
+```
+
+Birleştirme notu: `docs/12` değerlendirme dalında F4 tabanındaki sürümdür (nav hattı `docs/12` §2/§4/§7/§8 değişiklikleri yok); §13 eklemedir ve §6 tek satırı değişti. `gece/2026-10-02-nav` ile birleştirirken `docs/12`'de nav'ın değişiklikleri korunur, §13 ve §6 satırı alınır.
 
 ## Tamamlanma durumu
 
-- [x] §1 tespit tablosu, §5 ölçümler
-- [ ] §2–§4, §6 (artımlı)
-- [ ] Doküman düzeltmeleri, ADR'ler, planlar, takip kayıtları
+- [x] §1 tespit tablosu, §5 ölçümler, §2–§4, §6
+- [x] Doküman düzeltmeleri (docs/00, 01, 03, 04, 05, 06, 07, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 20), ADR-0030..0033-DEG
+- [x] Planlar: F4-50, F4-51, F4-52, F4-54 (HAZIR), F4-53 (TASLAK); F5-50..F5-54 (HAZIR), F5-55 (TASLAK)
+- [x] Takip kayıtları: KNOWN_ISSUES (KI-DEG-01..05), STATUS ek bölümü, plans/README ek tablo
+- [ ] Çalışma zamanı doğrulamaları (§6) ve plan uygulamaları: ana hat / nav hattı / proje sahibi
