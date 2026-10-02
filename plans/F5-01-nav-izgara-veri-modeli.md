@@ -250,7 +250,7 @@ git diff --stat gece/2026-10-02-nav...bot/F5-01
   - K6 ✔ `71 tests, 0 failed`; `NAVGRID real map: n=513 main=88508 clearance_max=13 build_ms=8.0`; `SKIPPED` yok.
   - K7 ✔ dosya taşınınca `SKIPPED`, rc 0; dosya geri konuldu.
   - K8 ✔ Debug (derleme dahil) rc=0, 71 test.
-  - K9 ✔ saflık grep'i boş; `git diff --stat gece/2026-10-02-nav...bot/F5-01` yalnızca 6 dosya.
+  - K9 ✔ saflık grep'i boş; `git diff --stat gece/2026-10-02-nav...bot/F5-01` yalnızca §4'teki 6 kod dosyası + bu plan dosyası (`GameServer/`, `AIServer/`, `shared/`, `docs/` yok).
   - K10 ✔ (ölçüm) gerçek haritada `build_ms=8.0` (Release), `clearance_max=13`.
 - **Plandan sapmalar:** Yok. Test dosyasına planın listesine ek olarak `<cstdlib>` eklendi (`std::abs(int)`; plan "gibi" diyor). Plandaki doğrulanmış sayılar (29 522 / 233 647 / 88 508 / −30,633 / 82,122) aynen tuttu.
 - **Açık sorular:** Yok.
