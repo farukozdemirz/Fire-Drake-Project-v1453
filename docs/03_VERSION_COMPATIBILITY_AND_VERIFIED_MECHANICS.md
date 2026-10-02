@@ -401,6 +401,19 @@ Kaynak: `tools/trace-session.sh collect war-r` kaydı (sunucuya varış zamanı,
 | CLI-06 | HP (490014) ve MP (490020) pot aralığı (veri `ReCastTime=20` = 2,0 sn) | Her biri 9 kullanımda **2504–2665 ms** (p50 2570 HP, 2559 MP); HP→MP geçişi 2540 ms, `pot` etiketi, oyuncu en hızlı tempoda bastı | İstemci HP ve MP potlarını **~2,5 sn'de bir** gönderiyor; veri sınırı (2,0 sn) altına inilmiyor. HP/MP ortak bekleme süresi muhtemel (geçiş de 2,5 sn) ama ayrı kanıtlanmadı `[A]` |
 | CLI-05 | `WIZ_MOVE` hız alanı, ikinci kayıt | Yürüyüşte `speed=45` (11 paket), hareket hızı ≈ 5,5 m/s | `speed=67` yalnızca `war-r` kaydında (orada `sprint` skill'i 106001 kullanılmıştı): hız buff'ı olabilir `[A]`; `war-move` ile ayrı ölçülecek |
 
+**Cast zamanlaması ve iptal (priest/mage oturumu, 2026-10-02) `[V]` (tek karakter/sınıf, 4 kayıt):**
+
+| Kimlik | Ölçüm | Sonuç | Yorum |
+|---|---|---|---|
+| CLI-03 | Heal 112545 Superior healing (`CastTime=15`, kendi üzerine) CASTING → EFFECTING | 20 kullanımda **1565–1572 ms** (p50 1569) | Cast süresi `CastTime×100 ms` + **~70 ms**; `sData` hep 0, `caster=target=kendi` |
+| CLI-03 | Mage 110518 Ignition (`CastTime=10`, tek hedef) CASTING → EFFECTING | 33 kullanımda **1089–1095 ms** (p50 1091) | `CastTime×100 ms` + **~90 ms**; CASTING'te `target` = canavar kimliği; EFFECTING'te `sData[0..2]` = hedef konumu |
+| CLI-04 | Ardışık cast aralığı (EFFECTING → sonraki CASTING) | Heal: en kısa **1704 ms** (cast 1565 + ~139); Ignition: en kısa **1228 ms** (cast 1091 + ~137) | İki skill'de de bir önceki EFFECTING'ten sonra **~135–140 ms** boşluk; veri `ReCastTime=1` (0,1 sn) bunun çok altında. Bot döngü süresi ≥ `CastTime×100 + ~70 + ~140 ms` olmalı |
+| CLI-03 | Uçan alan büyüsü 110533 Fire burst (`CastTime=15`, alan, `target=-1`, hedef noktası `sData[0..2]`) | CASTING → **FLYING (opcode 2) +1539 ms** → **EFFECTING +2576 ms** (n=3); EFFECTING ile aynı ms'de `opcode 4`, `sData[3]=-101` | Uçan skill'de istemci EFFECTING'i mermi hedefe varınca gönderiyor (~1,0 sn uçuş); sıra 1 → 2 → 3; tek örnek, uçuş süresi mesafeye bağlı olabilir `[A]` |
+| CLI-03 | Cast iptali (yürüyerek) | İstemci **`MAGIC_PROCESS opcode 4` (MAGIC_FAIL), `sData[3] = -100`** gönderiyor, **MOVE'dan 5–8 ms önce**; `opcode 6` (CANCEL) **yok** | `opcode 6` buff iptali içindir; sunucu gelen `MAGIC_FAIL`'i yalnızca iletir (`MagicInstance.cpp:40-43`, `:157`), cast durumu tutmaz. İptal anı oyuncunun seçimi: CASTING'ten sonra priest 1140–1408 ms, mage 786–883 ms (n=12 / 11), ölçülen bir alt sınır yok |
+| CLI-05 / Q-02 | Yürüyüş hızı (sprint yok) | `speed=45` (32/34 paket), `run_speed` median **4,51 m/s** (p95 5,65); sürekli yürürken paket **~1,5 sn**'de bir (p50 1502 ms); durma paketi `speed=0`, `echo=0` (hareket `echo=3`) | `speed` alanı 0,1 m/s birimi doğrulandı (45 → 4,5 m/s; sprint 67 → 6,7 m/s). İlk `WIZ_MOVE` **hedef noktayı** taşır (durma/başlama paketlerinde konum zıplaması, hesaplanan 58 m/s sahte), bu yüzden hız yalnızca ardışık periyodik paketlerden hesaplanmalı |
+| CLI-12 | `WIZ_SPEEDHACK_CHECK` | Yine **10,0 sn** (p50 10001–10003 ms) dört kayıtta | Üç oturumda tutarlı |
+| Q-18 | `WIZ_TARGET_HP` | Hedef seçiliyken **2,0 sn** (`msg-cancel`: p50 2001 ms); `pri-cast` (hedefsiz) 0 | Önceki bulguyla tutarlı |
+
 **Paket düzeni düzeltmesi (§14):** Gerçek istemci `WIZ_MAGIC_PROCESS` paketini **21 bayt** gönderiyor (`u8 opcode, u32 skill, i16 caster, i16 target, i16 data[6]`); sunucu 7. alanı okuyamadığı için 0 sayıyor (`shared/ByteBuffer.h:110-116`, taşan okuma `0` döner). Pot ve skill paketlerinde bu oturumda yalnızca `opcode 3` (EFFECTING) görüldü, `CASTING` (opcode 1) yok; `caster` ve `target` 0 idi. Cast süreli skill'lerin `CASTING → EFFECTING` zamanlaması (CLI-03) hâlâ ölçülmedi.
 
 ## 14. Bot aksiyonları için paketler `[D]`
@@ -500,4 +513,4 @@ Tam liste: `appendix/research/B_combat.md` Tablo A.
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
-| 2026-10-02 | v1.1 | §13.2 ölçülen istemci değerleri (F1-02 `war-r` oturumu); MAGIC paketi 21 bayt notu |
+| 2026-10-02 | v1.1 | §13.2 ölçülen istemci değerleri (F1-02 `war-r` oturumu); MAGIC paketi 21 bayt notu; `war-skill`, `pot`, priest/mage cast ve iptal ölçümleri |
