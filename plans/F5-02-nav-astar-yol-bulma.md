@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-02` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`, `tools/nav-export.py`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`) |
@@ -228,36 +228,71 @@ git diff --stat gece/2026-10-02-nav...bot/F5-02
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-02` — `<kısa-sha> [F5-02] …`
+- Branch / commit'ler: `bot/F5-02` (taban: `gece/2026-10-02-nav`, açılış HEAD `4a69748`) — `a1df693 [F5-02] Izgara A* yol bulucu (BotCore/NavPath.h) ve NavPath testleri`; plan güncellemesi ayrı commit.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavPath.h` (yeni): `NavCell`, `NavPathStatus`, `NavSearchParams`, `NavPathResult`, `NavOctile`, `NavPathfinder`; ikili yığın + tembel silme, damga tabanlı düğüm havuzu (sorgu başına temizleme yok), belirlenimli beraberlik (küçük `f`, büyük `g`, küçük `idx`), komşuluk yalnızca `NavGrid::EdgeOpen`; maliyet yalnızca yatay mesafe; `Generation` taşarsa damgalar sıfırlanır.
+  - `Tests/BotCoreTests/NavPathTests.cpp` (yeni): §5.2'deki dokuz test; test içi bağımsız Dijkstra (`ReferenceCost`) ve `PathIsValid`; gerçek harita sorguları ve T-NAV-03 performans testi.
+  - `BotCore/BotCore.vcxproj` (değişti): yalnızca `<ClInclude Include="NavPath.h" />` (BOM + CRLF korundu).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (değişti): yalnızca `<ClCompile Include="NavPathTests.cpp" />` (BOM + CRLF korundu).
+  - `plans/F5-02-nav-astar-yol-bulma.md` (değişti): `Durum` satırı + bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar; `NavPath` geçen uyarı yok):
   ```
-  …
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    NavPathTests.cpp
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- `NAVPATH` satırları (K3/K7, aynen): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `./tools/build.sh Release` rc=0; tam çıktıda `warning` satırı yok.
+  - K2 ✔ `--list` dokuz `NavPath_*` adını içeriyor.
+  - K3 ✔ rc=0; `80 tests, 0 failed`; dokuz yeni test `[ OK ]`; `SKIPPED` yok; `NAVPATH arena A->B: cost=660.617 …` ve üç `NAVPATH T-NAV-03 set=…` satırı var.
+  - K4 ✔ `zone71.navgrid` geçici taşınınca `NavPath_` rc=0; iki gerçek harita testi `SKIPPED` yazdı, yedi test geçti; dosya geri kondu.
+  - K5 ✔ `./tools/run-tests.sh Debug` rc=0; `80 tests, 0 failed`; uyarı yok.
+  - K6 ✔ `NavPath_MatchesDijkstra [ OK ]`; `pairs=240 found=238` (`n > 0`).
+  - K7 ✔ Release `set=near64` `found=997` (≥ 950) ve `ms_p95=0.536` (≤ 2.000). Ölçüm makinesi: AMD Ryzen 7 7800X3D, `nproc=16`.
+  - K8 ✔ `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavPath.h` boş; `git diff --stat` yalnızca §4'teki dört kod dosyası + plan; `GameServer/`, `AIServer/`, `shared/`, `docs/` ve `NavGrid.h` değişmedi.
+  - K9 ✔ `Nav_` rc=0; on test `[ OK ]`; `NAVGRID real map: n=513 main=88508 …`.
+- `NAVPATH` satırları (K3/K7, Release; aynen):
+  ```
+  NAVPATH arena A->B: cost=660.617 expanded=3160 cells=150
+  NAVPATH T-NAV-03 set=near64 queries=1000 found=997 nopath=1 nodelimit=2 expanded_p50=306 expanded_p95=2431 ms_p50=0.075 ms_p95=0.536 ms_p99=0.981
+  NAVPATH T-NAV-03 set=far150 queries=1000 found=997 nopath=1 nodelimit=2 expanded_p50=1454 expanded_p95=5990 ms_p50=0.374 ms_p95=1.547 ms_p99=2.587
+  NAVPATH T-NAV-03 set=global queries=1000 found=943 nopath=1 nodelimit=56 expanded_p50=4758 expanded_p95=20000 ms_p50=1.309 ms_p95=5.532 ms_p99=6.130
+  ```
+- Plandan sapmalar ve gerekçeleri: `NavGrid.h`'e dokunulmadı (K7 kapısı ilk denemede tuttu). `NavOctile`/test içi mutlak değer `std::abs` yerine elle (koşullu işaret) hesaplandı; planın başlık listesine (`<cstdlib>` eklemeden) sadık kalmak için. Bunun dışında algoritma, testler ve proje kayıtları plana birebir uyar.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F5-02` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F5-02` @ `704eb31` (kod: `a1df693`; paralel hat `nav`, otonom mod: birleştirme/push yapılmadı, sunuculara dokunulmadı, hepsi `[DOWN]`)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0, tam çıktıda `warning` 0. `NavPath.h` ve `NavPathTests.cpp` `touch` ile yeniden derlendi (artımlı derleme uyarıyı gizlemesin diye): `NavPathTests.cpp` derlendi, `warning` 0, rc=0 |
+| K2 | ✔ | `--list` çıktısında dokuz `NavPath_*` adı, plandaki sırayla |
+| K3 | ✔ | Release `--no-build` üç koşu rc=0; `80 tests, 0 failed`; 80 `[ OK ]`; `SKIPPED` 0; `NAVPATH arena A->B: cost=660.617 expanded=3160 cells=150` (660,117..661,117 içinde); üç `NAVPATH T-NAV-03 set=…` satırı var |
+| K4 | ✔ | `zone71.navgrid` geçici `.bak` adına taşındı: `NavPath_` rc=0, `9 tests, 0 failed`, `SKIPPED` 2 satır, dokuz test `[ OK ]` (iki gerçek harita testi `SKIPPED` yazıp döner); dosya geri kondu (`ls build/nav` → `zone71.navgrid`) |
+| K5 | ✔ | `./tools/run-tests.sh Debug` (derleme dahil) rc=0, `warning` 0, `80 tests, 0 failed`; Debug'da `NavPathTests.cpp` derlendi, `_DEBUG` kolunda 100 sorgu ve süre kapısı yok (`near64` Debug: `ms_p95=13.152`, kapı dışı, beklendiği gibi) |
+| K6 | ✔ | `NavPath_MatchesDijkstra [ OK ]`; altı `NAVPATH dijkstra:` satırı, toplam `found=238` / 240 (`n > 0`); test içi Dijkstra `NavPath.h`'yi kullanmıyor (`NavPathTests.cpp:86-133`, yalnızca `grid.EdgeOpen`) |
+| K7 | ✔ | Üç ayrı Release koşusu `set=near64`: `found=997`, `ms_p95` 0,540 / 0,526 / 0,531 (≤ 2,000; marj ≈ 3,7×); `expanded_p95=2431` her koşuda aynı (belirlenimli). Makine: AMD Ryzen 7 7800X3D, `nproc=16` (uygulayıcı raporu); `NavGrid.h` değişmedi (koşullu iyileştirme gerekmedi) |
+| K8 | ✔ | `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavPath.h` boş. `git diff --stat gece/2026-10-02-nav...bot/F5-02`: yalnızca `BotCore/NavPath.h`, `BotCore/BotCore.vcxproj` (+1), `Tests/BotCoreTests/BotCoreTests.vcxproj` (+1), `Tests/BotCoreTests/NavPathTests.cpp`, kendi plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h` yok; `build/` izlenmiyor (`git ls-files build` boş) |
+| K9 | ✔ | `Nav_` rc=0, `10 tests, 0 failed`, 10 `[ OK ]`; `NAVGRID real map: n=513 main=88508 clearance_max=13 build_ms=7.4` |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Diğer denetim maddeleri:
+  - Git: commit mesajları `[F5-02] …`; merge/force izi yok; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişmiş.
+  - Biçim: `NavPath.h` (253 satır) ve `NavPathTests.cpp` (724 satır) ASCII + CRLF (her satırda `\r`), girinti tab, Allman, boşlukla başlayan satır yok. İki `.vcxproj`'ta çalışma ağacında yalnızca tek satır eklenmiş, CRLF ve BOM korunmuş, kayıt sırası plandaki gibi (`NavGrid.h` → `NavPath.h` → `Perception.h`; `NavGridTests.cpp` → `NavPathTests.cpp` → `PerceptionTests.cpp`).
+  - Algoritma `NavPath.h`: doğrulama sırası (`:89-105`), damga tabanlı havuz (`:75-87`, `:231-242`), `NodeLimit` kontrolü hedef kontrolünden önce ve yalnızca bayat olmayan girdide (`:130-141`), komşuluk yalnızca `EdgeOpen` (`:159`), beraberlik `f` → büyük `g` → küçük `idx` (`:195-202`), global/`static` durum yok. Plan §5.1 ile birebir.
+  - Test kapsamı plan §5.2 ile birebir (dokuz test adı, sayılar 162, 16,0, 21 hücre, `E`/`E-1`, 660,617 ± 0,5).
+  - Uygulayıcı raporu dürüst: bildirilen satırlar (`found=997`, `expanded=3160`, `far150`/`global` değerleri) bağımsız koşuda yeniden üretildi (`ms_*` makineye göre ±%3 oynar).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. Not: `NavPathfinder::Find` damga/havuz hazırlığını (`NavPath.h:75-87`) geçerlilik denetiminden önce yapıyor; geçersiz sorguda `generation` boşuna artar. Davranışı etkilemez, planın sırasını bozmaz.
+  2. Not: Açık liste `reserve(4096)` ile başlıyor (`NavPath.h:241`); `global` kümesinde yığın daha büyüyebilir (kapasite sonraki sorgularda korunur, yani bellek ayırma yalnızca ısınmada). F5-04/F5-05'te bot başına örnek paylaşımı kararlaştırılırken göz önünde bulundurulmalı (örnek ≈ 4,2 MB).
+  3. Not: Uygulayıcı `std::abs` yerine elle işaret kullandı (`NavOctile`, `<cstdlib>` eklememek için); test tarafında `std::abs` kullanılıyor. Davranış aynı, kabul edilir.
+  4. Not (bilgi): Debug'da `global` kümesi `expanded_p95=17353`, Release'te `20000` (100 vs 1000 sorgu örneklemi farkı); kapı yok.
+- Düzeltme talimatı: gerekmiyor (`DOĞRULANDI`).
