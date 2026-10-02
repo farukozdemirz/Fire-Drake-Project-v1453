@@ -90,6 +90,9 @@
     <ClCompile Include="Bot\Telemetry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Bot\ScenarioRunner.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="FriendHandler.cpp">
       <Filter>Source Files\Handlers</Filter>
     </ClCompile>
@@ -213,6 +216,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Bot\Telemetry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Bot\ScenarioRunner.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Region.h">
