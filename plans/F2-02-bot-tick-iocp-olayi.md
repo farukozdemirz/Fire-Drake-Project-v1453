@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI (2026-10-02, gece modu; birleştirmeyi döngü betiği yapar) |
+| Durum | DOĞRULANDI |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`, `gece/2026-10-02`'ye birleşti: `BotManager`, `[BOT]` ini anahtarları, `WriteBotLog`) |
