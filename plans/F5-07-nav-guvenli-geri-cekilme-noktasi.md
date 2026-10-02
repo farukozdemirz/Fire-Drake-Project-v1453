@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-07` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: yalnızca `NavCell`), F5-06 (`BotCore/NavDanger.h`): `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `077a41e`); bu planın testleri 114 testin üstüne eklenir |
@@ -86,7 +86,7 @@ Planı yazarken doğrulanan gerçekler (Python prototipi, 2026-10-02, depoya gir
 |---|---|
 | R-A solo | `Found`, hücre **`(159, 228)`** (`Safe`), puan **2,13283** (`2e-3`), uzunluk **105,657** (`0,05`), `Danger` 0, yol **27** hücre, aday = genişletilen = **2799** |
 | R-A party | hücre **`(177, 229)`** (`Safe`), puan **0,61716** (`2e-3`), uzunluk **35,314** (`0,05`), yol **9** hücre, aday = genişletilen = **245** |
-| R-B: `elm` + melee `(690, 910)`: katman = `elm` kopyası + `AddThreats`, tehdit listesi `{(690, 910) Melee}`, solo | hücre `(159, 228)`, puan **2,08865** (`2e-3`), uzunluk **112,284** (`0,05`) > R-A uzunluğu (dolambaç), yol 27 hücre, aday = genişletilen = **2783**; yolun her hücre merkezi melee'ye ≥ 8 m (gerçekte en yakın **12,0 m**, `±0,01`) |
+| R-B: `elm` + melee `(690, 910)`: katman = `elm` kopyası + `AddThreats`, tehdit listesi `{(690, 910) Melee}`, solo | hücre `(159, 228)`, puan **2,08865** (`2e-3`), uzunluk **112,284** (`0,05`) > R-A uzunluğu (dolambaç), yol 27 hücre, aday = genişletilen = **2783**; yolun her hücre merkezi melee'ye ≥ 8 m (en yakın ≈ **8,94 m** (`sqrt(80)`); bağlayıcı ölçüt `≥ 8`, Doğrulama Turu 1'de düzeltildi: önceki "12,0" prototipin beraberlik sırasındaki başka eşit uzunlukta yoluna aitti) |
 | R-C: başlangıç `(342, 272)` (Karus kapısına 7,07 m: düşman halkasının içinde, **Walk**), solo, dayanak yok, katman `elm` | hücre **`(320, 271)`** (yasaklı değil), puan **-0,09771** (`2e-3`), uzunluk **89,657** (`0,05`), `Danger` 0, yol **23** hücre, bunların **22'si yasaklı** (önek), aday **1247**, genişletilen **2424** |
 | R-D: başlangıç `(318, 222)` (arena A), solo, dayanak kapı (300 m'den uzak) | hücre = başlangıç, puan **0,5**, uzunluk 0, yol 1 hücre, aday = genişletilen = **2089** (yakınlık 0, kalmak en iyi) |
 
@@ -234,7 +234,7 @@ Her testte `NavRetreatPlanner planner;`, `NavRetreatResult out;`, `NavRetreatPar
 
 `NavRetreat_RealMap`:
 
-- **R-A, R-B, R-C, R-D** (§2 gerçek harita tablosu): hücre, puan, uzunluk, yol uzunluğu (hücre sayısı), aday ve genişletilen sayıları, `Safe` (R-A ikisi de `true`; R-C hücresi `Forbidden` değil, yoldaki yasaklı hücre sayısı 22 ve bir önek). Dayanak her sorguda `(622.0f, 911.0f)` (R-C'de dayanak yok). R-B için katman `dyn = elm; dyn.AddThreats(&melee, 1, NavThreatParams())` ile kurulur (tehdit `(690.0f, 910.0f)`, `Melee`) ve tehdit listesi aynı tehdittir; yolun her hücre merkezinin `(690, 910)`'a uzaklığının en küçüğü `>= 8` (beklenen 12,0, `±0,01`). Her `Found` için `CheckResult`.
+- **R-A, R-B, R-C, R-D** (§2 gerçek harita tablosu): hücre, puan, uzunluk, yol uzunluğu (hücre sayısı), aday ve genişletilen sayıları, `Safe` (R-A ikisi de `true`; R-C hücresi `Forbidden` değil, yoldaki yasaklı hücre sayısı 22 ve bir önek). Dayanak her sorguda `(622.0f, 911.0f)` (R-C'de dayanak yok). R-B için katman `dyn = elm; dyn.AddThreats(&melee, 1, NavThreatParams())` ile kurulur (tehdit `(690.0f, 910.0f)`, `Melee`) ve tehdit listesi aynı tehdittir; yolun her hücre merkezinin `(690, 910)`'a uzaklığının en küçüğü `>= 8` (ölçülen ≈ 8,94; bağlayıcı ölçüt `>= 8`, Doğrulama Turu 1'de düzeltildi). Her `Found` için `CheckResult`.
 - **Referans taraması:** `Rng rng(20261002u)`, 30 sorgu: başlangıç `elm` içinde olabilen herhangi bir `Walk` hücre (x-ana tarama listesi, `NextBelow(count)`); 4 tehdit: başlangıç hücresinden Chebyshev ≤ 15 hücre içinde `rng.NextBelow(31)` ile `dx`, `dz` (`-15 + değer`) denenerek bulunan `Walk` hücre merkezleri (bulunamazsa yenisi denenir; sıra Melee, Ranged, Melee, Ranged); katman `dyn = elm; dyn.AddThreats(...)`; mod `q % 2 == 0 ? Party : Solo`; dayanak `q % 2 == 0` ise kapı, değilse yok. Her sorguda üretim ve `RefRetreat` (bu ızgarada kutu `start ± (ceil(R / unit) + 2)`, ızgaraya kırpılır): durum, `candidates`, puan (`1e-3`) ve `CheckResult` aynı kurallarla; `mismatches == 0`.
 - Yazdır: `std::printf("NAVRETREAT real: solo A cell=(%d,%d) score=%.5f len=%.3f cand=%d; party A cell=(%d,%d) score=%.5f len=%.3f cand=%d; melee B score=%.5f len=%.3f cand=%d min_melee_m=%.2f; ring C cell=(%d,%d) score=%.5f len=%.3f forb=%d cand=%d exp=%d; arena D stay=%d cand=%d; sweep queries=%d mismatches=%d\n", ...)`.
 - Not (planın doğruladığı sayı tutmazsa): sayı beklentiden saparsa **kuralı sayıya uydurma**; dur ve Uygulayıcı Raporu'nda sor.
@@ -342,20 +342,27 @@ git diff --stat gece/2026-10-02-nav...bot/F5-07
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-02
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F5-07` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F5-07` @ `d776376` (kod commit'i `9bb5325`; paralel hat `nav`, `AUTO_LOOP=1`, sunucuya dokunulmadı; birleştirmeyi döngü betiği yapar)
+- Kriter sonuçları (hepsi bu oturumda yeniden çalıştırıldı; uygulayıcının ✔ işaretine güvenilmedi):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `NavRetreat.h` + `NavRetreatTests.cpp` `touch` sonrası `./tools/build.sh Release` rc=0; çıktıda `warning` sayısı 0 (`NavRetreat` geçen uyarı yok), `NavRetreatTests.cpp` derlendi |
+| K2 | ✔ | `run-tests.sh Release --no-build --list`: sekiz `NavRetreat_*` adının hepsi var |
+| K3 | ✔ | rc=0, `122 tests, 0 failed`; sekiz yeni test `[ OK ]`, `SKIPPED` yok; `NAVRETREAT random maps: seeds=30 queries=1800 found=1776 no_candidate=24 invalid_start=0 mismatches=0`; `NAVRETREAT real: …` ve iki `NAVRETREAT perf …` satırı var |
+| K4 | ✔ | `zone71.navgrid` geçici taşındı: `NavRetreat_` rc=0, `8 tests, 0 failed`, `_RealMap` ve `_Perf` `SKIPPED`, diğer altısı `[ OK ]`; dosya geri kondu (1579030 bayt, aynı) |
+| K5 | ✔ | `./tools/run-tests.sh Debug` (derleme dahil) rc=0, `122 tests, 0 failed`, derlemede uyarı 0 |
+| K6 | ✔ | Tablo 1–4 testleri `[ OK ]` (kodda `1444`, `0.94737`, `1.78667`, `0.92929`, `1.01716`, `39.3137`, `1363`, `0.35562`, `1415`, `1414`, `1.27163`, `109.2548`, `254/204/263/283` vb. sınanıyor); referans 1800 sorguda `mismatches=0`; `NAVRETREAT real: solo A cell=(159,228) … cand=2799; party A cell=(177,229) … cand=245; melee B … cand=2783 min_melee_m=8.94; ring C cell=(320,271) … forb=22 cand=1247 exp=2424; arena D stay=1 cand=2089; sweep queries=30 mismatches=0` |
+| K7 | ✔ | Release, `nproc=16`: `NAVRETREAT perf set=party queries=1000 found=994 nocandidate=6 invalidstart=0 expanded_p50=202 expanded_p95=268 ms_p50=0.039 ms_p95=0.053 ms_p99=0.067` (kapı ≤ 0,500); `NAVRETREAT perf set=solo queries=1000 found=1000 nocandidate=0 invalidstart=0 expanded_p50=2101 expanded_p95=2954 ms_p50=0.398 ms_p95=0.616 ms_p99=0.813` (kapı ≤ 3,000); uygulayıcının satırlarıyla uyumlu (0,049 / 0,568) |
+| K8 | ✔ | `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavRetreat.h` boş; `git diff --stat gece/2026-10-02-nav...bot/F5-07`: `NavRetreat.h`, `NavRetreatTests.cpp`, iki `.vcxproj` (birer satır) ve kendi plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavDanger.h`, `NavReach.h`, `NavTrack.h`, `NavSmooth.h` yok |
+| K9 | ✔ | `Nav_` 10/10, `NavPath_` 9/9, `NavSmooth_` 8/8, `NavTrack_` 10/10, `NavReach_` 8/8, `NavDanger_` 8/8, hepsi rc=0 `[ OK ]`; `NAVPATH T-NAV-03 set=near64 … found=997 … expanded_p50=306 expanded_p95=2431`; `NAVDANGER real: elm_forbid=1594 elm_forbid_walk=1264 elm_safe=1591 elm_safe_walk=1232 …`; `NAVREACH real: components=143 largest=88279 pockets=229 …`; eski test dosyaları değişmedi |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Ek denetimler: yeni dosyalar ASCII + CRLF, girinti yalnızca tab (`file`, `grep -P`); iki `.vcxproj` yalnızca birer satır eklendi, BOM ve CRLF korundu; `build/` izlenmiyor (`git ls-files build` boş); commit mesajları `[F5-07] …`, merge/rebase/force izi yok; `NavRetreat.h` yalnızca `NavGrid.h`/`NavPath.h`/`NavDanger.h` + standart başlıklar, `#pragma` yalnızca `once`, global/`static` durum yok; üretim kodu §5.1 madde 1–10 ile satır satır karşılaştırıldı (yarıçap ve ağırlık kıstırması, melee bölge haritası üretim damgalı, `OpenWorse` düzeni, `nd > R` atlama, dışarıdan yasaklıya giriş yok, `<` ile bölge kuralı, puan sırası, havuz/damga taşması); testteki `StepAllowed` ve `RefRetreat` üretimle yapı/kod paylaşmıyor (§8 bağımsızlık kuralı).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not — plan metni hatası (R-B `min_melee_m`):** §2 Tablo ve §5.2'deki "gerçekte en yakın 12,0 m" beklentisi hatalıydı; K6 `min_melee_m≥8` diyordu. Uygulayıcı testi K6'ya göre yazdı (`NavRetreatTests.cpp:1250-1251`), doğru karar; kural gevşetilmedi (8 m kuralı `StepAllowed` ile her adımda ayrıca sınanıyor, `CheckResult` `NavRetreatTests.cpp:206`). Not: uygulayıcının "12,0 matematiksel olarak olanaksız" gerekçesi fazla kesin; aynı uzunlukta (112,284 m) birden çok sekizli yol olabilir ve hangisinin seçildiği beraberlik sırasına bağlıdır (planın kendisi yol şeklini bu yüzden sınamıyor). Sonuç değişmez: hücre, puan, uzunluk ve aday sayısı plandakiyle birebir. İki beklenti ifadesi plan dosyasında (§2 Tablo, §5.2) `≥ 8` olarak düzeltildi; üretim koduna etkisi yok.
+  2. **Not — plan metni hatası (§5.1 madde 7):** "`s > bestScore` (kesin) yeterlidir" `bestScore` 0 başlatılırsa negatif puanlı adayı hiç seçmez; planın kendi Tablo 4/F (`-0,04142`) ve R-C (`-0,09771`) beklentileri negatif. Uygulayıcının `hasBest` bayrağı (`NavRetreat.h:239`, `:300`) doğru çözüm: ilk aday her zaman alınır, sonra `s > bestScore`; beraberlik kuralı (kısa yol, küçük indeks) pop sırasıyla korunuyor. Plan metni bu haliyle bırakıldı (plan kapanıyor); ADR-0006 Eki F5-07 ve `docs/12` §8 `bestScore` başlangıcından söz etmediği için doküman değişikliği gerekmedi.
+  3. **Not — gözlem:** `Find` geçersiz başlangıçta bile `m_generation`'ı artırıyor (`NavRetreat.h:146`; `NavPathfinder` ile aynı davranış, etkisiz). Debug'da süre kapısı yok: solo `ms_p95=13.069`, party `ms_p95=1.154` (yalnızca bilgi).
+- Düzeltme talimatı: gerekmiyor.
