@@ -22,11 +22,12 @@ cd "$ROOT"
 
 # --- Ayarlar --------------------------------------------------------------
 OPENCODE_MODEL="${OPENCODE_MODEL:-opencode-go/deepseek-v4.1-flash}"
-CLAUDE_MODEL="${CLAUDE_MODEL:-claude-sonnet-5-5}"
-CLAUDE_EFFORT="${CLAUDE_EFFORT:-high}"
+CLAUDE_MODEL="${LOOP_CLAUDE_MODEL:-claude-sonnet-5-5}"
+CLAUDE_EFFORT="${LOOP_CLAUDE_EFFORT:-high}"
 MAX_CORRECTION_TURNS="${MAX_CORRECTION_TURNS:-4}"
 MAX_ITERATIONS="${MAX_ITERATIONS:-400}"
 MAX_WALLCLOCK_HOURS="${MAX_WALLCLOCK_HOURS:-9}"
+HEARTBEAT_SEC="${HEARTBEAT_SEC:-600}"
 OPENCODE_TIMEOUT_SEC="${OPENCODE_TIMEOUT_SEC:-7200}"
 CLAUDE_TIMEOUT_SEC="${CLAUDE_TIMEOUT_SEC:-3600}"
 CLAUDE_MAX_BUDGET_USD="${CLAUDE_MAX_BUDGET_USD:-40}"
@@ -275,6 +276,24 @@ start_keep_awake() {
 }
 stop_keep_awake() { rm -f "$KEEP_AWAKE_FLAG"; }
 start_keep_awake
+
+# Her HEARTBEAT_SEC saniyede (varsayilan 10 dk) hangi gorevin uygulandigini yazar.
+HEARTBEAT_LOG="$LOG_DIR/heartbeat.log"
+HEARTBEAT_FLAG="$LOG_DIR/heartbeat.flag"
+heartbeat_loop() {
+	while [ -f "$HEARTBEAT_FLAG" ]; do
+		sleep "$HEARTBEAT_SEC"
+		[ -f "$HEARTBEAT_FLAG" ] || break
+		local st br last
+		st="$(cat "$STATE_FILE" 2>/dev/null || echo '?')"
+		br="$(git branch --show-current 2>/dev/null)"
+		last="$(tail -n 1 "$MAIN_LOG" 2>/dev/null | cut -c1-160)"
+		printf '%s HEARTBEAT | dal=%s | %s | gece dalinda %s commit | son log: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$br" "$st" "$(git rev-list --count main.."${INTEGRATION_BRANCH:-main}" 2>/dev/null || echo ?)" "$last" | tee -a "$HEARTBEAT_LOG" >>"$MAIN_LOG"
+	done
+}
+start_heartbeat() { : >"$HEARTBEAT_FLAG"; heartbeat_loop & HEARTBEAT_PID=$!; }
+stop_heartbeat() { rm -f "$HEARTBEAT_FLAG"; [ -n "${HEARTBEAT_PID:-}" ] && kill "$HEARTBEAT_PID" 2>/dev/null || true; }
+start_heartbeat
 ITER=0
 PLAN_PATH=""
 declare -A CORR=() RECOV=() IMPL_TRIES=() VERIFY_TRIES=()
@@ -283,7 +302,7 @@ FINALIZED=false
 finalize() {
 	$FINALIZED && return
 	FINALIZED=true
-	if ! $NIGHT; then stop_keep_awake; return 0; fi
+	if ! $NIGHT; then stop_keep_awake; stop_heartbeat; return 0; fi
 	log "=== Kapanis: sabah raporu yaziliyor ==="
 	state "kapanis raporu"
 	switch_to "$INTEGRATION_BRANCH" || true
@@ -292,6 +311,7 @@ finalize() {
 	ensure_clean
 	state "bitti: ${1:-?}"
 	stop_keep_awake
+	stop_heartbeat
 	log "=== auto-loop.sh bitti ==="
 }
 trap 'finalize "beklenmeyen cikis"' EXIT
