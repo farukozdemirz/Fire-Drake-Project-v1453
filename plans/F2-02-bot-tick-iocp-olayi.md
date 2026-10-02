@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI (2026-10-02, gece modu; birleştirmeyi döngü betiği yapar) |
 | Faz | F2 — Bot oturumu (`docs/17` §2) |
 | Branch | `bot/F2-02` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F2-01 (`KAPANDI`, `gece/2026-10-02`'ye birleşti: `BotManager`, `[BOT]` ini anahtarları, `WriteBotLog`) |
@@ -263,3 +263,34 @@ file shared/SocketDefines.h shared/SocketMgr.h shared/SocketMgr.cpp GameServer/G
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F2-02` @ `7c94ace` (kod commit'i `077d142`). Otonom gece modu: birleştirme ve push döngü betiğinde, bu oturumda yapılmadı.
+- Kriter sonuçları (11 ✔ / 0 ✘):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | Dört dosyaya `touch` edilip (`SocketDefines.h` dahil, tam yeniden derleme) `./tools/build.sh Release` rc=0, hata 0. Uyarıların hiçbiri `Bot\`, `SocketMgr`, `SocketDefines` içinde değil; `GameServerDlg.cpp` uyarıları `(812,94)` C4834, `(1139,16)`, `(1798,18)` C4267: `git show gece/2026-10-02:GameServer/GameServerDlg.cpp` satır 811/1138/1797 ile aynı içerik (`:214`'te eklenen satır nedeniyle +1 kayma). Kalan uyarılar `AIServer/`, `LogInServer/`, `shared/KOSocket.cpp`, `Thread.cpp` ve diğer eski dosyalarda |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0; `Bot`/`SocketMgr`/`SocketDefines` uyarısı 0 |
+| K3 | ✔ | `git diff --stat`: `git diff --numstat`: `BotManager.cpp 82/0`, `BotManager.h 25/1` (silinen yalnızca eski kurucu satırı), `GameServerDlg.cpp 3/0`, `SocketDefines.h 2/1`, `SocketMgr.cpp 33/0`, `SocketMgr.h 13/1` (silinen yalnızca `&HandleShutdown`), artı kendi plan dosyası. `docs/`, `AGENTS.md`, `CLAUDE.md`, `opencode.json`, `.claude/` farkı yok; plan dosyasında yalnızca `Durum` ve rapor değişmiş |
+| K4 | ✔ | `SocketDefines.h:8-9` `BOT_TICK = 3`, `NUM_SOCKET_IO_EVENTS = 4`; `SocketMgr.h` `ophandlers` sırası `HandleReadComplete, HandleWriteComplete, HandleShutdown, HandleBotTick`; `SocketWorkerThread` ve `ShutdownThreads` diff'te yok |
+| K5 | ✔ | `SocketMgr.cpp` `PostBotTick`: `compare_exchange_strong(expected, true)`, `static OverlappedStruct ov`, `PostQueuedCompletionStatus` başarısızsa `s_botTickPending = false`; `HandleBotTick` kancayı çağırdıktan sonra bayrağı temizliyor; `git diff -- shared` içinde eklenen `new`/`delete` yok (grep boş) |
+| K6 | ✔ | `BotManager.cpp` `StartTicking()` ilk ifade `if (!m_enabled || m_timerThread != nullptr) return;`; `TICK_MS` `ENABLED=false` erken dönüşünden sonra (`Startup`, `MAX_BOTS` kıskacının ardından). Çalışma zamanında doğrulandı: `[BOT]` yokken ini'ye yalnızca `ENABLED=0` yazıldı, `TICK_MS` eklenmedi |
+| K7 | ✔ | `grep -n "g_pMain\|CUser\|GetLock" GameServer/Bot/BotManager.cpp`: `Startup` (54-55, 62), `AcquireSlot`/`ReleaseSlot` (167-180) ve `TimerThreadProc` satır 210 (`g_pMain->m_socketMgr.PostBotTick()`); `Tick()` (~220-255) içinde hiçbiri yok |
+| K8 | ✔ | Üç dizge `BotManager.cpp:237`, `:241`, `:252` plandaki tam metinle; yalnızca `snprintf` + `WriteBotLog`; `printf` yalnızca F2-01 `Startup` durum satırında (`:161`) |
+| K9 | ✔ | `GameServerDlg.cpp:214` `StartTicking()` `RunServer()` satırının hemen altında; `~CGameServerDlg` gövdesinin ilk ifadesi `BotManager::Instance().Shutdown();` (`:3128`) |
+| K10 | ✔ | `file`: `SocketDefines.h`, `SocketMgr.h`, `SocketMgr.cpp`, `Bot/*` "ASCII text, with CRLF"; `GameServerDlg.cpp` "UTF-8 (with BOM) … CRLF" |
+| K11 | ✔ | `git status --short` boş (doğrulamadan önce); `build/` ve `Logs/` depoda değil; commit farkında ini yok |
+
+- Çalışma zamanı doğrulaması (Release exe, `C:\dev\fdp\server`; ini yedeklenip sonda geri yüklendi, md5 aynı `d1646328…`; sunucular kapatıldı; test log dosyası silindi):
+  - `[BOT]` anahtarı yokken (`ENABLED=0`): 3/3 `UP`, `Bot_*.log` oluşmadı, ini'ye `TICK_MS` yazılmadı (yalnızca `ENABLED=0`).
+  - `ENABLED=1`, `MAX_BOTS=16`, `TICK_MS=100` (ini'ye varsayılan `TICK_MS=100` yazıldı): 3/3 `UP`; `Bot_*.log`: `BotManager: reserved 16 sessions (ids 2984-2999), pool self-test OK`; `BotManager: tick OK on IOCP thread 41460 (timer thread 30248), period 100 ms`; `BotManager: 100 tick intervals in 11052 ms (avg 110.5 ms), skipped 0`.
+  - `TICK_MS=20`: `tick OK on IOCP thread 41636 (timer thread 40384), period 20 ms`; `100 tick intervals in 3166 ms (avg 31.7 ms), skipped 0` (≥ 20 ms, Windows zamanlayıcı granülaritesi).
+  - Her iki çalışmada `run-servers.sh stop` nazik kapanış (3/3); Uygulama Hatası olayı yok (`Get-WinEvent` boş), kapanışta çökme yok.
+- Bulgular (önem sırasıyla, hiçbiri engelleyici değil):
+  1. (Bilgi, sonraki planlar için) Gerçek tick aralığı `Sleep` granülaritesi yüzünden istenenden uzun: `TICK_MS=100` → ortalama 110,5 ms, `TICK_MS=20` → 31,7 ms (plan 90–130 ms kabul ediyordu). Karar tick'i/`Update()` süreleri bu sapmayı hesaba katmalı; sıkı süre gerekirse (MET-PERF-02, F3) `timeBeginPeriod(1)` veya `std::chrono` ile gerçek `dt` kullanımı değerlendirilmeli.
+  2. (Bilgi, F2-03 için) Tek-uçuş bayrağı ve `OverlappedStruct` `static`; `GameServer`'da yalnızca `m_socketMgr` gönderim yapar (`m_aiSocketMgr` çağırmaz). İkinci bir `SocketMgr` örneği gönderim yaparsa bayrak paylaşılır; bu planda sorun yok. F2-01 doğrulamasındaki bulgu (bot oturumu `m_activeSessions`'ta, zamanlayıcıların `Update()`/`SendAll*` yolları) hâlâ F2-03/F2-04 işi; `Tick()` henüz hiçbir oturuma dokunmuyor.
+  3. (Düşük, rapor dürüstlüğü) Uygulayıcı raporundaki uyarı listesi (yalnızca üç `GameServerDlg.cpp` satırı) tam yeniden derlemede çıkan eski-satır uyarılarının yalnızca bir alt kümesi (artımlı derleme); K1 ölçütü yeni uyarıdır ve karşılandı.
+- Düzeltme talimatı: yok (DOĞRULANDI).

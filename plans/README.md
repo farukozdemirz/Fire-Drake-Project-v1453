@@ -62,7 +62,7 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F1-09](F1-09-sunucu-hasar-kaydi.md) | Sunucu tarafı hasar kaydı (`FDP_DAMAGE_TRACE`, derleme bayrağıyla kapalı; T-MECH-DMG ölçüm altyapısı) | F1 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F1-09` (taban: `gece/2026-10-02`) |
 | [F1-10](F1-10-hasar-logu-ozet-betigi.md) | Hasar logu özet ve model karşılaştırma betiği (`tools/damage-trace-summary.py`, ± %15 hükmü, T-MECH-DMG analizi) | F1 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F1-10` (taban: `gece/2026-10-02`) |
 | [F2-01](F2-01-bot-alicisi-ve-slot-havuzu.md) | Bot alıcısı (`m_botSink`) ve ayrılmış oturum slot havuzu (S1+S2; `[BOT] ENABLED=0` varsayılan; öz-sınama) | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-01` (taban: `gece/2026-10-02`) |
-| [F2-02](F2-02-bot-tick-iocp-olayi.md) | `BOT_TICK` IOCP olayı ve bot zamanlayıcı thread'i (S9, ADR-0005; `Tick()` boş, öz-sınama logu; `[BOT] ENABLED=0` varsayılan) | F2 | HAZIR | `bot/F2-02` (taban: `gece/2026-10-02`) |
+| [F2-02](F2-02-bot-tick-iocp-olayi.md) | `BOT_TICK` IOCP olayı ve bot zamanlayıcı thread'i (S9, ADR-0005; `Tick()` boş, öz-sınama logu; `[BOT] ENABLED=0` varsayılan) | F2 | DOĞRULANDI (2026-10-02, gece/2026-10-02; birleştirme döngüde) | `bot/F2-02` (taban: `gece/2026-10-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 
