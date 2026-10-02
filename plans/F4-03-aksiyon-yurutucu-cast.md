@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-03` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-02 (saldırı dilimi, guard deseni, `m_actionWindow`) — `KAPANDI`; F4-01 (hareket) — `KAPANDI` |
@@ -488,3 +488,27 @@ plans/F4-03-aksiyon-yurutucu-cast.md — Doğrulama Turu 1 düzeltmeleri. Aynı 
 2. ./tools/build.sh Release ve ./tools/build.sh Debug hatasız, ActionExecutor.cpp için uyarı yok. ./tools/run-tests.sh Release ve Debug: 24 tests, 0 failed. Çıktıları raporuna yaz.
 3. Başka dosyaya dokunma (docs/**, BotCombat.h, testler, GameServer/** içindeki diğer dosyalar dahil). Sunucuyu çalıştırma. Durum satırını UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-02
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-03` @ `dee7d03` (5 commit, hepsi `[F4-03] ...` biçiminde; Tur 1'den beri değişen yalnızca `GameServer/Bot/ActionExecutor.cpp` +4 satır ve bu plan dosyası). Otonom gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı.
+- Özet: Tur 1 bulgusu 1 (`RejectCast` `out_of_range` `value`/`limit` 0) giderildi ve çalışma zamanında doğrulandı. Diğer tüm kriterler Tur 1'de kanıtlandı; bu turda değişen kod yalnızca bir `case`, ilgili kriterler yeniden sınandı.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme | ✔ | `ActionExecutor.cpp` touch'lanıp `./tools/build.sh Release` rc=0, `warning`/`error` satırı 0 |
+| K2 Debug derleme | ✔ | `./tools/build.sh Debug` rc=0, uyarı/hata 0 |
+| K3 Birim testleri | ✔ | `tools/run-tests.sh Release` ve `Debug`: `24 tests, 0 failed` |
+| K4–K5, K8–K11 | ✔ | Tur 1 kanıtı geçerli; Tur 1→2 farkı yalnızca `ActionExecutor.cpp` (+4, `CAST_REJECT_OUT_OF_RANGE` case'i, `:551-554`); `BotCombat.h`, testler, `vcxproj*` dokunulmadı; `file` → ASCII + CRLF; `git diff 46c812f..bot/F4-03 -- GameServer/` yalnızca bu case |
+| K6 Guard atlanmıyor | ✔ | Değişmedi; `RejectCast` `HandlePacket`'tan önce erken dönüş, çalışma zamanında reddedilen cast için `ACTION_SUBMIT` yok |
+| K7 `ENABLED=0` | ✔ | Tur 1 kanıtı; bu turda `BotManager.cpp` değişmedi |
+| K12 Çalışma zamanı | ✔ | S4 yeniden sınandı (aşağıda); S1 gerilemesiz |
+
+- Çalışma zamanı (Release, `ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`; ini'ye geçici `[BOT]` bölümü eklendi, sonra yedekten geri yüklendi):
+  - **S4 (bulgu 1):** `BotWP_E` 70 m uzağa yürütüldü (`pos=1344.0,890.0`); `cast BotMF_K 110518 BotWP_E` → `cast stopped (out_of_range)`; JSONL: `FAIRNESS_REJECT` `"type":"Cast","rule":"MEC-MAG-11","reason":"out_of_range","value":70.00,"limit":56.00` ✔ (Tur 1'de 0,00/0,00). `cast BotWP_K 106560 BotWP_E` (Type1) → `value":700.00,"limit":20.00` (`distanceField`/`weaponRangeField`, 0,1 m alanı) ✔. `"type":"Cast…"` içeren başka olay yok (`ACTION_SUBMIT` yok), `GameServer.log` 32 → 32 satır, oturum kopmadı.
+  - **S1 gerilemesiz:** `BotWP_E` yan yana (`1276,890`); `cast BotMF_K 110518 BotWP_E 2` → her çevrimde `CastStart` (`cast_ms:1080`) → `casting` (`op:1`) → `CastEffect` (`since_casting_ms` 1094 / 1096) → `effected` (`op:3`, `code:0`); çevrimler arası ≈ 1088 ms; `latency_us` 15–95; `BotWP_E` `hp` 5650 → 5185, `BotMF_K` `mp` 6021 → 5941; `FAIRNESS_REJECT` yok.
+  - Temizlik: ini yedekten geri yüklendi (md5 `d16463283c0d41074a2d8b6ec4aee203`), `BotCommands.*` kalmadı, sunucular kapatıldı (`run-servers.sh stop`); dört bot satırı hedefli `UPDATE` ile `Hp=Mp=32000`, `PX=127400`, `PZ=89000` geri yazıldı (yalnızca bot satırları, kişisel veri okunmadı). Test artıkları depo dışında (`Logs\bots\2026-10-02\live-095945.jsonl`, `Logs\bots_old_f403\`).
+- Bulgular: Tur 1 bulgusu 1 kapandı. Notlar (engel değil): `SubmitCast`/`BeginCast` içindeki kullanılmayan `now` parametresi `(void)now` ile bastırılmış (F4-02 kalıbı); `RejectCast` `switch` içinde yeni `case` yorumu satır içinde en sonda, sıra `TOO_EARLY`'den sonra (işlev etkilenmez); `git diff --check` yalnızca `docs/STATUS.md` markdown tablo satır sonu boşluğunu bildirir (kod dosyalarında boş).
+- Kalan (insan testi): T-ARCH-08 (`docs/STATUS.md` "Proje sahibi testleri"): gerçek istemcide cast animasyonu; plan kapsamında kriteri engellemez.
