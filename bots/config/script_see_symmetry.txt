@@ -1,0 +1,10 @@
+# F4-54 one-way view diagnostic: dumps the observation table of the three bots.
+# Precondition: BotWP_K, BotMF_K and BotPHD_K are spawned and in game (list shows 3).
+# Copy to <server dir>/Scripts/see_symmetry.txt, then: /bot script run see_symmetry
+0 list
+500 see BotWP_K
+1000 see BotMF_K
+1500 see BotPHD_K
+2000 snap BotWP_K
+2500 snap BotMF_K
+3000 snap BotPHD_K

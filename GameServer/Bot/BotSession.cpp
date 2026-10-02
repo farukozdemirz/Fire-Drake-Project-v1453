@@ -31,6 +31,20 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_opcodeCount[i] = 0;
 	for (int i = 0; i < 8; i++)
 		m_castTypeHas[i] = false;
+	for (int i = 0; i < 8; i++)
+		m_regionDroppedLastIds[i] = 0;
+
+	m_inoutIn = 0;
+	m_inoutOut = 0;
+	m_inoutParseFail = 0;
+	m_reqUserInRecv = 0;
+	m_reqUserInUnits = 0;
+	m_reqUserInParseStop = 0;
+	m_regionRecv = 0;
+	m_regionIdsLast = 0;
+	m_regionDroppedTotal = 0;
+	m_moveUnknown = 0;
+	m_regionDroppedLastCount = 0;
 }
 
 void BotSession::OnPacket(Packet & pkt)
@@ -244,22 +258,34 @@ void BotSession::OnPacket(Packet & pkt)
 				std::lock_guard<std::mutex> lock(m_obsLock);
 				if (type == BotCore::kObsInOutOut)
 				{
+					m_inoutOut++;
 					m_obs.Remove(unit.sid);
 					m_hp.Invalidate(unit.sid);
 				}
 				else
 				{
+					m_inoutIn++;
 					m_obs.Upsert(unit);
 				}
+			}
+			else
+			{
+				m_inoutParseFail++;
 			}
 		}
 		else if (opcode == WIZ_REQ_USERIN)
 		{
 			BotCore::UnitObs list[BotCore::kObsMaxUnits];
 			int n = BotCore::ParseUserList(data, len, nowMs, list, BotCore::kObsMaxUnits);
+			uint16 declared = (data != nullptr && len >= 2)
+				? (uint16)((uint16)data[0] | ((uint16)data[1] << 8)) : 0;
 			std::lock_guard<std::mutex> lock(m_obsLock);
 			for (int i = 0; i < n; i++)
 				m_obs.Upsert(list[i]);
+			m_reqUserInRecv++;
+			m_reqUserInUnits += (uint32)n;
+			if (declared > (uint16)n)
+				m_reqUserInParseStop++;
 			m_userInEcho = (1ull << 63) | (uint64)n;
 		}
 		else if (opcode == WIZ_REGIONCHANGE)
@@ -267,7 +293,26 @@ void BotSession::OnPacket(Packet & pkt)
 			uint16 ids[BotCore::kObsMaxUnits * 4];
 			int n = BotCore::ParseRegionList(data, len, ids, BotCore::kObsMaxUnits * 4);
 			std::lock_guard<std::mutex> lock(m_obsLock);
+
+			// Diagnostic (plan F4-54): remember the table size and ids before Retain so the drop count and the
+			// last dropped ids can be reported. No behavior depends on these values.
+			uint16 before[BotCore::kObsMaxUnits];
+			int beforeCount = m_obs.Count();
+			for (int i = 0; i < beforeCount; i++)
+				before[i] = m_obs.At(i).sid;
+
 			m_obsUnresolved = (uint32)m_obs.Retain(ids, n, 0xFFFF);
+			int dropped = beforeCount - m_obs.Count();
+			int written = 0;
+			for (int i = beforeCount - 1; i >= 0 && written < 8; i--)
+			{
+				if (m_obs.Find(before[i]) == nullptr)
+					m_regionDroppedLastIds[written++] = before[i];
+			}
+			m_regionDroppedLastCount = written;
+			m_regionRecv++;
+			m_regionIdsLast = (uint32)n;
+			m_regionDroppedTotal += (uint32)(dropped < 0 ? 0 : dropped);
 			m_obsPending.Set(ids, n, m_obs);
 		}
 		else if (opcode == WIZ_MOVE)
@@ -276,6 +321,8 @@ void BotSession::OnPacket(Packet & pkt)
 			if (BotCore::ParseMoveFull(data, len, move))
 			{
 				std::lock_guard<std::mutex> lock(m_obsLock);
+				if (m_obs.Find(move.sid) == nullptr)
+					m_moveUnknown++;
 				m_obs.UpdateMove(move.sid, move.x10, move.z10, move.y10, move.speed, nowMs);
 			}
 		}
@@ -423,9 +470,22 @@ void BotSession::ResetForRespawn()
 		m_team.Clear();
 		m_hp.Clear();
 		m_skillEvents.Clear();
+		m_regionDroppedLastCount = 0;
+		for (int i = 0; i < 8; i++)
+			m_regionDroppedLastIds[i] = 0;
 	}
 	m_obsUnresolved = 0;
 	m_npcUnresolved = 0;
+	m_inoutIn = 0;
+	m_inoutOut = 0;
+	m_inoutParseFail = 0;
+	m_reqUserInRecv = 0;
+	m_reqUserInUnits = 0;
+	m_reqUserInParseStop = 0;
+	m_regionRecv = 0;
+	m_regionIdsLast = 0;
+	m_regionDroppedTotal = 0;
+	m_moveUnknown = 0;
 	m_userInHasLast = false;
 	m_userInRequests = 0;
 	m_userInUnits = 0;

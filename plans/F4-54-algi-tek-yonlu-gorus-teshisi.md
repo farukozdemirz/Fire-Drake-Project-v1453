@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-54 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-12, F4-13, F4-14, F4-15 (görünür oyuncu/NPC tabloları ve bölge değişimi istekleri) — `KAPANDI` |
@@ -95,14 +95,82 @@ grep -n "region_dropped\|inout_parse_fail" GameServer/Bot/BotSession.cpp GameSer
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-54` (taban: `gece/2026-10-02`); `ad8598c` `[F4-54] Algi teshis sayaclari ve see dokumu`.
 - Değişen dosyalar ve neden:
+  - `GameServer/Bot/BotSession.h`: teşhis sayaç üyeleri (atomikler + `m_obsLock` altındaki `m_regionDroppedLastIds[8]`/`m_regionDroppedLastCount`). Yorum blokları eklendi.
+  - `GameServer/Bot/BotSession.cpp`: `OnPacket()` içinde sayaç artırımları (`inout in/out/fail`, `reqUserIn recv/units/stop`, `region recv/ids/dropped`, `move_unknown`); `WIZ_REGIONCHANGE` dalında `Retain` öncesi tablo kimlikleri alınıp sonrasında düşenler hesaplanıyor (mevcut `Retain` satırı değişmedi); `WIZ_MOVE` dalında bilinmeyen kimlik `Find` ile sayılıyor (mevcut `UpdateMove` satırı değişmedi); `ResetForRespawn()` sayaçları sıfırlıyor. Tüm yeni satırlar alıcı yolunda; mevcut tablo güncellemeleri/eko kayıtları değişmedi.
+  - `GameServer/Bot/BotManager.cpp`: yalnızca `CommandSee` çıktısına iki teşhis satırı (`diag:` sayaç dökümü + son silinen kimlik listesi). Kilit altında kopyalanıp kilit dışında biçimlendiriliyor.
+  - `bots/config/script_see_symmetry.txt` (yeni): yalnızca `list`/`see`/`snap` içeren 7 adımlı betik; `./Scripts/` ayrıştırıcısından geçtiği bağımsız olarak doğrulandı (`ParseScript`: `error=0`, `steps=7`).
 - Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; yalnızca eski `UpgradeHandler.cpp` C4789 uyarıları; değişen dosyalarda yeni uyarı yok.
+  - `./tools/build.sh Debug` rc=0; değişen dosyalarda uyarı yok.
+  - `./tools/run-tests.sh Release` ve `Debug`: `96 tests, 0 failed` (düzeltme yapılmadı, test sayısı değişmedi).
+  - `tools/check-perception-contract.py` `RESULT: PASS` (`--selftest` rc=0).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, touch'lı yeniden derleme, değişen dosyalarda yeni uyarı yok).
+  - K2 ✔ (Debug rc=0, uyarı yok).
+  - K3 ✔ (`96 tests, 0 failed`; düzeltme yapılmadığı için test sayısı değişmedi).
+  - K4 ✔ (`git diff` yalnızca ek satır; kod dosyalarında `-` satırı yok; mevcut `OnPacket` davranışı aynı).
+  - K5 ✔ (yeni satırlarda `g_pMain|GetUserPtr|_PARTY_GROUP|m_pUser->` yok; `m_regionDropped*` yalnızca `m_obsLock` altında; atomikler `OnPacket` yazar, `CommandSee` okur).
+  - K6 ✔ (yeni ini anahtarı/komut/thread/paket yok; `ENABLED=0` davranışı değişmez; ASCII+CRLF; `git diff --check` boş).
+  - K7 ✔ (betik `ParseScript`'ten geçti; 7 adım ≤ 100; fiiller `list`/`see`/`snap`).
+  - K8: çalışma zamanı koşusu **Claude'da** (plan §5.3); DeepSeek sunucu/istemci açmadı. 12 koşunun simetri tablosu ve hipotez (H1..H4) hükmü doğrulamada doldurulacak.
 - Plandan sapmalar ve gerekçeleri:
+  - `userin_req_skipped_gap` sayacı eklenmedi: artırımı `ActionExecutor::TickUserIn` (gap dalı, `ActionExecutor.cpp:2848`) içindedir fakat bu dosya "Dokunulabilecek dosyalar" tablosunda yok. K4/K6 yalnızca alıcı yolunu şart koştuğu için gap sayacı atlandı; `userin_req_sent` yerine mevcut `m_userInRequests` (gönderilen istek) `diag` satırında `sent` olarak gösterildi. H4 teşhisi `pending` ve `sent` ile izlenebilir.
+  - Teşhis için `BotCore/Perception.h` değişmedi (kök neden henüz bilinmiyor; plan yalnızca kök neden `BotCore`'daysa izin veriyor). `Retain`'in düşürdüğü sayı/kimlikler `BotSession` tarafında `Count()`/`At()`/`Find()` ile türetildi.
+  - Silinen satır olmaması için yeni atomikler kurucu gövdesinde sıfırlanıyor (init listesi değiştirilmedi); kabul K4'ün "yalnızca ek satır" şartına birebir uyar.
 - Açık sorular:
+  - `userin_req_skipped_gap` gerekliyse `ActionExecutor.cpp`'nin izin listesine eklenmesi (veya sayaç yuvasının `BotSession` dışına taşınması) gerekir. Onay/karar bekleniyor.
+  - Plan §7'deki örnek grep `region_dropped\|inout_parse_fail` (küçük harf/alt çizgi) bu koddaki `m_regionDropped*` / `m_inoutParseFail` (camelCase) adlarıyla eşleşmez; üslup korunarak camelCase bırakıldı.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI** (gece modu, `AUTO_LOOP=1`; birleştirmeyi döngü betiği yapar). Kök neden bulundu: **H2** (doğuş zamanlaması; sunucu akışı + bot giriş sırası), kod düzeltmesi bu planın kapsamında değil (aşağıda "Kök neden").
+- İncelenen commit: `bot/F4-54` @ `132d337` (kod: `ad8598c`); taban `gece/2026-10-02`. Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `touch BotSession.cpp BotManager.cpp` + `./tools/build.sh Release` rc=0, `warning C` sayısı 0 |
+| K2 | ✔ | aynı dosyalar `touch`, `./tools/build.sh Debug` rc=0, `warning C` 0 |
+| K3 | ✔ | `./tools/run-tests.sh Release` ve `Debug`: `96 tests, 0 failed` (düzeltme yok, sayı değişmedi); `check-perception-contract.py` PASS |
+| K4 | ✔ | `git diff gece/2026-10-02...bot/F4-54 -- GameServer bots` içinde `-` satırı yok (yalnızca ek); `Retain`/`UpdateMove`/`Upsert` satırları aynen; sayaçlar yalnızca `OnPacket` alıcı yolunda ve `ResetForRespawn`'da |
+| K5 | ✔ | yeni satırlarda `g_pMain\|GetUserPtr\|_PARTY_GROUP\|m_pUser->` yok (grep rc=1). `m_regionDroppedLastIds/Count` yalnızca `m_obsLock` altında (`BotSession.cpp:293-315`, `BotManager.cpp:2306-2322`); diğer sayaçlar `std::atomic` |
+| K6 | ✔ | yeni ini/komut/thread/paket yok; `ENABLED=0` yolu değişmedi (ek satırlar `OnPacket` içinde); 4 dosya `file`: ASCII, çalışma ağacı CRLF (`grep -c $'\r$'` = satır sayısı; depo LF, `core.autocrlf`), `git diff --check` boş, yeni satırlarda ASCII dışı karakter yok |
+| K7 | ✔ | `BotCore/ScriptPlan.h` `ParseScript` ile bağımsız derlenen deneme: `error=0 steps=7`; fiiller `list`/`see`/`snap`; ayrıca sunucuda `script run see_symmetry` 12 kez `completed, 7/7 step(s)` |
+| K8 | ✔ | 12 koşu aşağıda. Asimetri bulundu (6/12), kök neden sayaçla belgeli; kök neden `Perception.h`/`BotSession`'da değil, plan §3.4 gereği düzeltme yapılmaz (H2). 3 sn aralıklı 6 koşu simetrik |
+
+**Çalışma zamanı (Claude yaptı):** `Release`, dal ucundan derlenmiş ikililer (`build/bin/x86-Release/Server`), `GameServer.ini` değiştirilmedi (md5 öncesi/sonrası `265a8e1c35ea12df46f6d006fe894d9b`, `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions, SPAWN_ON_START` boş); her koşu için sunucular yeniden başlatıldı (oturum listesi sırası doğuş sırasını etkilemesin), `Scripts/see_symmetry.txt` betiği `script run` ile çalıştı, iş bitince geçici betik silindi ve `run-servers.sh stop` ile üç sunucu kapatıldı (`0/3`), `BotCommands.*` kalmadı. Üç bot 12 koşunun hepsinde aynı konumda doğdu (sunucu `list`): `BotWP_K` (1274,891), `BotMF_K` (1274,905), `BotPHD_K` (1282,922); ikili uzaklıklar 14 / 18,8 / 32 m, yani üçü her zaman aynı 3×3 grupta (beklenen görünüm: herkes diğer ikisini görür).
+
+| Koşu | Aralık | Doğuş sırası (oyuna giriş) | Simetri | Eksik yönler (`A!B` = A, B'yi görmüyor) |
+|---|---|---|---|---|
+| 1 | ≤100 ms | WP, MF, PHD | ✘ | MF!WP, PHD!WP, PHD!MF |
+| 2 | ≤100 ms | WP, PHD, MF | ✘ | MF!PHD, PHD!WP |
+| 3 | ≤100 ms | MF, WP, PHD | ✘ | WP!MF, PHD!WP |
+| 4 | ≤100 ms | MF, PHD, WP | ✘ | WP!PHD, PHD!MF |
+| 5 | ≤100 ms | PHD, WP, MF | ✘ | WP!PHD, MF!WP |
+| 6 | ≤100 ms | PHD, MF, WP | ✘ | WP!MF, MF!PHD |
+| 7-12 | 3 sn | altı sıranın hepsi | ✔ (6/6) | yok |
+
+**Sayaç dökümü (12 koşuda ortak):** `inout_parse_fail 0`, `region recv 0 / ids 0 / dropped 0` (hiç `WIZ_REGIONCHANGE` gelmedi), `move_unknown 0`, `userin recv 1` (her botta tam bir kez: `GameStart(1)` yanıtı), `userin stop 0` (bildirilen sayı = ayrıştırılan), `userin requests 0 / pending 0` (`TickUserIn` hiç istek göndermedi çünkü bekleyen kimlik yok), `unresolved 0`. Asimetrik koşularda `userin units` ile `inout in` toplamı o botun gördüğü birim sayısına eşit; eksik birim hiçbir yoldan gelmedi (örn. koşu 1: `BotPHD_K` `inout in 0`, `userin recv 1 units 0` → görüş tablosu boş).
+
+**Kök neden (hipotezler):**
+
+- **H1 çürütüldü:** `region recv 0`; hiçbir koşuda `Retain` çalışmadı, silinen birim 0.
+- **H3 çürütüldü:** `inout_parse_fail 0` ve `userin stop 0`; kayıtlar düşmüyor, paketler hiç gelmiyor.
+- **H4 çürütüldü (kısmen anlamsız):** `TickUserIn` bekleyen kimlik olmadığı için istek göndermiyor (`pending 0`, `sent 0`); aralık/`PeekUserInBatch` bir engel değil. Eksik kimlikleri bilmenin tek yolu `WIZ_REGIONCHANGE` listesidir ve o liste yalnızca bölge sınırı geçilince gelir (`GameServer/CharacterMovementHandler.cpp:34-39`, `RegisterRegion()` true olunca); sabit duran botta hiç gelmez.
+- **H2 doğrulandı (sunucu akışı + bot giriş sırası):** `GameStart(opcode 1)` (`GameServer/CharacterSelectionHandler.cpp:266-269`) bölge kullanıcı listesini (`UserInOutForMe`, bota `WIZ_REQ_USERIN` yanıtı olarak gelen tek liste) **o anki** bölge üyelerinden üretir; kullanıcı bölgeye `GameStart(opcode 2)` ile `UserInOut(INOUT_RESPAWN)` (`:284`) sırasında kaydolur ve yayın yalnızca o sırada `isInGame()` olanlara gider (`GameServer/User.h:312`, `m_state` opcode 2'de INGAME olur). Bot `BotManager.cpp:2961-2977`'de iki opcode arasında yalnızca `LOADED_DELAY_MS = 200 ms` bekler ve üç bot aynı tick'te başlayınca üçünün de opcode 1 anlık görüntüsü, diğerlerinin kaydından önce alınır. Bir bot (A) başka bir botun (B) opcode-1 ile opcode-2 arasındaki penceresinde kaydolursa B, A'yı ne listede ne yayında alır; B sabit durduğu için `WIZ_REGIONCHANGE` de gelmez ve görüş tek yönlü kalır (A, B'nin IN yayınını alır). 3 sn arayla doğunca pencereler çakışmaz: 6/6 simetrik.
+- Gerçek oyuncu istemcisi aynı pencereye sahiptir (yükleme ekranı süresince kaydolanları kaçırır); bu sunucu davranışı olduğu için kapsam dışıdır.
+
+**Bulgular (önem sırasıyla):**
+
+1. **Not (üslup, engel değil):** `BotSession.cpp:305-313` `WIZ_REGIONCHANGE` dalında her pakette tablo kimlik kopyası (≤ 64) + `Find` döngüsü (O(n²), ≤ 64×64) çalışır; yalnızca bölge geçişinde ve `m_obsLock` altında olduğu için maliyeti önemsiz. Teşhis amaçlı; karar kodu bu alanları kullanmaz.
+2. **Not:** `userin_req_skipped_gap` sayacının atlanması doğru karardı (`ActionExecutor.cpp` izin listesinde yoktu); `pending 0 / sent 0` değerleri H4'ü o sayaç olmadan da çürütüyor. Uygulayıcı sorusu: ek izin gerekmiyor.
+3. **Not:** Plan §7 örnek `grep` kalıbı camelCase üyelerle (`m_regionDropped*`, `m_inoutParseFail`) eşleşmiyor; uygulayıcı üslubu korudu, kabul.
+4. **Sonraki iş (bu plan dışında, öneri):** bot tarafı zamanlama düzeltmesi (`BotManager.cpp` giriş durum makinesi, `PHASE_WAIT_SELECT`/`PHASE_WAIT_LOADED`): bir bot opcode 1 ile opcode 2 arasındayken başka bir botun opcode 1'ini başlatmamak (giriş el sıkışmasını botlar arasında serileştirmek) ve opcode 2 gecikmesini kısaltmak penceresiz doğuşu sağlar; sunucu koduna dokunmaz, bot tablosu veri kaynağı değişmez. Yeni plan gerekir (`docs/KNOWN_ISSUES.md` KI-DEG-01 notuna yazıldı). Bu çözüm uygulanana kadar geçici çözüm: botları ≥ 3 sn arayla doğurmak (`spawn` komutlarını ayrı dosyalarla).
+
+Düzeltme talimatı: yok (karar DOĞRULANDI).
