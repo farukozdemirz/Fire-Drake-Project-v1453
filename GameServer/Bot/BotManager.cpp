@@ -2517,9 +2517,16 @@ void BotManager::CommandSnap(const std::string & args)
 	std::vector<std::string> words;
 	SplitWords(args, words);
 
-	if (words.size() != 1)
+	if (words.size() != 1 && words.size() != 2)
 	{
-		WriteBotLog("BotManager: cmd snap: usage: snap <bot>");
+		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events]");
+		return;
+	}
+
+	bool wantEvents = (words.size() == 2 && words[1] == "events");
+	if (words.size() == 2 && !wantEvents)
+	{
+		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events]");
 		return;
 	}
 
@@ -2544,17 +2551,19 @@ void BotManager::CommandSnap(const std::string & args)
 		return;
 	}
 
-	// Copy the tables under the lock (only these three assignments), then build and format with the lock released.
+	// Copy the tables under the lock (only these assignments), then build and format with the lock released.
 	BotCore::ObsTable obsCopy;
 	BotCore::NpcTable npcCopy;
 	BotCore::TeamTable teamCopy;
 	BotCore::HpTable hpCopy;
+	BotCore::SkillEventRing eventCopy;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		obsCopy = s->m_obs;
 		npcCopy = s->m_npcs;
 		teamCopy = s->m_team;
 		hpCopy = s->m_hp;
+		eventCopy = s->m_skillEvents;
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2727,6 +2736,34 @@ void BotManager::CommandSnap(const std::string & args)
 			(unsigned)n.id, (unsigned)n.protoId, (unsigned)n.type, (unsigned)n.nation, (unsigned)n.level,
 			n.x, n.z, n.dist, n.dead ? "dead" : "alive", n.gateOpen ? "open" : "closed", (unsigned)n.ageMs,
 			hpText);
+		WriteBotLog(message);
+	}
+
+	if (wantEvents)
+	{
+		const int kPrintEvents = 10;
+
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   events total=%u in_ring=%d",
+			(unsigned)eventCopy.Total(), eventCopy.Count());
+		WriteBotLog(message);
+
+		for (int i = 0; i < eventCopy.Count() && i < kPrintEvents; i++)
+		{
+			const BotCore::SkillEvent & ev = eventCopy.At(i);
+			uint32 age = (nowMs >= ev.tMs) ? (uint32)(nowMs - ev.tMs) : 0;
+			snprintf(message, sizeof(message),
+				"BotManager: cmd snap:   event age=%ums op=%u skill=%u caster=%d target=%d d0=%d d1=%d d2=%d",
+				(unsigned)age, (unsigned)ev.op, (unsigned)ev.skillId,
+				(int)ev.caster, (int)ev.target, (int)ev.data[0], (int)ev.data[1], (int)ev.data[2]);
+			WriteBotLog(message);
+		}
+	}
+	else
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   events total=%u",
+			(unsigned)eventCopy.Total());
 		WriteBotLog(message);
 	}
 }
