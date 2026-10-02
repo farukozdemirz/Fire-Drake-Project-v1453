@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-26` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali) — `KAPANDI`; F4-25 (uçan Type3, `CAST_FLYING`) — `KAPANDI` (merge `0954929`) |
@@ -259,16 +259,36 @@ git diff --check gece/2026-10-02...bot/F4-26
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-26` — `<kısa-sha> [F4-26] …`
-- Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+- Branch / commit'ler: `bot/F4-26` (taban: `gece/2026-10-02` @ `f8021c0`) — `c066830 [F4-26] Cift tipli skill dilimi: {3,4} destegi, iki tipli tip kapisi`
+- Değişen dosyalar ve nedenleri:
+  - `BotCore/BotCombat.h`: §5.1 "dual-typed cast" bölümü eklendi (`CastTypesSupported`, `IsGatedType`, `TypeStamp`, `MinGatedSince`), `CheckCastLand` sonrası ve `// --- cast cancel and standing plan` başlığından önce. Yalnızca `<algorithm>`/`<cstdint>` ve `std::min`/`std::max` yok.
+  - `Tests/BotCoreTests/CombatTests.cpp`: §5.2 üç yeni `TEST_CASE` (`Combat_CastTypes_Supported`, `Combat_TypeGate_MinSince`, `Combat_TypeGate_DualCast`), dosya sonuna; 99 → 102.
+  - `GameServer/Bot/ActionExecutor.cpp`: §5.3-a `BeginCast` destek kuralı `CastTypesSupported(bType[0], bType[1])`, `supportedType`/`bType[1] != 0` koşulları kaldırıldı; §5.3-b `TickCast` tip kapısı iki tipe bakıyor (`TypeStamp[2]` + `MinGatedSince`), `type0` değişkeni kaldırıldı; §5.3-c EFFECTING sonrası reuse damgaları `bType[0]` ve `bType[1]` için döngüyle yazılıyor.
+  - `GameServer/Bot/ActionExecutor.h`: §5.3-e yalnızca yorumlar (tek `CastTypesSupported` çağrısı, `BeginCast`/`TickCast` destek/`reason` notu).
+- Derleme sonucu (`tools/build.sh Release` son satırları):
   ```
-  …
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `touch` ile yeniden derlemede `BotCombat|CombatTests|ActionExecutor` için uyarı/hata grep'i boş (rc=1). `Debug` da rc=0.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, değişen dosyalarda uyarı yok)
+  - K2 ✔ (Debug rc=0)
+  - K3 ✔ (`Release`/`Debug`: `102 tests, 0 failed`, üç yeni test adı çıktıda)
+  - K4 ✔ (grep boş; `#include` yalnızca `<algorithm>`/`<cstdint>`; eklenen satırlarda `std::min`/`std::max` yok)
+  - K5 ✔ (`CastTypesSupported` yalnızca `ActionExecutor.cpp:730`; `bFlyingEffect`/`iUseItem`/`sEtc`/moral koşulları diff'te silinmemiş; birim testi `(1,4)`,`(3,3)`,`(3,5)`,`(4,0)` false)
+  - K6 ✔ (`IsGatedType`/`MinGatedSince` `TickCast`'te; `grep type0` boş; damga döngüsü iki tip; `m_castTypeLast[3] = now` pot satırı değişmedi — satır `1452`)
+  - K7 ✔ (silinen satırlar yalnızca planın saydığı `supportedType`/koşul/`bType[1]`/`type0` blokları; diğer akışlar korunmuş)
+  - K8 ✔ (`BotSession.*`, `BotManager.cpp` diff'te yok; `SubmitCast`/`OnPacket()` değişmedi)
+  - K9 ✔ (yeni `Emit(` yok; yeni ini/komut/thread/telemetri alanı yok)
+  - K10 ✔ (`git diff --stat` yalnızca 4 dosya; vcxproj değişmedi)
+  - K11 ✔ (`file` hepsi ASCII + CRLF; `git diff --check` boş)
+  - K12 ✔ (yasaklı çağrı grep'i boş)
+  - K13 ✔ (tüm `Check*` grep'leri ≥ beklenen; 102/102 test geçiyor)
+  - K14 ✔ (`check-perception-contract.py` `RESULT: PASS`, `R1 0/0 R2 0/28 R3 0/18 R4 0/0 R5 0/0`)
+  - K15 ⏳ (Claude `/plan-dogrula` çalışma zamanı S1–S5; bu planda DeepSeek yapmaz)
+- Plandan sapmalar ve gerekçeleri: Yok. Satır numaraları kaydı (pot damgası `1445` → `1452`); plan "satırlar kayabilir" diyor.
+- Açık sorular: Yok.
 
 ---
 
