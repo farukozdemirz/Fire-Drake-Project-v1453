@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-06` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-05 (duruş dilimi, `OnPacket()` ekleme kalıbı, `SetStance` iskeleti) — `KAPANDI`; F4-02 (`AttackTarget` kalıbı, `m_actionWindow`) — `KAPANDI`; F4-01 — `KAPANDI` |
@@ -297,13 +297,41 @@ git diff --check gece/2026-10-02...bot/F4-06
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
-- Değişen dosyalar ve nedenleri:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-06` (taban: `gece/2026-10-02`); uygulama commit'i `76433ab` (`[F4-06] TargetHpReq hedef HP dilimi: WIZ_TARGET_HP, CLI-10 guard, /bot target`); bu rapor + Durum commit'i ayrıca.
+- Değişen dosyalar ve nedenleri (§4'teki 8 dosya + plan):
+  - `BotCore/BotCombat.h` — `kTargetHpPollMs`, `kViewDistance`, `kViewRegionRadius`, `RegionIndex`, `RegionDelta`, `TargetHpCheck`, `TargetHpVerdict`, `CheckTargetHp` (yalnızca `CheckStance` sonrası ekleme).
+  - `Tests/BotCoreTests/CombatTests.cpp` — üç yeni `TEST_CASE` (`Combat_RegionIndex_RegionDelta`, `Combat_TargetHpCheck_Order`, `Combat_TargetHpCheck_SwitchAndFirst`).
+  - `GameServer/Bot/ActionExecutor.h` — `TargetHpTarget`, `TargetHpOutcome`, `RequestTargetHp` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp` — dosya sonuna `RejectTargetHp` + `RequestTargetHp` (tek `WIZ_TARGET_HP`, `CheckTargetHp` guard'ı, cevap eşleşmesi, telemetri).
+  - `GameServer/Bot/BotSession.h/.cpp` — `m_hpReqTargetId/m_hpReqHasLast/m_hpReqLast` + `m_targetHpEcho/m_targetHpValues`; başlatıcı, `ResetForRespawn()` ve `OnPacket()`'e ekleme bloğu.
+  - `GameServer/Bot/BotManager.h/.cpp` — `CommandTarget` bildirimi, `target` fiil dağıtımı, komut, `unknown command` listesi.
 - Derleme sonucu (`tools/build.sh Release` son satırlar):
+  - `Kodun üretilmesi tamamlandı`
+  - `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe` (rc=0)
+  - Debug: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe` (rc=0)
+  - Yeni/değişen dosyalarda uyarı yok; tek uyarılar eski `GameServerDlg.cpp` satırları (816/1143/1802). `BotCombat.h`, `CombatTests.cpp`, `ActionExecutor.*`, `BotSession.*`, `BotManager.*` touch'lanıp yeniden derlendi, uyarı çıkmadı.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; ilgili dosyalarda uyarı boş.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `tools/run-tests.sh Release` ve `Debug`: `31 tests, 0 failed`; üç yeni ad görünüyor.
+  - K4 ✔ `BotCombat.h`'de `#include` yalnızca `<algorithm>`/`<cstdint>`; yasaklı dizgeler 0 (bkz. sapma 2); `std::min/max` yok.
+  - K5 ✔ `WIZ_TARGET_HP` yalnızca `ActionExecutor.cpp` (paket) + `BotSession.cpp` (`OnPacket`); `SendTargetHP/m_targetID/GetTargetID` 0.
+  - K6 ✔ `CheckTargetHp` (`:1488`) `HandlePacket` (`:1513`) öncesinde; hedef HP için `HandlePacket` tek yerde.
+  - K7 ✔ `m_sHp/m_iMaxHp/GetUserPtr/GetHealth/GetMaxHealth` 0; `hp/maxHp` `m_targetHpValues`'tan.
+  - K8 ✔ `BotSession.cpp` silinen tek satır başlatıcı listesindeki bilinçli değişen satır; mevcut `OnPacket` blokları değişmedi (yalnızca ekleme).
+  - K9 ✔ `BotManager.cpp` silinen tek satır `unknown command` mesajı; `Startup/Tick/TickSessions/BuildStatusLines` ve ini okuma değişmedi.
+  - K10 ✔ `diff --stat` yalnızca §4'teki 8 dosya + plan; `.vcxproj`/`.filters` farkı boş; `Bot/` dışında değişen yok.
+  - K11 ✔ `file`: `BotCombat.h`/`CombatTests.cpp` ASCII + CRLF; `git diff --check` boş.
+  - K12 ✔ `printf/Sleep/lock_guard/mutex/CreateThread/rand(` 0.
+  - K13 ✔ `CheckMoveStep`=2, `CheckAttack=1`, `CheckCastStart=1`, `CheckPotion=1`, `CheckStance=1`; 28 eski test geçiyor; `EmitFairnessReject` çağrıları `Move/Attack/Cast/Potion/State` + yeni `TargetHp`.
+  - K14: Claude'un çalışma zamanı doğrulaması.
 - Plandan sapmalar ve gerekçeleri:
+  1. `BotCore::RegionIndex` üst sınırı: plan metni "`coord > 65535` → 65535; sonra `return (int)((uint16_t)coord) / kViewDistance`" diyordu; bu haliyle `RegionIndex(70000.0f)` = 65535 dönerdi, oysa planın kendi testi (K3) `65535 / 48 = 1365` bekliyor. Çelişkiyi testin lehine çözdüm: `coord > 65535` ise `coord = 65535.0f` yapıp bölme uygulanıyor. Böylece sunucunun `(uint16_t)` cast'i tanımlı aralıkta kalır ve test geçer.
+  2. `kViewDistance` yorumu: planda verilen `// shared/globals.h VIEW_DISTANCE...` yorumu K4'ün `grep -n "...shared/" ... → eşleşme vermez` kriterini ihlal ediyordu. İşaret edilen `shared/globals.h` referansı korunarak yorum `// server VIEW_DISTANCE (globals.h): region edge in metres` olarak yazıldı; başlıkta sunucu bağımlılığı yok.
+  - Bunlar dışında plan birebir uygulandı.
 - Açık sorular:
+  - Yok. Çalışma zamanı doğrulaması (§7 senaryoları; özellikle `Send()`'in cevabı botun alıcısına ilettiği `[A]` varsayımı) Claude'a bırakıldı; sonuç yalnızca cevap paketinden okunur, sunucu nesnesine bakılmaz. İletmezse `no_result` olarak raporlanacaktır.
 
 ---
 
