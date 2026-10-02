@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include "ScenarioRunner.h"
+#include "ScriptRunner.h"
 
 class CUser;
 class Thread;
@@ -48,12 +49,14 @@ public:
 
 private:
 	friend class ScenarioRunner;
+	friend class ScriptRunner;
 
 	BotManager() : m_enabled(false), m_poolSize(0), m_tickMs(100), m_timerThread(nullptr),
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
 		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false),
 		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false),
-		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0), m_scenario(*this) {}
+		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0), m_scenario(*this),
+		m_script(*this) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
@@ -139,4 +142,5 @@ private:
 	uint32 m_matchTickMaxUs = 0;     // IOCP thread only: highest tick_max_us among them
 
 	ScenarioRunner m_scenario;   // IOCP thread only
+	ScriptRunner m_script;       // IOCP thread only
 };

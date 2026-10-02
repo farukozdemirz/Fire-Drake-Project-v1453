@@ -1,0 +1,9 @@
+# Smoke script: needs BotWP_K and BotWP_E in game (use: /bot spawn BotWP_K,BotWP_E).
+# Copy to <server dir>/Scripts/smoke.txt, then: /bot script run smoke
+0 list
+500 snap BotWP_K
+1000 sit BotWP_K
+3000 stand BotWP_K
+4500 see BotWP_K
+5000 npcs BotWP_E
+6000 stop all

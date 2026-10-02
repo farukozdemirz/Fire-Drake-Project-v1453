@@ -427,6 +427,7 @@ void BotManager::Tick()
 	TickSessions();
 	RefreshStatusSnapshot(std::chrono::steady_clock::now());
 	m_scenario.Tick(std::chrono::steady_clock::now());
+	m_script.Tick(std::chrono::steady_clock::now());
 
 	if (Telemetry::Instance().IsEnabled(TEL_SUMMARY))
 		RecordTick(tickStart);
@@ -618,6 +619,8 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandMatch(args);
 	else if (_stricmp(verb.c_str(), "scenario") == 0)
 		m_scenario.Command(args);
+	else if (_stricmp(verb.c_str(), "script") == 0)
+		m_script.Command(args);
 	else if (_stricmp(verb.c_str(), "move") == 0)
 		CommandMove(args);
 	else if (_stricmp(verb.c_str(), "stop") == 0)
@@ -659,7 +662,7 @@ void BotManager::ExecuteCommand(const std::string & line)
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, script, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
