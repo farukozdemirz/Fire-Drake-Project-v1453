@@ -557,6 +557,8 @@ while true; do
 		run_opencode "$PROMPT" "$STEP_LOG" || log "  opencode sifir olmayan cikis kodu; Durum kontrol ediliyor."
 		NEW_DURUM="$(plan_durum "$PLAN_PATH")"
 		log "  opencode sonrasi durum: $NEW_DURUM"
+		# Uygulama/duzeltme turu bitti: dogrulama deneme sayaci yeniden baslar (her tur icin en fazla 2 dogrulama denemesi).
+		VERIFY_TRIES[$PLAN_PATH]=0
 		if [ "$NEW_DURUM" = "$DURUM" ] && [ "$DURUM" = "DÜZELTME GEREKLİ" ]; then
 			recover "DeepSeek düzeltme turunu bitirdi ama Durum hâlâ DÜZELTME GEREKLİ (rapor/durum güncellenmemiş)" || stop_loop "kurtarma tukendi"
 		fi
