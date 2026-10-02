@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-16` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-12 (`ObsTable`, `UnitObs`, `/bot see`) — `KAPANDI` (merge `dcd8f80`); F4-14 (`NpcTable`, `NpcObs`, `/bot npcs`) — `KAPANDI` (merge `03a5e72`); F4-15 (NPC tablosu bölge değişiminde dolar) — `KAPANDI` (merge `bfdd839`); F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -252,14 +252,39 @@ git diff --check gece/2026-10-02...bot/F4-16
 
 ### Tur 1
 
-**Durum:** —
+**Durum:** UYGULANDI
 
 **Branch ve commit'ler:**
+- Branch: `bot/F4-16` (taban: `gece/2026-10-02`, `3ae9e17`).
+- `7e19210` — `[F4-16] PerceptionSnapshot ve /bot snap uygulandı` (4 kod dosyası).
 
 **Değişen dosyalar ve nedenleri:**
+- `BotCore/Perception.h` (+168): `#include <cmath>`; dosya sonuna `kSnap*` sabitleri, `SelfState`/`UnitView`/`NpcView`/`PerceptionSnapshot`, `SnapInsertNearest` şablonu ve `BuildSnapshot` eklendi (saf mantık, yalnızca ekleme).
+- `Tests/BotCoreTests/PerceptionTests.cpp` (+249): `MakeSelf` yardımcısı ve dört `TEST_CASE` (`Perception_Snapshot_Split`, `_OrderCap`, `_TieAndNation`, `_Npcs`) eklendi; mevcut testlere dokunulmadı.
+- `GameServer/Bot/BotManager.h` (+1): `CommandSnap` bildirimi.
+- `GameServer/Bot/BotManager.cpp` (+115/−1): `snap` dağıtım dalı, bilinmeyen komut metnine `snap` eklendi (bilinçli tek değişen mevcut satır), `CommandSnap` eklendi (`CommandSee`/`CommandNpcs` kalıbı: tablolar `m_obsLock` altında tek blokta kopyalanır, `BuildSnapshot` ve log kilit dışında).
 
 **Derleme çıktılarının son satırları:**
+- Release: `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`, rc=0; `Perception.h`/`PerceptionTests.cpp`/`BotManager.cpp`/`BotManager.h` touch'lanıp yeniden derlendi, bu dosyalarda uyarı 0 (kalan uyarılar `GameServerDlg.cpp`'nin eski 816/1143/1802 satırlarında).
+- Debug: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`, rc=0.
+- `tools/run-tests.sh Release`: `67 tests, 0 failed`, rc=0; dört yeni test adı `[ OK ]` (önceki 63 test değişmedi).
+- `tools/run-tests.sh Debug`: `67 tests, 0 failed`, rc=0.
 
 **Kriter öz-değerlendirmesi:**
+- K1 ✔ Release rc=0; dört dokunulan dosyada uyarı yok (`USER_SITDOWN` `stdafx.h` üzerinden görünüyor, yeni include gerekmedi).
+- K2 ✔ Debug rc=0.
+- K3 ✔ Release ve Debug `67 tests, 0 failed`; dört yeni ad çıktıda; önceki 63 test geçiyor.
+- K4 ✔ `grep` sunucusuzluk ve include denetimleri boş; include'lar yalnızca `<cstddef>`, `<cstdint>`, `<cstring>`, `<cmath>`; `std::min/max`/`new`/`malloc`/`vector`/`string` yok.
+- K5 ✔ `UnitView`/`NpcView` sözleşme grep'i boş; `CommandSnap` yalnızca sayılan `CUser` üyelerini okur, yasak erişim grep'i boş.
+- K6 ✔ `invisibility` snapshot bölümünde alan + tek kopyalama ataması; koşul yok; test `invisibility == 3` doğrular.
+- K7 ✔ `CommandSnap`'te `m_obsLock` tek blok (grep -c = 1), yorumda ad yok; `BuildSnapshot`/`WriteBotLog` kilit dışında; `BotSession.h` mutex sayısı 1.
+- K8 ✔ Üç dosyada `-` satırı yok; `BotManager.cpp`'de tek `-` bilinmeyen komut metni satırı.
+- K9 ✔ Yeni kod yalnızca `/bot snap`; `Startup/Tick/TickSessions/BuildStatusLines`/ini değişmedi, yeni anahtar yok.
+- K10 ✔ `git diff --stat` yalnızca 4 dosya; `*.vcxproj*` farkı boş; `BotSession/ActionExecutor/Telemetry/ScenarioRunner` farkta yok.
+- K11 ✔ `file` dört dosyada ASCII + CRLF (değişmedi); `git diff --check` boş.
+- K12 ✔ Yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok; grep'in bulduğu iki satır (54 `fprintf`, 307 `printf`) taban dosyada da var (eski).
+- K13 ✔ `CheckMoveStep` 2; diğer on dört `Check*` her biri ≥ 1.
+- K14 — Claude'un `/plan-dogrula` çalışma zamanı işi.
 
 **Sorular / sapmalar:**
+- Yok. Planın kabul ettiği `BuildSnapshot`'ın `SnapInsertNearest` şablon yardımcısı planla uyumlu biçimde yazıldı; ek bir yardımcı gerekmedi.
