@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-52 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`: `NavTargetTracker`, `NavFollower`) — `KAPANDI` |
@@ -91,13 +91,30 @@ git diff --stat gece/2026-10-02-nav...bot/F5-52
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-52` (taban: `gece/2026-10-02-nav`); commit mesajı `[F5-52] ...` (rapor commit'i bu dosyayla birlikte).
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/NavTrack.h`: `NavTargetTracker::Observe`/`NavFollower::ObserveTarget`'a varsayılanlı `int16_t speedField = -1`; `Sample`'a `speed`; yeni `Velocity` kuralı (son iki gözlem aralığı `minSpanMs`..`windowMs`; aralık kısaysa geriye doğru `span ≥ minSpanMs` en yakın örnek; `speed == 0` → durmuş; `speed > 0` → büyüklük `speed/10 × 1,1` ile sınırlı, yön korunur); `NavFollowParams` varsayılanları `velocityWindowMs = 4000`, `minVelocitySpanMs = 400`; `Update`'te öngörü süresine gözlem yaşı eklenir (tavan `maxLeadSec`).
+  - `Tests/BotCoreTests/NavTrackTests.cpp`: beş yeni test (aşağıda) + eski varsayılanlara örtük bağlı iki test güncellendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0. `touch BotCore/NavTrack.h Tests/BotCoreTests/NavTrackTests.cpp` ile yeniden derlemede bu dosyalara yeni uyarı yok (kalan uyarılar eski dosyalarda). Testler: Release `162 tests, 0 failed`, Debug `162 tests, 0 failed`; beş yeni test adı `[ OK ]`.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dosyalarda yeni uyarı yok.
+  - K2 ✔ Debug rc=0, yeni uyarı yok.
+  - K3 ✔ Release+Debug `0 failed`; `NavTrack_Velocity_PacketCadence`, `NavTrack_Velocity_Speed0`, `NavTrack_Velocity_Stale`, `NavTrack_Velocity_Turn`, `NavTrack_Follower_LeadAtPacketCadence` `[ OK ]`; mevcut `NavTrack_*` testleri geçer (iki test güncellendi, gerekçe aşağıda).
+  - K4 ✔ cadence satırları (Release): `period=500 zero=0 nonzero=196 mag_min=4.500 mag_max=4.500`, `period=1000 zero=0 nonzero=191 ...`, `period=1500 zero=0 nonzero=186 ...`, `period=1540 zero=0 nonzero=185 ...`, `period=2000 zero=0 nonzero=181 ...`; 1500/1540 için sıfır hız oranı **%0** (eski %100).
+  - K5 ✔ `Velocity(int64_t, int, int, float&, float&)` imzası değişmedi; mevcut açık argümanlı çağrılar (1000/100) derlenir ve beklentileri aynı kalır; `Observe`/`ObserveTarget` yeni argümanı varsayılanlı (`-1`).
+  - K6 ✔ `BotCore/NavTrack.h`'te `windows.h|stdafx|GameServer|shared/` yok; NaN/∞ sürümde `mag > maxV && mag > 0` NaN'ı dışlar (çökme yok); mevcut testler geçer.
+  - K7 ✔ `NavTrack_Perf` Release: `exact ms_p95=0.551`, `mage ms_p95=0.616` (≤ 2 ms, AC-NAV-02).
+  - K8 ✔ `git status` yalnızca `BotCore/NavTrack.h`, `Tests/BotCoreTests/NavTrackTests.cpp`, plan dosyası; `GameServer/`/`shared/`/`docs/` farkı 0; ASCII + CRLF (`file` ile teyit); `git diff --check` boş.
+  - K9 (Claude): doğrulamada değerlendirme betiğinin `Velocity` döngüsünü düzeltilmiş başlıkla yeniden koşar.
 - Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - Gözlem yaşı yalnızca geçerli bir taban öngörü varken (`lead0 > 0`, mevcut blok içinde) eklenir; düz `min(maxLeadSec, NavPredictLead(...) + yaş)` yazılsaydı `botSpeedMps = 0` ve `maxLeadSec = 0` vakalarında (mevcut `NavTrack_Follower_Prediction` (c)) haksız bir öngörü üretilirdi. Bu, planın "öngörü süresine yaş eklenir" ifadesinin güvenli yorumudur.
+  - Eski varsayılanlara (1000/100) örtük bağlı iki mevcut test, plan §3.4 uyarınca güncellendi:
+    - `NavTrack_Follower_Triggers`: 0→1100 ms gözlemleri yeni 4000 ms pencerede ~5,45 m/s verir, halka merkezi ileri kayar; `goal` `Cell(21,5)` → `Cell(23,5)` (yorumla gerekçelendirildi).
+    - `NavTrack_Follower_Prediction` (d): bayat eşiği 1000 → 4000 ms olduğundan `now = newest + 1001/1000` yerine `+4001/+4000` (5001/5000) kullanıldı; `4000` hâlâ geçerli, `4001` bayat.
+  - `NavTrack_Chase_Sim` ve `NavTrack_RealMap` (hareketli hedef) değişmeden geçti (`replans=29`, `caught_ms=11400`, `final_dist=3.7`).
+- Açık sorular: yok.
+
 
 ---
 
