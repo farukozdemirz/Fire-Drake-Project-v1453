@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-11` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-10 (`RequestPartyManage` iskeleti, `m_actionWindow`, `OnPacket()` kayıt kalıbı) — `KAPANDI` (merge `3e0e985`); F4-08/F4-09 (`isInParty()` ön koşulu, `m_partyInviteEcho` "bekleyen davet" kaydı) — `KAPANDI` |
@@ -338,16 +338,43 @@ Beklenmeyen `no_result` bu planın hatası değil, **sonuç olarak raporlanır**
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-11` — `<kısa-sha> [F4-11] …`
-- Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
-  ```
-  …
-  ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Branch / commit'ler: `bot/F4-11` — `2c2e127 [F4-11] Party chat dilimi: ChatParty + CLI-18 korumasi`; plan `Durum` satırı ve bu rapor ayrı commit'te.
+- Değişen dosyalar ve nedenleri (yalnızca §4 listesi, 8 dosya; yeni dosya yok):
+  - `BotCore/BotCombat.h` — yalnızca sona ekleme: `kChatMaxLen/kChatGapMs/kChatDupMs/kChatPerMinute/kChatMinuteMs`, `IsValidChatText`, `ChatTextHash`, `ChatRateWindow`, `ChatCheck`, `ChatVerdict`, `CheckChat`. Yeni `#include` yok; `std::min/max` yok.
+  - `Tests/BotCoreTests/CombatTests.cpp` — yalnızca sona ekleme: `Combat_ChatText_Validity`, `Combat_ChatRateWindow`, `Combat_ChatCheck_Order`, `Combat_ChatCheck_Boundaries` (41 + 4 = 45).
+  - `GameServer/Bot/BotSession.h` — 4 IOCP alanı (`m_chatHasLast`, `m_chatLast`, `m_chatLastHash`, `m_chatWindow`) ve 2 atomik (`m_chatEchoHash`, `m_chatEcho`).
+  - `GameServer/Bot/BotSession.cpp` — başlatıcı listesi, `ResetForRespawn()` sıfırlamaları ve `OnPacket()` sonuna `WIZ_CHAT` kayıt bloğu (mevcut `OnPacket()` satırlarına dokunulmadı).
+  - `GameServer/Bot/ActionExecutor.h` — `ChatOutcome` ve `RequestChatParty` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp` — dosya sonuna ekleme: `RejectChat` + `RequestChatParty` (tek `HandlePacket` çağrısı, sonuç yalnızca `m_chatEcho`/`m_chatEchoHash`'ten, başarıda `CHAT_SENT`).
+  - `GameServer/Bot/BotManager.h` — `CommandPartyChat` bildirimi.
+  - `GameServer/Bot/BotManager.cpp` — `pchat` fiil dağıtımı, `CommandPartyChat` (metin boşluk içerdiği için `SplitWords` yok), `unknown command` listesine `pchat`.
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; değişen 5 kaynak dosya için uyarı/derleme hatası yok (yalnızca eski `User.cpp` C4834).
+  - `./tools/build.sh Debug` rc=0 (eski `GameServerDlg.cpp` C4267).
+  - `./tools/run-tests.sh Release` → `45 tests, 0 failed`; dört yeni test adı görüldü.
+  - `./tools/run-tests.sh Debug` → `45 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — Release rc=0; değişen dosyalarda uyarı yok.
+  - K2 ✔ — Debug rc=0.
+  - K3 ✔ — 45 test, 0 failed; dört yeni test adı çıktıda (Release + Debug).
+  - K4 ✔ — `grep "windows.h\|stdafx\|GameServer\|shared/"` boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; `std::min/max` boş.
+  - K5 ✔ (bir sözde-uyum için bkz. sapmalar) — `WIZ_CHAT` yalnızca `ActionExecutor.cpp` (paket) ve `BotSession.cpp` (`OnPacket`); yasak chat API dizgileri boş.
+  - K6 ✔ — `PARTY_CHAT` yalnızca `ActionExecutor.cpp`; başka `ChatType` sabiti yok; `HandlePacket(pkt)` `RequestChatParty`'de tek; ön koşullar + `CheckChat` + `CHAT_OK` dışı erken dönüş var.
+  - K7 ✔ — `RequestChatParty` sonucu yalnızca `m_chatEcho`/`m_chatEchoHash`'ten; `isInParty()` yalnızca ön koşul; `m_sHp/m_iMaxHp/GetHealth/GetMaxHealth` ActionExecutor'da yok.
+  - K8 ✔ — `ActionExecutor.cpp` silinen satır yok; `BotSession.cpp` yalnızca başlatıcı satırı (`m_partyLeaveEcho(0)`); `OnPacket()` mevcut satırları değişmedi.
+  - K9 ✔ (kod/diff düzeyinde) — yeni kod yalnızca `PHASE_IN_GAME` + komutla; `BotManager.cpp` silinen tek satır `unknown command` metni; `Startup/Tick/TickSessions/BuildStatusLines/BeginDespawn` ve ini okuma değişmedi. Çalışma zamanı `ENABLED=0` Claude'da.
+  - K10 ✔ — `git diff --stat gece/2026-10-02...bot/F4-11` yalnızca §4'teki 8 dosya; vcxproj'lar ve `ChatHandler.cpp` değişmedi.
+  - K11 ✔ — değişen dosyalar ASCII + CRLF; `git diff --check` boş.
+  - K12 ✔ — yasak dizgiler yok; `\"mode\"` yok; `EscapeJson` kullanılıyor.
+  - K13 ✔ — tüm `Check*` sayaçları ≥ 1; `ChatParty` yalnızca `RejectChat`/`RequestChatParty` içinde; 41 eski test hâlâ geçiyor.
+  - K14 — Claude'a ait (çalışma zamanı).
+- Plandan sapmalar ve gerekçeleri:
+  1. `BotSession.cpp` `OnPacket()` `WIZ_CHAT` yorumundan `, ChatPacket::Construct` ifadesi çıkarıldı (yorum `(ChatHandler.cpp:161):` olarak kaldı). Gerekçe: planın §5.3'te verdiği yorum metni `ChatPacket` dizgisini içeriyor, ama aynı planın K5 kabul grep'i (`...|ChatPacket|...`) bu dizgiyi `GameServer/Bot/*.cpp`'de yasaklıyor; plan kendi kabul ölçütüyle çelişiyordu. Kod/anlam değişmedi, yalnızca yorumdaki sınıf adı kaldırıldı; K5 grep'i artık boş. (Not: plan bu satırı **olduğu gibi** istemişti; Claude doğrulamada yorumu geri isteyip K5'i gevşetmeyi seçebilir.)
+  2. Başka sapma yok; §5 adımları birebir uygulandı.
+- Açık sorular:
+  - Yukarıdaki yorum/`K5` çelişkisi için hangi tarafın esas alınacağı (yorum metni mi, grep ölçütü mü) netleşmeli.
+  - `RequestChatParty` içinde `s->m_castSelfId` atanmadı (plandan farklı değil; `WIZ_CHAT` kaydı her göndericiyi kaydettiği için gerekmiyor). Doğrulamada kendi yayınının kendi alıcısına gelip gelmediği (SENT vs `no_result`) ölçülmeli.
+- Doğrulama komutları (§7) sonuçları: K4, K5, K6, K7, K10, K11, K12, K13 grep'leri beklendiği gibi; K8/K9 silinen satırlar yalnızca yukarıdaki bilinçli satırlar.
 
 ---
 
