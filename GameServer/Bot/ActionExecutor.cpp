@@ -2483,3 +2483,178 @@ PartyOutcome ActionExecutor::RequestPartyKick(BotSession * s, const PartyMemberT
 {
 	return RequestPartyManage(s, target, now, true);
 }
+
+// --- party chat slice (ADR-0017 Ek F4-11) ---
+
+// Maps a party chat guard verdict to the FAIRNESS_REJECT rule/reason and the measured value/limit.
+static ChatOutcome RejectChat(BotSession * s, CUser * user, BotCore::ChatVerdict verdict,
+	const BotCore::ChatCheck & c, uint32 textLen)
+{
+	const char * rule = "CLI-18";
+	const char * reason = "bad_text";
+	float value = (float)textLen;
+	float limit = (float)BotCore::kChatMaxLen;
+
+	switch (verdict)
+	{
+	case BotCore::CHAT_REJECT_GAP:
+		rule = "CLI-18"; reason = "chat_gap"; value = (float)c.sinceLastMs; limit = (float)BotCore::kChatGapMs;
+		break;
+	case BotCore::CHAT_REJECT_DUP:
+		rule = "CLI-18"; reason = "chat_dup"; value = (float)c.sinceLastMs; limit = (float)BotCore::kChatDupMs;
+		break;
+	case BotCore::CHAT_REJECT_MINUTE:
+		rule = "CLI-18"; reason = "chat_minute"; value = (float)c.chatsInMinute; limit = (float)BotCore::kChatPerMinute;
+		break;
+	case BotCore::CHAT_REJECT_RATE:
+		rule = "CLI-11"; reason = "rate"; value = (float)c.actionsInWindow; limit = (float)BotCore::kMaxActionsPerWindow;
+		break;
+	default:
+		break;
+	}
+
+	uint32 decisionId = NextDecisionId(s);
+	EmitFairnessReject(s, user, decisionId, "ChatParty", rule, reason, value, limit);
+
+	ChatOutcome out;
+	out.kind = ChatOutcome::REFUSED;
+	out.reason = reason;
+	out.length = (int)textLen;
+	return out;
+}
+
+ChatOutcome ActionExecutor::RequestChatParty(BotSession * s, const std::string & text,
+	std::chrono::steady_clock::time_point now)
+{
+	ChatOutcome out;
+	out.kind = ChatOutcome::NOTHING;
+	out.reason = "ok";
+	out.length = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.kind = ChatOutcome::REFUSED;
+		out.reason = "not_in_game";
+		return out;
+	}
+
+	if (user->isDead())
+	{
+		out.kind = ChatOutcome::REFUSED;
+		out.reason = "dead";
+		return out;
+	}
+
+	// Preconditions (no event): an invitation must be accepted or declined first (the server counts an invitee as a
+	// party member, KI-014), and the bot must be in a party.
+	if ((s->m_partyInviteEcho.load() & (1ull << 63)) != 0)
+	{
+		out.kind = ChatOutcome::REFUSED;
+		out.reason = "invite_pending";
+		return out;
+	}
+	if (!user->isInParty())
+	{
+		out.kind = ChatOutcome::REFUSED;
+		out.reason = "not_in_party";
+		return out;
+	}
+
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+	int inWindow = s->m_actionWindow.CountInWindow(nowMs);
+	int inMinute = s->m_chatWindow.CountInWindow(nowMs);
+
+	uint32 hash = BotCore::ChatTextHash(text.data(), (uint32)text.size());
+
+	uint32 sinceLastMs = 0;
+	if (s->m_chatHasLast)
+		sinceLastMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+			now - s->m_chatLast).count();
+
+	BotCore::ChatCheck c = {
+		BotCore::IsValidChatText(text.data(), (uint32)text.size()),
+		s->m_chatHasLast,
+		sinceLastMs,
+		s->m_chatHasLast && hash == s->m_chatLastHash,
+		inMinute,
+		inWindow
+	};
+
+	BotCore::ChatVerdict verdict = BotCore::CheckChat(c);
+	if (verdict != BotCore::CHAT_OK)
+		return RejectChat(s, user, verdict, c, (uint32)text.size());
+
+	uint32 decisionId = NextDecisionId(s);
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"ChatParty\",\"channel\":\"party\",\"len\":" + std::to_string((int)text.size());
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Server reads u8 chat type + u16-length message (ChatHandler.cpp:107-108). Only the party channel is used.
+	Packet pkt(WIZ_CHAT, uint8(PARTY_CHAT));
+	pkt << text;
+
+	s->m_chatEcho = 0;
+	s->m_chatEchoHash = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	// The packet went out, so the counters move even when the result ends up "no_result".
+	s->m_actionWindow.Record(nowMs);
+	s->m_chatWindow.Record(nowMs);
+	s->m_chatHasLast = true;
+	s->m_chatLast = now;
+	s->m_chatLastHash = hash;
+
+	// Result only from the broadcast the server published (it sends the message to every party member including the
+	// sender): own WIZ_CHAT with type PARTY_CHAT, sender id and the same text hash.
+	uint64 e = s->m_chatEcho.load();
+	bool ok = (e & (1ull << 63)) != 0
+		&& ((e >> 32) & 0xFF) == (uint64)PARTY_CHAT
+		&& (uint16)(e & 0xFFFF) == (uint16)user->GetID()
+		&& s->m_chatEchoHash.load() == hash;
+	const char * reason = ok ? "sent" : "no_result";
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"ChatParty\""
+			+ ",\"ok\":" + (ok ? "true" : "false")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs)
+			+ ",\"len\":" + std::to_string((int)text.size());
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+
+		if (ok)
+		{
+			std::string chatFields = "\"decision_id\":" + std::to_string(decisionId)
+				+ ",\"channel\":\"party\""
+				+ ",\"len\":" + std::to_string((int)text.size())
+				+ ",\"text\":\"" + Telemetry::EscapeJson(text) + "\"";
+			Telemetry::Instance().Emit(TEL_DECISIONS, "CHAT_SENT", user->GetSocketID(),
+				s->m_charName.c_str(), chatFields, false);
+		}
+	}
+
+	if (ok)
+	{
+		out.kind = ChatOutcome::SENT;
+		out.reason = reason;
+	}
+	else
+	{
+		out.kind = ChatOutcome::FAILED;
+		out.reason = reason;
+	}
+	out.length = (int)text.size();
+	return out;
+}

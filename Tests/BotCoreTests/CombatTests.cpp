@@ -795,3 +795,132 @@ TEST_CASE("Combat_PartyManageCheck_Boundaries")
 	c.targetInParty = false;
 	CHECK_EQ((int)BotCore::CheckPartyManage(c), (int)BotCore::PARTYMANAGE_REJECT_MEMBER);
 }
+
+TEST_CASE("Combat_ChatText_Validity")
+{
+	CHECK_EQ((int)BotCore::IsValidChatText("TARGET: BotWP_E (Malice)", sizeof("TARGET: BotWP_E (Malice)") - 1), 1);
+	CHECK_EQ((int)BotCore::IsValidChatText("", 0), 0);
+	CHECK_EQ((int)BotCore::IsValidChatText(nullptr, 4), 0);
+
+	char text128[128];
+	for (int i = 0; i < 128; i++)
+		text128[i] = 'a';
+	char text129[129];
+	for (int i = 0; i < 129; i++)
+		text129[i] = 'a';
+	CHECK_EQ((int)BotCore::IsValidChatText(text128, 128), 1);
+	CHECK_EQ((int)BotCore::IsValidChatText(text129, 129), 0);
+
+	CHECK_EQ((int)BotCore::IsValidChatText("+bot list", 9), 0);
+	CHECK_EQ((int)BotCore::IsValidChatText("a+b", 3), 1);
+	CHECK_EQ((int)BotCore::IsValidChatText("a\tb", 3), 0);
+	CHECK_EQ((int)BotCore::IsValidChatText("a\x7f" "b", 3), 0);
+	CHECK_EQ((int)BotCore::IsValidChatText("a\xc4" "b", 3), 0);
+
+	CHECK_EQ((unsigned)BotCore::ChatTextHash("", 0), 0x811C9DC5u);
+	CHECK_EQ((unsigned)BotCore::ChatTextHash("a", 1), 0xE40C292Cu);
+	CHECK_EQ((unsigned)(BotCore::ChatTextHash("a", 1) != BotCore::ChatTextHash("b", 1)), 1u);
+	CHECK_EQ((unsigned)(BotCore::ChatTextHash("same", 4) == BotCore::ChatTextHash("same", 4)), 1u);
+}
+
+TEST_CASE("Combat_ChatRateWindow")
+{
+	BotCore::ChatRateWindow w;
+	CHECK_EQ(w.CountInWindow(0), 0);
+
+	w.Record(0);
+	w.Record(4000);
+	w.Record(8000);
+	w.Record(12000);
+	w.Record(16000);
+	w.Record(20000);
+
+	CHECK_EQ(w.CountInWindow(20000), 6);
+	CHECK_EQ(w.CountInWindow(59999), 6);
+	CHECK_EQ(w.CountInWindow(60000), 5);
+	CHECK_EQ(w.CountInWindow(64000), 4);
+	CHECK_EQ(w.CountInWindow(80000), 0);
+
+	w.Record(24000);
+	CHECK_EQ(w.CountInWindow(24000), 6);
+
+	w.Clear();
+	CHECK_EQ(w.CountInWindow(24000), 0);
+}
+
+TEST_CASE("Combat_ChatCheck_Order")
+{
+	BotCore::ChatCheck c;
+	c.textOk = false;
+	c.hasLast = true;
+	c.sinceLastMs = 0;
+	c.sameAsLast = true;
+	c.chatsInMinute = 6;
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_TEXT);
+
+	c.textOk = true;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_GAP);
+
+	c.sinceLastMs = 4000;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_DUP);
+
+	c.sameAsLast = false;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_MINUTE);
+
+	c.chatsInMinute = 5;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_RATE);
+
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+
+	c.hasLast = false;
+	c.sinceLastMs = 0;
+	c.sameAsLast = true;
+	c.chatsInMinute = 0;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+}
+
+TEST_CASE("Combat_ChatCheck_Boundaries")
+{
+	BotCore::ChatCheck c;
+	c.textOk = true;
+	c.hasLast = true;
+	c.sinceLastMs = 3999;
+	c.sameAsLast = false;
+	c.chatsInMinute = 0;
+	c.actionsInWindow = 0;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_GAP);
+
+	c.sinceLastMs = 4000;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+
+	c.sameAsLast = true;
+	c.sinceLastMs = 7999;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_DUP);
+
+	c.sinceLastMs = 8000;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+
+	c.sameAsLast = false;
+	c.sinceLastMs = 4000;
+	c.chatsInMinute = 5;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+
+	c.chatsInMinute = 6;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_MINUTE);
+
+	c.chatsInMinute = 0;
+	c.actionsInWindow = 5;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_OK);
+
+	c.actionsInWindow = 6;
+	CHECK_EQ((int)BotCore::CheckChat(c), (int)BotCore::CHAT_REJECT_RATE);
+
+	CHECK_EQ((int)BotCore::kChatMaxLen, 128);
+	CHECK_EQ((int)BotCore::kChatGapMs, 4000);
+	CHECK_EQ((int)BotCore::kChatDupMs, 8000);
+	CHECK_EQ((int)BotCore::kChatPerMinute, 6);
+	CHECK_EQ((int)BotCore::kChatMinuteMs, 60000);
+}

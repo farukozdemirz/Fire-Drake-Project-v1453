@@ -17,11 +17,12 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_partyInviteHasLast(false),
 		m_partyEnteredHasAt(false),
 		m_partyManageHasLast(false),
+		m_chatHasLast(false), m_chatLastHash(0),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
-		m_partyLeaveEcho(0)
+		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -138,6 +139,33 @@ void BotSession::OnPacket(Packet & pkt)
 			m_partyLeaveEcho = (1ull << 63) | (2ull << 16);
 		}
 	}
+
+	// Chat broadcast (ChatHandler.cpp:161): u8 type, u8 nation, i16 sender sid, u8-length name,
+	// u16-length message. Every chat packet the bot receives is recorded (own party chat echo and other players' chat
+	// alike); ActionExecutor::RequestChatParty clears the record before its request and matches type, sender and the
+	// message hash afterwards, on the same thread. The hash word is written first so a reader that sees the valid bit
+	// also sees the hash.
+	if (opcode == WIZ_CHAT && pkt.size() >= 7)
+	{
+		uint8 type = pkt.read<uint8>(0);
+		uint16 sid = pkt.read<uint16>(2);
+		uint8 nameLen = pkt.read<uint8>(4);
+		size_t msgLenPos = 5 + (size_t)nameLen;
+		uint32 hash = 0;
+		if (pkt.size() >= msgLenPos + 2)
+		{
+			uint16 msgLen = pkt.read<uint16>(msgLenPos);
+			if (msgLen <= BotCore::kChatMaxLen && pkt.size() >= msgLenPos + 2 + (size_t)msgLen)
+			{
+				char text[BotCore::kChatMaxLen];
+				for (uint16 i = 0; i < msgLen; i++)
+					text[i] = (char)pkt.read<uint8>(msgLenPos + 2 + i);
+				hash = BotCore::ChatTextHash(text, msgLen);
+			}
+		}
+		m_chatEchoHash = hash;
+		m_chatEcho = (1ull << 63) | (uint64(type) << 32) | uint64(sid);
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -192,7 +220,12 @@ void BotSession::ResetForRespawn()
 	m_partyJoinEcho = 0;
 	m_partyEnteredHasAt = false;
 	m_partyManageHasLast = false;
+	m_chatHasLast = false;
+	m_chatLastHash = 0;
+	m_chatWindow.Clear();
 	m_partyLeaveEcho = 0;
+	m_chatEchoHash = 0;
+	m_chatEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

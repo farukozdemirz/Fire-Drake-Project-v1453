@@ -603,4 +603,132 @@ namespace BotCore
 
 		return PARTYMANAGE_OK;
 	}
+
+	// --- party chat slice (ADR-0017 Ek F4-11) ---
+
+	constexpr uint32_t kChatMaxLen    = 128;      // docs/03 MEC-CHT-02: the server drops an empty or > 128 byte message
+	constexpr uint32_t kChatGapMs     = 4000;     // docs/03 CLI-18 / docs/09 section 12: 1 message per 4 s per bot (design limit)
+	constexpr uint32_t kChatDupMs     = 8000;     // same text again only after 8 s (design limit)
+	constexpr int      kChatPerMinute = 6;        // at most 6 messages per minute per bot (design limit)
+	constexpr uint32_t kChatMinuteMs  = 60000;
+
+	// A message the guard lets through: 1..kChatMaxLen bytes of printable ASCII (0x20..0x7E), not starting with '+'
+	// (the GM command prefix, MEC-CHT-03). Non-ASCII text stays closed until the client character set is measured (Q-16).
+	inline bool IsValidChatText(const char * text, uint32_t len);
+
+	// FNV-1a (32 bit) of the message bytes; the sender compares it with the broadcast it receives back.
+	inline uint32_t ChatTextHash(const char * text, uint32_t len);
+
+	// Sliding window over the last kChatPerMinute chat timestamps (same shape as ActionRateWindow). Time in ms, any epoch.
+	class ChatRateWindow
+	{
+	public:
+		ChatRateWindow() { Clear(); }
+		int CountInWindow(uint64_t nowMs) const;   // entries with nowMs - t < kChatMinuteMs (t <= nowMs)
+		void Record(uint64_t nowMs);               // overwrites the oldest entry once kChatPerMinute are stored
+		void Clear();
+	private:
+		uint64_t m_times[kChatPerMinute];
+		int m_count;
+		int m_next;
+	};
+
+	struct ChatCheck
+	{
+		bool textOk;              // IsValidChatText(...) for this message
+		bool hasLast;             // a chat message was sent earlier in this spawn
+		uint32_t sinceLastMs;     // since that message
+		bool sameAsLast;          // ChatTextHash of this message == the hash of that message (only meaningful when hasLast)
+		int chatsInMinute;        // ChatRateWindow::CountInWindow(now)
+		int actionsInWindow;      // ActionRateWindow::CountInWindow(now)
+	};
+
+	enum ChatVerdict
+	{
+		CHAT_OK = 0,
+		CHAT_REJECT_TEXT = 1,     // CLI-18 (empty, > 128 bytes, non-printable / non-ASCII byte, or leading '+')
+		CHAT_REJECT_GAP = 2,      // CLI-18 (second message before kChatGapMs)
+		CHAT_REJECT_DUP = 3,      // CLI-18 (the same text again before kChatDupMs)
+		CHAT_REJECT_MINUTE = 4,   // CLI-18 (kChatPerMinute messages already in the last kChatMinuteMs)
+		CHAT_REJECT_RATE = 5      // CLI-11
+	};
+
+	// Guard rule for a party chat message. The caller has already checked that the bot is in a game, alive, in a party
+	// with no invitation pending. Order: text, gap (only when a previous message is known), dup (same), minute, rate.
+	inline ChatVerdict CheckChat(const ChatCheck & c);
+
+	inline bool IsValidChatText(const char * text, uint32_t len)
+	{
+		if (text == nullptr || len < 1 || len > kChatMaxLen)
+			return false;
+
+		if (text[0] == '+')
+			return false;
+
+		for (uint32_t i = 0; i < len; i++)
+		{
+			unsigned char ch = (unsigned char)text[i];
+			if (ch < 0x20 || ch > 0x7E)
+				return false;
+		}
+
+		return true;
+	}
+
+	inline uint32_t ChatTextHash(const char * text, uint32_t len)
+	{
+		uint32_t h = 2166136261u;
+		for (uint32_t i = 0; i < len; i++)
+		{
+			h ^= (unsigned char)text[i];
+			h *= 16777619u;
+		}
+		return h;
+	}
+
+	inline int ChatRateWindow::CountInWindow(uint64_t nowMs) const
+	{
+		int count = 0;
+		for (int i = 0; i < m_count; i++)
+		{
+			uint64_t t = m_times[i];
+			if (nowMs >= t && nowMs - t < kChatMinuteMs)
+				count++;
+		}
+		return count;
+	}
+
+	inline void ChatRateWindow::Record(uint64_t nowMs)
+	{
+		m_times[m_next] = nowMs;
+		m_next = (m_next + 1) % kChatPerMinute;
+		if (m_count < kChatPerMinute)
+			m_count++;
+	}
+
+	inline void ChatRateWindow::Clear()
+	{
+		m_count = 0;
+		m_next = 0;
+	}
+
+	inline ChatVerdict CheckChat(const ChatCheck & c)
+	{
+		if (!c.textOk)
+			return CHAT_REJECT_TEXT;
+
+		if (c.hasLast && c.sinceLastMs < kChatGapMs)
+			return CHAT_REJECT_GAP;
+
+		if (c.hasLast && c.sameAsLast && c.sinceLastMs < kChatDupMs)
+			return CHAT_REJECT_DUP;
+
+		if (c.chatsInMinute >= kChatPerMinute)
+			return CHAT_REJECT_MINUTE;
+
+		if (c.actionsInWindow >= kMaxActionsPerWindow)
+			return CHAT_REJECT_RATE;
+
+		return CHAT_OK;
+	}
 }
