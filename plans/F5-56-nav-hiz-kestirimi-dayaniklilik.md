@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-56 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`), **F5-52** (pencere 4000/400 ms, `speed` alanı, gözlem yaşı lead'e eklenir) — `DOĞRULANDI`/`KAPANDI` olmalı |
@@ -218,3 +218,33 @@ plans/F5-56-nav-hiz-kestirimi-dayaniklilik.md — Doğrulama Turu 1 düzeltmeler
 6. İsteğe bağlı küçük sıkılaştırma: NavTrack_VelocityRobust_Stale içinde `CHECK(f.Plan().leadSec <= 3.0f)` yerine `CHECK(f.Plan().leadSec <= params.maxLeadSec + 1e-4f)` kullan (yorumu güncelle).
 7. Maddelerden sonra: ./tools/build.sh Release ve Debug (rc=0, yeni uyarı yok), ./tools/run-tests.sh Release ve Debug (0 failed; 11 yeni ad hâlâ [ OK ]), tools/nav-measure.sh velocity-robust (satırlar; ArrivalBunching zero_pct ≤ 1, p95 ≤ 0,20, max ≤ 0,60 hâlâ sağlanmalı: değerleri Tur 2 raporuna öncesi/sonrası olarak yaz). Quantization'ın yeni NAVTRACK quant satırlarını rapora ekle. git diff --check boş, ASCII + CRLF, yalnızca §4 dosyaları.
 ```
+
+### Tur 2 — 2026-10-03
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `935e628` (`bot/F5-56`, taban `gece/2026-10-02-nav`; Tur 2 uygulaması `c9e45b3`, rapor `935e628`). Paralel hat `nav` (`AUTO_LOOP=1`): sunuculara dokunulmadı; birleştirme/push yapılmadı (döngü betiğinin işi).
+- **Doğrulama ortamı:** `./tools/build.sh Release` ve `Debug` (`NavTrack.h`, `NavTrackTests.cpp`, `nav_measure.cpp` `touch` edildi), `./tools/run-tests.sh <cfg> --no-build`, `tools/nav-measure.sh velocity-robust`; Tur 1'deki geçici deney sonuçlarıyla (yığılmış sıçrama 33,2 m/s) karşılaştırıldı.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, yeni uyarı yok | ✔ | rc=0; üç dosya `touch` sonrası yeniden derlendi; `warning C`/`error C` 0 |
+| K2 Debug rc=0, uyarı yok | ✔ | rc=0; `warning C`/`error C` 0 |
+| K3 `0 failed`, 11 yeni ad `[ OK ]`, mevcut `NavTrack_*` değişmez | ✔ | Release ve Debug `209 tests, 0 failed`; 11 ad `[ OK ]` (`ArrivalJitter` … `Quantization`, `NavTrack_Chase_Sim_Cadence`); Tur 2 farkında silinen satırlar yalnızca bu planın kendi yeni vakalarındaki `Quantization` gövdesi ve `Stale` tek satırı, mevcut F5-52 vakalarına dokunulmamış |
+| K4 §5.3 sayısal eşikler ve kurallar | ✔ | MSVC Release: `ArrivalJitter` p95 0,1395 / max 0,1650 / zero 0; `ArrivalBunching` p95 0,1395 / max 0,5203 / zero 0 (eşik 0,20 / 0,60 / ≤ 1); `VariableInterval` 0,0141 / 0,0182; `PacketLoss` 0,0074; `NAVTRACK chase_cadence caught_ms_perfect=11200 caught_ms_cadence=11800` (≤ 14560); `NAVTRACK quant` 400 ms `worst_abs=0.250 bound=0.404` … 1500 ms `0.033 / 0.144` (en kötü > 0,05: test boş değil) |
+| K5 imzalar, `NavTrack_Perf` p95 ≤ 2 ms | ✔ | `Velocity`/`Observe` imzaları değişmedi (fark yalnızca gövde + yorum); Release `NAVTRACK perf` exact p95 0,656 ms, mage 0,697 ms; `NAVPATH near64` p95 0,558 ms |
+| K6 başlık/biçim/kapsam | ✔ | `NavTrack.h`'te yasak başlık yok; yeni kodda dinamik bellek/global durum yok; üç kod dosyası ASCII + CRLF (satır sayısı = CRLF sayısı, ASCII dışı 0); kod dosyalarında `git diff --check` temiz; kod farkı yalnızca §4 dosyaları (`NavTrack.h`, `NavTrackTests.cpp`, `nav_measure.cpp`) |
+| K7 (Claude) `velocity-robust` yeniden koşu | ✔ | `arrival_jitter` p95 0,1359 / max 0,1691; `arrival_bunching` 0,1360 / 0,5217; `variable_interval` 0,0156 / 0,0186; `packet_loss` 0,0074; hepsinde `zero_pct=0.000`; Tur 1 ve Uygulayıcı Raporu ile birebir aynı |
+| K8 oyun içi kanıt | — | Bu planda kapanmaz; `docs/reports/degerlendirme-takip.md` T-NAV-06 `BEKLİYOR` (F5-55) |
+
+**Tur 1 bulgularının kapanışı**
+
+- **B1 (yüksek) kapandı:** `BotCore/NavTrack.h:291-298` sıçrama koruması artık seçilen çifte uygulanıyor (`implied > limit` → 0; bilinmeyen hızda 10 m/s, bilinen hızda 30 m/s). `NavTrack_VelocityRobust_Jump` (`NavTrackTests.cpp:1710-1746`) yığılmış sıçrama (4505 ms), +53 m/2500 ms ve 9/11 m/s sınır alt vakalarını tam sıfır/geçer olarak sınıyor; Tur 1 kodunun bu vakada 33,2 m/s verdiği doğrulamada gösterilmişti.
+- **B2 (orta) kapandı:** `Quantization` sınırı plan formülüne (`0,1·√2/aralık + 0,05`) uydu; iki eksen, hizasız aralıklar, 7×200 yineleme; gerçek nicemleme hatası üretiyor (400 ms 0,250 m/s).
+- **B3 (orta) kapandı:** `Reverse180` geçiş örneği (dönüş 3750 ms, paketler 4500/6000) sınanıyor (`NavTrackTests.cpp:1607-1621`).
+- **B4 (orta) kapandı:** `SpeedChange` yürüyüş gürültüsü 4,95'e, sprint gürültüsü 7,37'ye kırpılıyor; bilinmeyen hızda 6,7 m/s geçiyor (`:1653-1673`); 10 m/s tavanı `Jump` vakasında sınanıyor.
+- **B5, B6 (not):** Tur 1 notları geçerli kalır, engel değil (kısa durmada ilk hareketli örnekte alçak yönlü tek paketlik hata; zincirleme yığılma modeli T-NAV-06'ya bırakıldı). `Stale` sıkılaştırması (`leadSec <= params.maxLeadSec + 1e-4f`) uygulandı.
+
+**Bulgular (yeni)**
+
+1. **Not (düşük):** `nav_measure.cpp` `velocity-robust` senaryoları bilinen hız (45) kullanıyor; bilinmeyen hızda 10 m/s tavanı ve çift-seçimli sıçrama koruması yalnızca birim testlerde sınanıyor. Araç bunu ölçmediği için sayılar Tur 1 ile aynı; engel değil.
+2. **Not (düşük):** Bilinmeyen hızda (`speed < 0`) 10 m/s'nin üstünü sıfırlamak (kırpmak yerine) plan §3.3(b)/(c) ile uyumlu; gerçek `WIZ_MOVE` her zaman `speed` taşıdığı için üretimde bilinen-hız yolu (30 m/s) geçerli. `docs/12` §13.2 eşikleri T-NAV-06 sonrası `[A]` olarak güncellenmeli (plan §8).
