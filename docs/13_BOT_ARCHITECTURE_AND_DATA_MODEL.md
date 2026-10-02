@@ -106,6 +106,21 @@ Algı ve karar ayrı bir worker'da, IOCP'de alınan **değişmez anlık görünt
 | Ölüm | `WIZ_REGENE` (tip 1) gönderimini Brain belirler (diriltme bekleme kuralı, 09 §9) | MEC-DTH-05 |
 | Despawn | `OnDisconnect` + `LogOut` eşdeğeri açıkça; DB çıkış kaydı tamamlanınca slot havuza döner | R-CODE-02 |
 
+### 4.4 `[BOT]` ini anahtarları (`GameServer.ini`)
+
+Bot sistemi varsayılan **kapalıdır**; `ENABLED=0` iken aşağıdaki hiçbir anahtar okunmaz ve sunucu davranışı değişmez. Kaynak: `GameServer/Bot/BotManager.cpp` `Startup()`, `Telemetry.cpp` `Start()`.
+
+| Anahtar | Varsayılan | Aralık | Plan | Anlamı |
+|---|---|---|---|---|
+| `ENABLED` | `0` | `0/1` | F2-01 | Bot sistemi (slot havuzu, tick, komutlar, telemetri) |
+| `MAX_BOTS` | `16` | 1–100 (≤ `MAX_USER`) | F2-01 | Ayrılmış slot havuzu boyutu (en üst kimlikler) |
+| `TICK_MS` | `100` | 20–1000 | F2-02 | `BOT_TICK` periyodu |
+| `SPAWN_ON_START` | boş | virgüllü karakter adları (`BOT_TABLE`'daki 12 sabit bot) | F2-03 | Açılışta girişe sokulacak botlar |
+| `DESPAWN_AFTER_SEC` | `0` | 0–86400 (`0` = hiç) | F2-04 | Girişten sonra otomatik çıkış |
+| `RESPAWN_CYCLES` | `0` | 0–100000 | F2-05 | Çıkıştan sonra ek yeniden spawn sayısı (soak; ≠ 0 iken `/bot` komutları reddedilir) |
+| `TELEMETRY` | `summary` | `off\|summary\|decisions\|trace` | F3-01 | Telemetri seviyesi (`docs/16` §3.3, ADR-0007) |
+| `TELEMETRY_SELFTEST` | `0` | `0/1` | F3-01 | Yazıcı/taşma öz-sınaması |
+
 ## 5. Veri modeli
 
 ### 5.1 Yapılandırma

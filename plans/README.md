@@ -66,7 +66,8 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 | [F2-03](F2-03-bot-girisi-spawn.md) | Bot girişi (spawn): hesap/karakter ataması, `WIZ_SEL_CHAR` DB isteği, `GameStart(1/2)` taklidi (S3, S7; ADR-0014; `[BOT] SPAWN_ON_START`, varsayılan kapalı) | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-03` (taban: `gece/2026-10-02`) |
 | [F2-04](F2-04-bot-cikisi-despawn.md) | Bot çıkışı (despawn): `OnDisconnect`/`LogOut` taklidi, slotu DB kaydı bittikten sonra iade, `Update()` ve zaman aşımı muafiyeti (S4, S5, S8; `[BOT] DESPAWN_AFTER_SEC`, varsayılan kapalı) | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-04` (taban: `gece/2026-10-02`) |
 | [F2-05](F2-05-bot-yeniden-spawn-dongusu.md) | Bot yeniden spawn döngüsü (`[BOT] RESPAWN_CYCLES`): slot iadesinden sonra aynı oturumla yeniden spawn, ilerleme/özet logları; T-PERF-06 (1000 spawn/despawn) altyapısı | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-05` (taban: `gece/2026-10-02`) |
-| [F2-06](F2-06-bot-calisma-zamani-komutlari.md) | Bot çalışma zamanı komutları: konsol `/bot spawn\|despawn\|list` ve `BotCommands.txt` komut dosyası (ADR-0015; yalnızca `ENABLED=1`) | F2 | DOĞRULANDI | `bot/F2-06` (taban: `gece/2026-10-02`) |
+| [F2-06](F2-06-bot-calisma-zamani-komutlari.md) | Bot çalışma zamanı komutları: konsol `/bot spawn\|despawn\|list` ve `BotCommands.txt` komut dosyası (ADR-0015; yalnızca `ENABLED=1`) | F2 | KAPANDI (2026-10-02, gece/2026-10-02) | `bot/F2-06` (taban: `gece/2026-10-02`) |
+| [F3-01](F3-01-telemetri-kuyrugu-ve-yazici.md) | Telemetri kuyruğu, yazıcı thread ve `PERF_SAMPLE` (`[BOT] TELEMETRY`, ADR-0007; JSONL, `Logs/bots/`) | F3 | HAZIR | `bot/F3-01` (taban: `gece/2026-10-02`) |
 
 Şablon: [`_SABLON.md`](_SABLON.md)
 

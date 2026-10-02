@@ -61,6 +61,16 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 | `POLICY_LOAD` / `POLICY_ROLLBACK` | Politika yüklendi/geri alındı | sürümler, gerekçe |
 | `PERF_SAMPLE` | Periyodik (5 sn) | tick süreleri, kuyruk uzunluğu, bot sayısı |
 
+### 3.3 Uygulama notları (ADR-0007, F3-01)
+
+- **Alan kuralı:** Uygulanabilir olmayan ortak alanlar yazılmaz (alan yok = geçerli değil): `role`, `policy` yalnızca rol profili olan botlarda; `name` yalnızca bot olaylarında; `bot` sistem olaylarında `-1`. Maç bağlamı yokken (`ScenarioRunner` gelene kadar, F3-03) `match` = `"-"`, `mode` = `"live"`.
+- **`t`:** `steady_clock` zamanı, milisaniye (süreç içi karşılaştırma için; duvar saati yalnızca `MATCH_START/END`).
+- **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
+- **Düşürülebilir olaylar:** `PERF_SAMPLE`, `DECISION` (kuyruk yumuşak sınırı aşılınca düşer); diğerleri yalnızca sert sınırda düşer. Düşürme sayaçları `PERF_SAMPLE` kaydındaki `dropped_soft`/`dropped_hard` alanlarındadır.
+- **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir.
+- **`SELFTEST`:** yalnızca `[BOT] TELEMETRY_SELFTEST=1` iken yazıcı/taşma öz-sınaması üretir (`i` alanı); analiz araçları yok sayar.
+- **Dosya:** `Logs/bots/<YYYY-MM-DD>/live-<HHMMSS>.jsonl`.
+
 ## 4. Karar logu (açıklanabilirlik)
 
 Her `DECISION` kaydı şu dört soruyu cevaplar: **ne gözlendi, hangi seçenekler değerlendirildi, neden bu seçildi, sonuç ne oldu.** Sonuç alanı, ilgili `ACTION_RESULT` ve sonraki etkiler geldikçe aynı `decision_id` ile ilişkilendirilir (ayrı satırlar; analiz aracında birleştirilir).
