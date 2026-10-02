@@ -1327,7 +1327,10 @@ static void AddPartyMember(Buf & b, uint16_t sid, uint8_t flag, const char * nam
 	b.U8(0x03);
 	b.U16(sid);
 	b.U8(flag);
-	b.Str(name);
+	uint16_t nameLen = (uint16_t)strlen(name);
+	b.U16(nameLen);
+	for (uint16_t i = 0; i < nameLen; i++)
+		b.U8((uint8_t)name[i]);
 	b.U16((uint16_t)maxHp);
 	b.U16((uint16_t)hp);
 	b.U8(level);
@@ -1404,6 +1407,65 @@ TEST_CASE("Perception_Party_ParseMember")
 		CHECK_EQ(int(ev.member.mp), 900);
 		CHECK_EQ(int(ev.member.nation), 1);
 		CHECK(ev.member.lastSeenMs == 5000);
+	}
+
+	{
+		// Hand-written server packet: u16 member-name length (ByteBuffer default, PartyHandler.cpp never calls SByte()).
+		const uint8_t raw[25] = {0x03,0x07,0x00,0x01,0x07,0x00,0x42,0x6F,0x74,0x57,0x50,0x5F,0x4B,0xB8,0x0B,0xC4,0x09,0x50,0x6A,0x00,0xB0,0x04,0x84,0x03,0x01};
+		CHECK(BotCore::ParsePartyEvent(raw, 25, 5000, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK_EQ(int(ev.flag), 1);
+		CHECK_EQ(int(ev.member.sid), 7);
+		CHECK(strcmp(ev.member.name, "BotWP_K") == 0);
+		CHECK_EQ(int(ev.member.maxHp), 3000);
+		CHECK_EQ(int(ev.member.hp), 2500);
+		CHECK_EQ(int(ev.member.level), 80);
+		CHECK_EQ(int(ev.member.cls), 106);
+		CHECK_EQ(int(ev.member.maxMp), 1200);
+		CHECK_EQ(int(ev.member.mp), 900);
+		CHECK_EQ(int(ev.member.nation), 1);
+		CHECK(!BotCore::ParsePartyEvent(raw, 24, 5000, ev));   // last byte cut off
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "", 3000, 2500, 80, 106, 1200, 900, 1);   // u16 length 0
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK(strcmp(ev.member.name, "") == 0);
+	}
+
+	{
+		Buf b;
+		AddPartyMember(b, 7, 1, "abcdefghijklmnopqrstuvw", 1, 1, 1, 1, 1, 1, 1);   // 23 chars (max)
+		CHECK(BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_MEMBER);
+		CHECK(strcmp(ev.member.name, "abcdefghijklmnopqrstuvw") == 0);
+	}
+
+	{
+		Buf b;
+		b.U8(0x03);
+		b.U16(7);
+		b.U8(1);
+		b.U16(24);                        // u16 length 24 > kObsNameMax - 1
+		for (int i = 0; i < 24; i++)
+			b.U8((uint8_t)'a');
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
+	}
+
+	{
+		Buf b;
+		b.U8(0x03);
+		b.U16(7);
+		b.U8(1);
+		b.U16(0xFFFF);                    // absurd u16 length
+		b.U8(0x41);
+		b.U8(0x42);
+		CHECK(!BotCore::ParsePartyEvent(b.v.data(), b.v.size(), 0, ev));
+		CHECK(ev.kind == BotCore::PARTY_EV_NONE);
 	}
 
 	{

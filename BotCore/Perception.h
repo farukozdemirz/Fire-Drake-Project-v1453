@@ -904,6 +904,7 @@ namespace BotCore
 	// Parses one WIZ_PARTY payload (starts at the sub-opcode byte). Returns true when 'out' holds a MEMBER / HP / REMOVE /
 	// DELETE event. Everything else returns false and leaves out.kind == PARTY_EV_NONE: other sub-opcodes, the 3-byte
 	// PARTY_INSERT refusal (i16 code), an unknown member flag (not 1 / 100), a truncated or over-long field (name > kObsNameMax - 1).
+	// Member name = u16 length + bytes (ByteBuffer default, no SByte()).
 	// Layouts: PartyHandler.cpp:233-260, :315-326, :393-395, :433-434, User.cpp:2057-2065. Never reads out of bounds;
 	// data may be null with len 0.
 	inline bool ParsePartyEvent(const uint8_t * data, size_t len, uint64_t nowMs, PartyEvent & out)
@@ -929,8 +930,14 @@ namespace BotCore
 
 			TeamObs m;
 			memset(&m, 0, sizeof(m));
-			if (!r.Str(m.name, kObsNameMax))
+			uint16_t nameLen = r.U16();
+			if (!r.ok() || nameLen > kObsNameMax - 1)
 				return false;
+			for (uint16_t i = 0; i < nameLen; i++)
+				m.name[i] = (char)r.U8();
+			if (!r.ok())
+				return false;
+			m.name[nameLen] = '\0';
 
 			m.maxHp = (int32_t)(int16_t)r.U16();
 			m.hp = (int32_t)(int16_t)r.U16();
