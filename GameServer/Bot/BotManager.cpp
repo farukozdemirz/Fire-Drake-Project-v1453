@@ -17,6 +17,7 @@ static const uint32 LOADED_DELAY_MS = 200;
 static const uint32 PHASE_TIMEOUT_MS = 15000;
 static const uint32 UPDATE_PERIOD_MS = 1000;
 static const uint32 DESPAWN_TIMEOUT_MS = 30000;
+static const uint32 CYCLE_PROGRESS_EVERY = 50;
 
 BotManager & BotManager::Instance()
 {
@@ -82,6 +83,13 @@ bool BotManager::Startup()
 	else if (despawnSec > 86400)
 		despawnSec = 86400;
 	m_despawnAfterMs = (uint32)despawnSec * 1000;
+
+	int respawnCycles = ini.GetInt("BOT", "RESPAWN_CYCLES", 0);
+	if (respawnCycles < 0)
+		respawnCycles = 0;
+	else if (respawnCycles > 100000)
+		respawnCycles = 100000;
+	m_respawnCycles = (uint32)respawnCycles;
 
 	auto & mgr = g_pMain->m_socketMgr;
 	std::lock_guard<std::recursive_mutex> lock(mgr.GetLock());
@@ -385,6 +393,23 @@ void BotManager::ParseSpawnList(const std::string & list)
 				(unsigned)(m_despawnAfterMs / 1000));
 			WriteBotLog(message);
 		}
+
+		if (m_respawnCycles != 0)
+		{
+			if (m_despawnAfterMs == 0)
+			{
+				m_respawnCycles = 0;
+				WriteBotLog("BotManager: RESPAWN_CYCLES ignored (DESPAWN_AFTER_SEC is 0)");
+			}
+			else
+			{
+				snprintf(message, sizeof(message),
+					"BotManager: respawn cycles: %u per bot (RESPAWN_CYCLES), %llu spawns planned",
+					(unsigned)m_respawnCycles,
+					(unsigned long long)m_sessions.size() * (1ULL + m_respawnCycles));
+				WriteBotLog(message);
+			}
+		}
 	}
 }
 
@@ -398,7 +423,7 @@ void BotManager::TickSessions()
 		return;
 
 	bool startedThisTick = false;
-	size_t inGameCount = 0, waitCount = 0, releasedCount = 0, stuckCount = 0;
+	size_t busyCount = 0, releasedCount = 0, stuckCount = 0;
 
 	for (size_t i = 0; i < m_sessions.size(); i++)
 	{
@@ -498,17 +523,19 @@ void BotManager::TickSessions()
 			break;
 		}
 
-		if (s->m_phase == BotSession::PHASE_IN_GAME)
-			inGameCount++;
-		else if (s->m_phase == BotSession::PHASE_DESPAWN_WAIT)
-			waitCount++;
+		if (s->m_phase == BotSession::PHASE_QUEUED
+			|| s->m_phase == BotSession::PHASE_WAIT_SELECT
+			|| s->m_phase == BotSession::PHASE_WAIT_LOADED
+			|| s->m_phase == BotSession::PHASE_IN_GAME
+			|| s->m_phase == BotSession::PHASE_DESPAWN_WAIT)
+			busyCount++;
 		else if (s->m_phase == BotSession::PHASE_DESPAWNED)
 			releasedCount++;
 		else if (s->m_phase == BotSession::PHASE_DESPAWN_STUCK)
 			stuckCount++;
 	}
 
-	if (!m_spawnSummaryDone && m_spawnOk + m_spawnFailed == m_sessions.size())
+	if (!m_spawnSummaryDone && m_spawnOk + m_spawnFailed >= m_sessions.size())
 	{
 		m_spawnSummaryDone = true;
 
@@ -520,7 +547,7 @@ void BotManager::TickSessions()
 	}
 
 	if (m_despawnAfterMs != 0 && m_spawnSummaryDone && !m_despawnSummaryDone
-		&& inGameCount == 0 && waitCount == 0)
+		&& busyCount == 0)
 	{
 		m_despawnSummaryDone = true;
 		size_t poolFree;
@@ -535,6 +562,19 @@ void BotManager::TickSessions()
 			(unsigned)releasedCount, (unsigned)m_sessions.size(), (unsigned)stuckCount,
 			(unsigned)m_spawnFailed, (unsigned)poolFree, (unsigned)m_poolSize);
 		WriteBotLog(message);
+
+		if (m_respawnCycles != 0)
+		{
+			long long elapsedSec = std::chrono::duration_cast<std::chrono::seconds>(
+				std::chrono::steady_clock::now() - m_firstTickTime).count();
+
+			snprintf(message, sizeof(message),
+				"BotManager: respawn cycles done: %u spawns, %u despawns, %u failed, %u stuck, %u names left, pool free %u/%u, elapsed %lld s",
+				(unsigned)m_spawnOk, (unsigned)m_despawnOk, (unsigned)m_spawnFailed,
+				(unsigned)stuckCount, (unsigned)m_namesLeft, (unsigned)poolFree,
+				(unsigned)m_poolSize, elapsedSec);
+			WriteBotLog(message);
+		}
 	}
 }
 
@@ -592,6 +632,30 @@ void BotManager::PollDespawn(BotSession * s, std::chrono::steady_clock::time_poi
 		(unsigned)s->m_updateCount, (unsigned)s->m_packetTotal.load(),
 		namesCleared ? "yes" : "no");
 	WriteBotLog(message);
+
+	s->m_despawnCount++;
+	m_despawnOk++;
+	if (!namesCleared)
+		m_namesLeft++;
+
+	if (m_respawnCycles != 0 && m_despawnOk % CYCLE_PROGRESS_EVERY == 0)
+	{
+		size_t poolFree;
+		{
+			std::lock_guard<std::recursive_mutex> lock(g_pMain->m_socketMgr.GetLock());
+			poolFree = g_pMain->m_socketMgr.GetReservedSessionMap().size();
+		}
+
+		snprintf(message, sizeof(message),
+			"BotManager: cycle progress: %u spawns, %u despawns, %u failed, pool free %u/%u",
+			(unsigned)m_spawnOk, (unsigned)m_despawnOk, (unsigned)m_spawnFailed,
+			(unsigned)poolFree, (unsigned)m_poolSize);
+		WriteBotLog(message);
+	}
+
+	// Slot is back in the pool and the DB save is done, so the same session can spawn again.
+	if (s->m_despawnCount <= m_respawnCycles)
+		s->ResetForRespawn();
 }
 
 void BotManager::StartSession(BotSession * s)
