@@ -154,6 +154,7 @@ namespace BotCore
 		float leadSec = 0.0f;         // lead time actually applied (0: no velocity or no walkable prediction)
 		int   tries = 0;              // A* runs of this plan (0 for NoGoal)
 		int   expanded = 0;           // closed nodes summed over those runs
+		float pathCost = 0.0f;         // A* cost (metres) of the chosen route; meaningful when Planned
 		int64_t plannedAtMs = 0;
 		NavSmoothResult smooth;       // start..goal waypoints and length; empty unless Planned
 	};
@@ -354,6 +355,7 @@ namespace BotCore
 		m_plan.goal.z = 0;
 		m_plan.tries = 0;
 		m_plan.expanded = 0;
+		m_plan.pathCost = 0.0f;
 		m_plan.smooth.waypoints.clear();
 		m_plan.smooth.length = 0.0f;
 
@@ -380,6 +382,7 @@ namespace BotCore
 				if (m_path.status == NavPathStatus::Found)
 				{
 					m_plan.goal = m_candidates[static_cast<size_t>(i)];
+					m_plan.pathCost = m_path.cost;
 					NavSmoothPath(grid, m_path.cells, params.smooth, m_plan.smooth);
 					m_plan.status = NavFollowStatus::Planned;
 					finished = true;

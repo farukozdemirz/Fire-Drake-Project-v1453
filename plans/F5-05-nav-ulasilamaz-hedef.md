@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-05` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`), F5-04 (`BotCore/NavTrack.h`): üçü `KAPANDI`, `gece/2026-10-02-nav` içinde (merge `788aa86`, `dc1bb10`, `0bddd38`) |
@@ -241,15 +241,15 @@ NAVREACH perf set=mage judged=<n> unreachable=<n> detour=<n> ms_p50=<x.xxx> ms_p
 
 ## 6. Kabul kriterleri
 
-- [ ] K1: `./tools/build.sh Release` hatasız biter; `BotCore` ve `BotCoreTests` için **yeni uyarı yok** (Level 4; derleme çıktısında `NavReach` ya da `NavTrack` geçen `warning` satırı bulunmaz).
-- [ ] K2: `./tools/run-tests.sh Release --no-build --list` çıktısı şu sekiz test adını içerir: `NavReach_Components_Small`, `NavReach_Matches_AStar`, `NavReach_Judge_Basic`, `NavReach_Judge_Detour`, `NavReach_Tracker`, `NavReach_Drop_Sim`, `NavReach_RealMap`, `NavReach_Perf`.
-- [ ] K3: `build/nav/zone71.navgrid` varken (yoksa `python3 tools/nav-export.py` ile üret) `./tools/run-tests.sh Release --no-build` çıkış kodu 0; çıktıda `106 tests, 0 failed` (önceki 98 + sekiz yeni), tüm eski testler ve sekiz yeni test `[ OK ]`; `SKIPPED` geçmiyor; `NAVREACH random maps: …` satırı (`multi ≥ 15`, `apart ≥ 300`, `same ≥ 300`), `NAVREACH drop A: …` ve `NAVREACH drop B: …` satırları, `NAVREACH real: …` satırı ve iki `NAVREACH perf set=…` satırı var.
-- [ ] K4: Gerçek harita yokken (`build/nav/zone71.navgrid` geçici olarak başka ada taşınarak) `./tools/run-tests.sh Release --no-build NavReach_` çıkış kodu 0, `NavReach_RealMap` ve `NavReach_Perf` `SKIPPED` yazar ve diğer altı test geçer; ardından dosya yerine geri konur.
-- [ ] K5: `./tools/run-tests.sh Debug` (derleme dahil) çıkış kodu 0 (Debug'da `assert`/sınır hataları yok).
-- [ ] K6: Davranış sayıları (Release ve Debug): `NAVREACH drop A: detect_ms=0 drop_ms=1500 feeds=4` ve `NAVREACH drop B: detect_ms=1500 drop_ms=3000 feeds=8` (B'de yeniden planlamalar `t = 0, 500, 700, 1200, 1500, 2000, 2500, 3000`); `NavReach_Judge_Basic` (özellikle `ringCells == 20`/`37`/`168`, `ringConnected == 0`/`12`/`162`), `NavReach_Judge_Detour` ve `NavReach_RealMap` (`components=143 largest=88279 pockets=229`, cep `NodeLimit` → `Component`, cepte bot `NoPath` 15 düğüm) `[ OK ]`.
-- [ ] K7: **Süre (Release):** `NAVREACH real: … build_ms=<x>` satırında `build_ms ≤ 100.00`; iki `NAVREACH perf set=…` satırında `judged=1000` ve **`ms_p95 ≤ 0.500`**. Uygulayıcı Raporu satırları **aynen** yapıştırır ve `nproc` bilgisini ekler. Kapı tutmuyorsa: testi üç kez koş (en kötüsünü raporla); tutarlı biçimde aşıyorsa kural gevşetilmez: `NavReach.h` içinde iyileştir (ör. `Build`'de bellek ayırmayı kaldırma, `Judge`'da halka üretimi); hâlâ aşıyorsa durup ölçümleri "Açık sorular"da raporla.
-- [ ] K8: Saflık/kapsam: `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavReach.h` çıktısı boş; `git diff --stat gece/2026-10-02-nav...bot/F5-05` yalnızca §4'teki beş dosyayı ve kendi plan dosyasını gösterir (`GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavSmooth.h` yok); `git diff gece/2026-10-02-nav...bot/F5-05 -- BotCore/NavTrack.h` tam üç eklenen satır (§5.1) gösterir, silinen satır yok.
-- [ ] K9: F5-01..F5-04 davranışı bozulmadı: `./tools/run-tests.sh Release --no-build Nav_` (10 test), `NavPath_` (9), `NavSmooth_` (8) ve `NavTrack_` (10) çıkış kodu 0, hepsi `[ OK ]`; `NAVPATH T-NAV-03 set=near64 …` satırında `found ≥ 950` ve `ms_p95 ≤ 2.000`; `NAVSMOOTH perf set=near64 …` satırında `ms_p95 ≤ 0.500`; `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400 …` ve `NAVTRACK perf set=… ms_p95 ≤ 2.000` (aynı sayılar).
+- [x] K1: `./tools/build.sh Release` hatasız biter; `BotCore` ve `BotCoreTests` için **yeni uyarı yok** (Level 4; derleme çıktısında `NavReach` ya da `NavTrack` geçen `warning` satırı bulunmaz).
+- [x] K2: `./tools/run-tests.sh Release --no-build --list` çıktısı şu sekiz test adını içerir: `NavReach_Components_Small`, `NavReach_Matches_AStar`, `NavReach_Judge_Basic`, `NavReach_Judge_Detour`, `NavReach_Tracker`, `NavReach_Drop_Sim`, `NavReach_RealMap`, `NavReach_Perf`.
+- [x] K3: `build/nav/zone71.navgrid` varken (yoksa `python3 tools/nav-export.py` ile üret) `./tools/run-tests.sh Release --no-build` çıkış kodu 0; çıktıda `106 tests, 0 failed` (önceki 98 + sekiz yeni), tüm eski testler ve sekiz yeni test `[ OK ]`; `SKIPPED` geçmiyor; `NAVREACH random maps: …` satırı (`multi ≥ 15`, `apart ≥ 300`, `same ≥ 300`), `NAVREACH drop A: …` ve `NAVREACH drop B: …` satırları, `NAVREACH real: …` satırı ve iki `NAVREACH perf set=…` satırı var.
+- [x] K4: Gerçek harita yokken (`build/nav/zone71.navgrid` geçici olarak başka ada taşınarak) `./tools/run-tests.sh Release --no-build NavReach_` çıkış kodu 0, `NavReach_RealMap` ve `NavReach_Perf` `SKIPPED` yazar ve diğer altı test geçer; ardından dosya yerine geri konur.
+- [x] K5: `./tools/run-tests.sh Debug` (derleme dahil) çıkış kodu 0 (Debug'da `assert`/sınır hataları yok).
+- [x] K6: Davranış sayıları (Release ve Debug): `NAVREACH drop A: detect_ms=0 drop_ms=1500 feeds=4` ve `NAVREACH drop B: detect_ms=1500 drop_ms=3000 feeds=8` (B'de yeniden planlamalar `t = 0, 500, 700, 1200, 1500, 2000, 2500, 3000`); `NavReach_Judge_Basic` (özellikle `ringCells == 20`/`37`/`168`, `ringConnected == 0`/`12`/`162`), `NavReach_Judge_Detour` ve `NavReach_RealMap` (`components=143 largest=88279 pockets=229`, cep `NodeLimit` → `Component`, cepte bot `NoPath` 15 düğüm) `[ OK ]`.
+- [x] K7: **Süre (Release):** `NAVREACH real: … build_ms=<x>` satırında `build_ms ≤ 100.00`; iki `NAVREACH perf set=…` satırında `judged=1000` ve **`ms_p95 ≤ 0.500`**. Uygulayıcı Raporu satırları **aynen** yapıştırır ve `nproc` bilgisini ekler. Kapı tutmuyorsa: testi üç kez koş (en kötüsünü raporla); tutarlı biçimde aşıyorsa kural gevşetilmez: `NavReach.h` içinde iyileştir (ör. `Build`'de bellek ayırmayı kaldırma, `Judge`'da halka üretimi); hâlâ aşıyorsa durup ölçümleri "Açık sorular"da raporla.
+- [x] K8: Saflık/kapsam: `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavReach.h` çıktısı boş; `git diff --stat gece/2026-10-02-nav...bot/F5-05` yalnızca §4'teki beş dosyayı ve kendi plan dosyasını gösterir (`GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavSmooth.h` yok); `git diff gece/2026-10-02-nav...bot/F5-05 -- BotCore/NavTrack.h` tam üç eklenen satır (§5.1) gösterir, silinen satır yok.
+- [x] K9: F5-01..F5-04 davranışı bozulmadı: `./tools/run-tests.sh Release --no-build Nav_` (10 test), `NavPath_` (9), `NavSmooth_` (8) ve `NavTrack_` (10) çıkış kodu 0, hepsi `[ OK ]`; `NAVPATH T-NAV-03 set=near64 …` satırında `found ≥ 950` ve `ms_p95 ≤ 2.000`; `NAVSMOOTH perf set=near64 …` satırında `ms_p95 ≤ 0.500`; `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400 …` ve `NAVTRACK perf set=… ms_p95 ≤ 2.000` (aynı sayılar).
 
 ## 7. Doğrulama komutları
 
@@ -284,16 +284,58 @@ git diff gece/2026-10-02-nav...bot/F5-05 -- BotCore/NavTrack.h
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-05` (taban: `gece/2026-10-02-nav`); `8a93160` [F5-05] Ulasilamaz hedef tespiti (BotCore/NavReach.h) ve NavReach testleri (not: commit başlığında `Ulasilamaz` yazım hatası `Ulamsilamaz` olarak kaldı, `--amend` izinli değil; içerik doğru).
+- Değişen dosyalar ve neden:
+  - `BotCore/NavReach.h` (yeni): `NavReach` (`EdgeOpen` ile 8 komşulu bileşen tablosu), `NavReachVerdict`/`NavUnreachReason`/`NavUnreachParams`/`NavReachJudgement`, `NavReachJudge` (kesin yargı sırası: None → Unknown (InvalidStart/yürünemez bot) → NoWalkable → Component → Detour/Reachable → PathFailed=Unknown) ve `NavUnreachTracker` (kesintisiz `Unreachable` serisi, `Due`).
+  - `BotCore/NavTrack.h`: yalnızca `NavFollowPlan::pathCost` alanı + `Update`'te iki satır (`0.0f` sıfırlama, Found'da `m_path.cost`). Üç ekleme, silme yok.
+  - `Tests/BotCoreTests/NavReachTests.cpp` (yeni): sekiz test (`Components_Small`, `Matches_AStar`, `Judge_Basic`, `Judge_Detour`, `Tracker`, `Drop_Sim`, `RealMap`, `Perf`); yardımcılar `NavTrackTests.cpp`'den kopyalandı, `GapWall`/`BlockHeights` eklendi.
+  - `BotCore/BotCore.vcxproj`, `Tests/BotCoreTests/BotCoreTests.vcxproj`: yalnızca `NavReach.h` / `NavReachTests.cpp` kayıt satırı (BOM + CRLF korundu).
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `touch` ile zorlanan yeniden derlemede (`NavReach.h`, `NavTrack.h`, `NavReachTests.cpp`) hiç `warning` satırı yok (`NavReach`/`NavTrack` geçen uyarı da yok); son satırlar `BotCoreTests.vcxproj -> ...\BotCoreTests.exe`.
+  - `./tools/run-tests.sh Debug` (derleme dahil) rc=0; `106 tests, 0 failed`.
+  - nproc=16, Ryzen 7 7800X3D.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ hatasız derleme; yeni uyarı yok (Release, zorlamalı yeniden derleme).
+  - K2 ✔ `--list` çıktısı sekiz `NavReach_*` adını içerir; toplam 106.
+  - K3 ✔ Release rc=0, `106 tests, 0 failed`, 106 `[ OK ]`, `SKIPPED` yok; satırlar: `NAVREACH random maps: seeds=30 multi=30 pairs=4500 apart=1652 same=2848`; `NAVREACH drop A: detect_ms=0 drop_ms=1500 feeds=4`; `NAVREACH drop B: detect_ms=1500 drop_ms=3000 feeds=8`; `NAVREACH real: components=143 largest=88279 pockets=229 build_ms=8.37; pocket NodeLimit->Component, in-pocket NoPath->Component; mage ring=168 connected=162; detour path=242.108 straight=23.32`; `NAVREACH perf set=exact judged=1000 unreachable=14 detour=11 ms_p50=0.000 ms_p95=0.001 ms_p99=0.001`; `NAVREACH perf set=mage judged=1000 unreachable=28 detour=27 ms_p50=0.012 ms_p95=0.018 ms_p99=0.022`.
+  - K4 ✔ `zone71.navgrid` geçici taşındı: `NavReach_` rc=0, `NavReach_RealMap`/`NavReach_Perf` `SKIPPED` yazıp geçti, diğer altısı `[ OK ]`; dosya geri kondu.
+  - K5 ✔ `./tools/run-tests.sh Debug` rc=0, `106 tests, 0 failed`.
+  - K6 ✔ A: `detect_ms=0 drop_ms=1500 feeds=4`; B: `detect_ms=1500 drop_ms=3000 feeds=8` (Release ve Debug aynı). `Judge_Basic` `ringCells` 20/1/1/1/37 ve `ringConnected` 0/0/0/0/12; gerçek harita `components=143 largest=88279 pockets=229`, cep `NodeLimit` → `Component`, cepte bot `NoPath` 15 düğüm → `Component`, mage 168/162; hepsi `[ OK ]`.
+  - K7 ✔ Release `build_ms=8.37 ≤ 100`; iki perf satırı `judged=1000`, `ms_p95` 0.001 / 0.018 ≤ 0.500. (Debug: `build_ms=234.88`, perf mage `ms_p95=0.523`, kapı yok.)
+  - K8 ✔ `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavReach.h` boş; `git diff --stat gece/2026-10-02-nav...bot/F5-05` yalnızca beş dosya (plan raporu commit'i sonrası + plan dosyası); `NavTrack.h` diff'i tam üç ekleme, 0 silme.
+  - K9 ✔ `Nav_` 10/10; `NavPath_` 9/9 (`set=near64 found=997 ms_p95=0.569`); `NavSmooth_` 8/8 (`set=near64 ms_p95=0.032`); `NavTrack_` 10/10 (`chase ring=0-0 replans=29 planned=29 caught_ms=11400`, `chase ring=30-45 dist_min=35.8 dist_max=43.0`, `perf set=exact ms_p95=0.554` / `set=mage ms_p95=0.692`).
+- Plandan sapmalar ve gerekçeleri: Yok. Test yardımcıları plandaki kalıplardan kopyalandı; `Dist`/`Center`/`SegmentsClear` hiçbir testte gerekmediği için (MSVC C4505 uyarısını önlemek adına) tanımlanmadı. RNG tabanlı sayaçlar prototipten farklı (`apart=1652` vs 1618, `same=2848` vs 2882; `multi=30` aynı): C++ `Rng` farklı örnekler üretir, eşikler (`multi ≥ 15`, `apart ≥ 300`, `same ≥ 300`) rahatça karşılanır. `Judge_Basic` (f) `fp.ringMaxM = 13.0f` ile `ringMinM = 0` kullanıldı (plan `[0, 13]` diyor); `NavUnreachParams up` varsayılan.
+- Açık sorular: Yok. K7 kapısı tek koşuda geniş farkla tuttuğu için üç koşu yapılmadı.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-—
+### Tur 1 — 2026-10-02
+
+- **Karar: DOĞRULANDI.** Paralel hat `nav` (`AUTO_LOOP=1`, `AUTO_TRACK=nav`): sunucuya dokunulmadı, birleştirme/push yapılmadı (döngü betiği yapar).
+- İncelenen commit: `00322f3` (`bot/F5-05`; kod `8a93160`, ardından yalnızca uygulayıcı raporu). Taban: `gece/2026-10-02-nav`. Çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release derleme, yeni uyarı yok | ✔ | `NavReach.h`, `NavTrack.h`, `NavReachTests.cpp` `touch` ile zorlanıp `./tools/build.sh Release` rc=0; çıktıda `warning` satırı 0 |
+| K2 sekiz test adı | ✔ | `--list` 106 satır; sekiz `NavReach_*` adı tam |
+| K3 tam Release koşusu | ✔ | rc=0, `106 tests, 0 failed`, 106 `[ OK ]`, `SKIPPED` 0; `NAVREACH random maps: seeds=30 multi=30 pairs=4500 apart=1652 same=2848`, `drop A/B`, `real`, iki `perf` satırı var |
+| K4 harita yokken | ✔ | `zone71.navgrid` geçici taşındı: `NavReach_` rc=0, `8 tests, 0 failed`, `RealMap` ve `Perf` `SKIPPED`; dosya geri kondu (`ls build/nav`) |
+| K5 Debug (derleme dahil) | ✔ | `./tools/run-tests.sh Debug` rc=0, `106 tests, 0 failed` |
+| K6 davranış sayıları | ✔ | Release ve Debug: `drop A: detect_ms=0 drop_ms=1500 feeds=4`, `drop B: detect_ms=1500 drop_ms=3000 feeds=8`; `real: components=143 largest=88279 pockets=229`, cep `NodeLimit`→`Component`, cepte bot `NoPath`→`Component`, mage `ring=168 connected=162`, `detour path=242.108 straight=23.32`; `Judge_Basic` ring 20/37 ve connected 0/12 testte (`NavReachTests.cpp:430-450`) |
+| K7 süre (Release) | ✔ | `build_ms=8.47 ≤ 100`; `perf set=exact judged=1000 ms_p95=0.000`, `set=mage judged=1000 ms_p95=0.017` (kapı 0,5); `nproc=16`. Debug: `build_ms=247.95` (kapı yok), mage `ms_p95=0.543` (kapı yalnızca Release, `#ifndef _DEBUG` `NavReachTests.cpp:1032`) |
+| K8 saflık/kapsam | ✔ | `grep` çıktısı boş (rc=1); `git diff --stat` yalnızca beş dosya + kendi planı (`BotCore.vcxproj` +1, `NavReach.h` +341, `NavTrack.h` +3, `BotCoreTests.vcxproj` +1, `NavReachTests.cpp` +1039); `NavTrack.h` tam üç eklenen satır (`:157`, `:358`, `:385` civarı), silme yok; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavSmooth.h` değişmedi |
+| K9 F5-01..F5-04 bozulmadı | ✔ | `Nav_` 10, `NavPath_` 9, `NavSmooth_` 8, `NavTrack_` 10: hepsi rc=0; `NAVPATH T-NAV-03 set=near64 found=997 ms_p95=0.538`; `NAVSMOOTH perf set=near64 ms_p95=0.032`; `NAVTRACK chase ring=0-0 replans=29 planned=29 caught_ms=11400 final_dist=3.7`; `NAVTRACK perf` exact `0.545`, mage `0.608` (≤ 2,0) |
+
+Kural/biçim denetimi: yeni/değişen C++ dosyaları ASCII + CRLF (`file`: 341/341, 417/417, 1039/1039 satır CRLF, ASCII dışı 0); vcxproj'lar BOM + CRLF korunmuş, yalnızca birer satır eklenmiş (plan §5.3 konumları); `.filters` yok. `NavReach.h` yalnızca standart başlıklar + `NavTrack.h`; global/`static` durum yok, saat okumuyor, `#pragma` yalnızca `once`. `Judge` kural sırası plan §5.1 ile aynı (None → Unknown → NoWalkable → halka → Component → Detour/Reachable → Unknown); `Judge`'ın `NavFollower::Update` ile aynı parametrelerle çağrılması gerektiği başlık yorumunda var (`NavReach.h:84-85`); `Due` "bırakıldı" diye adlandırılmıyor. `NavReach::Build` komşu indekslerini `EdgeOpen` (`NavGrid.h:316-334`, `Walk` ızgara dışını reddeder) arkasında kullandığı için sınır dışı erişim yok. Bot sistemi/sunucu yolu etkilenmedi (`GameServer/` değişmedi).
+
+Bulgular (engel değil, önem sırasıyla):
+
+1. `Tests/BotCoreTests/NavReachTests.cpp:961-969` — `NavReach_Perf` ısınması plan §5.2'deki "aynı kümeden 20 ek çift" yerine ölçülen kümenin ilk 20 çiftini kullanıyor (ısınma ve ölçüm çiftleri örtüşüyor). Süre ölçümüne etkisi ihmal edilebilir (kapı payı 25×+); not olarak kalır.
+2. `NavReach_Perf` değişmezleri tek `bool invariants`'ta toplanıyor (`:976-1031`); bozulursa hangi çiftin hata verdiği görünmez. Tanı kolaylığı için ileride ilk ihlalde `std::printf` eklenebilir.
+3. Commit başlığı `8a93160` "Ulamsilamaz" yazım hatası içeriyor (uygulayıcı raporunda belirtilmiş; `--amend` yok, içerik doğru).
+4. `NavReach_Matches_AStar` sayaçları prototipten farklı (`apart=1652`, `same=2848`; `multi=30`): C++ `Rng` farklı örnekler üretir, eşikler (≥ 15/300/300) geniş farkla geçiyor; plan bunu önceden belirtmişti.
+
+Kayıtlar: `plans/README.md`, `docs/STATUS.md` güncellendi. Faz kapısı: F5 diğer planlar (F5-06..) sürüyor.
