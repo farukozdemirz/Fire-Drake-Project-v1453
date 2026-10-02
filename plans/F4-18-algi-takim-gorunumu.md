@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-18` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-17 (`SelfState` genişletme, `FillSelfExtras`, `/bot snap`) — `KAPANDI` (merge `6f66164`); F4-16 (`PerceptionSnapshot`, `BuildSnapshot`) — `KAPANDI`; F4-12 (`ObsTable`, `OnPacket()` gözlem kalıbı) — `KAPANDI`; F4-08..F4-10 (party aksiyonları: üyelik oluşturmak için) — `KAPANDI`; F3-05 (`BotCore`, birim test çatısı) — `KAPANDI` |
@@ -369,13 +369,33 @@ git diff --check gece/2026-10-02...bot/F4-18
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+
+- Branch / commit'ler: `bot/F4-18` (taban: `gece/2026-10-02`); uygulama commit'i `0288532` (`[F4-18] TeamView: party üyeleri tablosu ve /bot snap team çıktısı uygulandı`), ardından bu rapor + `Durum: UYGULANDI` commit'i. Push edilmedi.
+
+- Değişen dosyalar ve neden:
+  - `BotCore/Perception.h` (+362): `SelfState`'e `inParty`/`partyLeader`; `PerceptionSnapshot`'a `TeamView team;`; yeni team-view bölümü (`TeamObs`, `PartyEventKind`, `PartyEvent`, `ParsePartyEvent`, `TeamTable`, `TeamMemberView`, `TeamView`, `BuildTeam`). Hâlâ sunucusuz, yeni include yok, `std::min/max/vector/string/new/malloc` yok.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+395): `AddPartyMember` + `ApplyParty*` yardımcıları ve beş `TEST_CASE` (`Perception_Party_ParseMember`, `Perception_Party_ParseOthers`, `Perception_Team_Table`, `Perception_Team_Leader`, `Perception_Team_Build`). Toplam 71 → 76.
+  - `GameServer/Bot/BotSession.h` (+2): `m_team` (`m_obsLock` altındaki tabloların altına), `m_selfSid` (atomikler bölümüne). Yeni mutex yok (`std::mutex` sayısı 1).
+  - `GameServer/Bot/BotSession.cpp` (+19): kurucuda `m_selfSid(-1)` (yeni satır), `OnPacket()`'e ayrı `WIZ_PARTY` team bloğu (mevcut bloğa dokunulmadı, ayrıştırma kilit dışında, tablo `m_obsLock` altında), `ResetForRespawn`'da `m_team.Clear()` ve `m_selfSid = -1`.
+  - `GameServer/Bot/BotManager.cpp` (+41/−2): giriş anında `m_selfSid`; `FillSelfExtras`'a `inParty`/`partyLeader`; `CommandSnap`'te `teamCopy` kopyası, `BuildTeam` çağrısı ve `team`/`member` satırlarının yazdırılması. Tek `-` satırı izin verilen `(only these two assignments)` → `(only these three assignments)` yorumudur.
+  - `plans/F4-18-algi-takim-gorunumu.md`: yalnızca `Durum` satırı ve bu rapor.
+
+- Derleme sonucu:
+  - `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0.
+  - Beş dosya `touch` edilip yeniden derlendi: `Perception.h`/`PerceptionTests.cpp`/`BotSession.*`/`BotManager.cpp` için **uyarı yok**; tüm derlemede yalnızca eski `UpgradeHandler.cpp(634,862)` C4789 uyarıları (bu plan dışı, değişmedi).
+  - `./tools/run-tests.sh Release` ve `Debug`: `76 tests, 0 failed`; beş yeni test adı çıktıda; önceki 71 test değişmeden geçti.
+
+- Kabul kriterleri öz-değerlendirme: K1 ✔ (Release uyarısız, yeni include yok); K2 ✔ (Debug rc=0); K3 ✔ (76 test, Release+Debug, 5 yeni ad); K4 ✔ (grep'ler boş: `windows.h|stdafx|GameServer|shared/`, include'lar yalnızca `<cstddef> <cstdint> <cstring> <cmath>`, yasak kullanımlar yok); K5 ✔ (UnitView/NpcView/TeamMemberView/CommandSnap/FillSelfExtras grep'leri boş; yeni `OnPacket` bloğunun kendisinde sunucu erişimi yok — bkz. sapma 3); K6 ✔ (`std::mutex` = 1; yeni blokta `m_obsLock` = 1 ve ayrıştırma kilit öncesi; `CommandSnap`'te `m_obsLock` = 1; `m_team` her kullanımı kilit altında: `BotSession.cpp:157,371`, `BotManager.cpp:2510`); K7 ✔ (dört dosyada `-` yok; `BotManager.cpp`'de tek `-` izinli yorum satırı); K8 ✔ (eklenen satırlarda `m_party*Echo` yok; mevcut `WIZ_PARTY` bloğu değişmedi); K9 ✔ (yeni ini anahtarı yok; `GameServer/` içinde `Bot/` dışı değişmedi; `m_selfSid` yalnızca giriş anında tek satır); K10 ✔ (`git diff --stat` yalnızca §4'teki 5 dosya + plan; `vcxproj*`/`BotManager.h`/`ActionExecutor.*`/`Telemetry.*`/`ScenarioRunner.*` yok); K11 ✔ (ASCII + CRLF; `git diff --check` boş); K12 ✔ (yeni `printf`/`Sleep`/`CreateThread`/`rand(` yok; iki eski `printf`/`fprintf` `WriteBotLog`/konsol, değişmedi); K13 ✔ (guard grep'leri: `CheckMoveStep` = 2, diğer 14 guard ≥ 1; `BuildSnapshot` ve `BuildTeam` `CommandSnap`'ten çağrılır). K14 (çalışma zamanı) Claude'a ait.
+
+- Plandan sapmalar ve gerekçeleri:
+  1. **Yerleşim:** Team-view bölümü planın dediği gibi `BuildSnapshot`/F4-17 yardımcılarından sonra değil, `struct NpcView` ile `struct PerceptionSnapshot` arasına konuldu. Gerekçe: `PerceptionSnapshot` `TeamView team;` alanını **değer olarak** taşıdığı için `TeamView` (ve `TeamMemberView`) `PerceptionSnapshot`'tan önce tam tür olarak tanımlı olmalı; C++ ileri bildirimle değer üyesine izin vermez. Davranış/kapsam değişmedi; `BuildSnapshot` gövdesi değişmedi.
+  2. **`PartyEvent.nowMs` alanı:** Plan `Apply`'nin HP dalında `lastSeenMs`'i güncellemesini ve test 3'ün bunu kontrol etmesini istiyor, ama planın `PartyEvent` listesinde saat alanı yok. Bu yüzden `PartyEvent`'e `uint64_t nowMs` eklendi; `ParsePartyEvent` bunu doldurur, `Apply` HP dalı `m_members[idx].lastSeenMs = ev.nowMs` yazar. Başka semantik değişiklik yok.
+  3. **K5 `OnPacket` alt komutu CRLF artefaktı:** Plandaki `sed -n '/Party team table (ADR-0017 Ek F4-18)/,/^\t}$/p' ...` aralığı dosya CRLF olduğundan `^\t}$` ile kapanmaz ve dosya sonuna kadar gider; bu yüzden `ResetForRespawn`'daki eski `m_pUser = nullptr;` satırına takılır. Yeni bloğun kendisi (satır 145–159) temizdir: `sed -n '145,159p' GameServer/Bot/BotSession.cpp | grep -E "g_pMain|GetUserPtr|GetPartyPtr|_PARTY_GROUP|uid\[|m_pUser"` boş. Blokta yalnızca `opcode`, `pkt`, `m_selfSid`, `m_obsLock`, `m_team`, `BotCore::*` geçer.
+  4. **Init-list biçimi:** K7'nin "BotSession.cpp'de `-` satırı yok" şartını sağlamak için `m_selfSid(-1)` ayrı bir yeni satıra yazıldı ve üye, `m_castSelfId`'den **önce** bildirildi (bildirim sırası = başlatma sırası; C5038 yok). Planın "`m_castSelfId(-1)` yanına" ifadesinden küçük fark; davranış aynı.
+
+- Açık sorular:
+  - Yok. (K5'in `OnPacket` alt komutundaki CRLF kaynaklı sed artefaktı yukarıda açıklandı; doğrulamada `tr -d '\r'` eklenmesi ya da blok satır aralığının doğrudan verilmesi yeterli olacaktır.)
 
 ---
 
