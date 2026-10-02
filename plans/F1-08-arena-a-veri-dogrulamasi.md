@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F1 — Veri ve mekanik doğrulama (`docs/17` §2) |
 | Branch | `bot/F1-08` (taban: `main`) |
 | Bağımlı olduğu planlar | F0 (KABUL_EDILDI), F1-02 (ölçülen hız: 4,5 m/s yürüyüş, 6,7 m/s sprint) |
@@ -259,6 +259,202 @@ Yalnızca izinli tablolar okunuyor; `docs/appendix/tools/*` değişmedi.
 2. **Karar bekleyen:** A için eksen önerisi `angle=15` (uçlar (1307,8;899,1) ve (1240,2;880,9)); `docs/15` §2.4 güncellemesi Claude'da. B yedeği için en düz seçenek `angle=135`.
 3. Karus→A yolunun 259,8 m olması ElMorad→A'nın 680,5 m'sine kıyasla Karus lehine ~%62 kısa dönüş süresi demek; dengeleme zaten "taraf değiştirilerek iki maç" (ADR-0004) ile yapılıyor.
 4. Araç ölçmez, veri üretir; T-ENV-ARENA-01..04'ün oyun içi doğrulaması proje sahibinde.
+
+### Tur 2 — 2026-10-02 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F1-08` (taban: `main`); düzeltme commit'i `[F1-08] Doğrulama Turu 1 düzeltmeleri` (bu rapor + `Durum: UYGULANDI` ayrı commit).
+- Değişen dosyalar ve nedenleri:
+  - `tools/arena-report.py`: SPAWN_SUMMARY'ye `min_margin_spawn`; CHECK spawn kıyası `min_margin_spawn` ile, `min_margin_monster` bilgi satırı; kabul süzgeci ayrı `axis_candidate(entry)` işlevine taşındı; `--selftest` (d) assert'leri eklendi.
+  - `plans/F1-08-arena-a-veri-dogrulamasi.md`: yalnızca `Durum` satırı ve bu rapor.
+  - Başka dosyaya dokunulmadı (`docs/**` dahil); DB'ye yazılmadı; `docs/appendix/tools/*` değişmedi.
+- Derleme: — (yalnızca Python aracı; C++ değişikliği yok).
+
+**Madde 1–2 — `min_margin_spawn` ve CHECK**
+
+- SPAWN sınıf kümesi `docs/appendix/tools/arena_candidates.py:29` ile birebir: `("monster", "monster_boss", "soldier_npc", "monument", "gate")` (`SPAWN_MARGIN_CLASSES`); `guard_tower`, `service`, `outpost`, `other` hariç.
+- `SPAWN_SUMMARY` sonuna `min_margin_spawn=<m>` eklendi; `min_margin_monster` ve `min_margin_tower` korundu.
+- CHECK: `min_margin_spawn` için doc A=144, B=160; kule satırları aynı (A doc=133, B doc=146); `min_margin_monster` `doc=n/a` bilgi satırı olarak kaldı.
+- Beklenen değerler birebir: A spawn `calc=143.8 diff=-0.2` (Karus Commander), B spawn `calc=159.8 diff=-0.2` (Shaula).
+
+**Madde 3 — `axis_candidate(entry)` ve selftest (d)**
+
+- `axis_candidate(entry)` (`tools/arena-report.py:255-261`): `p1_walk`, `p2_walk`, her iki `cluster ≥ %90`, `line ≥ 0.98`, `dh ≤ 2.0`, `confined is not None`. `axis_scan` artık `accepted = [e for e in scans if axis_candidate(e)]` (`:292`) çağırır.
+- Selftest (d): mevcut `walkable_xy` assert'leri korundu; ek olarak sentetik `axis_entry(...)` ile tüm koşullar geçerken `True`, `p1_walk=False` / `cluster %89` / `line 0.97` / `dh 2.1` / `confined None` durumlarında `False` assert edildi.
+
+**Madde 4 — çalıştırma ve doğrulama**
+
+```
+$ python3 tools/arena-report.py --selftest
+selftest OK
+(çıkış 0)
+
+$ python3 tools/arena-report.py --selftest ; echo exit=$?
+selftest OK
+exit=0
+```
+
+`python3 tools/arena-report.py` çıkış 0, 69 satır (Tur 1: 67; +2 satır CHECK bilgi/ek satırdan). CHECK dışındaki ve yeni `min_margin_spawn` alanı çıkarılmış satırlar Tur 1 ile **birebir aynı**:
+
+```
+$ diff <(grep -v '^CHECK' tur1.txt | sed 's/ min_margin_spawn=[0-9.]*//') \
+       <(grep -v '^CHECK' tur2.txt | sed 's/ min_margin_spawn=[0-9.]*//')
+(NON_CHECK_NON_NEWFIELD_IDENTICAL)
+```
+
+Yalnızca beklenen fark: 2 `SPAWN_SUMMARY` satırına `min_margin_spawn` alanı ve CHECK bölümü:
+
+```
+$ diff tur1.txt tur2.txt
+11c11
+< SPAWN_SUMMARY pt=A ... min_margin_monster=147.7 min_margin_tower=132.8
+---
+> SPAWN_SUMMARY pt=A ... min_margin_monster=147.7 min_margin_tower=132.8 min_margin_spawn=143.8
+21c21
+< SPAWN_SUMMARY pt=B ... min_margin_monster=159.8 min_margin_tower=145.5
+---
+> SPAWN_SUMMARY pt=B ... min_margin_monster=159.8 min_margin_tower=145.5 min_margin_spawn=159.8
+64c64
+< CHECK pt=A min_margin_monster calc=147.7 doc=144 diff=3.7
+---
+> CHECK pt=A min_margin_spawn calc=143.8 doc=144 diff=-0.2
+66c66,67
+< CHECK pt=B min_margin_monster calc=159.8 doc=160 diff=-0.2
+---
+> CHECK pt=A min_margin_monster calc=147.7 doc=n/a
+> CHECK pt=B min_margin_spawn calc=159.8 doc=160 diff=-0.2
+67a69
+> CHECK pt=B min_margin_monster calc=159.8 doc=n/a
+```
+
+Yeni çıktı (tam, kırpılmadı; 69 satır):
+
+```
+== SPAWN ==
+SPAWN pt=A kind=monster nearest=1 name=bone collecter sid=1106 class=monster rect_dist=154.7 margin=147.7 margin_trace=94.7 num=1
+SPAWN pt=A kind=monster nearest=2 name=Bishop sid=1206 class=monster rect_dist=164.8 margin=149.8 margin_trace=104.8 num=1
+SPAWN pt=A kind=monster nearest=3 name=Orc bandit leader sid=2817 class=monster rect_dist=160.1 margin=150.1 margin_trace=115.1 num=1
+SPAWN pt=A kind=tower nearest=1 name=Guard tower sid=5400 class=guard_tower rect_dist=167.8 margin=132.8 margin_trace=132.8 num=1
+SPAWN pt=A kind=tower nearest=2 name=Guard tower sid=5400 class=guard_tower rect_dist=173.4 margin=138.4 margin_trace=138.4 num=1
+SPAWN pt=A kind=tower nearest=3 name=Guard tower sid=5400 class=guard_tower rect_dist=180.3 margin=145.3 margin_trace=145.3 num=1
+SPAWN pt=A kind=npc nearest=1 name=Karus Commander sid=24004 class=soldier_npc rect_dist=157.8 margin=143.8 margin_trace=122.8 num=2
+SPAWN pt=A kind=npc nearest=2 name=Ardin[sundries] sid=26062 class=service rect_dist=215.6 margin=201.6 margin_trace=190.6 num=1
+SPAWN pt=A kind=npc nearest=3 name=Inn hostess sid=26061 class=service rect_dist=223.8 margin=209.8 margin_trace=198.8 num=1
+SPAWN_SUMMARY pt=A within_120_monster=0 within_120_tower=0 within_120_other=0 min_margin_monster=147.7 min_margin_tower=132.8 min_margin_spawn=143.8
+SPAWN pt=B kind=monster nearest=1 name=Shaula sid=914 class=monster rect_dist=169.8 margin=159.8 margin_trace=109.8 num=1
+SPAWN pt=B kind=monster nearest=2 name=Orc bandit leader sid=2818 class=monster rect_dist=174.8 margin=164.8 margin_trace=129.8 num=1
+SPAWN pt=B kind=monster nearest=3 name=Bishop sid=1206 class=monster rect_dist=180.3 margin=165.3 margin_trace=120.3 num=1
+SPAWN pt=B kind=tower nearest=1 name=Guard tower sid=5300 class=guard_tower rect_dist=180.5 margin=145.5 margin_trace=145.5 num=1
+SPAWN pt=B kind=tower nearest=2 name=Guard tower sid=5300 class=guard_tower rect_dist=187.6 margin=152.6 margin_trace=152.6 num=1
+SPAWN pt=B kind=tower nearest=3 name=Guard tower sid=5300 class=guard_tower rect_dist=193.3 margin=158.3 margin_trace=158.3 num=1
+SPAWN pt=B kind=npc nearest=1 name=Elmorad Commander sid=14004 class=soldier_npc rect_dist=174.9 margin=160.9 margin_trace=139.9 num=2
+SPAWN pt=B kind=npc nearest=2 name=[sundries]Halber sid=16062 class=service rect_dist=214.1 margin=200.1 margin_trace=189.1 num=1
+SPAWN pt=B kind=npc nearest=3 name=Inn hostess sid=16061 class=service rect_dist=236.2 margin=222.2 margin_trace=211.2 num=1
+SPAWN_SUMMARY pt=B within_120_monster=0 within_120_tower=0 within_120_other=0 min_margin_monster=159.8 min_margin_tower=145.5 min_margin_spawn=159.8
+== GRID ==
+GRID pt=A center_walk=yes center_h=7.80
+GRID pt=A r=40 walk_pct=88.6 walk=281 total=317 h_min=0.23 h_max=9.87
+GRID pt=A r=60 walk_pct=83.8 walk=594 total=709 h_min=-9.51 h_max=15.93
+GRID pt=B center_walk=yes center_h=1.48
+GRID pt=B r=40 walk_pct=94.3 walk=299 total=317 h_min=-0.00 h_max=7.68
+GRID pt=B r=60 walk_pct=80.4 walk=570 total=709 h_min=-14.48 h_max=8.95
+== AXIS ==
+AXIS pt=A angle=0 p1=(1309.0,890.0) p2=(1239.0,890.0) p1_walk=no p2_walk=yes cluster1=16/29 cluster2=29/29 line_walk=0.97 dh=0.53 confined_path_m=none
+AXIS pt=A angle=15 p1=(1307.8,899.1) p2=(1240.2,880.9) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=28/29 line_walk=1.00 dh=0.83 confined_path_m=70.6
+AXIS pt=A angle=30 p1=(1304.3,907.5) p2=(1243.7,872.5) p1_walk=yes p2_walk=no cluster1=29/29 cluster2=13/29 line_walk=0.90 dh=2.13 confined_path_m=none
+AXIS pt=A angle=45 p1=(1298.7,914.7) p2=(1249.3,865.3) p1_walk=yes p2_walk=no cluster1=29/29 cluster2=5/29 line_walk=0.86 dh=4.67 confined_path_m=none
+AXIS pt=A angle=60 p1=(1291.5,920.3) p2=(1256.5,859.7) p1_walk=yes p2_walk=no cluster1=29/29 cluster2=5/29 line_walk=0.90 dh=7.10 confined_path_m=none
+AXIS pt=A angle=75 p1=(1283.1,923.8) p2=(1264.9,856.2) p1_walk=yes p2_walk=no cluster1=29/29 cluster2=9/29 line_walk=0.87 dh=6.77 confined_path_m=none
+AXIS pt=A angle=90 p1=(1274.0,925.0) p2=(1274.0,855.0) p1_walk=yes p2_walk=no cluster1=25/29 cluster2=16/29 line_walk=0.87 dh=8.11 confined_path_m=none
+AXIS pt=A angle=105 p1=(1264.9,923.8) p2=(1283.1,856.2) p1_walk=no p2_walk=yes cluster1=14/29 cluster2=29/29 line_walk=0.94 dh=8.14 confined_path_m=none
+AXIS pt=A angle=120 p1=(1256.5,920.3) p2=(1291.5,859.7) p1_walk=yes p2_walk=yes cluster1=28/29 cluster2=29/29 line_walk=1.00 dh=8.50 confined_path_m=77.3
+AXIS pt=A angle=135 p1=(1249.3,914.7) p2=(1298.7,865.3) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=6.56 confined_path_m=67.9
+AXIS pt=A angle=150 p1=(1243.7,907.5) p2=(1304.3,872.5) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=4.35 confined_path_m=77.3
+AXIS pt=A angle=165 p1=(1240.2,899.1) p2=(1307.8,880.9) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=27/29 line_walk=1.00 dh=3.52 confined_path_m=70.6
+AXIS_BEST pt=A angle=15 reason=dh=0.83,line_walk=1.00,cluster_min=96.6%
+AXIS pt=B angle=0 p1=(781.0,1106.0) p2=(711.0,1106.0) p1_walk=no p2_walk=yes cluster1=12/29 cluster2=23/29 line_walk=0.92 dh=5.78 confined_path_m=none
+AXIS pt=B angle=15 p1=(779.8,1115.1) p2=(712.2,1096.9) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=6.23 confined_path_m=70.6
+AXIS pt=B angle=30 p1=(776.3,1123.5) p2=(715.7,1088.5) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=6.90 confined_path_m=77.3
+AXIS pt=B angle=45 p1=(770.7,1130.7) p2=(721.3,1081.3) p1_walk=yes p2_walk=yes cluster1=24/29 cluster2=29/29 line_walk=1.00 dh=6.38 confined_path_m=70.2
+AXIS pt=B angle=60 p1=(763.5,1136.3) p2=(728.5,1075.7) p1_walk=no p2_walk=yes cluster1=7/29 cluster2=29/29 line_walk=0.89 dh=5.11 confined_path_m=none
+AXIS pt=B angle=75 p1=(755.1,1139.8) p2=(736.9,1072.2) p1_walk=yes p2_walk=yes cluster1=28/29 cluster2=29/29 line_walk=1.00 dh=3.69 confined_path_m=70.6
+AXIS pt=B angle=90 p1=(746.0,1141.0) p2=(746.0,1071.0) p1_walk=yes p2_walk=yes cluster1=20/29 cluster2=27/29 line_walk=1.00 dh=1.04 confined_path_m=72.0
+AXIS pt=B angle=105 p1=(736.9,1139.8) p2=(755.1,1072.2) p1_walk=yes p2_walk=yes cluster1=19/29 cluster2=29/29 line_walk=1.00 dh=0.58 confined_path_m=70.6
+AXIS pt=B angle=120 p1=(728.5,1136.3) p2=(763.5,1075.7) p1_walk=yes p2_walk=yes cluster1=23/29 cluster2=29/29 line_walk=1.00 dh=0.43 confined_path_m=77.3
+AXIS pt=B angle=135 p1=(721.3,1130.7) p2=(770.7,1081.3) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=0.03 confined_path_m=67.9
+AXIS pt=B angle=150 p1=(715.7,1123.5) p2=(776.3,1088.5) p1_walk=yes p2_walk=yes cluster1=29/29 cluster2=29/29 line_walk=1.00 dh=0.91 confined_path_m=77.3
+AXIS pt=B angle=165 p1=(712.2,1115.1) p2=(779.8,1096.9) p1_walk=yes p2_walk=yes cluster1=28/29 cluster2=24/29 line_walk=1.00 dh=4.53 confined_path_m=70.6
+AXIS_BEST pt=B angle=135 reason=dh=0.03,line_walk=1.00,cluster_min=100.0%
+== PATH ==
+START nation=karus table=(1380,1090) range=(0,0) center=(1380.0,1090.0)
+START nation=elmorad table=(630,920) range=(0,0) center=(630.0,920.0)
+PATH from=karus to=A straight_m=226.4 path_m=259.8 t_walk_s=57.7 t_sprint_s=38.8
+PATH from=karus to=B straight_m=634.2 path_m=672.9 t_walk_s=149.5 t_sprint_s=100.4
+PATH from=elmorad to=A straight_m=644.7 path_m=680.5 t_walk_s=151.2 t_sprint_s=101.6
+PATH from=elmorad to=B straight_m=219.2 path_m=246.1 t_walk_s=54.7 t_sprint_s=36.7
+== CHECK ==
+CHECK pt=A min_margin_spawn calc=143.8 doc=144 diff=-0.2
+CHECK pt=A min_margin_tower calc=132.8 doc=133 diff=-0.2
+CHECK pt=A min_margin_monster calc=147.7 doc=n/a
+CHECK pt=B min_margin_spawn calc=159.8 doc=160 diff=-0.2
+CHECK pt=B min_margin_tower calc=145.5 doc=146 diff=-0.5
+CHECK pt=B min_margin_monster calc=159.8 doc=n/a
+```
+
+**Madde 5 — düzeltilmiş K4 (Tur 1'deki "8 m aday ızgarası" açıklaması geçersiz)**
+
+- `docs/15` §2.3'teki "spawn payı" tanımı = `monster + soldier_npc + monument + gate` sınıflarının **en küçüğü** (kule ayrı); `docs/appendix/tools/arena_candidates.py:29` bu kümeyi kullanır. A: **Karus Commander** (soldier_npc) `143,8`; B: **Shaula** (monster) `159,8`. Bu yüzden A farkı +3,7 değil **−0,2**.
+- SPAWN `nearest=1..3` sıralaması `margin`'e göre yapılır (`tools/arena-report.py:319`), ham `rect_dist`'e göre değil (ör. A monster: rect 154,7 / 164,8 / 160,1 ama margin 147,7 / 149,8 / 150,1).
+
+**Madde 6 — düzeltilmiş K5 (her atıf depoda açılıp kontrol edildi)**
+
+(a) `grep -rn -a "ZONE_RONARK_LAND" GameServer shared` çıktısı iki listeye ayrılır (`_BASE` = zone 73, düz = zone 71):
+
+- **Zone 71 (`ZONE_RONARK_LAND`):** `Define.h:140`, `CharacterMovementHandler.cpp:260,509`, `CharacterSelectionHandler.cpp:179`, `EventHandler.cpp:14,27`, `GameServerDlg.cpp:351,700,2072,2677`, `Unit.cpp:1100`, `User.cpp:1181,2835,3171,3197,4330`, `User.h:376`.
+- **`ZONE_RONARK_LAND_BASE` (73):** `Define.h:142`, `CharacterMovementHandler.cpp:246,508`, `CharacterSelectionHandler.cpp:178`, `GameServerDlg.cpp:350,2071,2675`, `Unit.cpp:1110`, `User.cpp:613,658,2830,3169,3195,4329`, `User.h:376`.
+- **Yeni eklenen:** `GameServerDlg.cpp:2677` (`TempleEventKickOutUser`, `:2658-2694`): `ZONE_CHAOS_DUNGEON`'dan çıkan **seviye ≥ 70** oyuncu `nZoneID = ZONE_RONARK_LAND` (2677) ile zone 71'e taşınır — zone 71'e otomatik taşıma olduğu için (d) maddesine de eklenir.
+- `shared/` altında eşleşme yok.
+
+(b) **Respawn atfı düzeltildi.** `GameServer/AttackHandler.cpp`:
+- `:125-131`: `pEvent = GetMap()->GetObjectEvent(m_sBind)`; `pEvent->byLife == 1` ve zone ≠ `ZONE_DELOS` ise bind noktasında doğar. Yani **(1380,1090), canlı bind nesnesi yokken** geçerlidir.
+- `:137-143` dalı yalnızca `(GetZoneID() <= ZONE_ELMORAD)` **veya** açık savaş zone'u (`GetZoneID() == ZONE_BATTLE_BASE + m_byBattleZone`) içindir; gövdesi `sKarusX/sElmoradX + myrand(0, bRange)` (141-142).
+- Zone 71 bu koşulu sağlamaz; `:160-165` `else` dalına düşer ve `:162` `GetStartPosition(sx, sz)` çağırır → `CUser::GetStartPosition` (`GameServer/User.cpp:3729-3761`), ulus bazlı `sKarusX/sElmoradX + myrand(0, bRange)` (3749-3758). Bu yüzden `bRange = 0` iken (1380,1090) çıkar.
+
+(c) **Warp atıfları düzeltildi.**
+- `CharacterMovementHandler.cpp:508-509` **`CUser::PlayerRankingProcess`**'tir (fonksiyon başı `:502`), warp listesi değil.
+- Savaş açıkken zone 71 hedefinin warp listesinden çıkarılması: `CharacterMovementHandler.cpp:260-263` (hedef zone kontrolü) ve `User.cpp:4326-4333` (`warpList` süzgeci: `isWarOpen()` ve `m_byBattleZoneType != ZONE_ARDREAM` iken `ZONE_ARDREAM`/`ZONE_RONARK_LAND_BASE`/`ZONE_RONARK_LAND` hedefleri atlanır).
+- `Map.cpp:109-120` `C3DMap::CheckEvent` (`:105-`) içindedir; dallanan koşul `:112` `m_byBattleOpen == NATION_BATTLE && pUser->GetMap()->isWarZone() && m_byBattleZoneType == 0` gerektirir. Zone 71 `m_zoneFlags = ZF_ATTACK_OTHER_NATION` ile kurulur (`Unit.cpp:1100-1102`), **`ZF_WAR_ZONE` içermez**, dolayısıyla `isWarZone()` false'tur (`Map.h:54`) ve bu dal zone 71'e uygulanmaz.
+
+(d) **Koşul bağları.** `CharacterMovementHandler.cpp:260-263` reddi `g_pMain->isWarOpen() && g_pMain->m_byBattleZoneType != ZONE_ARDREAM` koşuluna bağlıdır (`:261`). `KickOutZoneUsers` çağrıları ise `m_byBattleZoneType == 0` iken yapılır (`GameServerDlg.cpp:2069-2075`); `ZONE_RONARK_LAND` için çağrı `:2072`'de. `CharacterSelectionHandler.cpp:177-186` giriş reddi, `KickOutZoneUsers` (`GameServerDlg.cpp:2994-3027`) ve MEC-ZON-03 sonucu Tur 1'deki gibi **doğrulandı**.
+
+**K6/K7 — kapsam ve sorgu kontrolü (Tur 2 sonrası)**
+```
+$ grep -n "FROM\|JOIN" tools/arena-report.py
+58:    "FROM K_NPCPOS p "
+59:    "LEFT JOIN K_MONSTER m ON p.ActType < 100 AND m.sSid = p.NpcID "
+60:    "LEFT JOIN K_NPC n ON p.ActType >= 100 AND n.sSid = p.NpcID "
+66:    "FROM START_POSITION WHERE ZoneID = 71"
+$ grep -n -i -E "INSERT|UPDATE|DELETE|DROP" tools/arena-report.py
+(boş; grep_exit=1)
+$ file tools/arena-report.py
+tools/arena-report.py: Python script, ASCII text executable
+```
+Yalnızca izinli tablolar; yazma ifadesi yok; `docs/appendix/tools/*` değişmedi.
+
+**Kabul kriterleri öz-değerlendirmesi (Tur 2)**
+- K1 ✔ `--selftest` → `selftest OK`, çıkış 0; (d) artık `axis_candidate`'ı sentetik entry'lerle sınıyor.
+- K2 ✔ Çıktı eksiksiz, çıkış 0, kırpılmadan yukarıda.
+- K3 ✔ Tur 1 anchor'ları değişmedi (GRID birebir; AXIS A angle=0 reddi ve angle=15 kabulü; PATH yol/süre aynı).
+- K4 ✔ Artık `min_margin_spawn` aynı tanımla kıyaslanıyor: A −0,2, B −0,2; kule A −0,2, B −0,5; hiçbiri 5 m'yi aşmaz. Açıklama düzeltildi.
+- K5 ✔ (a)-(d) atıfları depoda açılıp düzeltildi; `GameServerDlg.cpp:2677` eklendi; MEC-ZON-03 doğrulandı.
+- K6 ✔ Yukarıdaki grep'ler; yazma yok; izinli tablolar.
+- K7 ✔ Yalnızca `tools/arena-report.py` (bu turda) ve plan dosyası; `file` ASCII, CR yok.
+- K8 — Claude doğrulayacak.
+
+**Plandan sapmalar / açık sorular**
+1. `Map.cpp:109-120` kaldırılmak yerine zone 71'e etkisizliği `dosya:satır` ile gösterildi (`Map.cpp:112` + `Unit.cpp:1100-1102` + `Map.h:54`).
+2. `AttackHandler.cpp` dalı için talimattaki `138-142` yerine dal başı `137` ve gövde `141-142` ayrı yazıldı; `158-165` yerine gerçek çağrının yeri `160-165`/`162` belirtildi (talimat "her atıfı açıp kontrol et" diyor).
+3. Karar bekleyen: A için eksen `angle=15` (Tur 1'den değişmedi); `docs/15` §2.4 güncellemesi Claude'da.
 
 ---
 
