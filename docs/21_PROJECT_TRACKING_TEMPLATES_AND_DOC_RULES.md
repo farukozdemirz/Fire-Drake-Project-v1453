@@ -152,6 +152,7 @@ ADR listesi (verilen kararlar `adr/` klasöründe; ayrıntı [18](18_RISKS_ASSUM
 | ADR-0011 | Mekanik hatalar şimdilik olduğu gibi | KABUL (K-8) |
 | ADR-0012 | Botlar ranking/ödül/duyurulara normal oyuncu gibi dahil | KABUL (K-9) |
 | ADR-0013 | Upstream PR #10 alınmaz | KABUL (K-10) |
+| ADR-0014 | Bot oturumu hesap doğrulamasını ve `SET_LOGIN_INFO`'yu atlar | KABUL (otonom döngüde Claude kararı, 2026-10-02 — gözden geçirilmeli; [adr](adr/ADR-0014-bot-oturumu-hesap-dogrulamasi.md)) |
 
 ### 4.4 Bilinen sorunlar (`KNOWN_ISSUES.md`)
 
