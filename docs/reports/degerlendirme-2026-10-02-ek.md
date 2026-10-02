@@ -112,7 +112,20 @@ Ek ön ölçüm (geçici betik, ceza değeri değiştirilerek): ceza 1,0 → El 
 
 ## 4. Bu çalışmadaki plan/ADR/doküman değişiklikleri
 
-Commit'ler `degerlendirme-2/2026-10-02` dalında, plan değişiklikleri **ayrı commit** (birleştirme penceresi için): araçlar `265e6fd`; ADR/doküman kararları `84bfb65`; F5-53 `66cc544`; F5-55 `04f480c`; **yeni planlar** F5-56 `586dbc2`, F5-57 `d77918b`, F5-58 `df20d1f`; F5-50 (çalışan plan) için yapılan metin değişikliği geri alındı `2856a6c` (duvar bulgusu F5-58'e taşındı); docs/12/15/18 ve takip tablosu ayrı commit'ler.
+Dal `degerlendirme-2/2026-10-02` (taban `gece/2026-10-02` @ `0dfeca1`). Plan metni değişiklikleri **ayrı commit**'tedir (birleştirme penceresi için); her biri bağımsız birleştirilebilir:
+
+| Commit | İçerik | Birleştirme notu |
+|---|---|---|
+| `265e6fd` | `tools/nav-measure.sh`, `tools/nav-measure/nav_measure.cpp`, `tools/nav-segment-check.py` | güvenli (yalnız araç) |
+| `84bfb65` | ADR-0030..0033-DEG kesinleştirme + docs/04, 11, 12 (§13.4 mod notu), 14, 15 (§6a/§6b), 16, 17 (F11/F12/G8/G12) | güvenli (doküman) |
+| `66cc544` | **plan F5-53** (ertelenen sorgu sözleşmesi, takip simülasyonu, `budget-scheduled`) | F5-53 henüz başlamadı: F5-53 başlamadan birleştirilmeli |
+| `04f480c` | **plan F5-55** (TASLAK: T-NAV-10 iki ulus, T-NAV-11 16 bot oyun içi) | güvenli (TASLAK) |
+| `586dbc2` | **yeni plan F5-56** (hız kestirimi dayanıklılık) + `plans/README.md` satırı | güvenli (yeni plan) |
+| `d77918b` | **yeni plan F5-57** (niyet + gerçek ilerleme) + `plans/README.md` satırı | güvenli (yeni plan) |
+| `4a88557` | docs/12 §13.1-13.3, docs/15 T-NAV-09..11, docs/18 ADR durumları | güvenli (doküman) |
+| `e585996` + `2856a6c` | F5-50 metin değişikliği ve **geri alması** (F5-50 uygulanırken fark edildi) | **net etki sıfır; ikisi birlikte atlanabilir veya ikisi birlikte alınır** |
+| `df20d1f` | **yeni plan F5-58** (duvar denetimi kalıcı regresyon; F5-50 sonrası) + README satırı + docs/12 atfı | güvenli (yeni plan) |
+| `22c118e` | `docs/reports/degerlendirme-takip.md`, bu ek rapor, `docs/STATUS.md` bağlantı satırı | güvenli (rapor) |
 
 ## 5. Kalan açık noktalar (kısa)
 
