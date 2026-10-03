@@ -3,6 +3,7 @@
 // Path-following drive for the real move packets (F5-62; docs/12 s13.1, s13.4). Pure logic:
 // the standard library and sibling headers only, no global state, no clock. One drive per bot.
 // F5-62 carries the Goto mode only; F5-63 adds Follow and the stuck members.
+#include "NavBudget.h"     // NavQueryScheduler, NavPathCache, NavWhileDeferred (F5-64)
 #include "NavChordGuard.h"
 #include "NavPath.h"
 #include "NavSmooth.h"
@@ -27,6 +28,10 @@ namespace BotCore
 	enum class NavDriveMode { Off, Goto, Follow };
 	enum class NavFollowEnd { None, TargetLost, StuckAbandon, PlanFailed, PathBlocked };
 	enum class NavPlanStatus { None, Planned, InvalidStart, InvalidGoal, NoPath, NodeLimit, ReplanLimit };
+	// F5-64 D4: which part of one Follow tick runs. All = the F5-73 TickFollow behaviour
+	// (plan + assess); PlanOnly = the plan block only; AssessOnly = the loss policy, defer
+	// decision, verdict and recovery ladder, never a plan.
+	enum class NavPlanPhase { All, PlanOnly, AssessOnly };
 
 	struct NavDriveParams
 	{
@@ -57,6 +62,7 @@ namespace BotCore
 		int   blockedAbandonMs = 5000;        // D10: continuous Blocked step time that ends the drive
 		int   awaitingLogMs = 5000;           // diagnostics only (event), not a stuck rule
 		float stepBackM = 3.0f;               // stage-3 step-back distance
+		NavDeferParams defer;                 // F5-64 D5: plan-age / target-drift hold thresholds
 		NavFollowDriveParams();
 	};
 
@@ -73,6 +79,7 @@ namespace BotCore
 		bool holdStop = false;                                  // D3: once, when the target is lost for > lostHoldMs
 		bool awaitingLong = false;                              // intent active, no packet for >= awaitingLogMs (once per gap)
 		NavFollowEnd ended = NavFollowEnd::None;                // != None => the drive is Off (Reset) after this call
+		bool deferHold = false;                                 // F5-64 D5: once, when a due plan is not served on a stale route
 	};
 
 	inline NavFollowDriveParams::NavFollowDriveParams()
@@ -120,6 +127,15 @@ namespace BotCore
 			m_hasBlockedSince = false;
 			m_blockedSince = 0;
 			m_blockedAbandon = false;
+
+			// Plan-queue state (F5-64).
+			m_planPending = false;
+			m_planIsReplan = false;
+			m_cacheHit = false;
+			m_deferHeld = false;
+			m_routeAtMs = INT64_MIN;
+			m_routeTargetX = 0.0f;
+			m_routeTargetZ = 0.0f;
 		}
 
 		bool Active() const { return m_mode != NavDriveMode::Off; }
@@ -237,54 +253,12 @@ namespace BotCore
 			return status;
 		}
 
-		const std::vector<NavRoutePoint> & Route() const { return m_route; }
-		float RouteLengthM() const { return m_mode != NavDriveMode::Off ? m_routeLength : 0.0f; }
-		float GoalX() const { return m_goalX; }   // quantised goal
-		float GoalZ() const { return m_goalZ; }
-		int   Replans() const { return m_replans; }
-		int   PlanExpanded() const { return m_planExpanded; }
-		int   PlanWaypoints() const { return m_planWaypoints; }
-
-		// Follow mode (F5-73): moving-target chase on top of the F5-04 follower, the F5-09 stuck
-		// ladder and the F5-57 progress assessor. Pure logic; the caller moves the bot and feeds
-		// each NextFollowStep result back through OnPacketSent/OnPacketRejected.
-		void BeginFollow(int64_t nowMs);
-		void ObserveTarget(int64_t tMs, float x, float z, int16_t speedField, int64_t nowMs);
-		// Call once per bot tick BEFORE asking for a step. `reach` is NavReach (or any type with
-		// ComponentOf); `scratch` is an optional cost layer for the stage-4 penalty field.
-		template <class Reach>
-		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
-			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
-			NavCostLayer * scratch, const Reach & reach)
+		// F5-64 D7: arm a Goto walk cheaply (endpoint validation only, no A*) so the caller can
+		// queue the A* run. Returns None once armed ("plan pending"); invalid endpoints return
+		// InvalidStart/InvalidGoal with the drive Reset. Mirrors PlanGoto's validation order.
+		NavPlanStatus ArmGoto(const NavGrid & grid, float botX, float botZ, float goalX, float goalZ)
 		{
-			return TickFollowImpl<Reach>(grid, finder, nowMs, botX, botZ, botSpeedMps, params, scratch, &reach);
-		}
-		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
-			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
-			NavCostLayer * scratch)
-		{
-			return TickFollowImpl<NavNoReach>(grid, finder, nowMs, botX, botZ, botSpeedMps, params, scratch, nullptr);
-		}
-		NavDriveStep NextFollowStep(const NavGrid & grid, int64_t nowMs, float botX, float botZ,
-			float maxStepM, const NavFollowDriveParams & params);
-		void OnPacketSent(int64_t tMs, const NavDriveStep & step);
-		void OnPacketRejected(int64_t tMs);
-		const NavFollower & Follower() const { return m_follower; }
-		int  RecoveryStage() const { return m_monitor.Stage(); }
-		int  StuckEpisodes() const { return m_monitor.Episodes(); }
-		int  FollowPlans() const { return m_followPlans; }
-		bool Arrived() const { return m_arrived; }
-
-	private:
-		// 0 <= w <= 6553.5, finite. Callers reject anything else (design decision 2).
-		bool ValidCoord(float w) const
-		{
-			return std::isfinite(w) && w >= 0.0f && w * 10.0f <= 65535.0f;
-		}
-
-		NavPlanStatus PlanGoto(const NavGrid & grid, NavPathfinder & finder, float botX, float botZ,
-			float goalX, float goalZ, const NavDriveParams & params)
-		{
+			Reset();
 			if (!ValidCoord(botX) || !ValidCoord(botZ))
 				return NavPlanStatus::InvalidStart;
 			if (!ValidCoord(goalX) || !ValidCoord(goalZ))
@@ -305,30 +279,176 @@ namespace BotCore
 			if (!grid.Walk(goalCell.x, goalCell.z))
 				return NavPlanStatus::InvalidGoal;
 
-			NavPathResult path;
-			finder.Find(grid, startCell, goalCell, params.search, path);
-			switch (path.status)
+			m_mode = NavDriveMode::Goto;
+			m_goalX = qgx;
+			m_goalZ = qgz;
+			m_planPending = true;
+			m_planIsReplan = false;
+			return NavPlanStatus::None;
+		}
+
+		bool PlanPending() const { return m_planPending; }
+
+		// Runs the armed Goto plan through the caller's pathfinder (optionally the F5-53 cache).
+		// Same statuses as PlanGoto; None when nothing is pending. A fresh plan clears the pending
+		// flag; a replan increments Replans() exactly like Replan().
+		NavPlanStatus RunGotoPlan(const NavGrid & grid, NavPathfinder & finder, NavPathCache * cache,
+			int64_t nowMs, float botX, float botZ, const NavDriveParams & params)
+		{
+			if (!m_planPending)
 			{
-			case NavPathStatus::Found:
-				break;
-			case NavPathStatus::NoPath:
-				return NavPlanStatus::NoPath;
-			case NavPathStatus::NodeLimit:
-				return NavPlanStatus::NodeLimit;
-			case NavPathStatus::InvalidStart:
-				return NavPlanStatus::InvalidStart;
-			case NavPathStatus::InvalidGoal:
-				return NavPlanStatus::InvalidGoal;
+				m_cacheHit = false;
+				return NavPlanStatus::None;
 			}
 
-			NavSmoothResult smooth;
-			NavSmoothPath(grid, path.cells, params.smooth, smooth);
-
-			AdoptRoute(grid, botX, botZ, smooth.waypoints, qgx, qgz);
-			m_planExpanded = path.expanded;
-			m_planWaypoints = (int)smooth.waypoints.size();
-			return NavPlanStatus::Planned;
+			const bool wasReplan = m_planIsReplan;
+			const NavPlanStatus status = PlanGotoImpl(grid, finder, cache, nowMs, botX, botZ,
+				m_goalX, m_goalZ, params);
+			if (status != NavPlanStatus::Planned)
+			{
+				Reset();
+				return status;
+			}
+			m_planPending = false;
+			m_planIsReplan = false;
+			if (wasReplan)
+				++m_replans;
+			m_mode = NavDriveMode::Goto;
+			return status;
 		}
+
+		// Marks a blocked Goto route for the next RunGotoPlan (F5-64 D7). Idempotent while a plan
+		// is already pending; ReplanLimit (and Reset) when the replan budget is spent.
+		NavPlanStatus RequestReplan()
+		{
+			if (m_mode != NavDriveMode::Goto)
+				return NavPlanStatus::None;
+			if (m_planPending)
+				return NavPlanStatus::None;
+			if (m_replans >= kMaxGotoReplans)
+			{
+				Reset();
+				return NavPlanStatus::ReplanLimit;
+			}
+			m_planPending = true;
+			m_planIsReplan = true;
+			return NavPlanStatus::None;
+		}
+
+		bool LastPlanCacheHit() const { return m_cacheHit; }
+
+		const std::vector<NavRoutePoint> & Route() const { return m_route; }
+		float RouteLengthM() const { return m_mode != NavDriveMode::Off ? m_routeLength : 0.0f; }
+		float GoalX() const { return m_goalX; }   // quantised goal
+		float GoalZ() const { return m_goalZ; }
+		int   Replans() const { return m_replans; }
+		int   PlanExpanded() const { return m_planExpanded; }
+		int   PlanWaypoints() const { return m_planWaypoints; }
+
+		// Follow mode (F5-73): moving-target chase on top of the F5-04 follower, the F5-09 stuck
+		// ladder and the F5-57 progress assessor. Pure logic; the caller moves the bot and feeds
+		// each NextFollowStep result back through OnPacketSent/OnPacketRejected.
+		void BeginFollow(int64_t nowMs);
+		void ObserveTarget(int64_t tMs, float x, float z, int16_t speedField, int64_t nowMs);
+		// Call once per bot tick BEFORE asking for a step. `reach` is NavReach (or any type with
+		// ComponentOf); `scratch` is an optional cost layer for the stage-4 penalty field.
+		template <class Reach>
+		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch, const Reach & reach)
+		{
+			return TickFollowImpl<Reach>(grid, &finder, nowMs, botX, botZ, botSpeedMps, params, scratch, &reach, NavPlanPhase::All);
+		}
+		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch)
+		{
+			return TickFollowImpl<NavNoReach>(grid, &finder, nowMs, botX, botZ, botSpeedMps, params, scratch, nullptr, NavPlanPhase::All);
+		}
+
+		// F5-64 D3: "this bot wants a plan right now". The scheduler uses it to enqueue a query;
+		// FollowPlanDue never runs A*.
+		bool FollowPlanDue(int64_t nowMs, const NavFollowDriveParams & params) const
+		{
+			if (m_mode != NavDriveMode::Follow)
+				return false;
+			if (m_blockedAbandon)
+				return false;
+			if (nowMs - m_lastSeenMs > (int64_t)params.lostGraceMs)
+				return false;
+			return m_follower.DueReason(nowMs, params.follow) != NavReplanReason::None;
+		}
+
+		// F5-64 D4: the plan half of a Follow tick. Runs A* only when FollowPlanDue; otherwise an
+		// empty event set. `reach` is NavReach (or any type with ComponentOf).
+		template <class Reach>
+		NavDriveEvents PlanFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch, const Reach & reach)
+		{
+			return TickFollowImpl<Reach>(grid, &finder, nowMs, botX, botZ, botSpeedMps, params, scratch, &reach, NavPlanPhase::PlanOnly);
+		}
+
+		// F5-64 D4/D5: the assessment half (loss policy, defer hold, verdict, recovery). Never
+		// runs A*. Call after PlanFollow for the tick.
+		NavDriveEvents AssessFollow(const NavGrid & grid, int64_t nowMs, float botX, float botZ,
+			const NavFollowDriveParams & params)
+		{
+			return TickFollowImpl<NavNoReach>(grid, nullptr, nowMs, botX, botZ, 0.0f, params, nullptr, nullptr, NavPlanPhase::AssessOnly);
+		}
+
+		bool DeferHeld() const { return m_deferHeld; }
+		// Route age in ms; INT64_MAX when no route was adopted yet (D6).
+		int64_t RouteAgeMs(int64_t nowMs) const
+		{
+			return m_routeAtMs == INT64_MIN ? INT64_MAX : nowMs - m_routeAtMs;
+		}
+		// True when a Follow route is held by the defer contract (D6): F5-76 counts such packets
+		// as nav_stale_steps. Goto (and no route) is always false.
+		bool RouteStale(int64_t nowMs, const NavDeferParams & deferParams) const
+		{
+			if (m_mode != NavDriveMode::Follow || m_route.size() < 2)
+				return false;
+			float driftM = 0.0f;
+			int64_t lt = 0;
+			float lx = 0.0f;
+			float lz = 0.0f;
+			if (m_follower.Tracker().Latest(lt, lx, lz))
+			{
+				const float dx = lx - m_routeTargetX;
+				const float dz = lz - m_routeTargetZ;
+				driftM = std::sqrt(dx * dx + dz * dz);
+			}
+			return NavWhileDeferred(true, RouteAgeMs(nowMs), driftM, deferParams) == NavDeferAction::Hold;
+		}
+
+		NavDriveStep NextFollowStep(const NavGrid & grid, int64_t nowMs, float botX, float botZ,
+			float maxStepM, const NavFollowDriveParams & params);
+		void OnPacketSent(int64_t tMs, const NavDriveStep & step);
+		void OnPacketRejected(int64_t tMs);
+		const NavFollower & Follower() const { return m_follower; }
+		int  RecoveryStage() const { return m_monitor.Stage(); }
+		int  StuckEpisodes() const { return m_monitor.Episodes(); }
+		int  FollowPlans() const { return m_followPlans; }
+		bool Arrived() const { return m_arrived; }
+
+	private:
+		// 0 <= w <= 6553.5, finite. Callers reject anything else (design decision 2).
+		bool ValidCoord(float w) const
+		{
+			return std::isfinite(w) && w >= 0.0f && w * 10.0f <= 65535.0f;
+		}
+
+		// F5-70/F5-72 keep the synchronous path; the cache-aware core lives in PlanGotoImpl so
+		// RunGotoPlan (F5-64 D7) can reuse it without touching BeginGoto/Replan.
+		NavPlanStatus PlanGoto(const NavGrid & grid, NavPathfinder & finder, float botX, float botZ,
+			float goalX, float goalZ, const NavDriveParams & params)
+		{
+			return PlanGotoImpl(grid, finder, nullptr, 0, botX, botZ, goalX, goalZ, params);
+		}
+
+		NavPlanStatus PlanGotoImpl(const NavGrid & grid, NavPathfinder & finder, NavPathCache * cache,
+			int64_t nowMs, float botX, float botZ, float goalX, float goalZ, const NavDriveParams & params);
 
 		// Builds and adopts the route [bot] + smoothed waypoint cell centres + [goal] with the start
 		// and end shortcuts (F5-62 design decisions 3/4); Follow (F5-73) reuses it on the follower's
@@ -423,10 +543,18 @@ namespace BotCore
 			return m_route.back();
 		}
 
+		// The plan block of a Follow tick (F5-64 D4) shared by the All and PlanOnly phases; see the
+		// former TickFollowImpl body for the exact sequence. Sets ev.routeAdopted and the route
+		// stamps (D6), and ev.ended = PlanFailed (with Reset) when the fail budget is spent.
 		template <class Reach>
-		NavDriveEvents TickFollowImpl(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+		void PlanBlock(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
 			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
-			NavCostLayer * scratch, const Reach * reach);
+			NavCostLayer * scratch, const Reach * reach, NavDriveEvents & ev);
+
+		template <class Reach>
+		NavDriveEvents TickFollowImpl(const NavGrid & grid, NavPathfinder * finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch, const Reach * reach, NavPlanPhase phase);
 
 		NavDriveMode m_mode = NavDriveMode::Off;
 		std::vector<NavRoutePoint> m_route;
@@ -461,6 +589,15 @@ namespace BotCore
 		bool m_hasBlockedSince = false;
 		int64_t m_blockedSince = 0;
 		bool m_blockedAbandon = false;
+
+		// Plan-queue state (F5-64): Goto arming/replan, cache hit and the Follow defer hold.
+		bool m_planPending = false;
+		bool m_planIsReplan = false;
+		bool m_cacheHit = false;
+		bool m_deferHeld = false;
+		int64_t m_routeAtMs = INT64_MIN;
+		float m_routeTargetX = 0.0f;
+		float m_routeTargetZ = 0.0f;
 	};
 
 	inline void NavDrive::BeginFollow(int64_t nowMs)
@@ -479,10 +616,156 @@ namespace BotCore
 		m_lastSeenMs = nowMs;
 	}
 
+	inline NavPlanStatus NavDrive::PlanGotoImpl(const NavGrid & grid, NavPathfinder & finder, NavPathCache * cache,
+		int64_t nowMs, float botX, float botZ, float goalX, float goalZ, const NavDriveParams & params)
+	{
+		if (!ValidCoord(botX) || !ValidCoord(botZ))
+			return NavPlanStatus::InvalidStart;
+		if (!ValidCoord(goalX) || !ValidCoord(goalZ))
+			return NavPlanStatus::InvalidGoal;
+
+		const float qgx = NavQuantiseM(goalX);
+		const float qgz = NavQuantiseM(goalZ);
+
+		NavCell startCell;
+		startCell.x = grid.CellOf(botX);
+		startCell.z = grid.CellOf(botZ);
+		NavCell goalCell;
+		goalCell.x = grid.CellOf(qgx);
+		goalCell.z = grid.CellOf(qgz);
+
+		if (!grid.Walk(startCell.x, startCell.z))
+			return NavPlanStatus::InvalidStart;
+		if (!grid.Walk(goalCell.x, goalCell.z))
+			return NavPlanStatus::InvalidGoal;
+
+		NavPathResult path;
+		m_cacheHit = false;
+		if (cache != nullptr)
+		{
+			NavCacheKey key;
+			key.startX = startCell.x;
+			key.startZ = startCell.z;
+			key.goalX = goalCell.x;
+			key.goalZ = goalCell.z;
+			key.fieldVersion = 0;
+			std::vector<NavCell> cells;
+			float cost = 0.0f;
+			float length = 0.0f;
+			if (cache->Find(key, nowMs, cells, cost, length))
+			{
+				m_cacheHit = true;
+				path.status = NavPathStatus::Found;
+				path.cells = cells;
+				path.cost = cost;
+				path.length = length;
+				path.expanded = 0;   // the A* closed-node count is not cached
+			}
+			else
+			{
+				finder.Find(grid, startCell, goalCell, params.search, path);
+				if (path.status == NavPathStatus::Found)
+					cache->Put(key, path.cells, path.cost, path.length, nowMs);
+			}
+		}
+		else
+		{
+			finder.Find(grid, startCell, goalCell, params.search, path);
+		}
+
+		switch (path.status)
+		{
+		case NavPathStatus::Found:
+			break;
+		case NavPathStatus::NoPath:
+			return NavPlanStatus::NoPath;
+		case NavPathStatus::NodeLimit:
+			return NavPlanStatus::NodeLimit;
+		case NavPathStatus::InvalidStart:
+			return NavPlanStatus::InvalidStart;
+		case NavPathStatus::InvalidGoal:
+			return NavPlanStatus::InvalidGoal;
+		}
+
+		NavSmoothResult smooth;
+		NavSmoothPath(grid, path.cells, params.smooth, smooth);
+
+		AdoptRoute(grid, botX, botZ, smooth.waypoints, qgx, qgz);
+		m_planExpanded = path.expanded;
+		m_planWaypoints = (int)smooth.waypoints.size();
+		return NavPlanStatus::Planned;
+	}
+
 	template <class Reach>
-	NavDriveEvents NavDrive::TickFollowImpl(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+	void NavDrive::PlanBlock(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
 		float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
-		NavCostLayer * scratch, const Reach * reach)
+		NavCostLayer * scratch, const Reach * reach, NavDriveEvents & ev)
+	{
+		// (4) plan block: the penalty field is applied only while a penalty is active (D7).
+		const NavCostField * fieldPtr = nullptr;
+		NavCostField field;
+		NavFollowParams follow = params.follow;
+		if (scratch != nullptr && m_penalties.Count(nowMs) > 0)
+		{
+			if (scratch->Size() != grid.Size())
+				scratch->Init(grid);
+			else
+				scratch->Clear();
+			m_penalties.Apply(grid, nowMs, params.stuck, *scratch);
+			field.params = NavCostParams();
+			field.layer = scratch;
+			fieldPtr = &field;
+			follow.smooth.maxLookahead = 1;   // D7: penalties must not be cut by a smooth chord
+		}
+
+		if (m_follower.UpdateReachable(grid, finder, nowMs, botX, botZ, botSpeedMps, follow, *reach, fieldPtr))
+		{
+			const NavFollowPlan & plan = m_follower.Plan();
+			ev.planned = true;
+			ev.planStatus = plan.status;
+			ev.planReason = m_follower.LastReason();
+			ev.planExpanded = plan.expanded;
+			++m_followPlans;
+
+			if (plan.status == NavFollowStatus::Planned)
+			{
+				m_planFailCount = 0;
+				const float gx = NavQuantiseM(grid.CellCenter(plan.goal.x));
+				const float gz = NavQuantiseM(grid.CellCenter(plan.goal.z));
+				AdoptRoute(grid, botX, botZ, plan.smooth.waypoints, gx, gz);
+				ev.routeAdopted = true;
+				m_routeAtMs = nowMs;
+				m_routeTargetX = plan.targetX;
+				m_routeTargetZ = plan.targetZ;
+				m_deferHeld = false;
+
+				const float p = NavRouteProgressM(m_route.data(), (int)m_route.size(), botX, botZ);
+				if (m_routeLength - p > params.progress.arriveM)
+				{
+					m_arrived = false;
+					m_assess.SetIntent(true, nowMs);   // D4: before NotifyReplan (SetIntent resets the base)
+				}
+				m_assess.NotifyReplan(nowMs, 0.0f);
+				m_activityMs = nowMs;
+				m_awaitingLogged = false;
+			}
+			else
+			{
+				++m_planFailCount;
+				if (m_planFailCount >= params.planFailAbandon)
+				{
+					ev.ended = NavFollowEnd::PlanFailed;
+					Reset();
+					return;
+				}
+			}
+		}
+	}
+
+	template <class Reach>
+	NavDriveEvents NavDrive::TickFollowImpl(const NavGrid & grid, NavPathfinder * finder, int64_t nowMs,
+		float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+		NavCostLayer * scratch, const Reach * reach, NavPlanPhase phase)
 	{
 		NavDriveEvents ev;
 
@@ -490,6 +773,17 @@ namespace BotCore
 			return ev;
 		if (!ValidCoord(botX) || !ValidCoord(botZ))
 			return ev;
+
+		// PlanOnly (F5-64 D4): never runs the loss policy, the verdict or the recovery ladder.
+		if (phase == NavPlanPhase::PlanOnly)
+		{
+			if (m_blockedAbandon || finder == nullptr)
+				return ev;
+			if (!FollowPlanDue(nowMs, params))
+				return ev;
+			PlanBlock(grid, *finder, nowMs, botX, botZ, botSpeedMps, params, scratch, reach, ev);
+			return ev;
+		}
 
 		// D10: a continuous Blocked step ended the drive.
 		if (m_blockedAbandon)
@@ -526,58 +820,34 @@ namespace BotCore
 		{
 			m_holding = false;
 
-			// (4) plan block: the penalty field is applied only while a penalty is active (D7).
-			const NavCostField * fieldPtr = nullptr;
-			NavCostField field;
-			NavFollowParams follow = params.follow;
-			if (scratch != nullptr && m_penalties.Count(nowMs) > 0)
+			if (phase == NavPlanPhase::All)
 			{
-				if (scratch->Size() != grid.Size())
-					scratch->Init(grid);
-				else
-					scratch->Clear();
-				m_penalties.Apply(grid, nowMs, params.stuck, *scratch);
-				field.params = NavCostParams();
-				field.layer = scratch;
-				fieldPtr = &field;
-				follow.smooth.maxLookahead = 1;   // D7: penalties must not be cut by a smooth chord
+				PlanBlock(grid, *finder, nowMs, botX, botZ, botSpeedMps, params, scratch, reach, ev);
+				if (ev.ended != NavFollowEnd::None)
+					return ev;
 			}
-
-			if (m_follower.UpdateReachable(grid, finder, nowMs, botX, botZ, botSpeedMps, follow, *reach, fieldPtr))
+			else
 			{
-				const NavFollowPlan & plan = m_follower.Plan();
-				ev.planned = true;
-				ev.planStatus = plan.status;
-				ev.planReason = m_follower.LastReason();
-				ev.planExpanded = plan.expanded;
-				++m_followPlans;
-
-				if (plan.status == NavFollowStatus::Planned)
+				// D5: the query is due but was not served this tick. A fresh route is still
+				// followed (steps come from NextFollowStep); a stale route holds once.
+				if (m_route.size() >= 2 && !m_holding && !m_arrived && FollowPlanDue(nowMs, params))
 				{
-					m_planFailCount = 0;
-					const float gx = NavQuantiseM(grid.CellCenter(plan.goal.x));
-					const float gz = NavQuantiseM(grid.CellCenter(plan.goal.z));
-					AdoptRoute(grid, botX, botZ, plan.smooth.waypoints, gx, gz);
-					ev.routeAdopted = true;
-
-					const float p = NavRouteProgressM(m_route.data(), (int)m_route.size(), botX, botZ);
-					if (m_routeLength - p > params.progress.arriveM)
+					float driftM = 0.0f;
+					int64_t lt = 0;
+					float lx = 0.0f;
+					float lz = 0.0f;
+					if (m_follower.Tracker().Latest(lt, lx, lz))
 					{
-						m_arrived = false;
-						m_assess.SetIntent(true, nowMs);   // D4: before NotifyReplan (SetIntent resets the base)
+						const float ddx = lx - m_routeTargetX;
+						const float ddz = lz - m_routeTargetZ;
+						driftM = std::sqrt(ddx * ddx + ddz * ddz);
 					}
-					m_assess.NotifyReplan(nowMs, 0.0f);
-					m_activityMs = nowMs;
-					m_awaitingLogged = false;
-				}
-				else
-				{
-					++m_planFailCount;
-					if (m_planFailCount >= params.planFailAbandon)
+					if (!m_deferHeld
+						&& NavWhileDeferred(true, RouteAgeMs(nowMs), driftM, params.defer) == NavDeferAction::Hold)
 					{
-						ev.ended = NavFollowEnd::PlanFailed;
-						Reset();
-						return ev;
+						m_deferHeld = true;
+						ev.deferHold = true;
+						m_assess.SetIntent(false, nowMs);
 					}
 				}
 			}
@@ -639,6 +909,10 @@ namespace BotCore
 	{
 		NavDriveStep step;
 		if (m_mode != NavDriveMode::Follow)
+			return step;
+		// F5-64 D5: a held (deferred + stale) route produces no step at all, pending side/back
+		// recovery included; the caller may send a stop packet once on the deferHold event.
+		if (m_deferHeld)
 			return step;
 		if (!ValidCoord(botX) || !ValidCoord(botZ) || !(maxStepM > 0.0f))
 			return step;

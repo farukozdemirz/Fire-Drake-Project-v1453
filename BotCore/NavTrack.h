@@ -136,6 +136,10 @@ namespace BotCore
 		int   ringMaxTries = 3;         // [A] ADR-0006 Ek F5-04; values < 1 act as 1
 		NavSearchParams search;         // P-NAV-MAX-NODES
 		NavSmoothParams smooth;         // P-NAV-SMOOTH-LOOKAHEAD
+		// Extra wait for the FIRST Interval replan after the first plan, in ms (F5-64 D2): the
+		// caller supplies NavReplanPhaseMs(slot) so 16 bots do not all replan in the same tick.
+		// 0 (default) keeps every existing caller unchanged; the Moved trigger never waits.
+		int   phaseMs = 0;
 	};
 
 	enum class NavFollowStatus
@@ -201,6 +205,10 @@ namespace BotCore
 		NavReplanReason LastReason() const { return m_reason; }  // reason of the last replan; None before the first
 		int Replans() const { return m_replans; }                // replans since Reset
 		const NavTargetTracker & Tracker() const { return m_tracker; }
+		// Why (and whether) the next Update would plan right now (F5-64 D1): the single source of
+		// the rule UpdateImpl applies, side-effect free. None when there is no observation or
+		// nothing is due. `phaseMs` delays only the first Interval replan (D2).
+		NavReplanReason DueReason(int64_t nowMs, const NavFollowParams & params) const;
 
 	private:
 		template <class Reach>
@@ -350,6 +358,37 @@ namespace BotCore
 		return m_tracker.Observe(tMs, x, z, speedField);
 	}
 
+	inline NavReplanReason NavFollower::DueReason(int64_t nowMs, const NavFollowParams & params) const
+	{
+		int64_t targetT = 0;
+		float tx = 0.0f;
+		float tz = 0.0f;
+		if (!m_tracker.Latest(targetT, tx, tz))
+			return NavReplanReason::None;
+		(void)targetT;
+
+		// When is a (re)plan due? First plan, then a moved target, then the interval.
+		NavReplanReason reason = NavReplanReason::None;
+		if (m_plan.status == NavFollowStatus::NoTarget)
+		{
+			reason = NavReplanReason::First;
+		}
+		else if (params.replanDistM > 0.0f)
+		{
+			const float mdx = tx - m_plan.targetX;
+			const float mdz = tz - m_plan.targetZ;
+			if (mdx * mdx + mdz * mdz >= params.replanDistM * params.replanDistM)
+				reason = NavReplanReason::Moved;
+		}
+		if (reason == NavReplanReason::None
+			&& nowMs - m_plan.plannedAtMs >= static_cast<int64_t>(params.replanIntervalMs)
+				+ static_cast<int64_t>(m_replans <= 1 ? params.phaseMs : 0))
+		{
+			reason = NavReplanReason::Interval;
+		}
+		return reason;
+	}
+
 	// Stand-in for the Reach parameter of UpdateImpl when no labels are given (never dereferenced).
 	struct NavNoReach
 	{
@@ -373,24 +412,9 @@ namespace BotCore
 		if (!m_tracker.Latest(targetT, tx, tz))
 			return false;
 
-		// When is a (re)plan due? First plan, then a moved target, then the interval.
-		NavReplanReason reason = NavReplanReason::None;
-		if (m_plan.status == NavFollowStatus::NoTarget)
-		{
-			reason = NavReplanReason::First;
-		}
-		else if (params.replanDistM > 0.0f)
-		{
-			const float mdx = tx - m_plan.targetX;
-			const float mdz = tz - m_plan.targetZ;
-			if (mdx * mdx + mdz * mdz >= params.replanDistM * params.replanDistM)
-				reason = NavReplanReason::Moved;
-		}
-		if (reason == NavReplanReason::None
-			&& nowMs - m_plan.plannedAtMs >= static_cast<int64_t>(params.replanIntervalMs))
-		{
-			reason = NavReplanReason::Interval;
-		}
+		// When is a (re)plan due? First plan, then a moved target, then the interval (D1: the
+		// rule lives in DueReason only).
+		const NavReplanReason reason = DueReason(nowMs, params);
 		if (reason == NavReplanReason::None)
 			return false;
 

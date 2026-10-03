@@ -2215,3 +2215,108 @@ TEST_CASE("NavTrack_Update_Field_AvoidsPenalty")
 	CHECK(f2.Plan().status == BotCore::NavFollowStatus::Planned);
 	CHECK(!PlanHasCell(f2.Plan(), 30, 32));
 }
+
+// ---------------------------------------------------------------------------
+// F5-64: NavFollower::DueReason and phase-staggered replanning
+// ---------------------------------------------------------------------------
+
+TEST_CASE("NavFollowDue_MatchesUpdate")
+{
+	const int n = 40;
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavReach reach;
+	reach.Build(grid);
+
+	std::vector<BotCore::NavCell> walk;
+	for (int x = 0; x < n; ++x)
+		for (int z = 0; z < n; ++z)
+			if (grid.Walk(x, z))
+				walk.push_back(Cell(x, z));
+	REQUIRE(!walk.empty());
+
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 6.0f;
+	params.ringMaxTries = 2;
+
+	BotCore::NavFollower f;
+	// No observation yet: never due, whatever the time.
+	CHECK(f.DueReason(0, params) == BotCore::NavReplanReason::None);
+	CHECK(f.DueReason(100000, params) == BotCore::NavReplanReason::None);
+
+	BotCore::Rng rng(20261064u);
+	BotCore::Rng timeRng(987654u);
+	const float bx = grid.CellCenter(2);
+	const float bz = grid.CellCenter(2);
+	int64_t now = 0;
+	int planned = 0;
+	for (int i = 0; i < 400; ++i)
+	{
+		// Occasional observation gaps exercise the no-new-sample case.
+		if ((i % 11) != 5)
+		{
+			const BotCore::NavCell tc = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+			const int16_t spd = (int16_t)(rng.NextBelow(2) == 0 ? 0 : 45);
+			f.ObserveTarget(now, grid.CellCenter(tc.x), grid.CellCenter(tc.z), spd);
+		}
+
+		const BotCore::NavReplanReason due = f.DueReason(now, params);
+		const bool upd = f.UpdateReachable(grid, pf, now, bx, bz, 4.5f, params, reach);
+		const bool expect = due != BotCore::NavReplanReason::None;
+		CHECK_EQ((int)upd, (int)expect);
+		if (upd)
+		{
+			++planned;
+			CHECK(f.LastReason() == due);
+		}
+		now += 20 + (int64_t)timeRng.NextBelow(700);
+	}
+	CHECK(planned > 0);
+	std::printf("NAVFOLDUE matches: planned=%d\n", planned);
+}
+
+TEST_CASE("NavFollowDue_Phase")
+{
+	const int n = 40;
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	params.phaseMs = 200;
+
+	// (a) The phase delays the FIRST Interval replan: 500 + 200 = 700 ms.
+	{
+		BotCore::NavFollower f;
+		REQUIRE(f.ObserveTarget(0, 82.0f, 22.0f));
+		REQUIRE(f.Update(grid, pf, 0, 22.0f, 22.0f, 8.0f, params));
+		CHECK(f.LastReason() == BotCore::NavReplanReason::First);
+		CHECK(f.DueReason(500, params) == BotCore::NavReplanReason::None);
+		CHECK(f.DueReason(699, params) == BotCore::NavReplanReason::None);
+		CHECK(f.DueReason(700, params) == BotCore::NavReplanReason::Interval);
+		CHECK(f.Update(grid, pf, 700, 22.0f, 22.0f, 8.0f, params));
+		CHECK(f.LastReason() == BotCore::NavReplanReason::Interval);
+		// (b) From the second plan on the phase no longer applies: next Interval +500 ms.
+		CHECK_EQ(f.Replans(), 2);
+		CHECK(f.DueReason(1199, params) == BotCore::NavReplanReason::None);
+		CHECK(f.DueReason(1200, params) == BotCore::NavReplanReason::Interval);
+	}
+
+	// (c) The Moved trigger ignores the phase.
+	{
+		BotCore::NavFollower f;
+		REQUIRE(f.ObserveTarget(0, 82.0f, 22.0f));
+		REQUIRE(f.Update(grid, pf, 0, 22.0f, 22.0f, 8.0f, params));
+		REQUIRE(f.ObserveTarget(100, 95.0f, 22.0f));
+		CHECK(f.DueReason(100, params) == BotCore::NavReplanReason::Moved);
+	}
+
+	// (d) phaseMs = 0 keeps the old timing.
+	{
+		BotCore::NavFollowParams p0;
+		BotCore::NavFollower f;
+		REQUIRE(f.ObserveTarget(0, 82.0f, 22.0f));
+		REQUIRE(f.Update(grid, pf, 0, 22.0f, 22.0f, 8.0f, p0));
+		CHECK(f.DueReason(499, p0) == BotCore::NavReplanReason::None);
+		CHECK(f.DueReason(500, p0) == BotCore::NavReplanReason::Interval);
+	}
+}

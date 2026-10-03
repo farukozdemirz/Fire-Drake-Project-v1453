@@ -2317,3 +2317,1029 @@ TEST_CASE("NavDriveFollow_Perf")
 	(void)p95;
 #endif
 }
+
+// ---------------------------------------------------------------------------
+// F5-64: prep/assess split, deferral, phase spread and the Goto queue (NavDrive).
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	bool QueueRoutesEqual(const std::vector<BotCore::NavRoutePoint> & a,
+		const std::vector<BotCore::NavRoutePoint> & b)
+	{
+		if (a.size() != b.size())
+			return false;
+		for (size_t i = 0; i < a.size(); ++i)
+		{
+			if (a[i].x != b[i].x || a[i].z != b[i].z)
+				return false;
+		}
+		return true;
+	}
+
+	bool QueueEventsEqual(const BotCore::NavDriveEvents & a, const BotCore::NavDriveEvents & b)
+	{
+		return a.planned == b.planned
+			&& a.planStatus == b.planStatus
+			&& a.planReason == b.planReason
+			&& a.planExpanded == b.planExpanded
+			&& a.routeAdopted == b.routeAdopted
+			&& a.verdict == b.verdict
+			&& a.recovery.action == b.recovery.action
+			&& a.recovery.stage == b.recovery.stage
+			&& a.holdStop == b.holdStop
+			&& a.awaitingLong == b.awaitingLong
+			&& a.ended == b.ended;
+	}
+
+	bool QueueStepsEqual(const BotCore::NavDriveStep & a, const BotCore::NavDriveStep & b)
+	{
+		return a.kind == b.kind && a.x == b.x && a.z == b.z;
+	}
+
+	BotCore::NavDriveEvents QueueMergeSplit(const BotCore::NavDriveEvents & plan,
+		const BotCore::NavDriveEvents & assess)
+	{
+		BotCore::NavDriveEvents e = plan;
+		e.verdict = assess.verdict;
+		e.recovery = assess.recovery;
+		e.holdStop = assess.holdStop;
+		e.awaitingLong = assess.awaitingLong;
+		e.deferHold = assess.deferHold;
+		if (e.ended == BotCore::NavFollowEnd::None)
+			e.ended = assess.ended;
+		return e;
+	}
+
+	// Advances (bx, bz) along a step, clipped at the first hidden cell (mirrors FollowSim).
+	void QueueApplyStep(const NavGrid & grid, const std::set<std::pair<int, int>> & hidden,
+		float & bx, float & bz, const BotCore::NavDriveStep & step)
+	{
+		const double ddx = (double)step.x - (double)bx;
+		const double ddz = (double)step.z - (double)bz;
+		const double len = std::sqrt(ddx * ddx + ddz * ddz);
+		const int samples = (int)std::ceil(len / 0.25);
+		int best = 0;
+		for (int s = 1; s <= samples; ++s)
+		{
+			const double u = (double)s / (double)samples;
+			const int cx = grid.CellOf((float)((double)bx + ddx * u));
+			const int cz = grid.CellOf((float)((double)bz + ddz * u));
+			if (hidden.count(std::make_pair(cx, cz)))
+				break;
+			best = s;
+		}
+		const double u = samples > 0 ? (double)best / (double)samples : 0.0;
+		bx = (float)((double)bx + ddx * u);
+		bz = (float)((double)bz + ddz * u);
+	}
+
+	// Runs drive A (TickFollow) and drive B (PlanFollow + AssessFollow) on identical input and
+	// checks the F5-64 D4 equivalence every tick.
+	void QueueSplitEquiv(const NavGrid & grid, int targetKind, uint32_t seed, int64_t duration,
+		const std::set<std::pair<int, int>> & hidden, float botX, float botZ,
+		float targetX, float targetZ)
+	{
+		BotCore::NavPathfinder finder;
+		BotCore::NavDrive a;
+		BotCore::NavDrive b;
+		BotCore::NavFollowDriveParams params;
+		BotCore::NavNoReach noreach;
+		BotCore::NavCostLayer scratchA;
+		BotCore::NavCostLayer scratchB;
+
+		SimTarget target;
+		target.Init(targetKind, seed, targetX, targetZ, 4.5f);
+
+		a.BeginFollow(0);
+		b.BeginFollow(0);
+
+		float ax = botX, az = botZ;
+		float bx = botX, bz = botZ;
+		int64_t lastMove = -1000000;
+		int mismatches = 0;
+
+		for (int64_t t = 0; t <= duration; t += 100)
+		{
+			target.Advance(100);
+			const int16_t spd = target.moving ? (int16_t)(target.speed * 10.0f) : 0;
+			a.ObserveTarget(t, target.x, target.z, spd, t);
+			b.ObserveTarget(t, target.x, target.z, spd, t);
+
+			const BotCore::NavDriveEvents evA = a.TickFollow(grid, finder, t, ax, az, 4.5f, params, &scratchA);
+			BotCore::NavDriveEvents planB;
+			if (b.FollowPlanDue(t, params))
+				planB = b.PlanFollow(grid, finder, t, bx, bz, 4.5f, params, &scratchB, noreach);
+			const BotCore::NavDriveEvents assessB = b.AssessFollow(grid, t, bx, bz, params);
+			const BotCore::NavDriveEvents evB = QueueMergeSplit(planB, assessB);
+
+			if (!QueueEventsEqual(evA, evB))
+			{
+				++mismatches;
+				if (mismatches == 1)
+				{
+					std::printf("NAVQUEUE split mismatch t=%lld A(plan=%d st=%d rn=%d rec=%d stage=%d end=%d) "
+						"B(plan=%d st=%d rn=%d rec=%d stage=%d end=%d)\n", (long long)t,
+						(int)evA.planned, (int)evA.planStatus, (int)evA.planReason,
+						(int)evA.recovery.action, evA.recovery.stage, (int)evA.ended,
+						(int)evB.planned, (int)evB.planStatus, (int)evB.planReason,
+						(int)evB.recovery.action, evB.recovery.stage, (int)evB.ended);
+				}
+			}
+			CHECK_EQ(a.FollowPlans(), b.FollowPlans());
+			CHECK_EQ(a.RecoveryStage(), b.RecoveryStage());
+			CHECK_EQ(a.StuckEpisodes(), b.StuckEpisodes());
+
+			if (t - lastMove >= (int64_t)BotCore::kMovePeriodMs)
+			{
+				const BotCore::NavDriveStep stepA = a.NextFollowStep(grid, t, ax, az, 6.75f, params);
+				const BotCore::NavDriveStep stepB = b.NextFollowStep(grid, t, bx, bz, 6.75f, params);
+				CHECK(QueueStepsEqual(stepA, stepB));
+				if (stepA.kind == BotCore::NavDriveStep::Step || stepA.kind == BotCore::NavDriveStep::Arrived)
+				{
+					QueueApplyStep(grid, hidden, ax, az, stepA);
+					QueueApplyStep(grid, hidden, bx, bz, stepB);
+					a.OnPacketSent(t, stepA);
+					b.OnPacketSent(t, stepB);
+				}
+				lastMove = t;
+			}
+
+			if (evA.ended != BotCore::NavFollowEnd::None)
+				break;
+		}
+
+		CHECK(std::fabs(ax - bx) < 1e-6f);
+		CHECK(std::fabs(az - bz) < 1e-6f);
+		CHECK_EQ(mismatches, 0);
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_SplitEquivalence")
+{
+	const int n = 100;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+
+	// Models 0 (Line), 1 (Zigzag), 3 (RandomWalk); three seeds each, 60 s at 100 ms ticks.
+	for (int model = 0; model < 3; ++model)
+	{
+		const int kinds[3] = { 0, 1, 3 };
+		for (uint32_t s = 0; s < 3; ++s)
+		{
+			const uint32_t seed = 20261064u + (uint32_t)(model * 17) + s * 131u;
+			QueueSplitEquiv(grid, kinds[model], seed, 60000, std::set<std::pair<int, int>>(),
+				70.0f, 200.0f, 80.0f, 200.0f);
+		}
+	}
+
+	// Hidden single-cell obstacle: the recovery ladder runs in both drives.
+	{
+		std::set<std::pair<int, int>> hidden;
+		hidden.insert(std::make_pair(45, 50));
+		QueueSplitEquiv(grid, 4, 4242u, 60000, hidden, 60.0f, 200.0f, 300.0f, 200.0f);
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_PlanDue")
+{
+	const int n = 64;
+	NavGrid open = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	std::vector<int16_t> none((size_t)n * n, 0);
+	NavGrid allBlocked = MakeNav(n, 4.0f, none, HeightZeros(n));
+
+	BotCore::NavPathfinder finder;
+	BotCore::NavFollowDriveParams fp;
+	BotCore::NavNoReach noreach;
+	BotCore::NavCostLayer scratch;
+	BotCore::NavDrive drive;
+
+	CHECK(!drive.FollowPlanDue(0, fp));   // Off
+
+	drive.BeginFollow(0);
+	CHECK(!drive.FollowPlanDue(0, fp));   // no observation
+	drive.ObserveTarget(0, 200.0f, 200.0f, -1, 0);
+	CHECK(drive.FollowPlanDue(0, fp));    // First
+
+	const BotCore::NavDriveEvents ev = drive.PlanFollow(open, finder, 0, 40.0f, 200.0f, 4.5f, fp, &scratch, noreach);
+	CHECK(ev.planned);
+	CHECK(!drive.FollowPlanDue(0, fp));   // just planned
+
+	CHECK(!drive.FollowPlanDue(499, fp));
+	CHECK(drive.FollowPlanDue(500, fp));  // Interval
+
+	drive.ObserveTarget(500, 220.0f, 200.0f, 45, 500);
+	CHECK(drive.FollowPlanDue(500, fp));  // Moved (>= 6 m)
+
+	CHECK(!drive.FollowPlanDue(500 + fp.lostGraceMs + 1, fp));   // target not seen for too long
+
+	drive.BeginGoto(open, finder, 40.0f, 200.0f, 200.0f, 200.0f, BotCore::NavDriveParams());
+	CHECK(!drive.FollowPlanDue(600, fp));
+	drive.Reset();
+	CHECK(!drive.FollowPlanDue(600, fp));
+
+	// blockedAbandon suppresses requests while the drive is still Follow.
+	{
+		BotCore::NavDrive d;
+		BotCore::NavCostLayer sc;
+		d.BeginFollow(0);
+		d.ObserveTarget(0, 200.0f, 20.0f, -1, 0);
+		d.PlanFollow(open, finder, 0, 20.0f, 20.0f, 4.5f, fp, &sc, noreach);
+		d.AssessFollow(open, 0, 20.0f, 20.0f, fp);
+		int64_t t = 1500;
+		for (int i = 0; i < 10; ++i)
+		{
+			d.ObserveTarget(0, 200.0f, 20.0f, -1, t);
+			d.AssessFollow(open, t, 20.0f, 20.0f, fp);
+			d.NextFollowStep(allBlocked, t, 20.0f, 20.0f, 6.75f, fp);
+			t += 1500;
+		}
+		CHECK(d.Mode() == BotCore::NavDriveMode::Follow);
+		CHECK(!d.FollowPlanDue(t + 1000, fp));
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_PhaseSpread")
+{
+	const int n = 100;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavNoReach noreach;
+
+	const int N = 16;
+	BotCore::NavDrive drives[N];
+	BotCore::NavFollowDriveParams params[N];
+	int firstInterval[N];
+	int secondInterval[N];
+	for (int i = 0; i < N; ++i)
+	{
+		params[i].follow.phaseMs = BotCore::NavReplanPhaseMs(i);
+		firstInterval[i] = -1;
+		secondInterval[i] = -1;
+		drives[i].BeginFollow(0);
+		drives[i].ObserveTarget(0, 200.0f, 200.0f, 0, 0);
+		const BotCore::NavDriveEvents ev = drives[i].PlanFollow(grid, finder, 0, 40.0f, 200.0f, 4.5f, params[i], nullptr, noreach);
+		CHECK(ev.planReason == BotCore::NavReplanReason::First);
+	}
+
+	for (int64_t t = 100; t <= 1400; t += 100)
+	{
+		for (int i = 0; i < N; ++i)
+		{
+			drives[i].ObserveTarget(0, 200.0f, 200.0f, 0, t);
+			if (!drives[i].FollowPlanDue(t, params[i]))
+				continue;
+			const BotCore::NavDriveEvents ev = drives[i].PlanFollow(grid, finder, t, 40.0f, 200.0f, 4.5f, params[i], nullptr, noreach);
+			if (ev.planReason == BotCore::NavReplanReason::Interval)
+			{
+				if (firstInterval[i] < 0)
+					firstInterval[i] = (int)t;
+				else if (secondInterval[i] < 0)
+					secondInterval[i] = (int)t;
+			}
+		}
+	}
+
+	int groups[5] = { 0, 0, 0, 0, 0 };
+	for (int i = 0; i < N; ++i)
+	{
+		REQUIRE(firstInterval[i] >= 500);
+		CHECK(firstInterval[i] <= 900);
+		groups[(firstInterval[i] - 500) / 100]++;
+		// The second Interval is the first plus 500 ms exactly (no phase).
+		REQUIRE(secondInterval[i] == firstInterval[i] + 500);
+	}
+	CHECK_EQ(groups[0], 4);
+	CHECK_EQ(groups[1], 3);
+	CHECK_EQ(groups[2], 3);
+	CHECK_EQ(groups[3], 3);
+	CHECK_EQ(groups[4], 3);
+	std::printf("NAVQUEUE phase: 500/600/700/800/900 = %d/%d/%d/%d/%d\n",
+		groups[0], groups[1], groups[2], groups[3], groups[4]);
+
+	// A >= 6 m jump makes that bot plan Moved without waiting for its phase.
+	{
+		BotCore::NavFollowDriveParams p0;
+		p0.follow.phaseMs = BotCore::NavReplanPhaseMs(0);   // 0
+		BotCore::NavDrive d;
+		d.BeginFollow(0);
+		d.ObserveTarget(0, 200.0f, 200.0f, 0, 0);
+		d.PlanFollow(grid, finder, 0, 40.0f, 200.0f, 4.5f, p0, nullptr, noreach);
+		d.ObserveTarget(100, 210.0f, 200.0f, 45, 100);
+		CHECK(d.FollowPlanDue(100, p0));
+		const BotCore::NavDriveEvents ev = d.PlanFollow(grid, finder, 100, 40.0f, 200.0f, 4.5f, p0, nullptr, noreach);
+		CHECK(ev.planReason == BotCore::NavReplanReason::Moved);
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_Deferred_FreshRoute")
+{
+	const int n = 100;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavFollowDriveParams fp;
+	BotCore::NavNoReach noreach;
+	BotCore::NavCostLayer scratch;
+
+	BotCore::NavDrive drive;
+	drive.BeginFollow(0);
+	drive.ObserveTarget(0, 200.0f, 200.0f, -1, 0);
+	const BotCore::NavDriveEvents plan = drive.PlanFollow(grid, finder, 0, 40.0f, 200.0f, 4.5f, fp, &scratch, noreach);
+	REQUIRE(plan.routeAdopted);
+	REQUIRE(drive.Route().size() >= 2);
+
+	float bx = 40.0f;
+	float bz = 200.0f;
+	int steps = 0;
+	int64_t lastMove = -1000000;
+	for (int64_t t = 0; t <= 4900; t += 100)
+	{
+		drive.ObserveTarget(0, 200.0f, 200.0f, -1, t);   // never served a plan again
+		const BotCore::NavDriveEvents ev = drive.AssessFollow(grid, t, bx, bz, fp);
+		CHECK(!ev.deferHold);
+		CHECK(!drive.DeferHeld());
+		CHECK(!drive.RouteStale(t, fp.defer));
+
+		if (t - lastMove >= (int64_t)BotCore::kMovePeriodMs)
+		{
+			const BotCore::NavDriveStep s = drive.NextFollowStep(grid, t, bx, bz, 6.75f, fp);
+			if (s.kind == BotCore::NavDriveStep::Step || s.kind == BotCore::NavDriveStep::Arrived)
+			{
+				CHECK(ChordSampleClean(grid, bx, bz, s.x, s.z));
+				bx = s.x;
+				bz = s.z;
+				drive.OnPacketSent(t, s);
+				++steps;
+			}
+			lastMove = t;
+		}
+	}
+	CHECK(steps >= 1);
+	std::printf("NAVQUEUE freshroute: steps=%d\n", steps);
+}
+
+TEST_CASE("NavDriveQueue_Follow_Deferred_StaleHold")
+{
+	const int n = 100;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavFollowDriveParams fp;
+	BotCore::NavNoReach noreach;
+	BotCore::NavCostLayer scratch;
+
+	// (a) Age: a plan older than planMaxAgeMs (5000) holds once.
+	{
+		BotCore::NavDrive d;
+		BotCore::NavCostLayer sc;
+		d.BeginFollow(0);
+		d.ObserveTarget(0, 200.0f, 200.0f, -1, 0);
+		d.PlanFollow(grid, finder, 0, 40.0f, 200.0f, 4.5f, fp, &sc, noreach);
+		REQUIRE(d.Route().size() >= 2);
+
+		float x = 40.0f;
+		float z = 200.0f;
+		int64_t lastMove = -1000000;
+		int holdEvents = 0;
+		int staleSteps = 0;
+		for (int64_t t = 0; t <= 6000; t += 100)
+		{
+			d.ObserveTarget(0, 200.0f, 200.0f, -1, t);
+			const BotCore::NavDriveEvents ev = d.AssessFollow(grid, t, x, z, fp);
+			if (ev.deferHold)
+				++holdEvents;
+			if (d.DeferHeld())
+			{
+				const BotCore::NavDriveStep s = d.NextFollowStep(grid, t, x, z, 6.75f, fp);
+				CHECK(s.kind == BotCore::NavDriveStep::None);
+			}
+			else if (t - lastMove >= (int64_t)BotCore::kMovePeriodMs)
+			{
+				const BotCore::NavDriveStep s = d.NextFollowStep(grid, t, x, z, 6.75f, fp);
+				if (s.kind == BotCore::NavDriveStep::Step || s.kind == BotCore::NavDriveStep::Arrived)
+				{
+					if (d.RouteStale(t, fp.defer))
+						++staleSteps;
+					x = s.x;
+					z = s.z;
+					d.OnPacketSent(t, s);
+				}
+				lastMove = t;
+			}
+		}
+		CHECK_EQ(holdEvents, 1);
+		CHECK(d.DeferHeld());
+		CHECK(d.RouteStale(6000, fp.defer));
+		// (d) no step is produced while the stale route is held.
+		CHECK_EQ(staleSteps, 0);
+
+		// (c) A served plan clears the hold and steps resume on the fresh route with growing
+		// route progress (no straight-line step into the target).
+		REQUIRE(d.FollowPlanDue(6000, fp));
+		const BotCore::NavDriveEvents plan = d.PlanFollow(grid, finder, 6000, x, z, 4.5f, fp, &sc, noreach);
+		REQUIRE(plan.planned);
+		CHECK(plan.routeAdopted);
+		CHECK(!d.DeferHeld());
+		float p0 = -1.0f;
+		{
+			const BotCore::NavDriveStep s = d.NextFollowStep(grid, 6000, x, z, 6.75f, fp);
+			REQUIRE(s.kind == BotCore::NavDriveStep::Step || s.kind == BotCore::NavDriveStep::Arrived);
+			CHECK(ChordSampleClean(grid, x, z, s.x, s.z));
+			p0 = s.routeProgressM;
+			x = s.x;
+			z = s.z;
+			d.OnPacketSent(6000, s);
+		}
+		{
+			const int64_t t2 = 6000 + (int64_t)BotCore::kMovePeriodMs;
+			d.ObserveTarget(0, 200.0f, 200.0f, -1, t2);
+			d.AssessFollow(grid, t2, x, z, fp);
+			const BotCore::NavDriveStep s = d.NextFollowStep(grid, t2, x, z, 6.75f, fp);
+			REQUIRE(s.kind == BotCore::NavDriveStep::Step || s.kind == BotCore::NavDriveStep::Arrived);
+			CHECK(ChordSampleClean(grid, x, z, s.x, s.z));
+			CHECK(s.routeProgressM >= p0 - 1e-6f);
+			CHECK(s.routeProgressM > 0.0f);
+		}
+	}
+
+	// (b) Drift: the target jumps 16 m with a fresh route age; same hold.
+	{
+		BotCore::NavDrive d;
+		BotCore::NavCostLayer sc;
+		d.BeginFollow(0);
+		d.ObserveTarget(0, 200.0f, 200.0f, -1, 0);
+		d.PlanFollow(grid, finder, 0, 40.0f, 200.0f, 4.5f, fp, &sc, noreach);
+		REQUIRE(d.Route().size() >= 2);
+		d.ObserveTarget(100, 216.0f, 200.0f, -1, 100);
+		const BotCore::NavDriveEvents ev = d.AssessFollow(grid, 100, 40.0f, 200.0f, fp);
+		CHECK(ev.deferHold);
+		CHECK(d.DeferHeld());
+		CHECK(d.RouteStale(100, fp.defer));
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_Deferred_FirstPlan")
+{
+	const int n = 100;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavFollowDriveParams fp;
+
+	BotCore::NavDrive d;
+	d.BeginFollow(0);
+	for (int64_t t = 0; t <= 3000; t += 100)
+	{
+		d.ObserveTarget(0, 200.0f, 200.0f, -1, t);
+		const BotCore::NavDriveEvents ev = d.AssessFollow(grid, t, 40.0f, 200.0f, fp);
+		CHECK(!ev.deferHold);
+		CHECK(!d.DeferHeld());
+		const BotCore::NavDriveStep s = d.NextFollowStep(grid, t, 40.0f, 200.0f, 6.75f, fp);
+		CHECK(s.kind == BotCore::NavDriveStep::None);
+	}
+}
+
+TEST_CASE("NavDriveQueue_Follow_PlanFailed_Split")
+{
+	NavGrid grid = MakePocketGrid40();
+	BotCore::NavPathfinder finder;
+	BotCore::NavFollowDriveParams fp;
+	BotCore::NavNoReach noreach;
+	BotCore::NavCostLayer scratch;
+
+	const float px = grid.CellCenter(20);
+	const float pz = grid.CellCenter(20);
+	const float bx = grid.CellCenter(5);
+	const float bz = grid.CellCenter(20);
+
+	BotCore::NavDrive split;
+	split.BeginFollow(0);
+	int64_t t = 0;
+	int plans = 0;
+	BotCore::NavFollowEnd ended = BotCore::NavFollowEnd::None;
+	int64_t endedAt = -1;
+	for (int i = 0; i < 30; ++i)
+	{
+		split.ObserveTarget(0, px, pz, -1, t);
+		BotCore::NavDriveEvents plan;
+		if (split.FollowPlanDue(t, fp))
+			plan = split.PlanFollow(grid, finder, t, bx, bz, 4.5f, fp, &scratch, noreach);
+		const BotCore::NavDriveEvents assess = split.AssessFollow(grid, t, bx, bz, fp);
+		const BotCore::NavDriveEvents ev = QueueMergeSplit(plan, assess);
+		if (ev.planned)
+			++plans;
+		if (ev.ended != BotCore::NavFollowEnd::None)
+		{
+			ended = ev.ended;
+			endedAt = t;
+			break;
+		}
+		t += 500;
+	}
+	CHECK(ended == BotCore::NavFollowEnd::PlanFailed);
+	CHECK(plans >= 9);
+	CHECK(plans <= 11);
+	CHECK(endedAt <= 6000);
+
+	// After the PlanFailed Reset the assessment is empty.
+	const BotCore::NavDriveEvents after = split.AssessFollow(grid, endedAt + 100, bx, bz, fp);
+	CHECK(after.ended == BotCore::NavFollowEnd::None);
+	CHECK(!after.planned);
+	std::printf("NAVQUEUE planfail: plans=%d at=%lld\n", plans, (long long)endedAt);
+}
+
+TEST_CASE("NavDriveQueue_Goto_Arm")
+{
+	const int n = 64;
+	NavGrid open = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	NavGrid wall = MakeNav(n, 4.0f, WallEvents(n), HeightZeros(n));
+
+	BotCore::NavDrive drive;
+	CHECK(drive.ArmGoto(open, 20.0f, 20.0f, 200.0f, 200.0f) == BotCore::NavPlanStatus::None);
+	CHECK(drive.Active());
+	CHECK(drive.Mode() == BotCore::NavDriveMode::Goto);
+	CHECK(drive.PlanPending());
+	CHECK(drive.Route().empty());
+	CHECK(drive.NextStep(open, 20.0f, 20.0f, 6.75f).kind == BotCore::NavDriveStep::None);
+
+	// Non-Walk start / goal.
+	CHECK(drive.ArmGoto(wall, wall.CellCenter(31), wall.CellCenter(20), 200.0f, 20.0f) == BotCore::NavPlanStatus::InvalidStart);
+	CHECK(!drive.Active());
+	CHECK(drive.ArmGoto(wall, 20.0f, 20.0f, wall.CellCenter(31), wall.CellCenter(20)) == BotCore::NavPlanStatus::InvalidGoal);
+	CHECK(!drive.Active());
+
+	// Non-finite, negative and over-limit coordinates.
+	CHECK(drive.ArmGoto(open, -1.0f, 20.0f, 200.0f, 20.0f) == BotCore::NavPlanStatus::InvalidStart);
+	CHECK(drive.ArmGoto(open, std::nanf(""), 20.0f, 200.0f, 20.0f) == BotCore::NavPlanStatus::InvalidStart);
+	CHECK(drive.ArmGoto(open, 6554.0f, 20.0f, 200.0f, 20.0f) == BotCore::NavPlanStatus::InvalidStart);
+	CHECK(drive.ArmGoto(open, 20.0f, 20.0f, -1.0f, 20.0f) == BotCore::NavPlanStatus::InvalidGoal);
+	CHECK(drive.ArmGoto(open, 20.0f, 20.0f, 1000.0f, 1000.0f) == BotCore::NavPlanStatus::InvalidGoal);
+	CHECK(!drive.PlanPending());
+}
+
+TEST_CASE("NavDriveQueue_Goto_RunPlan_Equivalence")
+{
+	NavGrid grid;
+	std::vector<NavCell> walk;
+	if (LoadZone71OrSkip(grid, "queue-gotoeq"))
+	{
+		CollectWalk(grid, walk);
+	}
+	else
+	{
+		grid = MakeNav(64, 4.0f, WallEvents(64), HeightZeros(64));
+		CollectWalk(grid, walk);
+	}
+	REQUIRE(!walk.empty());
+
+	BotCore::Rng rng(20261064u);
+	BotCore::NavPathfinder finder;
+	BotCore::NavDriveParams params;
+
+	int planned = 0;
+	for (int i = 0; i < 200; ++i)
+	{
+		const NavCell a = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		const NavCell b = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		if (a.x == b.x && a.z == b.z)
+		{
+			--i;
+			continue;
+		}
+
+		float ax = 0.0f, az = 0.0f, bx = 0.0f, bz = 0.0f;
+		RandomPointInCell(grid, a, rng, ax, az);
+		RandomPointInCell(grid, b, rng, bx, bz);
+
+		BotCore::NavDrive d1;
+		const BotCore::NavPlanStatus s1 = d1.BeginGoto(grid, finder, ax, az, bx, bz, params);
+
+		BotCore::NavDrive d2;
+		const BotCore::NavPlanStatus arm = d2.ArmGoto(grid, ax, az, bx, bz);
+		BotCore::NavPlanStatus s2 = arm;
+		if (arm == BotCore::NavPlanStatus::None)
+			s2 = d2.RunGotoPlan(grid, finder, nullptr, 0, ax, az, params);
+		CHECK(s1 == s2);
+
+		if (s1 == BotCore::NavPlanStatus::Planned)
+		{
+			++planned;
+			CHECK(QueueRoutesEqual(d1.Route(), d2.Route()));
+			CHECK(d1.RouteLengthM() == d2.RouteLengthM());
+			CHECK(d1.GoalX() == d2.GoalX());
+			CHECK(d1.GoalZ() == d2.GoalZ());
+			CHECK_EQ(d1.PlanExpanded(), d2.PlanExpanded());
+			CHECK_EQ(d1.PlanWaypoints(), d2.PlanWaypoints());
+			CHECK(!d2.PlanPending());
+			CHECK_EQ(d2.Replans(), 0);
+			CHECK(d2.RunGotoPlan(grid, finder, nullptr, 0, ax, az, params) == BotCore::NavPlanStatus::None);
+		}
+		else
+		{
+			CHECK(!d2.Active());
+		}
+	}
+	CHECK(planned > 0);
+	std::printf("NAVQUEUE gotoeq: planned=%d\n", planned);
+}
+
+TEST_CASE("NavDriveQueue_Goto_RequestReplan")
+{
+	const int n = 64;
+	NavGrid open = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	NavGrid wall = MakeNav(n, 4.0f, WallEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavDriveParams params;
+	const float botx = 20.0f;
+	const float botz = 20.0f;
+	const float gx = 200.0f;
+	const float gz = 20.0f;
+
+	BotCore::NavDrive drive;
+	REQUIRE(drive.BeginGoto(open, finder, botx, botz, gx, gz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK(drive.NextStep(wall, botx, botz, 400.0f).kind == BotCore::NavDriveStep::Blocked);
+
+	CHECK(drive.RequestReplan() == BotCore::NavPlanStatus::None);
+	CHECK(drive.PlanPending());
+	// The route is kept while the replan is pending.
+	CHECK(drive.Route().size() >= 2);
+	CHECK(drive.NextStep(wall, botx, botz, 400.0f).kind == BotCore::NavDriveStep::Blocked);
+	CHECK(drive.RequestReplan() == BotCore::NavPlanStatus::None);   // idempotent
+	REQUIRE(drive.RunGotoPlan(wall, finder, nullptr, 0, botx, botz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK_EQ(drive.Replans(), 1);
+	CHECK(!drive.PlanPending());
+
+	// The queued replan equals the synchronous Replan route.
+	BotCore::NavDrive sync;
+	REQUIRE(sync.BeginGoto(open, finder, botx, botz, gx, gz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK(sync.NextStep(wall, botx, botz, 400.0f).kind == BotCore::NavDriveStep::Blocked);
+	REQUIRE(sync.Replan(wall, finder, botx, botz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK_EQ(sync.Replans(), 1);
+	CHECK(QueueRoutesEqual(drive.Route(), sync.Route()));
+
+	// Budget spent: ReplanLimit and Off.
+	CHECK(drive.RequestReplan() == BotCore::NavPlanStatus::ReplanLimit);
+	CHECK(!drive.Active());
+
+	BotCore::NavDrive off;
+	CHECK(off.RequestReplan() == BotCore::NavPlanStatus::None);
+}
+
+TEST_CASE("NavDriveQueue_Goto_Cache")
+{
+	const int n = 64;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavDriveParams params;
+	BotCore::NavPathCache cache;
+	const float bx = 20.0f;
+	const float bz = 20.0f;
+	const float gx = 200.0f;
+	const float gz = 200.0f;
+
+	BotCore::NavDrive d;
+	REQUIRE(d.ArmGoto(grid, bx, bz, gx, gz) == BotCore::NavPlanStatus::None);
+	REQUIRE(d.RunGotoPlan(grid, finder, &cache, 0, bx, bz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK(!d.LastPlanCacheHit());
+	CHECK(d.PlanExpanded() > 0);
+	const std::vector<BotCore::NavRoutePoint> route1 = d.Route();
+	CHECK(cache.Count() >= 1);
+
+	// Same start cell, same goal cell -> hit, no A*, identical route.
+	REQUIRE(d.ArmGoto(grid, bx, bz, gx, gz) == BotCore::NavPlanStatus::None);
+	REQUIRE(d.RunGotoPlan(grid, finder, &cache, 100, bx, bz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK(d.LastPlanCacheHit());
+	CHECK_EQ(d.PlanExpanded(), 0);
+	CHECK(QueueRoutesEqual(d.Route(), route1));
+
+	// TTL (30 000 ms) expiry -> miss.
+	REQUIRE(d.ArmGoto(grid, bx, bz, gx, gz) == BotCore::NavPlanStatus::None);
+	REQUIRE(d.RunGotoPlan(grid, finder, &cache, 100 + 30001, bx, bz, params) == BotCore::NavPlanStatus::Planned);
+	CHECK(!d.LastPlanCacheHit());
+
+	// A different point inside the same start cell still hits; the route starts at the new point.
+	{
+		const float bx2 = bx + 1.0f;
+		BotCore::NavDrive d2;
+		REQUIRE(d2.ArmGoto(grid, bx2, bz, gx, gz) == BotCore::NavPlanStatus::None);
+		REQUIRE(d2.RunGotoPlan(grid, finder, &cache, 100, bx2, bz, params) == BotCore::NavPlanStatus::Planned);
+		CHECK(d2.LastPlanCacheHit());
+		REQUIRE(!d2.Route().empty());
+		CHECK(d2.Route().front().x == bx2);
+	}
+
+	// cache == nullptr -> never a hit.
+	{
+		BotCore::NavDrive d2;
+		REQUIRE(d2.ArmGoto(grid, bx, bz, gx, gz) == BotCore::NavPlanStatus::None);
+		REQUIRE(d2.RunGotoPlan(grid, finder, nullptr, 0, bx, bz, params) == BotCore::NavPlanStatus::Planned);
+		CHECK(!d2.LastPlanCacheHit());
+	}
+
+	// A route longer than kMaxCells (512): a 560 x 560 open grid forces a ~556-cell diagonal.
+	{
+		const int bn = 560;
+		NavGrid big = MakeNav(bn, 4.0f, OpenEvents(bn), HeightZeros(bn));
+		REQUIRE(big.Walk(2, 2));
+		REQUIRE(big.Walk(557, 557));
+		BotCore::NavPathfinder bf;
+		BotCore::NavPathCache bigCache;
+		BotCore::NavDrive bd;
+		const float ax = big.CellCenter(2);
+		const float az = big.CellCenter(2);
+		const float bx2 = big.CellCenter(557);
+		const float bz2 = big.CellCenter(557);
+		REQUIRE(bd.ArmGoto(big, ax, az, bx2, bz2) == BotCore::NavPlanStatus::None);
+		REQUIRE(bd.RunGotoPlan(big, bf, &bigCache, 0, ax, az, params) == BotCore::NavPlanStatus::Planned);
+		CHECK_EQ(bigCache.Count(), 0);   // Put rejects the > kMaxCells route
+		REQUIRE(bd.ArmGoto(big, ax, az, bx2, bz2) == BotCore::NavPlanStatus::None);
+		REQUIRE(bd.RunGotoPlan(big, bf, &bigCache, 100, ax, az, params) == BotCore::NavPlanStatus::Planned);
+		CHECK(!bd.LastPlanCacheHit());
+		CHECK_EQ(bigCache.Count(), 0);
+		CHECK(bd.PlanExpanded() > 0);
+	}
+}
+
+TEST_CASE("NavDriveQueue_Goto_Cancel")
+{
+	const int n = 64;
+	NavGrid grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder finder;
+	BotCore::NavDriveParams params;
+
+	BotCore::NavDrive drive;
+	REQUIRE(drive.ArmGoto(grid, 20.0f, 20.0f, 200.0f, 200.0f) == BotCore::NavPlanStatus::None);
+	CHECK(drive.PlanPending());
+	drive.Reset();
+	CHECK(!drive.PlanPending());
+	CHECK(!drive.Active());
+	CHECK(drive.RunGotoPlan(grid, finder, nullptr, 0, 20.0f, 20.0f, params) == BotCore::NavPlanStatus::None);
+
+	// Scheduler half: a cancelled query is not selected again.
+	BotCore::NavQueryScheduler sched;
+	sched.Request(3, 0);
+	CHECK_EQ(sched.Pending(), 1);
+	sched.Cancel(3);
+	CHECK_EQ(sched.Pending(), 0);
+	uint16_t out[8];
+	CHECK_EQ(sched.NextBatch(100, 1.5, out, 8), 0);
+}
+
+TEST_CASE("NavDriveQueue_Scheduler_FirstPlan16")
+{
+	NavGrid grid;
+	std::vector<NavCell> walk;
+	bool real = LoadZone71OrSkip(grid, "queue-firstplan");
+	float tx = 0.0f;
+	float tz = 0.0f;
+	if (real)
+	{
+		CollectWalk(grid, walk);
+		const NavCell arena = NearestWalk(grid, 1274.0f, 890.0f);
+		tx = grid.CellCenter(arena.x);
+		tz = grid.CellCenter(arena.z);
+	}
+	else
+	{
+		const int n = 256;
+		grid = MakeNav(n, 4.0f, OpenEvents(n), HeightZeros(n));
+		CollectWalk(grid, walk);
+		const NavCell arena = NearestWalk(grid, 800.0f, 800.0f);
+		tx = grid.CellCenter(arena.x);
+		tz = grid.CellCenter(arena.z);
+	}
+	REQUIRE(!walk.empty());
+
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	const int mainId = reach.LargestComponent();
+	std::vector<NavCell> mainWalk;
+	for (size_t i = 0; i < walk.size(); ++i)
+		if (reach.ComponentOf(walk[i].x, walk[i].z) == mainId)
+			mainWalk.push_back(walk[i]);
+	REQUIRE(!mainWalk.empty());
+
+	const int N = 16;
+	BotCore::NavDrive drives[N];
+	float sx[N];
+	float sz[N];
+	BotCore::NavPathfinder finder;
+	BotCore::NavDriveParams params;
+	BotCore::NavQueryScheduler sched;
+	BotCore::Rng rng(20261066u);
+	for (int i = 0; i < N; ++i)
+	{
+		const NavCell c = mainWalk[(size_t)rng.NextBelow((uint32_t)mainWalk.size())];
+		sx[i] = grid.CellCenter(c.x);
+		sz[i] = grid.CellCenter(c.z);
+		REQUIRE(drives[i].ArmGoto(grid, sx[i], sz[i], tx, tz) == BotCore::NavPlanStatus::None);
+		sched.Request((uint16_t)i, 0);
+	}
+
+	// While armed, no step is produced.
+	CHECK(drives[0].NextStep(grid, sx[0], sz[0], 6.75f).kind == BotCore::NavDriveStep::None);
+
+	int served = 0;
+	int64_t t = 0;
+	int64_t waitMax = 0;
+	int ticks = 0;
+	uint16_t batch[64];
+	while (served < N && t <= 5000)
+	{
+		const int nb = sched.NextBatch(t, 1.5, batch, 64);
+		for (int k = 0; k < nb; ++k)
+		{
+			const uint16_t id = batch[k];
+			const BotCore::NavPlanStatus st = drives[id].RunGotoPlan(grid, finder, nullptr, t, sx[id], sz[id], params);
+			if (st == BotCore::NavPlanStatus::Planned)
+			{
+				++served;
+				if (t > waitMax)
+					waitMax = t;
+			}
+			sched.ReportCost(id, 0.3, 0);
+			sched.Cancel(id);
+		}
+		++ticks;
+		t += 100;
+	}
+
+	std::printf("NAVQUEUE first_plan wait_max_ms=%lld served=%d ticks=%d\n",
+		(long long)waitMax, served, ticks);
+	CHECK_EQ(served, N);
+	CHECK(waitMax <= 1100);
+	for (int i = 0; i < N; ++i)
+		CHECK(!drives[i].PlanPending());
+}
+
+TEST_CASE("NavDriveQueue_Follow_Load16")
+{
+	NavGrid grid;
+	if (!LoadZone71OrSkip(grid, "queue-load16"))
+		return;
+
+	std::vector<NavCell> walk;
+	CollectWalk(grid, walk);
+	REQUIRE(!walk.empty());
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	const int mainId = reach.LargestComponent();
+	std::vector<NavCell> mainWalk;
+	for (size_t i = 0; i < walk.size(); ++i)
+		if (reach.ComponentOf(walk[i].x, walk[i].z) == mainId)
+			mainWalk.push_back(walk[i]);
+	REQUIRE(!mainWalk.empty());
+
+	// Map the SimTarget local box (40..360, 40..320) onto the arena A region so the targets stay
+	// in walkable world space; observations add the offset.
+	const float ox = 1274.0f - 200.0f;
+	const float oz = 890.0f - 200.0f;
+	const NavCell arenaCell = NearestWalk(grid, 1274.0f, 890.0f);
+	std::vector<NavCell> startCells;
+	for (size_t i = 0; i < mainWalk.size(); ++i)
+	{
+		if (std::abs(mainWalk[i].x - arenaCell.x) <= 20 && std::abs(mainWalk[i].z - arenaCell.z) <= 20)
+			startCells.push_back(mainWalk[i]);
+	}
+	REQUIRE(!startCells.empty());
+
+	const int N = 16;
+	BotCore::NavDrive drives[N];
+	BotCore::NavFollowDriveParams params[N];
+	BotCore::NavCostLayer scratch[N];
+	SimTarget targets[N];
+	float bx[N];
+	float bz[N];
+	int64_t lastPkt[N];
+	int64_t reqAt[N];
+	BotCore::NavPathfinder finder;
+	BotCore::NavQueryScheduler sched;
+	BotCore::Rng rng(20261067u);
+	for (int i = 0; i < N; ++i)
+	{
+		const NavCell b = startCells[(size_t)rng.NextBelow((uint32_t)startCells.size())];
+		bx[i] = grid.CellCenter(b.x);
+		bz[i] = grid.CellCenter(b.z);
+		targets[i].Init(i % 4, 20261067u + (uint32_t)i * 7919u, 200.0f, 200.0f, 4.5f);
+		params[i].follow.phaseMs = BotCore::NavReplanPhaseMs(i);
+		lastPkt[i] = -1000000;
+		reqAt[i] = -1;
+		drives[i].BeginFollow(0);
+		drives[i].ObserveTarget(0, targets[i].x + ox, targets[i].z + oz, 45, 0);
+	}
+
+	int64_t waitMax = 0;
+	int queries = 0;
+	int deferred = 0;
+	int holdTicks = 0;
+	int staleSteps = 0;
+	std::vector<double> tickMs;
+	for (int64_t t = 0; t <= 120000; t += 100)
+	{
+		const std::chrono::steady_clock::time_point tick0 = std::chrono::steady_clock::now();
+
+		for (int i = 0; i < N; ++i)
+		{
+			if (t > 0 && t % 1500 == 0)
+			{
+				const float lx = targets[i].x;
+				const float lz = targets[i].z;
+				targets[i].Advance(1500);
+				const int cx = grid.CellOf(targets[i].x + ox);
+				const int cz = grid.CellOf(targets[i].z + oz);
+				if (!grid.Walk(cx, cz) || reach.ComponentOf(cx, cz) != mainId)
+				{
+					targets[i].x = lx;
+					targets[i].z = lz;
+				}
+				const int16_t spd = targets[i].moving ? (int16_t)(targets[i].speed * 10.0f) : 0;
+				drives[i].ObserveTarget(t, targets[i].x + ox, targets[i].z + oz, spd, t);
+			}
+		}
+
+		for (int i = 0; i < N; ++i)
+		{
+			if (reqAt[i] < 0 && drives[i].FollowPlanDue(t, params[i]))
+			{
+				sched.Request((uint16_t)i, t);
+				reqAt[i] = t;
+			}
+		}
+
+		uint16_t batch[64];
+		const int nb = sched.NextBatch(t, 1.5, batch, 64);
+		for (int k = 0; k < nb; ++k)
+		{
+			const uint16_t id = batch[k];
+			// The wall-clock tick time (p95 guard below) is measured over the whole tick; the
+			// scheduler is fed a fixed synthetic cost (mirrors test 13) so the queueing logic is
+			// configuration-independent (Debug A* is ~20x slower than Release and would otherwise
+			// starve the 1.5 ms budget).
+			const BotCore::NavDriveEvents ev = drives[id].PlanFollow(grid, finder, t, bx[id], bz[id], 4.5f,
+				params[id], &scratch[id], reach);
+			sched.ReportCost(id, 0.3, ev.planExpanded);
+			sched.Cancel(id);
+			if (reqAt[id] >= 0)
+			{
+				const int64_t wait = t - reqAt[id];
+				if (wait > waitMax)
+					waitMax = wait;
+				reqAt[id] = -1;
+			}
+			++queries;
+		}
+
+		bool anyHeld = false;
+		for (int i = 0; i < N; ++i)
+		{
+			const BotCore::NavDriveEvents ev = drives[i].AssessFollow(grid, t, bx[i], bz[i], params[i]);
+			if (ev.deferHold)
+				++deferred;
+			if (drives[i].DeferHeld())
+				anyHeld = true;
+			if (t - lastPkt[i] >= (int64_t)BotCore::kMovePeriodMs)
+			{
+				const BotCore::NavDriveStep s = drives[i].NextFollowStep(grid, t, bx[i], bz[i], 6.75f, params[i]);
+				if (s.kind == BotCore::NavDriveStep::Step || s.kind == BotCore::NavDriveStep::Arrived)
+				{
+					if (drives[i].RouteStale(t, params[i].defer))
+						++staleSteps;
+					bx[i] = s.x;
+					bz[i] = s.z;
+					drives[i].OnPacketSent(t, s);
+				}
+				lastPkt[i] = t;
+			}
+		}
+		if (anyHeld)
+			++holdTicks;
+
+		const std::chrono::steady_clock::time_point tick1 = std::chrono::steady_clock::now();
+		tickMs.push_back(std::chrono::duration<double, std::milli>(tick1 - tick0).count());
+	}
+
+	int noPlanBots = 0;
+	int endedBots = 0;
+	for (int i = 0; i < N; ++i)
+	{
+		if (drives[i].FollowPlans() == 0)
+			++noPlanBots;
+		if (drives[i].Mode() != BotCore::NavDriveMode::Follow)
+			++endedBots;
+	}
+
+	std::sort(tickMs.begin(), tickMs.end());
+	const double tp95 = PercentileDouble(tickMs, 0.95);
+	const double tp99 = PercentileDouble(tickMs, 0.99);
+	const double tmax = tickMs.empty() ? 0.0 : tickMs.back();
+	std::printf("NAVQUEUE load16 tick_p95_ms=%.3f p99=%.3f max=%.3f wait_max_ms=%lld queries=%d deferred=%d hold=%d stale=0 ended=%d\n",
+		tp95, tp99, tmax, (long long)waitMax, queries, deferred, holdTicks, endedBots);
+	std::printf("NAVQUEUE load16 stale_steps=%d no_plan_bots=%d\n", staleSteps, noPlanBots);
+
+	CHECK_EQ(staleSteps, 0);
+	CHECK(waitMax <= 1100);
+	CHECK_EQ(noPlanBots, 0);
+#ifndef _DEBUG
+	CHECK(tp95 <= 4.0);
+#else
+	(void)tp95;
+	(void)tp99;
+	(void)tmax;
+#endif
+}
