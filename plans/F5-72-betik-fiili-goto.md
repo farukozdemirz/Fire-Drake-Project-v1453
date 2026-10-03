@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-72 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`), F4-20 (`ScriptRunner`: her adım `BotManager::ExecuteCommand` yolundan), F4-42 (`tools/skill-script-gen.py`), F5-70 (`/bot goto`, merge `99d7170`). **F5-73'e (`NavDrive` Follow kipi; artık `gece/2026-10-02` dalında birleşti, merge `bc3170d`) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-73 yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp`; bu plan `ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py` |
@@ -130,17 +130,26 @@ git grep -n -a -E '"goto"' -- BotCore tools Tests
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-72` — `<kısa-sha> [F5-72] …`
+- Branch / commit'ler: `bot/F5-72` (taban `gece/2026-10-02`) — `<sha> [F5-72] Betik fiili goto: izinli komut sozlugu 20 -> 21`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/ScriptPlan.h`: `kVerbs[]` 20 → 21 (`"goto"`, `"move"`'dan sonra), sözlük yorumu "20 verbs" → "21 verbs" (Kapsam §3.1).
+  - `Tests/BotCoreTests/ScriptTests.cpp`: `Script_VerbWhitelist` 21 fiile güncellendi (+`IsScriptVerb("GOTO")`); sonuna yeni `Script_GotoStep` (+1 test) eklendi (Kapsam §3.2).
+  - `tools/skill-script-gen.py`: `VERBS` demetine `"goto"`, yorum "21 verbs", selftest'e `check_ok_goto` + `raw_goto_passthrough` (23 → 25) (Kapsam §3.3).
+- Derleme sonucu (`tools/build.sh Release`, son satırlar):
   ```
-  …
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Test çıktıları (başlangıç ve son test sayısı, `Script_*` satırları, `skill-script-gen.py --selftest`, `--check` komutları): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` de rc=0 (`GameServer.exe`, `BotCoreTests.exe` üretildi). `touch BotCore/ScriptPlan.h` sonrası iki yapılandırmada yalnızca eski `GameServerDlg.cpp` C4267/C4834 uyarıları (artış yok).
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔, K4 ✔, K5 ✔, K6 ✔. K7/K8/K9 Claude çalışma zamanı (sunucusuz ortamda yapılmadı).
+- Test çıktıları (başlangıç ve son test sayısı, `Script_*` satırları, `skill-script-gen.py --selftest`, `--check` komutları):
+  - Başlangıç: `314 tests, 0 failed`; son: Release `315 tests, 0 failed`, Debug `315 tests, 0 failed` (taban + 1).
+  - `Script_` satırları: `Script_ParseValid`, `Script_VerbWhitelist`, `Script_GotoStep`, `Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers` hepsi `[ OK ]`.
+  - `skill-script-gen.py --selftest`: başlangıç `23 checks, 0 failed` → son `25 checks, 0 failed`.
+  - `--check /tmp/g.txt` (`0 goto …` + `0 list`): `ok: 2 steps, 31 bytes, 2 lines, last offset 0 ms`, rc=0; `--check /tmp/f.txt` (`0 follow X`): `1: bad verb`, rc=1.
+  - Sözlük üç kopyada tutarlı (`git grep -n -a -E '"goto"' -- BotCore tools Tests` → `ScriptPlan.h:64`, `ScriptTests.cpp:48`, `skill-script-gen.py:75`).
+- Plandan sapmalar ve gerekçeleri: yok.
+- Açık sorular: yok.
 
 ---
 

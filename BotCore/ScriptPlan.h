@@ -56,12 +56,12 @@ namespace BotCore
 		return text.substr(first, last - first + 1);
 	}
 
-	// Case-insensitive match against the 20 verbs a script may run (plan section 5.2).
+	// Case-insensitive match against the 21 verbs a script may run (plan section 5.2; "goto" added by F5-72).
 	inline bool IsScriptVerb(const std::string & verb)
 	{
 		static const char * const kVerbs[] =
 		{
-			"move", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
+			"move", "goto", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
 			"pinvite", "paccept", "pdecline", "pleave", "ppromote", "pkick", "pchat",
 			"see", "npcs", "snap", "list"
 		};

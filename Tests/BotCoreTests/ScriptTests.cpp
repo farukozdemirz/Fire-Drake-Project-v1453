@@ -45,17 +45,18 @@ TEST_CASE("Script_VerbWhitelist")
 {
 	const char * verbs[] =
 	{
-		"move", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
+		"move", "goto", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
 		"pinvite", "paccept", "pdecline", "pleave", "ppromote", "pkick", "pchat",
 		"see", "npcs", "snap", "list"
 	};
 
-	for (int i = 0; i < 20; ++i)
+	for (int i = 0; i < 21; ++i)
 		CHECK(BotCore::IsScriptVerb(verbs[i]));
 
 	CHECK(BotCore::IsScriptVerb("MOVE"));
 	CHECK(BotCore::IsScriptVerb("Snap"));
 	CHECK(BotCore::IsScriptVerb("PCHAT"));
+	CHECK(BotCore::IsScriptVerb("GOTO"));
 
 	CHECK(!BotCore::IsScriptVerb("spawn"));
 	CHECK(!BotCore::IsScriptVerb("despawn"));
@@ -70,6 +71,68 @@ TEST_CASE("Script_VerbWhitelist")
 	BotCore::ScriptParseResult r = BotCore::ParseScript("0 spawn BotWP_K");
 	CHECK_EQ(int(r.error), int(BotCore::SCRIPT_ERR_BAD_VERB));
 	CHECK_EQ(int(r.errorLine), 1);
+}
+
+TEST_CASE("Script_GotoStep")
+{
+	{
+		std::string text =
+			"0 goto BotWP_K 1274 890\r\n"
+			"1500   GOTO BotWP_K 1294 934 45\n"
+			" 3000\tgoto BotWP_K -5 10  \n";
+
+		BotCore::ScriptParseResult r = BotCore::ParseScript(text);
+		CHECK_EQ(int(r.error), int(BotCore::SCRIPT_OK));
+		CHECK_EQ(int(r.steps.size()), 3);
+		if (r.steps.size() == 3)
+		{
+			CHECK_EQ(int(r.steps[0].offsetMs), 0);
+			CHECK_EQ(r.steps[0].command, std::string("goto BotWP_K 1274 890"));
+			CHECK_EQ(int(r.steps[0].line), 1);
+
+			CHECK_EQ(int(r.steps[1].offsetMs), 1500);
+			CHECK_EQ(r.steps[1].command, std::string("GOTO BotWP_K 1294 934 45"));
+			CHECK_EQ(int(r.steps[1].line), 2);
+
+			CHECK_EQ(int(r.steps[2].offsetMs), 3000);
+			CHECK_EQ(r.steps[2].command, std::string("goto BotWP_K -5 10"));
+			CHECK_EQ(int(r.steps[2].line), 3);
+		}
+	}
+	{
+		BotCore::ScriptParseResult r = BotCore::ParseScript("0 goto");
+		CHECK_EQ(int(r.error), int(BotCore::SCRIPT_OK));
+		CHECK_EQ(int(r.steps.size()), 1);
+		if (r.steps.size() == 1)
+			CHECK_EQ(r.steps[0].command, std::string("goto"));
+	}
+	{
+		BotCore::ScriptParseResult r = BotCore::ParseScript("0 gotoo BotWP_K 1 2");
+		CHECK_EQ(int(r.error), int(BotCore::SCRIPT_ERR_BAD_VERB));
+		CHECK_EQ(int(r.errorLine), 1);
+
+		BotCore::ScriptParseResult r2 = BotCore::ParseScript("0 move BotWP_K 1 2\r\n10 goto2 BotWP_K 1 2");
+		CHECK_EQ(int(r2.error), int(BotCore::SCRIPT_ERR_BAD_VERB));
+		CHECK_EQ(int(r2.errorLine), 2);
+		CHECK(r2.steps.empty());
+	}
+	{
+		std::string text;
+		for (int i = 0; i < 100; ++i)
+			text += "0 goto BotWP_K 1274 890\n";
+		BotCore::ScriptParseResult r = BotCore::ParseScript(text);
+		CHECK_EQ(int(r.error), int(BotCore::SCRIPT_OK));
+		CHECK_EQ(int(r.steps.size()), 100);
+	}
+	{
+		std::string text;
+		for (int i = 0; i < 101; ++i)
+			text += "0 goto BotWP_K 1274 890\n";
+		BotCore::ScriptParseResult r = BotCore::ParseScript(text);
+		CHECK_EQ(int(r.error), int(BotCore::SCRIPT_ERR_TOO_MANY_STEPS));
+		CHECK_EQ(int(r.errorLine), 101);
+		CHECK(r.steps.empty());
+	}
 }
 
 TEST_CASE("Script_OffsetRules")
