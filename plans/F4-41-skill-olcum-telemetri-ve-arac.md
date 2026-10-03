@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge 0901ae0) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
