@@ -193,35 +193,31 @@ static MoveOutcome SubmitMove(BotSession * s, CUser * user, float nx, float nz,
 	return out;
 }
 
-// --- ActionExecutor ---
-
-MoveOutcome ActionExecutor::BeginMove(BotSession * s, float tx, float tz, int16 speedField,
-	std::chrono::steady_clock::time_point now)
+// Shared start-of-walk validation of BeginMove / BeginGoto (F5-70): in game, alive, standing and a speed
+// field the bot's class is allowed to use. Returns false with 'out' filled (REFUSED). Behaviour and the
+// FAIRNESS_REJECT fields are byte-for-byte the ones BeginMove used before the block moved here.
+static bool ValidateWalkStart(BotSession * s, int16 speedField, MoveOutcome & out)
 {
-	MoveOutcome out;
-	out.kind = MoveOutcome::NOTHING;
-	out.reason = "ok";
-
 	CUser * user = s != nullptr ? s->m_pUser : nullptr;
 	if (user == nullptr || !user->isInGame())
 	{
 		out.kind = MoveOutcome::REFUSED;
 		out.reason = "not_in_game";
-		return out;
+		return false;
 	}
 
 	if (user->isDead())
 	{
 		out.kind = MoveOutcome::REFUSED;
 		out.reason = "dead";
-		return out;
+		return false;
 	}
 
 	if (user->m_bResHpType == USER_SITDOWN)
 	{
 		out.kind = MoveOutcome::REFUSED;
 		out.reason = "sitting";
-		return out;
+		return false;
 	}
 
 	int16 serverLimit = ServerLimitFor(user);
@@ -234,8 +230,59 @@ MoveOutcome ActionExecutor::BeginMove(BotSession * s, float tx, float tz, int16 
 			(float)speedField, (float)serverLimit);
 		out.kind = MoveOutcome::REFUSED;
 		out.reason = "speed_field";
-		return out;
+		return false;
 	}
+
+	return true;
+}
+
+// Maps a NavDrive plan failure to the executor's reason text (F5-70, D6). NodeLimit is NOT "no_path": the
+// search budget ran out and reachability is unknown; the caller reports it as "not planned".
+static const char * PlanReason(BotCore::NavPlanStatus status)
+{
+	switch (status)
+	{
+	case BotCore::NavPlanStatus::InvalidStart: return "invalid_start";
+	case BotCore::NavPlanStatus::InvalidGoal: return "invalid_goal";
+	case BotCore::NavPlanStatus::NoPath: return "no_path";
+	case BotCore::NavPlanStatus::NodeLimit: return "node_limit";
+	case BotCore::NavPlanStatus::ReplanLimit: return "replan_limit";
+	default: return "nav_none";
+	}
+}
+
+// A step needs a re-plan when the chord was blocked, or when the bot was pushed off the route so far that
+// the step is longer than the guard allows (F5-70, D5). The threshold is always below SubmitMove's own
+// limit (maxStep * 1.10 + 0.15 m), so the re-plan happens before the guard would reject the packet.
+static bool NeedsReplan(const BotCore::NavDriveStep & step, float botX, float botZ, float maxStep)
+{
+	if (step.kind == BotCore::NavDriveStep::Blocked)
+		return true;
+
+	if (step.kind == BotCore::NavDriveStep::Step || step.kind == BotCore::NavDriveStep::Arrived)
+	{
+		const float dx = step.x - botX;
+		const float dz = step.z - botZ;
+		const float length = std::sqrt(dx * dx + dz * dz);
+		return length > maxStep * 1.05f + 0.1f;
+	}
+
+	return false;
+}
+
+// --- ActionExecutor ---
+
+MoveOutcome ActionExecutor::BeginMove(BotSession * s, float tx, float tz, int16 speedField,
+	std::chrono::steady_clock::time_point now)
+{
+	MoveOutcome out;
+	out.kind = MoveOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (!ValidateWalkStart(s, speedField, out))
+		return out;
+
+	CUser * user = s->m_pUser;
 
 	if (!(tx >= 0.0f && tz >= 0.0f && tx * 10.0f <= 65535.0f && tz * 10.0f <= 65535.0f)
 		|| user->GetMap() == nullptr
@@ -246,6 +293,7 @@ MoveOutcome ActionExecutor::BeginMove(BotSession * s, float tx, float tz, int16 
 		return out;
 	}
 
+	s->m_navDrive.Reset();
 	s->m_moveActive = true;
 	s->m_moveTargetX = tx;
 	s->m_moveTargetZ = tz;
@@ -266,6 +314,11 @@ MoveOutcome ActionExecutor::TickMove(BotSession * s, std::chrono::steady_clock::
 
 	if (s == nullptr || !s->m_moveActive)
 		return out;
+
+	// F5-70 D2: a path-following walk (m_navDrive) is driven by TickPathMove; TickSessions() routes the
+	// ARRIVED/REFUSED/FAILED log lines the same way. m_moveActive stays true throughout.
+	if (s->m_navDrive.Active())
+		return TickPathMove(s, now);
 
 	CUser * user = s->m_pUser;
 	if (user == nullptr || !user->isInGame())
@@ -303,6 +356,8 @@ MoveOutcome ActionExecutor::StopMove(BotSession * s, std::chrono::steady_clock::
 	if (s == nullptr || !s->m_moveActive)
 		return out;
 
+	s->m_navDrive.Reset();
+
 	CUser * user = s->m_pUser;
 	if (user == nullptr || !user->isInGame())
 	{
@@ -317,7 +372,150 @@ MoveOutcome ActionExecutor::StopMove(BotSession * s, std::chrono::steady_clock::
 void ActionExecutor::AbandonMove(BotSession * s)
 {
 	if (s != nullptr)
+	{
 		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+	}
+}
+
+// /bot goto (F5-70, D1/D4/D6): plan bot -> (gx,gz) along the navigation path with the shared A* instance
+// and arm the walk. The plan goes into a LOCAL drive first so a refused goto leaves every member (and a
+// walk in progress) untouched; only Planned is copied into the session.
+MoveOutcome ActionExecutor::BeginGoto(BotSession * s, float gx, float gz, int16 speedField,
+	std::chrono::steady_clock::time_point now)
+{
+	MoveOutcome out;
+	out.kind = MoveOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (!ValidateWalkStart(s, speedField, out))
+		return out;
+
+	CUser * user = s->m_pUser;
+	const BotCore::NavGrid * grid = NavService::Instance().Grid();
+	if (grid == nullptr)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "nav_off";
+		return out;
+	}
+
+	if (user->GetZoneID() != ZONE_RONARK_LAND)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "nav_zone";
+		return out;
+	}
+
+	BotCore::NavDrive plan;
+	const BotCore::NavDriveParams params;
+	const BotCore::NavPlanStatus status = plan.BeginGoto(*grid, NavService::Instance().SharedPathfinder(),
+		user->GetX(), user->GetZ(), gx, gz, params);
+	if (status != BotCore::NavPlanStatus::Planned)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = PlanReason(status);   // nothing else was touched
+		return out;
+	}
+
+	s->m_navDrive = plan;
+	s->m_moveActive = true;
+	s->m_moveTargetX = plan.GoalX();   // quantised goal
+	s->m_moveTargetZ = plan.GoalZ();
+	s->m_moveSpeed = speedField;
+	s->m_movePackets = 0;
+	s->m_moveLastSent = now - std::chrono::milliseconds(BotCore::kMovePeriodMs);   // first packet in this tick
+
+	out.kind = MoveOutcome::SENT;
+	out.reason = "ok";
+	return out;
+}
+
+// Path-following tick (F5-70, D2/D5). Same time gate and clipping as TickMove; one WIZ_MOVE per call. No
+// stop packet at intermediate waypoints: speed 0 is sent only with the final Arrived step. A Blocked step
+// or an off-route over-long step triggers one Replan; if that fails or stays blocked the walk ends with
+// path_blocked. All failures clear m_moveActive and Reset the drive.
+MoveOutcome ActionExecutor::TickPathMove(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	MoveOutcome out;
+	out.kind = MoveOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (s == nullptr || !s->m_moveActive || !s->m_navDrive.Active())
+		return out;
+
+	CUser * user = s->m_pUser;
+	if (user == nullptr || !user->isInGame())
+	{
+		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+		return out;
+	}
+
+	const BotCore::NavGrid * grid = NavService::Instance().Grid();
+	if (grid == nullptr)
+	{
+		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "nav_off";
+		return out;
+	}
+
+	long long elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_moveLastSent).count();
+	if (elapsed < (long long)BotCore::kMovePeriodMs)
+		return out;
+
+	// A stalled walk must not turn into one huge step.
+	uint32 elapsedMs = (uint32)elapsed;
+	if (elapsedMs > 2 * BotCore::kMovePeriodMs)
+		elapsedMs = 2 * BotCore::kMovePeriodMs;
+
+	float maxStep = BotCore::MaxStepMeters(s->m_moveSpeed, elapsedMs);
+	BotCore::NavDriveStep step = s->m_navDrive.NextStep(*grid, user->GetX(), user->GetZ(), maxStep);
+
+	if (step.kind == BotCore::NavDriveStep::None)
+	{
+		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "path_blocked";
+		return out;
+	}
+
+	if (NeedsReplan(step, user->GetX(), user->GetZ(), maxStep))
+	{
+		const BotCore::NavPlanStatus st = s->m_navDrive.Replan(*grid,
+			NavService::Instance().SharedPathfinder(), user->GetX(), user->GetZ(), BotCore::NavDriveParams());
+		if (st != BotCore::NavPlanStatus::Planned)
+		{
+			// Replan() already Reset the drive (ReplanLimit included).
+			s->m_moveActive = false;
+			s->m_navDrive.Reset();
+			out.kind = MoveOutcome::REFUSED;
+			out.reason = PlanReason(st);
+			return out;
+		}
+
+		step = s->m_navDrive.NextStep(*grid, user->GetX(), user->GetZ(), maxStep);
+		if (step.kind == BotCore::NavDriveStep::None || NeedsReplan(step, user->GetX(), user->GetZ(), maxStep))
+		{
+			s->m_moveActive = false;
+			s->m_navDrive.Reset();
+			out.kind = MoveOutcome::REFUSED;
+			out.reason = "path_blocked";
+			return out;
+		}
+	}
+
+	const bool arrived = step.kind == BotCore::NavDriveStep::Arrived;
+	MoveOutcome result = SubmitMove(s, user, step.x, step.z, arrived ? 0 : s->m_moveSpeed, arrived ? 0 : 3,
+		arrived, elapsedMs, now);
+	if (result.kind != MoveOutcome::SENT)
+		s->m_navDrive.Reset();   // ARRIVED / REFUSED / FAILED end the walk
+
+	return result;
 }
 
 AttackOutcome ActionExecutor::BeginAttack(BotSession * s, const std::string & targetName, uint32 count,

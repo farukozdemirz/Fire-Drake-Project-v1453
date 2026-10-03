@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include "../../BotCore/NavGrid.h"
+#include "../../BotCore/NavPath.h"
 
 // Owns the navigation grid of zone 71 (F5-59; docs/12 s2). Built once at start-up from the SMD data the
 // server already loaded, never rebuilt, never written afterwards: Grid() is safe to read from any thread
@@ -38,10 +39,19 @@ public:
 	const BotCore::NavGrid * Grid() const { return Ready() ? &m_grid : nullptr; }
 	const Info & GetInfo() const { return m_info; }
 
+	// Shared A* instance (F5-70, docs/13 s3). ONE instance for every bot: NavPathfinder is NOT thread-safe,
+	// so callers must run on the IOCP thread (BotManager::Tick). The first caller's thread id is remembered;
+	// a later call from another thread writes ONE "VIOLATION" line to ./Logs/Bot_*.log (the call proceeds).
+	// Only call while Ready() is true. The ~4 MiB search pool is allocated by the first Find().
+	BotCore::NavPathfinder & SharedPathfinder();
+
 private:
 	NavService() : m_enabled(false), m_ready(false) {}
 	bool m_enabled;
 	std::atomic<bool> m_ready;
 	BotCore::NavGrid m_grid;
 	Info m_info;
+	BotCore::NavPathfinder m_pathfinder;       // F5-70: one A* pool shared by every bot (IOCP thread only)
+	std::atomic<uint32_t> m_pfThread{ 0 };     // thread id of the first SharedPathfinder() caller, 0 = none yet
+	std::atomic<bool> m_pfViolation{ false };  // the VIOLATION line was written
 };

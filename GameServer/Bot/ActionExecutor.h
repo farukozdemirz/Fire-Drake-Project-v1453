@@ -10,7 +10,9 @@ struct MoveOutcome
 	enum Kind { NOTHING, SENT, ARRIVED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // "ok", "not_in_game", "dead", "sitting", "bad_target", "speed_field",
-	                       // "step_too_long", "blocked_chord", "handler_noop"
+	                       // "step_too_long", "blocked_chord", "handler_noop",
+	                       // /bot goto (F5-70): "nav_off", "nav_zone", "invalid_start", "invalid_goal",
+	                       // "no_path", "node_limit", "replan_limit", "nav_none", "path_blocked"
 };
 
 // Caller-supplied view of the target (ADR-0017 Ek F4-02). Temporary: the /bot attack test driver fills it
@@ -195,6 +197,16 @@ public:
 
 	// Clears the walk state without sending anything (despawn).
 	static void AbandonMove(BotSession * s);
+
+	// Validates and arms a walk to (gx,gz) ALONG THE NAVIGATION PATH at 'speedField' (NAV=1, zone 71); sends
+	// nothing yet (the same Tick()'s TickMove() does). REFUSED reasons: "not_in_game", "dead", "sitting",
+	// "speed_field", "nav_off", "nav_zone", "invalid_start", "invalid_goal", "no_path", "node_limit",
+	// "replan_limit", "nav_none". A refused goto changes NOTHING (a walk in progress keeps going).
+	static MoveOutcome BeginGoto(BotSession * s, float gx, float gz, int16 speedField,
+		std::chrono::steady_clock::time_point now);
+
+	// Path-following tick; TickMove() calls it while s->m_navDrive.Active().
+	static MoveOutcome TickPathMove(BotSession * s, std::chrono::steady_clock::time_point now);
 
 	// Validates and arms an attack series of 'count' R hits on the target bot 'targetName'; sends nothing yet
 	// (the same Tick()'s TickAttack() does). REFUSED (nothing armed) when the session is not in game / dead

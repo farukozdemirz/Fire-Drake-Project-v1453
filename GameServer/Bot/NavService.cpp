@@ -38,6 +38,25 @@ static void WriteNavLog(const char * line)
 	fclose(fp);
 }
 
+// One A* pool for every bot (F5-70, D1). NavPathfinder is not thread-safe, so all callers must be on the
+// IOCP thread; the first caller's thread id is remembered and a later call from another thread logs one
+// "VIOLATION" line (the call still proceeds: a single stale write is safer than a crash).
+BotCore::NavPathfinder & NavService::SharedPathfinder()
+{
+	const uint32_t tid = (uint32_t)GetCurrentThreadId();
+	uint32_t first = 0;
+	if (!m_pfThread.compare_exchange_strong(first, tid) && first != tid && !m_pfViolation.exchange(true))
+	{
+		char message[160];
+		snprintf(message, sizeof(message),
+			"NavService: pathfinder used from thread %u (first %u) VIOLATION", (unsigned)tid, (unsigned)first);
+		printf("%s\n", message);
+		WriteNavLog(message);
+	}
+
+	return m_pathfinder;
+}
+
 bool NavService::Startup()
 {
 	if (m_ready.load(std::memory_order_acquire))
