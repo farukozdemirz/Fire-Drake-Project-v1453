@@ -743,8 +743,21 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 			&& BotCore::CastHpCostSupported(m->sHP);
 	}
 
+	// ADR-0017 Ek F4-34: a summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend) is a supported skill although
+	// MAGIC.Type1 = 8 is not in CastTypesSupported. Static game data only: the caller's class/level/quest checks above and
+	// below still apply; the target must be a party member (server rule, answered on the wire as srv_fail).
+	bool summon = false;
+	if (m->bType[0] == 8)
+	{
+		_MAGIC_TYPE8 * t8 = g_pMain->m_Magictype8Array.GetData(skillId);
+		summon = t8 != nullptr
+			&& BotCore::CastSummonSupported(m->bType[0], m->bType[1], m->bMoral, m->iUseItem, t8->bWarpType)
+			&& m->bFlyingEffect == 0
+			&& BotCore::CastHpCostSupported(m->sHP);
+	}
+
 	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
-	if (!resurrection
+	if (!resurrection && !summon
 		&& (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 			|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
 			|| (m->bFlyingEffect != 0 && !flyingCast)
@@ -769,7 +782,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 
 	bool self = targetName.empty();
 	bool wantedSelf = (m->bMoral == MORAL_SELF);
-	bool wantedTarget = BotCore::CastNeedsOtherTarget(m->bMoral);
+	bool wantedTarget = BotCore::CastNeedsOtherTarget(m->bMoral) || summon;
 	if ((wantedSelf && !self) || (wantedTarget && self))
 	{
 		out.kind = CastOutcome::REFUSED;

@@ -407,6 +407,23 @@ namespace BotCore
 		return moral == 7 || moral == kMoralCorpseFriend;
 	}
 
+	// --- summon cast (ADR-0017 Ek F4-34, docs/03 MEC-MAG-21) ---
+
+	// MAGIC.Type1 = 8 is the warp/summon family. MAGIC_TYPE8.WarpType 12 = "summon a target within the zone": summon friend
+	// (110004/210004), MAGIC.Moral 4 = PARTY, so the target must be a member of the caster's party. The target is teleported
+	// to the CASTER; the caster may not name itself. The other warp types (1 Gate/Escape, 13 cross-zone summon, 20 Blink,
+	// 21 monster summon, 25 descent/Wild advent) stay closed (ADR-0018 Ek 1 madde 1d).
+	constexpr uint8_t kMoralPartyMember = 4;
+	constexpr uint8_t kType8WarpSummon = 12;
+
+	// The summons the bot casts: Type8 alone, Moral 4, no item, MAGIC_TYPE8.WarpType 12. The caller still rejects flying
+	// effects and "sacrifice" HP costs.
+	inline bool CastSummonSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t warpType)
+	{
+		return type0 == 8 && type1 == 0 && moral == kMoralPartyMember
+			&& useItem == 0 && warpType == kType8WarpSummon;
+	}
+
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{
