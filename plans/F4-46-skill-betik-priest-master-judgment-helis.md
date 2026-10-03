@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `f444da0`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 22) |
 | Branch | `bot/F4-46` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-45 (`bots/config/skill_warrior_k.{spec,txt}`, silaha bağlı Type1 üslup örneği) — `KAPANDI` (merge `5d2ce2e`); F4-42 (`tools/skill-script-gen.py`), F4-43 (`tools/skill-check.py` MP hükmü) — `KAPANDI`; F4-36 (eşya/sınıf taşı skill'leri, `no_item`), F4-40 (envanter doldurma) — `KAPANDI` |
