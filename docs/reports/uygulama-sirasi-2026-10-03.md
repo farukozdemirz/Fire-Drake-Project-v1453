@@ -26,7 +26,7 @@
 | 11 | F5-66 | Oyun içi çalışma zamanı doğrulama: engelli rota, iki ulus doğuş → arena, takip/takılma, 16 bot nav payı ve `BotManager::Tick`, ertelenen sorgu | TASLAK | F5-59..F5-65, F5-68, F4-55 |
 | — | F5-67 | Su katmanı düzeltmesi | TASLAK, **koşullu** (yalnız F5-60 sonucu `GEREKLİ` ise) | F5-60 |
 | 12 | F8-05 | `ScenarioReset`, başlangıç yerleşimi, `SETUP_FAIL` (KI-DEG-05) | TASLAK | — (sunucu işi; F6-10 resmî EVAL-1v1 için gerekli) |
-| 13 | F6-01 → F6-02 ∥ F6-04 → F6-03 → F6-05 → F6-06 | Karar katmanı iskeleti + B0-NAIVE, hedef seçimi, pot, warrior yaklaşma/saldırı, geri çekilme, **warrior solo uçtan uca** (T-IGT-WAR-01) | TASLAK (F6-06: 11 dosya, bölünür) | F6-01..05 saf mantık nav'ı beklemeden yazılabilir; **F6-06 F5-59..F5-66 ve F4-55'i bekler** |
+| 13 | **[hat `f6`, ana hattan ayrı: F6-01..F6-05 ikinci döngüde]** F6-01 → F6-02 ∥ F6-04 → F6-03 → F6-05 → F6-06 | Karar katmanı iskeleti + B0-NAIVE, hedef seçimi, pot, warrior yaklaşma/saldırı, geri çekilme, **warrior solo uçtan uca** (T-IGT-WAR-01) | TASLAK (F6-06: 11 dosya, bölünür) | F6-01..05 saf mantık nav'ı beklemeden yazılabilir; **F6-06 F5-59..F5-66 ve F4-55'i bekler** |
 | 14 | F6-07, F6-08 → F6-09 → F6-10 | Priest heal, mage saldırı, priest solo destek, solo EV ve EVAL-1v1 | TASLAK | F6-06 (G6a) |
 | 15 | F7-01 → F7-02 → F7-03 → F7-04 → F7-05 → F7-06 → F7-07 | TeamBlackboard + rezervasyon + `pending_heals`, iki priest koordinasyonu, ortak hedef, debuff çağrısı, mage patlama + güvenli summon, buff/cure, diriltme | TASLAK (F7-08 sunucu bağlama **yazılmadı**) | F6 kabulü |
 | 16 | F8-03 → F8-04 ∥ F8-06 → F8-07 | 16 bot karakteri (`db/005`), +4 çeşitlilik (`db/006`), sunucu maç olayları, kazanma kuralları | TASLAK | F8-03/04 yeni karakter betiği; F8-06/07 F8-05'ten sonra |
