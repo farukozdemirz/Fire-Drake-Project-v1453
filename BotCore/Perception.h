@@ -1921,4 +1921,479 @@ namespace BotCore
 		int        m_next;    // slot the next Add() writes
 		uint32_t   m_total;   // every Add() since Clear()
 	};
+
+	// --- observed status and heal observations (ADR-0017 Ek F4-53) ---
+
+	// Skill data value copy. BotCore does not include the server's table structs (structs.h); the caller copies the
+	// fields it needs into this POD. The Type3/Type4/Type5 members are meaningful only when the matching type is
+	// present in type1/type2.
+	constexpr uint8_t kType5RemoveType3 = 1;   // MagicInstance.h REMOVE_TYPE3
+	constexpr uint8_t kType5RemoveType4 = 2;   // MagicInstance.h REMOVE_TYPE4
+	constexpr int kObsStatusUnits   = 32;      // units tracked per bot (design limit)
+	constexpr int kObsStatusPerUnit = 8;       // Type4 records kept per unit
+	constexpr int kHealObsRing      = 64;      // heal observations kept per bot
+
+	struct SkillMeta
+	{
+		uint32_t skillId;
+		uint8_t  type1, type2;             // MAGIC.bType[0..1]
+		uint8_t  buffType;                 // MAGIC_TYPE4.bBuffType (Type4 part)
+		bool     isBuff;                   // MAGIC_TYPE4.bIsBuff (Type4 part)
+		uint8_t  directType;               // MAGIC_TYPE3.bDirectType (Type3 part)
+		int16_t  firstDamage, timeDamage;  // MAGIC_TYPE3.sFirstDamage / sTimeDamage
+		uint8_t  type3DurationSec;         // MAGIC_TYPE3.bDuration
+		uint8_t  type5Kind;                // MAGIC_TYPE5.bType (Type5 part)
+	};
+
+	// The server broadcasts a Type4 result only when bType[1] == 0 || bType[1] == 4 (MagicInstance.cpp:1862). A
+	// {4, 3} skill therefore publishes no Type4 packet; {3, 4} and {1, 4} publish only the Type4 half.
+	inline bool SkillSendsType4(const SkillMeta & m)
+	{
+		return (m.type1 == 4 && m.type2 == 0) || m.type2 == 4;
+	}
+
+	// Mirror of the Type3 broadcast condition (MagicInstance.cpp:1598). A {3, 4} skill publishes Type4 only.
+	inline bool SkillSendsType3(const SkillMeta & m)
+	{
+		return (m.type1 == 3 && m.type2 == 0) || m.type2 == 3;
+	}
+
+	// Type5 REMOVE_TYPE4 removes the Type4 debuffs of its target (MEC-MAG-19).
+	inline bool SkillIsCureDebuff(const SkillMeta & m)
+	{
+		return m.type1 == 5 && m.type5Kind == kType5RemoveType4;
+	}
+
+	// Nominal heal value of a Type3 heal skill: the skill's value, not the effective amount (critical factor, cap
+	// and missing HP are unknown). hot is set when the skill also applies a HoT. Only DirectType 1 (HP) heals.
+	inline uint32_t SkillHealNominal(const SkillMeta & m, bool & hot)
+	{
+		hot = false;
+		if (!SkillSendsType3(m) || m.directType != 1)
+			return 0;
+
+		uint32_t nominal = (m.firstDamage > 0) ? (uint32_t)m.firstDamage : 0;
+		hot = (m.type3DurationSec > 0 && m.timeDamage > 0);
+		if (hot)
+			nominal += (uint32_t)m.timeDamage;
+		return nominal;
+	}
+
+	// One estimated status record on a unit, derived from an observed Type4 EFFECTING broadcast. src is always
+	// kSrcEstimate (E): the server never sends another unit's buff list and it removes a buff at most once per
+	// Update(), so the real end can be earlier or later than endMs (design limit, docs/13 section 5.2a).
+	struct StatusObs
+	{
+		uint32_t skillId;
+		int16_t  caster;
+		uint8_t  buffType;
+		bool     isBuff;
+		uint8_t  src;
+		uint64_t startMs, endMs;
+	};
+
+	inline uint32_t StatusRemainingMs(const StatusObs & r, uint64_t nowMs)
+	{
+		if (r.endMs <= nowMs)
+			return 0;
+		uint64_t d = r.endMs - nowMs;
+		if (d > 0xFFFFFFFFu)
+			return 0xFFFFFFFFu;
+		return (uint32_t)d;
+	}
+
+	enum StatusUpdate
+	{
+		kStatusIgnored  = 0,
+		kStatusRecorded = 1,
+		kStatusCured    = 2
+	};
+
+	// Copyable table of estimated status records, keyed by target then buffType. No mutex: the caller holds the
+	// lock. A pointer returned by Find is valid only until the next mutation.
+	class ObservedStatusTable
+	{
+	private:
+		struct Unit
+		{
+			int16_t   target;
+			int       count;
+			uint64_t  lastMs;   // latest record/update time of this unit
+			StatusObs recs[kObsStatusPerUnit];
+		};
+
+	public:
+		ObservedStatusTable() { Clear(); }
+
+		void Clear()
+		{
+			for (int i = 0; i < kObsStatusUnits; i++)
+			{
+				m_units[i].target = 0;
+				m_units[i].count = 0;
+				m_units[i].lastMs = 0;
+			}
+		}
+
+		int Units() const
+		{
+			int n = 0;
+			for (int i = 0; i < kObsStatusUnits; i++)
+			{
+				if (m_units[i].count > 0)
+					n++;
+			}
+			return n;
+		}
+
+		int Records() const
+		{
+			int n = 0;
+			for (int i = 0; i < kObsStatusUnits; i++)
+				n += m_units[i].count;
+			return n;
+		}
+
+		// Feed one received skill event. meta must be the skill's value copy; a null meta ignores the event.
+		StatusUpdate Observe(const SkillEvent & ev, const SkillMeta * meta)
+		{
+			if (meta == nullptr || ev.op != kMagicEffecting || ev.target < 0)
+				return kStatusIgnored;
+
+			if (SkillSendsType4(*meta))
+			{
+				// data[1] = bResult (1 applied, 0 rejected); data[3] = duration seconds. The Type1 half of a pair
+				// skill carries 0 / -104 there, so a non-positive duration is not a Type4 record.
+				if (ev.data[1] == 0 || ev.data[3] <= 0)
+					return kStatusIgnored;
+
+				StatusObs rec;
+				rec.skillId  = ev.skillId;
+				rec.caster   = ev.caster;
+				rec.buffType = meta->buffType;
+				rec.isBuff   = meta->isBuff;
+				rec.src      = kSrcEstimate;
+				rec.startMs  = ev.tMs;
+				// The duration comes from the packet, not the table: a scroll buff's stored duration differs.
+				rec.endMs    = ev.tMs + (uint64_t)ev.data[3] * 1000;
+				Store(ev.target, rec, ev.tMs);
+				return kStatusRecorded;
+			}
+
+			if (SkillIsCureDebuff(*meta))
+			{
+				// The cure broadcast is unconditional (data[1] is not read). Only debuffs are removed.
+				int u = UnitIndex(ev.target);
+				if (u >= 0)
+				{
+					Unit & unit = m_units[u];
+					int w = 0;
+					for (int i = 0; i < unit.count; i++)
+					{
+						if (unit.recs[i].isBuff)
+							unit.recs[w++] = unit.recs[i];
+					}
+					unit.count = w;
+					if (w == 0)
+					{
+						unit.target = 0;
+						unit.lastMs = 0;
+					}
+				}
+				return kStatusCured;
+			}
+
+			return kStatusIgnored;
+		}
+
+		// Live record of (target, buffType), or nullptr. "Live" means endMs > nowMs.
+		const StatusObs * Find(int16_t target, uint8_t buffType, uint64_t nowMs) const
+		{
+			int u = UnitIndex(target);
+			if (u < 0)
+				return nullptr;
+			const Unit & unit = m_units[u];
+			for (int i = 0; i < unit.count; i++)
+			{
+				if (unit.recs[i].buffType != buffType)
+					continue;
+				if (unit.recs[i].endMs <= nowMs)
+					continue;
+				return &unit.recs[i];
+			}
+			return nullptr;
+		}
+
+		// Live records of one unit ordered by endMs then buffType ascending; writes at most cap, returns the count.
+		int Collect(int16_t target, uint64_t nowMs, StatusObs * out, int cap) const
+		{
+			if (out == nullptr || cap <= 0)
+				return 0;
+			int u = UnitIndex(target);
+			if (u < 0)
+				return 0;
+			const Unit & unit = m_units[u];
+
+			StatusObs tmp[kObsStatusPerUnit];
+			int n = 0;
+			for (int i = 0; i < unit.count; i++)
+			{
+				if (unit.recs[i].endMs <= nowMs)
+					continue;
+				tmp[n++] = unit.recs[i];
+			}
+			for (int i = 1; i < n; i++)
+			{
+				StatusObs key = tmp[i];
+				int j = i - 1;
+				while (j >= 0 && (tmp[j].endMs > key.endMs ||
+					(tmp[j].endMs == key.endMs && tmp[j].buffType > key.buffType)))
+				{
+					tmp[j + 1] = tmp[j];
+					j--;
+				}
+				tmp[j + 1] = key;
+			}
+			int w = 0;
+			for (int i = 0; i < n && w < cap; i++)
+				out[w++] = tmp[i];
+			return w;
+		}
+
+		int CountBuffs(int16_t target, uint64_t nowMs) const { return CountBy(target, nowMs, true); }
+		int CountDebuffs(int16_t target, uint64_t nowMs) const { return CountBy(target, nowMs, false); }
+
+		// Death / leaving view: MEC-DTH-01 clears all of a unit's records.
+		void ClearTarget(int16_t target)
+		{
+			int u = UnitIndex(target);
+			if (u < 0)
+				return;
+			m_units[u].target = 0;
+			m_units[u].count = 0;
+			m_units[u].lastMs = 0;
+		}
+
+		void Prune(uint64_t nowMs)
+		{
+			for (int i = 0; i < kObsStatusUnits; i++)
+			{
+				Unit & unit = m_units[i];
+				if (unit.count == 0)
+					continue;
+				int w = 0;
+				for (int j = 0; j < unit.count; j++)
+				{
+					if (unit.recs[j].endMs > nowMs)
+						unit.recs[w++] = unit.recs[j];
+				}
+				unit.count = w;
+				if (w == 0)
+				{
+					unit.target = 0;
+					unit.lastMs = 0;
+				}
+			}
+		}
+
+	private:
+		int UnitIndex(int16_t target) const
+		{
+			for (int i = 0; i < kObsStatusUnits; i++)
+			{
+				if (m_units[i].count > 0 && m_units[i].target == target)
+					return i;
+			}
+			return -1;
+		}
+
+		// Slot for a target: its unit, a free unit, or the unit with the smallest lastMs (tie: low index).
+		void Store(int16_t target, const StatusObs & rec, uint64_t tMs)
+		{
+			int u = UnitIndex(target);
+			if (u < 0)
+			{
+				u = -1;
+				for (int i = 0; i < kObsStatusUnits; i++)
+				{
+					if (m_units[i].count == 0)
+					{
+						u = i;
+						break;
+					}
+				}
+				if (u < 0)
+				{
+					u = 0;
+					for (int i = 1; i < kObsStatusUnits; i++)
+					{
+						if (m_units[i].lastMs < m_units[u].lastMs)
+							u = i;
+					}
+				}
+				m_units[u].target = target;
+				m_units[u].count = 0;
+				m_units[u].lastMs = 0;
+			}
+
+			Unit & unit = m_units[u];
+
+			// Same buffType: overwrite in place. A fresh buff replaces a stale record and a debuff replaces the
+			// buff on that buffType (MEC-BUF-02/03).
+			for (int i = 0; i < unit.count; i++)
+			{
+				if (unit.recs[i].buffType == rec.buffType)
+				{
+					unit.recs[i] = rec;
+					if (tMs > unit.lastMs)
+						unit.lastMs = tMs;
+					return;
+				}
+			}
+
+			if (unit.count < kObsStatusPerUnit)
+			{
+				unit.recs[unit.count++] = rec;
+			}
+			else
+			{
+				// Evict the record with the smallest endMs (tie: low index).
+				int victim = 0;
+				for (int i = 1; i < unit.count; i++)
+				{
+					if (unit.recs[i].endMs < unit.recs[victim].endMs)
+						victim = i;
+				}
+				unit.recs[victim] = rec;
+			}
+
+			if (tMs > unit.lastMs)
+				unit.lastMs = tMs;
+		}
+
+		int CountBy(int16_t target, uint64_t nowMs, bool wantBuff) const
+		{
+			int u = UnitIndex(target);
+			if (u < 0)
+				return 0;
+			const Unit & unit = m_units[u];
+			int n = 0;
+			for (int i = 0; i < unit.count; i++)
+			{
+				if (unit.recs[i].isBuff != wantBuff)
+					continue;
+				if (unit.recs[i].endMs <= nowMs)
+					continue;
+				n++;
+			}
+			return n;
+		}
+
+		Unit m_units[kObsStatusUnits];
+	};
+
+	// One observed heal event: nominal value only (the effective amount is unknown).
+	struct HealObs
+	{
+		uint64_t tMs;
+		uint32_t skillId;
+		int16_t  caster, target;
+		uint32_t nominal;
+		bool     hot;
+	};
+
+	// Fixed-size, copyable ring of observed heals. No allocation and no mutex: the caller holds the lock. At(0) is
+	// the newest; Total() counts every stored heal.
+	class HealObsRing
+	{
+	public:
+		HealObsRing() { Clear(); }
+
+		void Clear()
+		{
+			m_count = 0;
+			m_next = 0;
+			m_total = 0;
+		}
+
+		int Count() const { return m_count; }
+		uint32_t Total() const { return m_total; }
+
+		const HealObs & At(int i) const
+		{
+			int idx = (int)m_next - 1 - i;
+			while (idx < 0)
+				idx += kHealObsRing;
+			return m_heals[idx];
+		}
+
+		// Store a heal event. data[1] is not read (the server leaves it as the caller sent it).
+		bool Observe(const SkillEvent & ev, const SkillMeta * meta)
+		{
+			if (meta == nullptr || ev.op != kMagicEffecting || ev.target < 0)
+				return false;
+
+			bool hot = false;
+			uint32_t nominal = SkillHealNominal(*meta, hot);
+			if (nominal == 0)
+				return false;
+
+			HealObs o;
+			o.tMs     = ev.tMs;
+			o.skillId = ev.skillId;
+			o.caster  = ev.caster;
+			o.target  = ev.target;
+			o.nominal = nominal;
+			o.hot     = hot;
+
+			m_heals[m_next] = o;
+			m_next = (m_next + 1) % kHealObsRing;
+			if (m_count < kHealObsRing)
+				m_count++;
+			m_total++;
+			return true;
+		}
+
+		// Sum of nominal heal values for target (kSkillIdAny wildcard) inside the window.
+		uint32_t SumNominal(int16_t target, uint64_t nowMs, uint32_t windowMs) const
+		{
+			uint32_t sum = 0;
+			for (int i = 0; i < m_count; i++)
+			{
+				const HealObs & o = At(i);
+				if (target != kSkillIdAny && o.target != target)
+					continue;
+				if (!WithinWindow(o.tMs, nowMs, windowMs))
+					continue;
+				sum += o.nominal;
+			}
+			return sum;
+		}
+
+		int CountIn(int16_t target, uint64_t nowMs, uint32_t windowMs) const
+		{
+			int n = 0;
+			for (int i = 0; i < m_count; i++)
+			{
+				const HealObs & o = At(i);
+				if (target != kSkillIdAny && o.target != target)
+					continue;
+				if (!WithinWindow(o.tMs, nowMs, windowMs))
+					continue;
+				n++;
+			}
+			return n;
+		}
+
+	private:
+		static bool WithinWindow(uint64_t tMs, uint64_t nowMs, uint32_t windowMs)
+		{
+			return nowMs >= tMs && nowMs - tMs <= windowMs;
+		}
+
+		HealObs  m_heals[kHealObsRing];
+		int      m_count;
+		int      m_next;
+		uint32_t m_total;
+	};
 }

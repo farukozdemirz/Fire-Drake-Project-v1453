@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2, m.10 algı eksikleri; F6/F7 priest ve stall için ön koşul) |
 | Branch | `bot/F4-53 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-52 (olay halkası, `SkillEvent`) `KAPANDI`; F4-28/F4-31/F4-32 (Type4/party/cure atılabilir, doğrulama için) `KAPANDI` |
@@ -153,35 +153,62 @@ git diff --check gece/2026-10-02...bot/F4-53
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-53` — `<kısa-sha> [F4-53] …`
+- Branch / commit'ler: `bot/F4-53` (taban `gece/2026-10-02`) — `4f7c3ab [F4-53] Gozlenen durum tablosu: SkillMeta, ObservedStatusTable, HealObsRing (259 test)` + bu rapor commit'i.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/Perception.h`: dosya sonuna (namespace kapanışından önce) tek bölüm eklendi; `kType5RemoveType3/4`, `kObsStatusUnits/PerUnit/kHealObsRing`, `SkillMeta`, `SkillSendsType3/4`, `SkillIsCureDebuff`, `SkillHealNominal`, `StatusObs`/`StatusRemainingMs`, `StatusUpdate`, `ObservedStatusTable`, `HealObs`/`HealObsRing`. +475/−0, yalnızca ekleme.
+  - `Tests/BotCoreTests/PerceptionTests.cpp`: dosya sonuna anonim yardımcılar (`MakeEvent`, `MakeMeta`) ve 7 `TEST_CASE`. +429/−0.
+  - `plans/F4-53-…md`: Durum satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-GameServer.vcxproj -> …\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> …\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> …\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `build.sh Debug` de rc=0. İki dosya `touch` edilip yeniden derlendi: değişen dosyalarda uyarı/hata yok (`UpgradeHandler.cpp` hariç).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `build.sh Release` rc=0; `touch` sonrası değişen dosyalarda uyarı yok.
+  - K2 ✔ `build.sh Debug` rc=0, uyarı yok.
+  - K3 ✔ Release ve Debug `259 tests, 0 failed` (252 → 259, +7); yedi ad her iki yapılandırmada `[ OK ]`.
+  - K4 ✔ `git diff -- BotCore | grep '^+' | grep -E '#include|windows\.h|stdafx|GameServer|shared/'` boş (yorumlarda sunucu dosyası dizinsiz anılır).
+  - K5 ✔ `check-perception-contract.py` `RESULT: PASS` (R1..R5 0 ihlal), `--selftest` rc=0; eklenen satırlarda yasak simge yok.
+  - K6 ✔ `git diff --stat` yalnızca üç dosya (`BotCore/Perception.h`, `Tests/BotCoreTests/PerceptionTests.cpp`, plan).
+  - K7 ✔ `Perception.h` ekleme 475, silme 0; `UnitView`/`NpcView`/`TeamMemberView`/`PerceptionSnapshot`/`SkillEventRing` değişmedi.
+  - K8 ✔ İki dosya ASCII + CRLF (`file`), girinti sekme/Allman, `git diff --check` boş; yasak yapı (printf/Sleep/CreateThread/rand(/new /malloc/std::map/std::vector) ve yeni `#include` yok.
+  - K9 ✔ `GameServer/`, `shared/`, `AIServer/` farkı 0; kodun çağıranı yok.
+  - K10 ✔ Süre `ev.data[3]`'ten okunur; `ev.data[1] == 0` yalnızca Type4'te kaydı engeller, heal ve cure yollarında `data[1]` okunmaz (birim testleriyle sabit).
+- Plandan sapmalar ve gerekçeleri:
+  - `Perception_HealRing` testinde plan metni "data[1]=0 olsa da heal eklenir" ile `SumNominal`/joker `3460` değerlerini aynı olay kümesinde istiyor; ilk iki heal (`data[1]=0`) sum öncesi eklendi, sonra sum'lar 3460/2500/0/3460 olarak sabitlendi. Taşma için ayrı `big` halkası kullanıldı (`Total() 70`) — plan sayıları birebir karşılandı.
+  - Yorumlarda `shared/`, `GameServer/` dizinleri kullanılmadı (K4 grepsiz kalması için `structs.h`, `MagicInstance.cpp` biçiminde).
+- Açık sorular:
+  - Yok. (Bağlama, `UnitView` alanları, `WIZ_DEAD` temizliği ve `/bot snap status` plan gereği F4-60'a bırakıldı.)
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-53` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-53` @ `1a06f70` (kod commit'i `4f7c3ab`)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `touch` + `./tools/build.sh Release` rc=0; çıktıda `warning C` 0; `Perception`/`BotCore` satırlarında uyarı/hata yok |
+| K2 | ✔ | `touch` + `./tools/build.sh Debug` rc=0; `warning C` 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `259 tests, 0 failed` (252 + 7); yedi ad (`Perception_SkillMeta_Classify`, `Perception_Status_Type4`, `Perception_Status_Replace`, `Perception_Status_CureAndDeath`, `Perception_Status_PairSkills`, `Perception_Status_Capacity`, `Perception_HealRing`) iki yapılandırmada `[ OK ]` |
+| K4 | ✔ | `git diff -- BotCore \| grep '^+' \| grep -E '#include\|windows\.h\|stdafx\|GameServer\|shared/'` boş; yorumlar dizinsiz (`structs.h`, `MagicInstance.cpp:1862`) |
+| K5 | ✔ | `check-perception-contract.py` `RESULT: PASS` (R1 0, R2 0/28, R3 0/18, R4 0, R5 0); `--selftest` rc=0; eklenen satırlarda `g_pMain\|GetUserPtr\|m_Magictable\|_MAGIC_TABLE\|m_buffMap\|m_pUser->` yok (grep boş) |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-53`: `BotCore/Perception.h` (+475), `Tests/BotCoreTests/PerceptionTests.cpp` (+429), plan dosyası; `GameServer/`, `shared/`, `AIServer/`, `tools/`, `docs/` yok |
+| K7 | ✔ | `git diff ... -- BotCore/Perception.h \| grep -c '^-[^-]'` = 0; testte de silinen satır 0; eklenen blok `Perception.h:1924` (`SkillEventRing` sonu) sonrasına, namespace kapanışından önce |
+| K8 | ✔ | `file`: iki dosya `ASCII text, with CRLF line terminators`; satır sayısı = CRLF sayısı (2399 / 2879); `git diff --check` boş; eklenen satırlarda `printf/Sleep/CreateThread/rand(/new /malloc/std::map/std::vector` yok; yeni `#include` yok; sekme girinti, Allman |
+| K9 | ✔ | `GameServer/`, `shared/`, `AIServer/` farkı yok; eklenen sınıfların çağıranı yok (yalnızca testlerde); sunucu davranışı değişmez |
+| K10 | ✔ | `Perception.h:2078` `endMs = ev.tMs + data[3] * 1000` (meta'dan değil); `grep -n 'data\[1\]'` yalnızca `:2065` (yorum), `:2067` (Type4 dalı), `:2085`/`:2330` (yorumlar: okunmaz) |
 
+- Ek denetimler (planın sözleşmesine karşı kod okuması): `SkillSendsType4/3` ve `SkillHealNominal` plan §3.3 ile birebir (`Perception.h:1960-1990`); `Observe` sırası §3.5 kural 1-4 (`:2058-2110`): hedefsiz/CASTING/FLYING/null meta yok sayılır, `data[1]==0` ya da `data[3]<=0` Type4'te kayıt üretmez, aynı `buffType` yerinde ezilir, birim dolunca en küçük `endMs` ezilir, tablo dolunca en küçük `lastMs` birimi atılır; cure yalnızca `isBuff == false` kayıtlarını siler ve her koşulda `kStatusCured` döner; `HealObsRing` `data[1]`'e bakmaz, `kSkillIdAny` (`int16_t -1`) jokeri tür uyumlu, pencere `SkillEventRing::WithinWindow` ile aynı. Testler gerçek değerleri sınıyor (ör. `endMs 151000`, sınırda `Find == nullptr`, kapasite taşması, `Collect` sırası), totolojik değil.
+- Uygulayıcı raporu: commit listesi, değişen dosyalar, 259 test iddiası ve sapma notu (HealRing testinde `big` halka) gerçekle uyuşuyor; açık soru yok.
 - Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+  1. Engelleyici bulgu yok.
+  2. Not (tasarım sınırı, hata değil): `Store` yeni birim açarken `lastMs` yalnızca kayıt zamanıyla ilerler; `Cure` birimin `lastMs`'ini güncellemez. Birim tablosu dolu ve yoğun cure/kayıt karışımında eviction sırası biraz eski olabilir. Plan §3.5 kural 3 bunu böyle tanımlıyor; F4-60 bağlamasında gerekirse gözden geçirilir.
+  3. Not: sunucu bağlaması (F4-60) ve `WIZ_DEAD` ile `ClearTarget` çağrısı bu planda yok; tablo şu an çağıransızdır, F4-60'a kadar karar katmanı bunu kullanamaz.
+- Düzeltme talimatı: yok (DOĞRULANDI).
