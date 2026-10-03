@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-10` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`), F5-04 (`BotCore/NavTrack.h`: `NavRingCells`): hepsi `KAPANDI`, `gece/2026-10-02-nav` içinde; bu planın testleri mevcut 217 testin üstüne eklenir |
@@ -278,16 +278,29 @@ git diff --stat gece/2026-10-02-nav...bot/F5-10
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-10` — `<kısa-sha> [F5-10] …`
+- Branch / commit'ler: `bot/F5-10` — `2124a1d [F5-10] Gorus hatti (LoS, advisory): NavLos.h + testler`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavLos.h` (yeni): `NavLosMode`, `NavLosParams`, `NavLosGridClear` (genişletilmiş DDA, `double`, uç hücreler muaf, köşe değmesi engel değil), `NavLosTerrainClear` (göz = zemin + 1,6 m, 2 m örnekleme, 0,25 m pay), `NavLosClear`, `NavLosAllows`, `NavPickLosCell` (`NavRingCells` sırasıyla ilk görüşlü `Walk` hücre). Başlık-yalnızca, `inline`, ASCII+CRLF, yalnızca `NavTrack.h` + standart başlıklar.
+  - `Tests/BotCoreTests/NavLosTests.cpp` (yeni): altı test (`NavLos_Grid`, `NavLos_Terrain`, `NavLos_Mode`, `NavLos_PickCell`, `NavLos_Reference`, `NavLos_RealMap`); kendi yardımcı kopyaları, bağımsız dilim-testi referansı, gerçek harita taraması + `SKIPPED` kalıbı, Release süre kapıları.
+  - `BotCore/BotCore.vcxproj` / `Tests/BotCoreTests/BotCoreTests.vcxproj`: yalnızca birer `NavLos.h` / `NavLosTests.cpp` satırı (BOM/CRLF korundu).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    NavLosTests.cpp
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `touch` sonrası `NavLos` içeren uyarı/hata yok. Debug derlemesi de rc=0.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: Release rc=0, `touch` ile yeniden derlemede `NavLos` geçen uyarı yok.
+  - K2 ✔: `--list` altı `NavLos_*` adını içeriyor.
+  - K3 ✔: `223 tests, 0 failed`; `NAVLOS ref: queries=5000 clear=3272 mismatches=0 asym=0`; `NAVLOS real: walk=88508 tested=64559 grid=47245 grid_terrain=43163 skipped=23966 asym=0 violations=0 ms_p95=0.0015`; beş ofset satırı Tablo ile birebir; `NAVLOS real pick: reposition=3935 found=3935 violations=0 ms_p95=0.0145`.
+  - K4 ✔: dosya taşınınca `NavLos_RealMap` `SKIPPED`, diğer beşi geçti, rc=0; dosya geri kondu.
+  - K5 ✔: `./tools/build.sh Debug` rc=0; Debug'da `223 tests, 0 failed`.
+  - K6 ✔: Release ve Debug'da Tablo 1–4 tümü `[ OK ]`; referans `mismatches=0 asym=0 clear=3272 ∈ [3000,3500]`; gerçek harita sayıları tam; Release `ms_p95` kapıları geçti (0,0015 ≤ 0,05 ve 0,0145 ≤ 0,5).
+  - K7 ✔: saflık grep'i boş; `git diff --stat gece/2026-10-02-nav...bot/F5-10` yalnızca dört dosya + plan.
+  - K8 ✔: önceki 217 test değişmeden `[ OK ]`; K8'de sayılan `NAVGRID/NAVPATH/NAVREACH/NAVRETREAT/NAVFORM/NAVSTUCK real` satırlarındaki sayılar aynı.
+- Plandan sapmalar ve gerekçeleri: yok. Kurallar ve formüller plandakiyle aynen uygulandı; tüm sayısal beklentiler prototiptekiyle birebir çıktı (referans `clear=3272`, gerçek harita toplamları ve ofset satırları dahil).
+- Açık sorular: yok.
 
 ---
 
