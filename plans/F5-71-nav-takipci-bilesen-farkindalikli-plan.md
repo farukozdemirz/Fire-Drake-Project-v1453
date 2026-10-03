@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-71 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`), F5-05 (`NavReach`), F5-53 (`NavBudget`, chase simülasyonu), F5-69 (eğim 0,45, KI-023'ün kaynağı). **F5-62 ve F5-70'e bağımlı DEĞİLDİR** ve onlarla dosya paylaşmaz (F5-62, `DOĞRULANDI` ve `gece/2026-10-02`ye birleşti: `NavDrive.h`, `NavDriveTests.cpp`, iki `.vcxproj`; bu plan: `NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`). F5-63 (Follow kipi) bu planın `UpdateReachable`ını kullanır |
@@ -398,18 +398,37 @@ git diff --check gece/2026-10-02...bot/F5-71
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-71` — `<kısa-sha> [F5-71] …`
-- Başlangıç / bitiş test sayısı (`--list | wc -l`): …
+- Branch / commit'ler: `bot/F5-71` — `0c732c4 [F5-71] NavFollower UpdateReachable: bilesen farkindalikli planlama, KI-023 birinci neden` (+ bu rapor commit'i)
+- Başlangıç / bitiş test sayısı (`--list | wc -l`): `289` → `293` (dört yeni ad)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavTrack.h`: `NavFollower::UpdateReachable` (şablon, `Reach` parametresi), özel `UpdateImpl<Reach>(..., const Reach * reach)`, `NavNoReach` yer tutucu; `Update` ince sarmalayıcıya indi; gövdede `botCell` öne taşındı + `botComp`, öngörü kabul koşulu bileşen denetimli, `limit` kaldırıldı, aday döngüsü `tries < maxTries` ile tüm adaylar üzerinde ve bileşen dışı adaylar A* koşmadan atlanıyor. Yeni `#include` yok.
+  - `Tests/BotCoreTests/NavTrackTests.cpp`: `#include <BotCore/NavReach.h>` + dosya sonuna `MakePocketGrid()` ve 4 test (`NavTrack_Reach_LeadInPocket`, `NavTrack_Reach_SkipPocketCandidates`, `NavTrack_Reach_ProvablyUnreachable`, `NavTrack_Reach_SingleComponent_Identical`).
+  - `Tests/BotCoreTests/NavBudgetTests.cpp`: yalnızca `NavBudget_Deferred_Chase_Sim` (0,625 sabitleme kaldırıldı → `grid.Build()`; `Update` → `UpdateReachable(..., reach)`; hareket bloğu sonuna `if (moved) snapWalk(...)`).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-LogInServer.vcxproj -> ...\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\GameServer.exe
+  proj-AIServer.vcxproj -> ...\AIServer.exe
+    NavTrackTests.cpp
+    Kod Üretiliyor...
+    BotCoreTests.vcxproj -> ...\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- `NAVBUDGET chase` satırları (Release 3 koşu + Debug): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  (`Release` rc=0, `Debug` rc=0; değişen dosyalarda yeni uyarı yok.)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: `build.sh Release` ve `Debug` rc=0; değişen dosyalarda yeni uyarı yok.
+  - K2 ✔: `Release` ve `Debug` `293 tests, 0 failed`; dört yeni ad `[ OK ]`; toplam = 289 + 4; `NavTrack_Follower_Failures` (c), `NavTrack_Perf`, `NavReach_*`, `NavBudget_RealMap_Load` değişmeden geçti.
+  - K3 ✔: `NavBudget_Deferred_Chase_Sim` `[ OK ]` iki yapılandırmada; mode B/B2 `follow_stale_ticks=0`, `without_plan_pct` 0,1/0,3 (Release) ve 0,4/0,5 (Debug) ≤ 3,0; `dist_mean(B)` 12,33 ≤ 1,25 × 10,86 = 13,58; Release 3 ardışık koşu aynı.
+  - K4 ✔: `grep -n "pinnedParams\|0\.625" Tests/BotCoreTests/NavBudgetTests.cpp` boş; `git diff` yalnızca üç düzenleme, `NavBudget_RealMap_Load`un `Update` çağrısı değişmedi.
+  - K5 ✔: `git diff --stat gece/2026-10-02...bot/F5-71` yalnızca §4'teki 3 dosya (+ bu plan); `NavReach.h|NavPath.h|NavSmooth.h|NavGrid.h|NavBudget.h|NavStuck.h`, `.vcxproj`, `GameServer/`, `AIServer/`, `shared/`, `docs/`, `tools/` farkı 0; `git diff --check` boş; `NavTrack.h` silinen satır = 9 ≤ 12.
+  - K6 ✔: `NavTrack.h` eklenen satırlarda yasak `#include`/sembol yok; `check-perception-contract.py` rc=0 (RESULT: PASS, R1-R5 0).
+  - K7 ✔: `NavTrack_Reach_SingleComponent_Identical` 300 senaryo `Update ≡ UpdateReachable`; tüm mevcut nav testleri geçti.
+  - K8 ✔: üç dosya `ASCII text, with CRLF line terminators`.
+  - K9 ✔: `git diff --stat gece/2026-10-02...bot/F5-71 -- GameServer shared AIServer` boş.
+- `NAVBUDGET chase` satırları (Release 3 koşu + Debug):
+  - Release (3 koşu birebir aynı): A `dist_mean=10.86`; B `without_plan_pct=0.1 deferred_ticks=21 hold_ticks=21 follow_stale_ticks=0 dist_mean=12.33`; B2 `without_plan_pct=0.3 deferred_ticks=7272 hold_ticks=55 follow_stale_ticks=0 dist_mean=16.70`.
+  - Debug: A `dist_mean=10.86`; B `without_plan_pct=0.4 deferred_ticks=119 hold_ticks=80 plan_wait_max=900 follow_stale_ticks=0 dist_mean=12.59`; B2 `without_plan_pct=0.5 deferred_ticks=8665 hold_ticks=90 follow_stale_ticks=0 dist_mean=16.35`.
+- Plandan sapmalar ve gerekçeleri: yok; §5 adımları ve §2'deki dört gövde değişikliği aynen uygulandı. `ringMaxTries` "A* koşusu" anlamı yeni `UpdateReachable` yorumunda belgelendi (K5 gereği `NavFollowParams` satırına dokunulmadı).
+- Açık sorular: yok. (Not: §2 Neden 2 — düzleştirilmiş kirişin botu eğim cebi hücresinde durdurabilmesi — bu planda çözülmedi; `NavTrack_Reach_ProvablyUnreachable` (b) ile davranış olarak kayda geçti, doğrulayıcıya KI açması önerilir.)
 
 ---
 
