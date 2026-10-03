@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-37` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-36 (`CastItemSkillSupported` + `no_item` kuralı) — `KAPANDI` (merge `bc15a0b`); F4-26 (`{3, 4}` çifti, tip damgaları iki tip için) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-27 (`quest_locked`) — `KAPANDI` |
@@ -232,7 +232,34 @@ git diff --check gece/2026-10-02...bot/F4-37
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-(henüz doldurulmadı)
+### Tur 1
+
+- **Durum:** UYGULANDI.
+- **Branch ve commit'ler:** `bot/F4-37` (taban: `gece/2026-10-02`). Kod + Durum (UYGULANIYOR): `0afdfa4` `[F4-37] Cift tipli Type1 skill'ler {1,3}/{1,4}: CastTypesSupported genislemesi + birim testler`. Bu rapor + Durum (UYGULANDI) commit'i ayrıca atılır.
+- **Değişen dosyalar ve nedenleri:**
+  - `BotCore/BotCombat.h`: `CastTypesSupported` gövdesi `type1 != 0` dalında genişletildi (`type0 == 1` ise `type1 == 3 || type1 == 4`, değilse eski `type0 == 3 && type1 == 4`); üstündeki bölüm başlığı ve açıklama yorumu güncellendi. Başka fonksiyon değişmedi (tek hunk).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastTypes_Supported` (`(1,3)`/`(1,4)` artık `true`) ve `Combat_ItemSkill_Guard` (`(1,4)`/`(1,3)` artık `true`) düzeltildi, üstlerine İngilizce yorum eklendi; yeni `Combat_Type1Pair_Guard` testi dosyanın sonuna eklendi. Test sayısı 248 → 249.
+  - `GameServer/Bot/ActionExecutor.h`: yalnızca iki yorum (`BeginCast` "dual-typed Type1 + Type3/4 ... stay unsupported" ifadesi ve `TickCast` "dual-typed" açıklaması) güncellendi; kod yok.
+  - `ActionExecutor.cpp`, `BotSession.*`, `BotManager.cpp`, telemetri, `tools/`, proje dosyaları değişmedi.
+- **Derleme çıktısının son satırları:**
+  - `./tools/build.sh Release` → rc=0; `proj-GameServer.vcxproj -> ...\Server\GameServer.exe`. Yalnızca önceden var olan `UpgradeHandler.cpp` C4789 uyarıları (2 adet); değişen üç dosyada uyarı yok.
+  - `./tools/build.sh Debug` → rc=0; `proj-GameServer.vcxproj -> ...\Server\GameServer.exe`.
+  - `./tools/run-tests.sh Release` → `249 tests, 0 failed` (RC=0); `Combat_CastTypes_Supported`, `Combat_ItemSkill_Guard`, `Combat_Type1Pair_Guard` `[ OK ]`.
+  - `./tools/run-tests.sh Debug` → `249 tests, 0 failed` (RC=0); üç test `[ OK ]`.
+- **Kriter öz-değerlendirmesi:**
+  - K1 ✔ (Release rc=0, değişen üç dosyada uyarı yok).
+  - K2 ✔ (Debug rc=0).
+  - K3 ✔ (Release ve Debug `249 tests, 0 failed`; üç test adı `[ OK ]`).
+  - K4 ✔ (`BotCombat.h` saflık grep'i boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; `std::min`/`std::max` eklenmedi; `git diff` tek hunk, yalnızca `CastTypesSupported` + üstündeki yorum).
+  - K5 ✔ (`git diff --stat gece/2026-10-02...bot/F4-37` tam üç kod dosyası + plan; `ActionExecutor.cpp` ve oturum/telemetri/tools/proje dosyaları farkı 0; `CastTypesSupported(m->bType[0], m->bType[1])` tam 1; `CastTypesSupported(1,3|4)` `false` bekleyen satır kalmadı).
+  - K6 ✔ (`CastTypesSupported` sayısı 47 → 82, fark 35 ≥ 30; `(1, 9)`, `(0, 4)`, `(4, 3)`, `(5, 4)` `false` satırları mevcut).
+  - K7 ✔ (yeni `Emit(` satırı yok; yeni ini anahtarı/komut/thread/telemetri olayı/alan yok).
+  - K8 ✔ (`file` üç dosya için ASCII + CRLF; `git diff --check` boş).
+  - K9 ✔ (`CheckMoveStep` 2, diğer yedi `Check*` ≥ 1; 248 eski test + iki satır `true` + 1 yeni test geçiyor).
+  - K10 ✔ (`check-perception-contract.py` `RESULT: PASS`, R1..R5 ihlal 0, `files scanned: 31`).
+  - K11: Claude `/plan-dogrula` çalışma zamanı (S1–S8) — bu turda yapılmadı (DeepSeek işi değil).
+- **Plandan sapmalar:** Yok. §7 doğrulama komutları ve dosya biçimi karşılandı.
+- **Açık sorular:** Yok. Plan §5.4 sonuç sözleşmesi ve §8 sınırları sunucu kod okuması (F4-36/F4-26 kalıbı) ile tutarlı; çalışma zamanı ölçümü (`/plan-dogrula`) ve Stone of Warrior tüketimi `[D]` kalır.
 
 ---
 
