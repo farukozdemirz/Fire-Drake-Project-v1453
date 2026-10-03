@@ -185,6 +185,30 @@ Tam tablo: `appendix/A3`. Elementli Type3 skill'ler tip kapısına tabidir: sani
 | T-MECH-T8-01..02 | summon friend koşulları; Gate'in Ronark'ta çalışıp çalışmadığı |
 | T-MECH-CLIENT-01..03 | Gerçek istemcinin R/skill/cast zamanlaması (CLI-01..03) |
 
+### 9.1 Bot koşusu: Karus priest dost hedefli/kendine/party skill'leri (F4-42, 2026-10-03)
+
+Bot koşusu (`tools/skill-script-gen.py` → `bots/config/skill_priest_k.txt`, 30 adım; `BotPHD_K`, `BotPHB_K`, hedef `BotWP_K`/`BotWG_K`; `[BOT] TELEMETRY=decisions`; `tools/skill-check.py --min-n 2`, gerçek `MAGIC`). Betik hatasız yüklendi, 30/30 adım zamanında çalıştı (en geç gecikme 107 ms) `[V]`. Örnek sayısı skill başına 1-3'tür; sonuçlar **ilk ölçüm**dür.
+
+| Skill | Başlayan / etkili | `Msp` ↔ ölçülen MP düşümü (en büyük) | Recast (`ReCastTime` ↔ en küçük ardışık aralık) | Not |
+|---|---|---|---|---|
+| 112527 Great healing | 2 / 2 | 80 ↔ 80 | 2000 ↔ 3746 ms | MP bandı 40-80 (aşağıdaki MP yenilenmesi notu) |
+| 112536 / 112545 Massive / Superior healing | 2 / 2 | 160 ↔ 160; 320 ↔ 320 | 100 ↔ 2744 / 2734 ms | |
+| 112548 Superior restore | 2 / 1 | 625 ↔ 585 (tek etkili örnek) | - | 2. tur `srv_fail` (`-100`); hedef o sırada tam canlıydı `[Ö]` |
+| 112554 Complete healing | 3 / 3 | 960 ↔ 960 | 5400 ↔ 7111 ms | |
+| 112557 / 112560 Group massive / complete healing | 3 / 3; 2 / 2 | 960 ↔ 960; 1920 ↔ 1920 | 5400 ↔ 7117; 6400 ↔ 8084 ms | party-all; party tam kurulmadı (aşağıda) |
+| 112525 / 112535 Cure curse / disease | 2 / 2; 2 / 2 | 60 ↔ 60; 120 ↔ 120 | 1500 ↔ 3193 / 3185 ms | |
+| 112660 / 112645 / 112654 | 3 / 3 her biri | 150 ↔ 150; 60 ↔ 60; 240 ↔ 240 | 100 ↔ 3181-3186 ms | buff, hedef başına tek atış |
+| 112657 massiveness / 112820 Curse Refraction | 1 / 1 | 360 ↔ 360; 320 ↔ 280 (tek örnek) | - | |
+| 112656 Greatness (`Moral` 6, self) | 1 / 0 | - | - | `CastEffect` gönderildi, **sonuç paketi gelmedi** (`no_result`) |
+
+Bulgular (her biri bir sonraki planın girdisidir):
+
+1. **MP yenilenmesi ölçümü bozuyor `[V]`:** bot MP'si cast sırasında kümeli +20/+40 yenilenir; `skill-check.py` `mp_verdict` FAIL'leri (112527, 112535, 112536, 112560, 112645) tek örnekte `Msp` − yenilenme farkıdır, **en büyük düşüm hepsinde `Msp`'ye eşittir**. Araç `mp_delta_max` ile hüküm vermeli ya da yenilenme payı tanımlanmalı.
+2. **Party kurulumu tamamlanmadı `[V]`:** `raw` adımlarında `pinvite`→`paccept` arası 1000 ms yetmiyor; `BotWP_K` ve `BotWG_K` `paccept` `CLI-15 accept_wait` (`value` 996/989, `limit` 1000) ile reddedildi (yalnızca `BotPHB_K` girdi). Moral 4/6 skill'lerin party üyesi hedefli ölçümü bu yüzden geçerli sayılmaz; `raw` aralığı ≥ 1500 ms olmalı.
+3. **Bot konumu betikten bağımsız `[V]`:** botlar farklı yerlerde doğdu (`BotWP_K`/`BotWG_K` priestlerden ~400 m uzakta; DB'deki son konum nedeniyle `[Ö]`); betikten önce `move` ile 56 m içine getirilmesi gerekti. Betik konumlandırma yapmaz (F4-42 kapsam dışı).
+4. **Hedef canı:** `112548` 2. turu `srv_fail`; tam canlı hedefe heal'in sunucuda reddedildiği düşünülüyor `[Ö]` (heal örneklerinden önce hedefin yaralanması gerekir).
+5. **112656 Greatness** sonuç paketi alınmadı `[V]`; nedeni araştırılmadı `[Ö]`.
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
