@@ -1,4 +1,4 @@
-# ADR-0006: Navigasyon: SMD ızgarası üzerinde A* (hibrit ilerideki dilim), görüş hattı önce `los_grid` ve `advisory` (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0006: Navigasyon: SMD ızgarası üzerinde A* (hibrit ilerideki dilim), görüş hattı önce `los_grid` ve `advisory` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, paralel hat `nav`, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: `docs/12` §1–§5, §11 (T-NAV-03, AC-NAV-02), `docs/18` R-09, `docs/21` ADR tablosu, ADR-0016 (`BotCore` saflığı); planlar F5-01 (veri modeli, KAPANDI), F5-02 (A*)
@@ -42,7 +42,7 @@ Ek bulgular `[V]`: (a) Ana bileşendeki 88 508 hücrenin 229'u eğim kenarlarıy
 ## Doğrulama
 F5-02: `NavPath_*` birim testleri (Dijkstra ile maliyet eşitliği, köşe kesme yok, düğüm sınırı, gerçek harita arena A → B maliyeti ≈ 660,6 m, cep hedefi `NoPath`), `NAVPATH T-NAV-03` satırları (Release p95 ≤ 2 ms kapısı yalnızca ≤ 64 hücre kümesinde).
 
-## Ek F5-03: Yol düzleştirme (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-03: Yol düzleştirme (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-03-nav-yol-duzlestirme.md` · Dayanak: `docs/12` §4.1 ("hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse ara noktalar atlanır").
 
 1. **Görünürlük tanımı:** `NavLineClear(a, b)` = `a`→`b` tamsayı Bresenham yürüyüşünün her adımı `NavGrid::EdgeOpen`'dır. Yürünebilirlik, eğim ve köşe kesmeme kuralı tek yerde (`EdgeOpen`) kalır; düzleştirilmiş her doğru parçası A*'ın da yürüyebileceği geçerli bir hücre yürüyüşüdür ve uzunluğu `NavOctile`'dir (bu, mülkiyet testinin dayanağı).
@@ -51,7 +51,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-03-nav-yol-duzlestirme.md` · Dayanak: `doc
 4. **Doğrulama (prototip `[V]`, 2026-10-02):** arena A→B 150 hücre / 660,617 m → 13 ara nokta / 635,787 m; `near64` yollarında ortalama 55 → 6 ara nokta, uzunluk oranı 0,9575; düzleştirme `EdgeOpen` çağrısı p95 ≈ 2 600.
 5. **Bilinen sınırlama `[A]`:** Bresenham `supercover` değildir (hücre sınırından tam geçen doğrunun öbür tarafı yalnızca çapraz adımın köşe kuralıyla denetlenir), 4 m ızgara ve gövde genişliği yok. `supercover` ya da güvenlik payı (clearance ≥ 2 hücre koşulu) MET-NAV-01/T-NAV-04 takılma ölçümü kötü çıkarsa yeni karar konusudur (R-09 ile aynı tetik).
 
-## Ek F5-04: Hareketli hedef ve yeniden planlama (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-04: Hareketli hedef ve yeniden planlama (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-04-nav-hareketli-hedef-yeniden-planlama.md` · Dayanak: `docs/12` §4.2.
 
 1. **Gözlem ile planlama ayrıdır:** hedef konumu yalnızca algı güncellemesi geldiğinde `ObserveTarget(t, x, z)` ile (gözlem zamanıyla) işlenir; `Update(now, ...)` bot tick'inde çağrılır ve son gözlemi kullanır. Aksi halde tick'ten tick'e tekrarlanan bayat konum hız kestirimini bozardı. Zaman, çağıranın verdiği tek yönlü `int64` milisaniyedir (`BotCore` saat okumaz).
@@ -62,7 +62,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-04-nav-hareketli-hedef-yeniden-planlama.md`
 6. **Sahiplik:** `NavFollower` kendi `NavPathfinder`'ını taşımaz; çağıran verir (bot başına ≈ 4,2 MB'lık havuzu paylaşma kararı sunucu entegrasyonunda).
 7. **Ölçüm:** prototip `[V]` (2026-10-02, zone 71, tohumlu 150 çift, `near64`): `[0,0]` halka 148/150, `[30,45]` halka 149/150 plan bulundu; ikincisinde 146 çift ilk adayda, 4 çift 2–3 adayda çözüldü. Süre kapısı (`NavTrack_Perf`, Release p95 ≤ 2 ms `[Ö]`, AC-NAV-02 ile aynı bütçe) birim testidir.
 
-## Ek F5-05: Ulaşılamaz hedef tespiti (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-05: Ulaşılamaz hedef tespiti (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-05-nav-ulasilamaz-hedef.md` · Dayanak: `docs/12` §4.3, MET-NAV-04 / AC-NAV-04 (`docs/16` §6.6).
 
 1. **Erişilebilirlik bileşenle kesinleşir:** `NavReach` (`BotCore/NavReach.h`) yürünebilir hücreleri `NavGrid::EdgeOpen` ile (A*'ın kullandığı aynı kenar kuralı, 8 komşu, eğim ve köşe kesme yok; kenar kuralı simetriktir) bağlı bileşenlere ayırır. İki hücre farklı bileşendeyse A* `NoPath` verir; bu artık A* çalıştırılmadan, tek tablo bakışıyla bilinir. Gerekçe (ölçüm `[V]`, 2026-10-02, zone 71, prototip): 143 bileşen = ana bileşen 88 279 hücre + 142 eğim cebi (toplam 229 hücre; en büyükleri 15, 11, 10, 9). Arena A hücresinden 15 hücrelik bir cebe A* **20 000 düğümü tüketip `NodeLimit`** verir (yani "bilinmiyor"); aynı sonuç bileşen karşılaştırmasıyla kesin ve ücretsizdir. `NodeLimit` ADR-0006 madde 3'teki gibi "bilinmiyor" kalır.
@@ -74,7 +74,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-05-nav-ulasilamaz-hedef.md` · Dayanak: `do
 7. **Bilinçli ertelenen:** `NavFollower`'ın başka bileşendeki halka adayları için A* çalıştırmaması (her yeniden planlamada cep hedefi 20 000 düğüm tüketir, yaklaşık milisaniyeler) ayrı küçük bir iyileştirmedir; yargının doğruluğunu etkilemez, bu dilimde yapılmaz. `NavReach` ızgara değişince (`NavGrid::Build` yeni parametreyle) yeniden kurulmalıdır; bayat tablo tespit edilmez (çağıranın sorumluluğu).
 8. **Ölçüm:** `NavReach::Build` zone 71'de bir kez (≈ 88 000 `Walk` hücre × 8 kenar), süre kapısı Release'te 100 ms `[A]`; `NavReachJudge::Judge` süre kapısı p95 ≤ 0,5 ms (Release; `near64`, halka `[0,0]` ve `[30,45]`).
 
-## Ek F5-06: Tehlike maliyet katmanları ve güvenlik bölgeleri (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-06: Tehlike maliyet katmanları ve güvenlik bölgeleri (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-06-nav-tehlike-maliyet-guvenlik-bolgeleri.md` · Dayanak: `docs/12` §2, §4.1, §7, AC-NAV-06.
 
 1. **Maliyet modeli (Karar 2'nin devamı):** adım maliyeti = `mesafe × (1 + 0,5 × (ceza(a) + ceza(b)))`; hücre cezası `ceza(c) = wDanger · tehlike(c) + wClear · max(0, clearFree − clearance(c)) + (yasaklıysa forbiddenPenalty)`. İki ucun ortalaması, tehlikeli bölgeye girişin ve çıkışın simetrik ödenmesi içindir (yasaklı kuralı dışında maliyet simetriktir; test: `a→b` ve `b→a` aynı). Ceza ≥ 0 olduğundan octile sezgisel kabul edilebilir ve tutarlı kalır (A* en iyi yolu bulur; bağımsız Dijkstra ile çapraz doğrulanır). Ağırlıklar `[A]`: `wDanger = 4` (tam tehlikede adım 5× pahalı: 30 m'lik çekirdeği kesmek yerine ≈ 20 m dolanmak tercih edilir), `wClear = 0,5` (duvara bitişik hücre %25 pahalı; dar koridor tek tip yavaşlar, şekil bozulmaz), `clearFree = 2` `[Ö]` (`docs/12` §4.1 `max(0, 2 − clearance)`), `forbiddenPenalty = 10`. Eğim cezası eklenmez (Karar 2: T-NAV-02 ölçümüne kadar yalnızca `EdgeOpen`'daki sert eğim kesmesi).
@@ -86,7 +86,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-06-nav-tehlike-maliyet-guvenlik-bolgeleri.m
 7. **Bilinçli ertelenen:** `NavFollower`'ın alanı kullanması (`NavFollowParams`'a alan, halka adaylarını yasaklıya göre süzme) ve `NavReachJudge`'ın `Detour` kuralı: alan bağlanınca `Detour` ağırlıklı `cost` ile **değil** `length` ile ölçülmelidir (aksi halde tehlike cezası geçerli hedefi "dolambaçlı" gösterir); yasaklı hedef `InvalidGoal` olarak `Unknown` değil `Unreachable` (yeni neden, ör. `Forbidden`) sayılmalıdır. Bu ayrı küçük bir plandır (F5-06 sonrası).
 8. **Ölçüm `[V]` (Python prototipi, 2026-10-02, zone 71):** halka 90 m: Karus kapısı için 1594 hücre (1264 `Walk`), El Morad 1591 (1232 `Walk`); arena A→B yolu halkalara girmez (maliyet 660,617, ağırlıklı/clearance ile 689,103); kapı çevresinde `(90, 170]` m'deki 3689 `Walk` hücreden near64 çiftlerinin ≈ %33'ünde eski A* yolu halkadan geçer, alan açıkken 141 çiftte 139 yol bulunur ve hiçbirinde yasaklı hücre yoktur; kapıya 7 m'deki hücreden çıkış yolu 22 yasaklı hücreden sonra halkayı terk eder. Düğüm sayısı (80 çift): statik katmanla p95 4357, 12 tehlike ile 3894 (alan yokken 2431) ⇒ süre kapısı Release'te A* p95 ≤ 2 ms (AC-NAV-02 ile aynı bütçe).
 
-## Ek F5-07: Güvenli geri çekilme noktası (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-07: Güvenli geri çekilme noktası (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-07-nav-guvenli-geri-cekilme-noktasi.md` · Dayanak: `docs/12` §8, §7, `docs/11` §4.3-§4.4.
 
 1. **Tek geçişli sel (bounded Dijkstra), aday başına A* değil:** `docs/12` §8'in "R içinde ulaşılabilir hücreler" kümesi, başlangıç hücresinden tek bir en kısa yol taramasıyla (geometrik uzunluk ≤ R, kenar kuralı `EdgeOpen`) bulunur; her adayın yol uzunluğu, yolu ve "8 m kuralı" aynı taramadan çıkar. Aday başına A* (zone 71'de solo için ≈ 2 800 aday) yüzlerce kat pahalı olurdu. Geri dönen yol (`path`) taramanın kendi ebeveyn zinciridir, kurallara uyduğu böylece garantidir. `BotCore/NavRetreat.h`.
@@ -99,7 +99,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-07-nav-guvenli-geri-cekilme-noktasi.md` · 
 8. **Ölçüm `[V]` (Python prototipi, 2026-10-02, zone 71):** El Morad takımı katmanı (düşman Karus halkası yasaklı, kendi halkası güvenli); başlangıç `(185, 227)` (kendi kapısına 120 m), solo, dayanak kendi kapısı: aday 2 799, seçilen `(159, 228)` (Safe), uzunluk 105,657 m, puan 2,1328; party: aday 245, seçilen `(177, 229)`, 35,314 m; kapı yolunun üstünde melee (690, 910) ile: aday 2 783, aynı hedef, uzunluk 112,284 m (yol melee'den ≥ 12 m); düşman halkasının içinden `(342, 272)` başlayan bot 22 yasaklı hücre sonra çıkar: seçilen `(320, 271)`, 89,657 m. Solo taramada ≈ 2 800 hücre genişletilir ⇒ süre kapısı Release'te p95 ≤ 3 ms, party p95 ≤ 0,5 ms `[A]` (geri çekilme kararı en çok 500 ms'de bir verilir, her tick'te değil).
 9. **Bilinçli ertelenen:** arka hat (party) hesabı ve dayanak seçimi (F7 karar katmanı), rota üzerindeki tehlike puanı, yol düzleştirme (`NavSmoothPath` 8 m kuralını bilmez; düzleştirilmiş rota kuralı çiğneyebilir, uygulayıcı katman düzleştirmeden sonra kuralı yeniden denetlemelidir), `region_graph` ile R > 150 m, `NavFollower`/`NavReach` bağlaması.
 
-## Ek F5-08: Formasyon ve yığılma önleme (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-08: Formasyon ve yığılma önleme (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-08-nav-formasyon-yiginlasma-onleme.md` · Dayanak: `docs/12` §9, T-NAV-08, MET-NAV-06, `docs/09` §8, `docs/07` §11.
 
 1. **Üç bağımsız, durumsuz araç (`BotCore/NavFormation.h`):** kuşatma yuvası ataması, ayrışma vektörü ve aralıklı aday seçimi. Hiçbiri yol bulmaz, hiçbiri durum tutmaz (çağıran her tick girdileri verir); böylece karar katmanı (F7) ve `NavFollower` bağlaması aynı araçları farklı rol/halka kurallarıyla kullanabilir.
@@ -112,7 +112,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-08-nav-formasyon-yiginlasma-onleme.md` · D
 8. **T-NAV-08 ölçümü `[V]` (C++ prototipi, 2026-10-02, gerçek `BotCore` başlıklarıyla):** düz ızgarada 8 üye 0,6 m içinde başlar (28 çift < 1,5 m), 60 m yürür; tick 3'ten sonra < 1,0 m çift yok, tick 43'te hepsi yuvasında, son en küçük çift uzaklığı 1,9134 m. Zone 71 duvar yanı hedefte (`(315,216)`: yuva 2 ve 4 duvar hücresinde) 6 yuva atanır, 2 üye yuvasız kalır ve başlangıçta birbirinden 1,5 m'ye ayrışır; tick 26'da altı üye yuvasında; duvar hücresine giren yok. Hızlar `[A]`: 6 m/s × 0,25 s = 1,5 m adım.
 9. **Bilinçli ertelenen:** rol dağılımı (ön/orta/arka hat, rol başına yarıçap, party merkezi), 8'den fazla üye için ikinci halka, `NavFollower`'ın hedef olarak yuva noktasını kullanması, hareketli hedefte yuva yeniden hesabı ve histerezis, yol verme/öncelik, düşman ve party dışı oyunculara ayrışma, MET-NAV-06 süre ölçümü ve telemetri. Bunlar F7 karar katmanı ve bağlama planlarıdır.
 
-## Ek F5-09: Takılma tespiti ve aşamalı kurtarma (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-09: Takılma tespiti ve aşamalı kurtarma (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-02 · Plan: `plans/F5-09-nav-takilma-tespiti-kurtarma.md` · Dayanak: `docs/12` §10, T-NAV-04, MET-NAV-01/02, AC-NAV-01.
 
 1. **Dört bağımsız araç (`BotCore/NavStuck.h`):** `NavStuckDetector` (tespit), `NavStuckMonitor` (kurtarma merdiveni durum makinesi), `NavPickSideStep` (aşama 2 hedefi), `NavStuckPenalties` (aşama 4 cezası). Hiçbiri eylem yürütmez ve saat okumaz: çağıran her tick konumu ve zaman damgasını verir, monitor "şimdi şunu yap" adımını döndürür. Böylece `NavFollower`/`ActionExecutor` bağlaması (sonraki plan) ve test aynı araçları kullanır.
@@ -126,7 +126,7 @@ Tarih: 2026-10-02 · Plan: `plans/F5-09-nav-takilma-tespiti-kurtarma.md` · Daya
 9. **Ölçüm `[V]` (C++ prototipi, 2026-10-02, gerçek `BotCore` başlıklarıyla):** durağan bot 1500 ms'de tespit, ladder 1500 / 2000 / 3000 / 4500 / 5500 ms'de aşama 1–5; düz 40×40'ta gizli tek hücrelik engel (`(20,20)`) önünde 6 m/s yürüyen bot 11,5 sn'de takılır, aşama 2 (700 ms), 3 (200 ms) ve 4 (200 ms) kurtarmalarıyla 27,3 sn'de hedefe varır (engelsiz kontrol 21,0 sn); üç hücrelik gizli duvarda aşama 4 sonuç vermez ve 17,0 sn'de bırakılır. Zone 71'de 88 508 `Walk` hücrenin 86 017'sinde (yön +x) yan adım bulunur, 66 265 açıklığı ≥ 2 hücrenin 66 003'ünde; ihlal 0; çağrı ≈ 1 µs.
 10. **Bilinçli ertelenen:** telemetri (`NAV_STUCK`, `NAV_RECOVERY`, `NAV_STUCK_ABANDON`, MET-NAV-01/02 hesabı), takılma ısı haritası, takıma bildirim, test modu `TEST_TELEPORT` (aşama T), `NavFollower`/`ActionExecutor` bağlaması ("bir önceki yol noktası", eylemlerin yürütülmesi), yol ilerlemesi tabanlı ölçü, kenar (hücre çifti) cezası, kalıcı kurtarma onayı. Bunlar bağlama planları ve telemetri katmanıdır.
 
-## Ek F5-10: Görüş hattı (LoS, advisory) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-10: Görüş hattı (LoS, advisory) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-03 · Plan: `plans/F5-10-nav-los-gorus-hatti.md` · Dayanak: `docs/12` §5, T-NAV-LOS-01 (oyun içi, bekliyor), `docs/12` §12 açık soru.
 
 1. **Yalnızca `los_grid` + arazi (`BotCore/NavLos.h`); `los_mesh` ertelendi `[Ö]`:** `docs/12` §5 iki yaklaşık test tanımlar. Çarpışma üçgenleri (`N3ShapeMgr`) `BotCore`'a aktarılmıyor ve `_IntersectTriangle` kullanılmıyor; veri hattı ayrı bir iştir. Izgara + arazi kaba ama ucuz ve belirlenimcidir (çağrı ≈ 0,4 µs). Mesh, T-NAV-LOS-01 "istemci engel arkasına skill kullanıyor mu" sorusu `Enforce`'u gerektirirse ve ızgara yetmezse düşünülür.
@@ -138,7 +138,7 @@ Tarih: 2026-10-03 · Plan: `plans/F5-10-nav-los-gorus-hatti.md` · Dayanak: `doc
 7. **Ölçüm `[V]` (C++ prototipi, 2026-10-03, gerçek `BotCore` başlıklarıyla):** zone 71, 88 508 `Walk` hücrenin %20'si kaynak, beş ofsette 64 559 çift: hücre kuralıyla görüş açık 47 245 (%73,2), arazi dahil 43 163 (%66,9); ofset (5,0) [20 m] %89,5 → (15,−10) [72 m] %38,9 (arazi dahil); yön simetri farkı 0, ihlal 0; `NavLosClear` p95 ≈ 0,4 µs. Görüş kapalı 3935 çiftte (ofset (7,7), 39,6 m) `NavPickLosCell` (halka 0–30 m) hepsinde sonuç buldu, ihlal 0, p95 ≈ 12 µs. Hücre-kuralı sayıları `-O0`, `-O2` ve FMA'lı `-O2` ile aynıdır.
 8. **Bilinçli ertelenen:** `los_mesh`, T-NAV-LOS-01 ölçümü, `Enforce`'a geçiş kararı ve guard kuralı, LoS'un F5-07/F5-08 puanlamasına eklenmesi, `NavFollower`/`ActionExecutor` bağlaması, telemetri (`LOS_BLOCKED`), `P-NAV-LOS-MODE` ayarı.
 
-## Ek F5-11: Kalıcı navigasyon regresyon aracı (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-11: Kalıcı navigasyon regresyon aracı (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-03 · Plan: `plans/F5-11-nav-regresyon-araci.md` · Dayanak: `docs/12` §11 (AC-NAV-01..07), §13.1–§13.5, MET-NAV-01, MET-PERF-02/03; proje sahibi kararı 2026-10-02 madde 7 (geçici ölçümleri kalıcı araca çevir).
 
 1. **Ayrı ölçüm yazılmaz, mevcut çıktı değerlendirilir `[Ö]`:** `tools/nav-measure/nav_measure.cpp` bölümleri zaten yeniden üretilebilir `KEY k=v` satırları basar; yeni araç (`tools/nav-regress.py`, sarmalayıcı `tools/nav-regress.sh`) bu satırları eşik tablosuyla değerlendirir. Ölçüm kodu ve eşikler iki ayrı yerde değişebildiği için tablo koddaki **veri** olarak tutulur (`--list`), her eşiğin kaynağı (docs/12 bölümü, plan, AC/MET) satırında yazılıdır.
@@ -149,7 +149,7 @@ Tarih: 2026-10-03 · Plan: `plans/F5-11-nav-regresyon-araci.md` · Dayanak: `doc
 6. **Çıkış kodu sözleşmesi `[Ö]`:** `0` geçti, `1` bir denetim `FAIL`, `2` ortam/kullanım hatası (`g++`/ızgara yok, `ERROR` satırı). `--selftest` ortam gerektirmez ve her denetim sınıfının `FAIL` verebildiğini mutasyonla kanıtlar; böylece araç kendisi sessizce hep `PASS` verir hâle gelemez.
 7. **Bilinçli ertelenen:** CI/zamanlanmış koşu, `build.sh`/`run-tests.sh` içine bağlama, JSON raporu, MSVC ölçümü, başka bölge, gerçek `WIZ_MOVE` ölçümü (T-NAV-06) ve oyun içi AC-NAV-03 kanıtı (F5-55).
 
-## Ek F5-59: Sunucuda ızgara kaynağı = bellekteki SMD (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F5-59: Sunucuda ızgara kaynağı = bellekteki SMD (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-03 · Plan: `plans/F5-59-nav-servisi-yasam-dongusu-ve-harita-yukleme.md` · Dayanak: `docs/12` §2, F5-55 §4 açık sorusu ("ızgara dosyasının üretimi/yeri").
 
 1. **Karar `[Ö]`:** sunucu navigasyon ızgarasını açılışta **kendi bellekteki `SMDFile` dizilerinden** kurar (`NavService`, `[BOT] ENABLED=1` ve `NAV=1`); önceden üretilmiş `.navgrid` dosyası sunucuda **okunmaz**. Gerekçe: sunucunun gerçekten kullandığı harita, dağıtım adımı ve dosya bayatlaması yok (sunucu ile navigasyonun farklı harita görmesi = duvardan geçme riski). `.navgrid` yalnızca araç/test dünyasında kalır (`tools/nav-*`, `BotCoreTests`).

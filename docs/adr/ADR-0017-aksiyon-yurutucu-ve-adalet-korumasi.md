@@ -1,4 +1,4 @@
-# ADR-0017: `ActionExecutor` ve `BotFairnessGuard`: aksiyonlar gerçek handler üzerinden, guard saf mantık olarak `BotCore`'da (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0017: `ActionExecutor` ve `BotFairnessGuard`: aksiyonlar gerçek handler üzerinden, guard saf mantık olarak `BotCore`'da (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: `docs/13` §2 (bileşenler), §3.1 (aksiyonlar doğrudan `HandlePacket`), §5.2 (`ActionType`), §8; `docs/03` §14 (CLI-01..12), MEC-MOV-01..05; `docs/16` §3.2 (`ACTION_SUBMIT`/`ACTION_RESULT`/`FAIRNESS_REJECT`); `docs/17` F4; ADR-0005, ADR-0016
@@ -31,7 +31,7 @@ F4 botun tüm temel aksiyonlarını **gerçek handler'lar** üzerinden ve CLI s�
 ## Doğrulama
 F4-01: birim testleri (`Motion_*`), `ENABLED=1` altında `move`/`stop`/guard reddi çalışma zamanı sınamaları (`plans/F4-01-aksiyon-yurutucu-hareket.md` §7), `ACTION_*` ve `FAIRNESS_REJECT` telemetri satırları.
 
-## Ek (F4-02): saldırı dilimi (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-02): saldırı dilimi (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-02-aksiyon-yurutucu-saldiri.md`
 
@@ -42,7 +42,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 5. **CLI-02 bu dilimde yok:** F1 ölçümü R ile skill arasında kilit olmadığını gösterdi (`docs/03` §14); cast diliminde R ve skill bağımsız zamanlayıcılar olarak uygulanır. Saldırı hızı buff'ı (`BUFF_TYPE_ATTACK_SPEED`) algı gelene kadar uygulanmaz; aralık tavan kalır (buff yokken doğru).
 6. **Ölüm/yeniden doğuş kapsam dışı:** hedef ölürse seri `killed` ile biter; `Regene`/ölüm yönetimi ayrı dilimde. Test serileri kısa (≤ 5 vuruş) ve botların HP'si 32000.
 
-## Ek (F4-03): cast dilimi (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-03): cast dilimi (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-03-aksiyon-yurutucu-cast.md`
 
@@ -54,7 +54,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Cast iptali bu dilimde yok:** `cast ... off`, hedef kaybı veya ölüm CASTING sonrası seriyi sessizce düşürür; istemcinin gönderdiği `MAGIC_FAIL (-100)` iptal paketi (CLI-03) gönderilmez, sonraki dilimde (hareketle iptal ile birlikte) eklenir. Sunucu cast durumu tutmadığından yalnızca gözlemci istemcilerde kısa süreli "cast çubuğu" artığı olabilir `[A]`.
 
 
-## Ek (F4-04): pot dilimi (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-04): pot dilimi (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-04-aksiyon-yurutucu-pot.md`
 
@@ -66,7 +66,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Sonuç yalnızca yayınlanan sonuç paketinden:** `opcode 3` → `effected`, `opcode 4` → `srv_fail`, paket yok → `no_result` (F4-03 ile aynı `m_castEcho`/`m_castSelfId` mekanizması; `OnPacket()` değişmez). HP/MP değişimine, hedefin durumuna bakılmaz. `srv_fail`/`no_result` serisi bitirir (ör. `NO_POTIONS` debuff'ı sunucuda pot reddeder; bot bunu algıdan okumaz, sonuçtan öğrenir).
 7. **Karar katmanı yok:** `/bot pot <bot> <item id> [adet]` yalnızca test komutudur; hangi pottan ne zaman içileceği (docs/11 §3.2) karar katmanının işidir. Envanter doldurma bu dilimde yok: `db/002` şablonu botlara 389014000 ×1 (720 HP, MB-01), 389015000 ×100 (1440 HP, tüketilir), 389020000 ×1 (1920 MP, MB-01) verir ve testler bunlarla yapılır.
 
-## Ek (F4-05): duruş dilimi — otur/kalk (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-05): duruş dilimi — otur/kalk (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-05-aksiyon-yurutucu-durus.md`
 
@@ -78,7 +78,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Dilim sırası güncellemesi:** F4-05 duruş; sonraki dilimler: F4-06 `TargetHpReq` (CLI-10, `P-OBS-TARGETHP-RATE`), F4-07 ölüm/`Regene`, F4-08 `Party`/`Chat`, sonra `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 7. **Doğrulama notu (F4-05 Tur 1, 2026-10-02):** karar 2'nin varsayımı (sunucu yayını botun kendi alıcısına da gelir) çalışma zamanında doğrulandı `[V]`; oturma yenilenmesi ölçüldü (BotWP_E: +296 HP / ~5–6 sn, ayakta yok); pot `m_bResHpType`'i değiştirmez (sunucu kodu), gerçek istemci davranışı Q-06 olarak açık.
 
-## Ek (F4-06): hedef HP isteği — `TargetHpReq` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-06): hedef HP isteği — `TargetHpReq` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-06-aksiyon-yurutucu-hedef-hp.md`
 
@@ -89,7 +89,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 5. **Kapsam:** yalnızca oyuncu/bot hedefler (`/bot target <bot> <hedef bot>`); NPC hedefi (`tid >= NPC_BAND`) ve algı akışına bağlama `Perception` dilimine bırakılır. Ölü bot istek yapamaz (`dead`); otururken serbesttir (insan da oturarak hedef seçer).
 6. **Dilim sırası:** F4-06 `TargetHpReq`; sonraki: F4-07 ölüm/`Regene`, F4-08 `Party`/`Chat`, sonra `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-07): ölüm sonrası yeniden doğuş — `Regene` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-07): ölüm sonrası yeniden doğuş — `Regene` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-07-aksiyon-yurutucu-regene.md`
 
@@ -101,7 +101,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Kapsam:** karar katmanı yok (ne zaman doğulacağı `docs/09` §9 / F6; "diriltme bekleme" ve P-HD kararı yok). Aksiyonu `/bot regene <bot>` tetikler. Doğuş sonrası konum, sınıf/ulus başlangıç noktası, blink yok (MEC-DTH-08), MP dolmaz.
 7. **Dilim sırası:** F4-07 `Regene`; sonraki: F4-08 `Party`/`Chat`, sonra `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-08): party kurulumu — `PartyInvite` / `PartyAccept` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-08): party kurulumu — `PartyInvite` / `PartyAccept` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-08-aksiyon-yurutucu-party.md`
 
@@ -113,7 +113,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Test sürücüsü geçicidir:** `/bot pinvite <bot> <hedef bot>` hedefin adını/konumunu hedef botun oturumundan okur (`TargetHpTarget` kalıbı); `Perception` dilimi kaynağı değiştirir, `PartyInviteTarget` yapısını değil.
 7. **Dilim sırası:** F4-08 party kurulumu; sonraki: F4-09 `PartyPromote` + `Chat` (party chat), sonra `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-09): party ret ve ayrılma — `PartyDecline` / `PartyLeave` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-09): party ret ve ayrılma — `PartyDecline` / `PartyLeave` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-09-aksiyon-yurutucu-party-ret-ayrilma.md`
 
@@ -125,7 +125,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Test sürücüsü:** `/bot pdecline <bot>`, `/bot pleave <bot>`. Yeni `ACTION_SUBMIT` alanlarında `"mode"` anahtarı kullanılmaz (telemetri ortak alanıyla çakışır; F4-08 Tur 1 dersi).
 7. **Dilim sırası:** F4-09 ret/ayrılma; sonraki: F4-10 `PartyPromote` + `PartyKick`, sonra `Chat` (party chat), `Perception` + sözleşme denetimi, betikli test dizileri.
 
-## Ek (F4-10): party devir ve atma — `PartyPromote` / `PartyKick` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-10): party devir ve atma — `PartyPromote` / `PartyKick` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-10-aksiyon-yurutucu-party-devir-atma.md`
 
@@ -137,7 +137,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Test sürücüsü:** `/bot ppromote <bot> <hedef bot>`, `/bot pkick <bot> <hedef bot>`. Yeni `ACTION_SUBMIT` alanlarında `"mode"` anahtarı kullanılmaz.
 7. **Dilim sırası:** F4-10 devir/atma; sonraki: F4-11 `Chat` (party chat), `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-11): party chat — `ChatParty` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-11): party chat — `ChatParty` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-11-aksiyon-yurutucu-party-chat.md`
 
@@ -149,7 +149,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Test sürücüsü:** `/bot pchat <bot> <metin>` (metin boşluk içerebilir; ilk sözcük bot adı).
 7. **Dilim sırası:** F4-11 party chat; sonraki: `Perception` + sözleşme denetimi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-12): `Perception` dilim 1 — görüş alanındaki oyuncular (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-12): `Perception` dilim 1 — görüş alanındaki oyuncular (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-12-algi-gorunur-oyuncu-tablosu.md`
 
@@ -161,7 +161,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Test sürücüsü:** `/bot see <bot>` (konsol, `BotCommands.txt`, `+bot`): tabloyu `Logs/Bot_*.log`'a döker (`sid`, ad, `ally`/`enemy`, ulus, sınıf, seviye, konum, mesafe, `alive`/`dead`, yaş ms). Telemetri olayı yoktur.
 7. **Dilim sırası:** F4-12 `Perception` dilim 1; sonraki: F4-13 bölge değişiminde `WIZ_REQ_USERIN` + `PerceptionSnapshot`, NPC gözlemi, betikli test dizileri. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 
-## Ek (F4-13): `Perception` dilim 2 — bölge değişiminde `WIZ_REQ_USERIN` isteği (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-13): `Perception` dilim 2 — bölge değişiminde `WIZ_REQ_USERIN` isteği (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-13-algi-bolge-degisimi-kullanici-istegi.md`
 
@@ -174,7 +174,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Kapsam sınırı:** NPC/canavar (`WIZ_REQ_NPCIN`), pazarcılar, `PerceptionSnapshot`, bayatlama, tabloyu kullanan karar/guard yok. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 8. **Dilim sırası:** F4-13 bölge değişimi isteği; sonraki: NPC/canavar gözlemi, `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`), betikli test dizileri.
 
-## Ek (F4-14): `Perception` dilim 3 — görüş alanındaki NPC/canavar/kule tablosu (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-14): `Perception` dilim 3 — görüş alanındaki NPC/canavar/kule tablosu (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-14-algi-npc-canavar-tablosu.md`
 
@@ -187,7 +187,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Kapsam sınırı:** HP/cast gözlemi, `PerceptionSnapshot`, tabloyu kullanan karar/guard, pazarcılar yok. Her dilim `ENABLED=0` iken davranışı değiştirmez.
 8. **Dilim sırası:** F4-14 NPC gözlemi; sonraki: F4-15 bölge değişiminde `WIZ_REQ_NPCIN` isteği (CLI-20), `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`, tower mesafesi), betikli test dizileri.
 
-## Ek (F4-15): `Perception` dilim 4 — bölge değişiminde `WIZ_REQ_NPCIN` isteği (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-15): `Perception` dilim 4 — bölge değişiminde `WIZ_REQ_NPCIN` isteği (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-15-algi-bolge-degisimi-npc-istegi.md`
 
@@ -202,7 +202,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 9. **Dilim sırası:** F4-15 bölge değişiminde NPC isteği; sonraki: `PerceptionSnapshot` (`SelfState`, `enemies`/`allies`, tower mesafesi), betikli test dizileri; sonra F4 faz raporu taslağı.
 
 
-## Ek (F4-16): `Perception` dilim 5 — `PerceptionSnapshot` ve `/bot snap` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-16): `Perception` dilim 5 — `PerceptionSnapshot` ve `/bot snap` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-16-algi-anlik-goruntu.md`
 
@@ -215,7 +215,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Kapsam sınırı:** karar/guard, telemetri olayı, periyodik kurulum, takım ve navigasyon görünümü yok. `ENABLED=0` iken davranış değişmez; `/bot snap` yalnızca komut kanalından çalışır.
 8. **Dilim sırası:** F4-16 görüntü; sonraki: `SelfState` buff/cooldown/stok, party HP (`TeamView`), `WIZ_STATE_CHANGE` yayını, betikli test dizileri; sonra F4 faz raporu taslağı.
 
-## Ek (F4-17): `Perception` dilim 6 — `SelfState` genişletme: pot stoku, soğuma, buff listesi (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-17): `Perception` dilim 6 — `SelfState` genişletme: pot stoku, soğuma, buff listesi (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-17-algi-oz-durum-genisletme.md`
 
@@ -227,7 +227,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Kapsam sınırı:** karar/guard/telemetri, periyodik kurulum, `TeamView`, `NavView` yok; `ENABLED=0` iken davranış değişmez.
 7. **Dilim sırası:** F4-17 öz durum; sonraki: party HP (`PARTY_HPCHANGE`, `TeamView`), başkalarının `WIZ_STATE_CHANGE` yayını, betikli test dizileri; sonra F4 faz raporu taslağı ve F5.
 
-## Ek (F4-18): `Perception` dilim 7 — `TeamView`: party üyelerinin HP/MP, sınıf, seviye ve lider bilgisi (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-18): `Perception` dilim 7 — `TeamView`: party üyelerinin HP/MP, sınıf, seviye ve lider bilgisi (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-18-algi-takim-gorunumu.md`
 
@@ -242,7 +242,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 9. **Paket düzeni dersi ve `ageMs`:** `PARTY_INSERT` üye kaydında ad `u16` uzunluklu yazılır (`ByteBuffer` varsayılanı `m_doubleByte(true)`, `PartyHandler.cpp` `SByte()` çağırmaz); ilk plan 1 baytlık uzunluk varsaymıştı, çalışma zamanı doğrulaması yakaladı (Tur 1) ve düzeltildi (Tur 2, gerçek sunucu bayt dizili birim test eklendi). Ders: paket düzeni birim testinde yalnızca kodun kendi ürettiği paketle değil, sunucu kodundan elle çıkarılmış sabit bayt dizisiyle sınanır. `TeamMemberView.ageMs` yalnızca üyeye dokunan son party paketinin (kayıt ya da HP/MP değişimi) yaşıdır; HP değişmeyen üyede dakikalar büyür, karar katmanı bunu "veri bayatlığı" değil "değişim yok" diye okumalıdır.
 
 
-## Ek (F4-19): betikli test dizisi, dilim 1 — betik biçimi ve `BotCore/ScriptPlan.h` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-19): betikli test dizisi, dilim 1 — betik biçimi ve `BotCore/ScriptPlan.h` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-19-betik-ayristirici.md`
 
@@ -253,7 +253,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 5. **Saf mantık `BotCore`'da (ADR-0016):** `ParseScript` G/Ç'siz bir metin→liste fonksiyonudur, altı birim testlidir. Dosya okuma, zamanlayıcı ve komut çalıştırma F4-20'de (`ScriptRunner`, `/bot script run|stop|status`, `./Scripts/<ad>.txt`). Bu dilim sunucu koduna dokunmaz; başlık yalnızca testten dahil edilir.
 6. **Sonraki dilimler:** F4-20 `ScriptRunner` (zamanlayıcı, `BotManager::Tick` kancası, `script` komutu); sonra MET-ACT-02/MET-FAIR-01'i `ACTION_SUBMIT`/`ACTION_RESULT`/`FAIRNESS_REJECT` olaylarından hesaplayan rapor (`tools/bot-telemetry-report.py`); örnek betikler ve T-MECH-SKILL'in bot tarafından yeniden çalıştırılması; başkalarının `WIZ_STATE_CHANGE` yayını ve `PARTY_LEVELCHANGE`/`STATUSCHANGE` izlenmesi; sonra F4 faz raporu taslağı ve F5.
 
-## Ek (F4-20): betikli test dizisi, dilim 2 — `ScriptRunner` ve `/bot script run|stop|status` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-20): betikli test dizisi, dilim 2 — `ScriptRunner` ve `/bot script run|stop|status` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-20-betik-calistirici.md`
 
@@ -265,7 +265,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Bağımsızlık:** betik maç/senaryo bağlamından bağımsızdır (çalışırken maç açık olabilir ya da olmayabilir); senaryo–betik bağlaması sonraki dilimin işidir. Sunucu kapanışında çalışan betik için `SCRIPT_END` yazılmaz. `+bot script` (oyun içi GM) yok.
 7. **Sonraki dilimler:** MET-ACT-02/MET-FAIR-01'i `ACTION_SUBMIT`/`ACTION_RESULT`/`FAIRNESS_REJECT` + `SCRIPT_STEP` olaylarından hesaplayan rapor (`tools/bot-telemetry-report.py`); senaryo–betik bağlaması ve örnek betik kütüphanesi; T-MECH-SKILL'in bot tarafından yeniden çalıştırılması; başkalarının `WIZ_STATE_CHANGE` yayını ve `PARTY_LEVELCHANGE`/`STATUSCHANGE`; sonra F4 faz raporu taslağı ve F5.
 
-## Ek (F4-21): MET-ACT-02 / MET-FAIR-01 raporu ve "geçersiz aksiyon" sınıflandırması (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-21): MET-ACT-02 / MET-FAIR-01 raporu ve "geçersiz aksiyon" sınıflandırması (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-21-aksiyon-adalet-raporu.md`
 
@@ -276,7 +276,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 5. **Betik koşusu ilişkisi:** `SCRIPT_START`..`SCRIPT_END` arası dosya sırasındaki `ACTION_*`/`FAIRNESS_REJECT` olayları koşuya sayılır (adım başına ilişkilendirme yok; son adımın gecikmiş sonucu `SCRIPT_END`'den sonra gelebilir, yaklaşık). `SCRIPT_END` yoksa (sunucu kapandı) koşu `NO_END`.
 6. **Sonraki dilimler:** senaryo–betik bağlaması ve örnek betik kütüphanesi; gerçek sunucu koşusundan MET-ACT-02/MET-FAIR-01 raporu (Claude doğrulaması); T-MECH-SKILL'in bot tarafından yeniden çalıştırılması; başkalarının `WIZ_STATE_CHANGE` yayını ve `PARTY_LEVELCHANGE`/`STATUSCHANGE`; sonra F4 faz raporu taslağı ve F5.
 
-## Ek (F4-22): betikli test dizisi, dilim 4 — senaryo–betik bağlaması (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-22): betikli test dizisi, dilim 4 — senaryo–betik bağlaması (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-22-senaryo-betik-baglamasi.md`
 
@@ -287,7 +287,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 5. **Telemetri:** yeni olay yok; `SCRIPT_START`..`SCRIPT_END` maç dosyasında `MATCH_START` ile `MATCH_END` arasındadır (betik, maç açıldıktan sonra başlar ve `end` komutundan önce durdurulur). Süresi dolmadan durdurulan betik `result=stopped` yazar; rapor aracı (F4-21) bunu gösterir.
 6. **Sonraki dilimler:** örnek betik kütüphanesi ve T-MECH-SKILL'in bot tarafından yeniden çalıştırılması (arena konumu ve envanter gerektirir); gerçek koşudan MET-ACT-02/MET-FAIR-01 raporu (Claude doğrulaması); başkalarının `WIZ_STATE_CHANGE` yayını ve `PARTY_LEVELCHANGE`/`STATUSCHANGE`; sonra F4 faz raporu taslağı ve F5.
 
-## Ek (F4-23): algı sözleşmesi statik denetim aracı (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-23): algı sözleşmesi statik denetim aracı (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-23-algi-sozlesme-denetim-araci.md`
 
@@ -297,7 +297,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 4. **Sınırlar (açık):** araç satır tabanlıdır (yorum/dizge ayıklama, sütun-0 işlev başlığı sezgisi); makro, şablon ve dolaylı erişim yolları (başka bir sınıf üzerinden) görülmez, ancak kod incelemesiyle yakalanır. AC-LRN-03'ün çalışma zamanı assert'i ve gözlem alanlarının anlamsal doğruluğu (hangi bilgi hangi paketle istemciye gider, `docs/03` §16) bu aracın dışındadır; F4 faz raporu bu iki maddeyi "kısmen karşılandı" olarak yazar.
 5. **Sonraki:** gece modunda F4 faz raporu taslağı; R3 istisnalarının ve çalışma zamanı assert'inin F6'da (karar motoru ile) kapatılması.
 
-## Ek (F4-24): cast iptali, hareketle iptal ve `UseStanding` otomatik durdurma (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-24): cast iptali, hareketle iptal ve `UseStanding` otomatik durdurma (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-24-aksiyon-yurutucu-cast-iptali.md` · Dayanak: ADR-0018 dilim 1; bu Ek, Ek F4-03 madde 6'yı ("cast iptali bu dilimde yok") kapatır
 
@@ -311,7 +311,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 8. **Doğrulama sınırı:** yerel `MAGIC`'te `UseStanding = 1` skill'leri yalnızca sınıf 101 (`301001..301006`) ve Type 8 (`301007/301008`); 12 botun hiç skill'i yok. Otomatik durdurma çalışma zamanında yalnızca Claude'un doğrulamada yaptığı **geçici** `MAGIC` düzenlemesiyle (geri alınır) sınanabilir; birim testler (`Combat_PlanStanding`, `CAST_REJECT_NOT_STANDING`) kalıcı kanıttır.
 9. **Sonraki dilim:** F4-25 uçan skill'ler (`bType[0] == 2` / `FlyingEffect != 0`; CASTING → FLYING → EFFECTING, CLI-03 uçuş ölçümü); ADR-0018 sırası sürer.
 
-## Ek (F4-25): uçan Type3 skill'ler — CASTING → FLYING → EFFECTING (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-25): uçan Type3 skill'ler — CASTING → FLYING → EFFECTING (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-25-aksiyon-yurutucu-ucan-skill.md` · Dayanak: ADR-0018 dilim 2; bu Ek, Ek F4-03 madde 2'deki "uçmayan" sınırını yalnızca tek tipli Type3 için gevşetir
 
@@ -323,7 +323,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** yeni olay türü yok; `ACTION_SUBMIT`/`ACTION_RESULT` altında `type:"CastFly"` (`skill`, `target`, `cycle`, `since_casting_ms`; sonuç `ok`, `reason:"flying"`, `op:2`), `CastEffect`'e uçan seride ek `since_flying_ms`; guard reddi `FAIRNESS_REJECT` `type:"Cast"` (`CLI-03 too_early` uçuş süresi için `limit = 1000`, `MEC-MAG-08 no_mana`, `MEC-MAG-11 out_of_range`). MET-ACT-02 sınıflandırması değişmez (`flying` `ok:true`).
 7. **Sonraki dilim:** F4-26 çift tipli Type3 (`bType[1] != 0`: buz büyüleri, Prismatic; ADR-0018 dilim 3); ardından Type4, alan, 2b (okçu Type2).
 
-## Ek (F4-26): çift tipli Type3 + Type4 skill'ler — buz büyüleri ve Prismatic (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-26): çift tipli Type3 + Type4 skill'ler — buz büyüleri ve Prismatic (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-26-aksiyon-yurutucu-cift-tipli-skill.md` · Dayanak: ADR-0018 dilim 3; bu Ek, Ek F4-03 madde 2'deki "`bType[1] == 0`" sınırını yalnızca `{3, 4}` çifti için gevşetir
 
@@ -336,7 +336,7 @@ Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok; çift tipli seri `ACTION_*` altında `CastStart`/(uçansa `CastFly`)/`CastEffect` verir; çift tipli `CastEffect` sonucunda `code` Type4 süresidir.
 8. **Sonraki dilim:** F4-27 Type4 tek tipli skill'ler (ADR-0018 dilim 4: buff/debuff, kendine/dosta/düşmana; `BuffView` ile tutarlılık); ardından alan (dilim 5), 2b (okçu Type2).
 
-## Ek (F4-28): Type4 tek tipli skill'ler — kendine, dosta ve düşmana buff/debuff (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-28): Type4 tek tipli skill'ler — kendine, dosta ve düşmana buff/debuff (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-28-aksiyon-yurutucu-type4-tek-tipli-skill.md` · Dayanak: ADR-0018 dilim 4; bu Ek, Ek F4-03 madde 2'deki desteklenen tip sınırını `bType = {4, 0}` için gevşetir
 
@@ -349,7 +349,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok; Type4 serisi `ACTION_*` altında `CastStart` (yalnızca `CastTime > 0`)/`CastEffect` verir; `CastEffect` sonucunda `code` buff süresidir (saniye).
 8. **Sonraki dilim:** ADR-0018 dilim 5 (alan skill'leri, CLI-07 hedef noktası; party hedefli grup buff'ları Ek 1 madde 2 gereği ayrı dilim), ardından 2b (okçu Type2), dilim 6 (Type5+/`UseItem`), CLI-12, envanter doldurma. F4-26 Ek'indeki "sonraki dilim F4-27 = Type4" notu, araya F4-27 quest planı girdiği için bu Ek ile güncellenmiştir.
 
-## Ek (F4-29): alan skill'leri — `Moral` 10 düşman alanı ve hedef noktası, CLI-07 (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-29): alan skill'leri — `Moral` 10 düşman alanı ve hedef noktası, CLI-07 (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-29-aksiyon-yurutucu-alan-skill.md` · Dayanak: ADR-0018 dilim 5; bu Ek, Ek F4-03 madde 2'deki desteklenen moral kümesini (1, 2, 7, 8) `Moral` 10 için gevşetir
 
@@ -362,7 +362,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü yok; `ACTION_RESULT`'a koşullu `victims` alanı (yalnızca alan EFFECTING'i; alan dışı skill'lerde satır değişmez). `docs/16` §3.2 satırı güncellendi.
 8. **Sonraki dilim:** uçan alan skill'leri (F4-30 adayı: Fire/Ice/Thunder burst), ardından 2b (okçu Type2), dilim 6 (Type5+/`UseItem`), party hedefli grup buff/heal (Ek 1 madde 2), CLI-12, envanter doldurma.
 
-## Ek (F4-30): uçan alan skill'leri — Fire burst, Ice burst, Thunder burst (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-30): uçan alan skill'leri — Fire burst, Ice burst, Thunder burst (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-30-aksiyon-yurutucu-ucan-alan-skill.md` · Dayanak: ADR-0018 dilim 5 devamı (Ek 1 madde 4, Ek 6); bu Ek, Ek F4-29 madde 2'deki "uçan alan açılmaz" kısıtını kaldırır
 
@@ -374,7 +374,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** yeni olay türü/alan yok; uçan skill'lerin `CastFly` çifti (F4-25) ve alan EFFECTING'inin `victims` alanı (F4-29) olduğu gibi çalışır.
 7. **Sonraki dilim:** 2b (okçu Type2: ok tüketimi/yay denetimi), dilim 6 (Type5+/`UseItem`), party hedefli grup buff/heal (Ek 1 madde 2), CLI-12, envanter doldurma.
 
-## Ek (F4-31): party hedefli skill'ler — grup heal/grup buff (`Moral` 6) ve party üyesine buff (`Moral` 4) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-31): party hedefli skill'ler — grup heal/grup buff (`Moral` 6) ve party üyesine buff (`Moral` 4) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-31-aksiyon-yurutucu-party-hedefli-skill.md` · Dayanak: ADR-0018 Ek 1 madde 2 (party hedefli skill'ler alan skill'lerinden ayrı dilim), Ek 7; `docs/17` §2.1 "Priest grup heal", "Priest buff"
 
@@ -386,7 +386,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** yeni olay türü/alan yok.
 7. **Sonraki dilim:** dilim 6 (Type5 cure, diriltme, Type8 summon/warp, `UseItem`'li skill'ler; ayrı alt dilimler, Ek 1 madde 1), sonra CLI-12, envanter doldurma. 2b (okçu Type2) ertelendi (ADR-0018 Ek 7).
 
-## Ek (F4-32): Type5 cure — Cure curse ve Cure disease (`Moral` 2, dost tek hedef) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-32): Type5 cure — Cure curse ve Cure disease (`Moral` 2, dost tek hedef) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-32-aksiyon-yurutucu-type5-cure.md` · Dayanak: ADR-0018 Ek 1 madde 1(a), Ek 8; `docs/17` §2.1 "Priest cure"
 
@@ -398,7 +398,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** yeni olay türü/alan yok.
 7. **Sonraki dilim:** 6b diriltme (taş stoğu ön koşuluyla), 6c summon, 6d Type8 warp/descent/Gate, 6e `UseItem`'li skill'ler; sonra CLI-12, envanter doldurma.
 
-## Ek (F4-33): diriltme — Resurrection of love/grace/favors (`Moral` 25, Stone of Life) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-33): diriltme — Resurrection of love/grace/favors (`Moral` 25, Stone of Life) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-33-aksiyon-yurutucu-diriltme.md` · Dayanak: ADR-0018 Ek 1 madde 1(b), Ek 8, Ek 9; `docs/17` §2.1 "Priest diriltme"; `docs/07` §10
 
@@ -411,7 +411,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok.
 8. **Sonraki dilim:** 6c summon + güvenlik kapıları, 6d Type8 warp/descent/Gate, 6e `UseItem`'li skill'ler (sınıf taşları); sonra CLI-12, envanter doldurma (taş yeniden stoklaması dahil), T-MECH-SKILL botla koşusu, algı eksikleri.
 
-## Ek (F4-34): summon — summon friend (`Type1 = 8`, `Moral` 4, `WarpType` 12) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-34): summon — summon friend (`Type1 = 8`, `Moral` 4, `WarpType` 12) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-34-aksiyon-yurutucu-summon.md` · Dayanak: ADR-0018 Ek 1 madde 1(c), Ek 8, Ek 10; `docs/08` §8; `docs/03` MEC-T8-01..03
 
@@ -424,7 +424,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok.
 8. **Sonraki dilim:** 6d Type8 warp/descent/Gate (T-MECH-T8-02: Gate/Escape Ronark'ta), 6e `UseItem`'li skill'ler; sonra CLI-12, envanter doldurma, T-MECH-SKILL botla koşusu, algı eksikleri.
 
-## Ek (F4-35): warp — Gate (`Moral` 1, `WarpType` 1) ve descent (`Moral` 4, `WarpType` 25) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-35): warp — Gate (`Moral` 1, `WarpType` 1) ve descent (`Moral` 4, `WarpType` 25) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-35-aksiyon-yurutucu-warp-gate-descent.md` · Dayanak: ADR-0018 Ek 1 madde 1(d), Ek 10, Ek 11; `docs/05` satır 80 ve 161; `docs/06` §peel; `docs/08` §8; `docs/03` MEC-T8-04
 
@@ -437,7 +437,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok.
 8. **Sonraki dilim:** 6e `UseItem`'li skill'ler (sınıf taşları, Stone of Warrior/Priest); sonra CLI-12, envanter doldurma (taş yeniden stoklaması dahil), T-MECH-SKILL botla koşusu, algı eksikleri; ADR-0018 Ek 2 (2026-10-03) paket izleyici genişletme dilimi hâlâ yazılmadı.
 
-## Ek (F4-36): eşya tüketen sınıf skill'leri — Impact, Absolute power, Judgment (`UseItem`, sınıf taşı/scroll) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-36): eşya tüketen sınıf skill'leri — Impact, Absolute power, Judgment (`UseItem`, sınıf taşı/scroll) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-36-aksiyon-yurutucu-esya-skilleri.md` · Dayanak: ADR-0018 Ek 1 madde 1(e), Ek 11, Ek 12; `docs/05` satır 150-156; `docs/06` satır 154; `docs/03` U8/U9, MEC-MAG-23
 
@@ -450,7 +450,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok; `REFUSED` `no_item` yalnızca `reason` metnidir.
 8. **Sonraki dilim:** 6f warrior `{1, 3}`/`{1, 4}` çiftleri (Scream, Shock Stun, Exceed Break; bu planın `no_item` kuralını kullanır); sonra CLI-12, envanter doldurma (taş yeniden stoklaması dahil), T-MECH-SKILL botla koşusu, algı eksikleri; ADR-0018 Ek 2 paket izleyici genişletmesi hâlâ bekliyor.
 
-## Ek (F4-37): çift tipli Type1 skill'ler — `{1, 3}` ve `{1, 4}` (warrior Scream, Shock Stun, Exceed Break, leg cutting) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-37): çift tipli Type1 skill'ler — `{1, 3}` ve `{1, 4}` (warrior Scream, Shock Stun, Exceed Break, leg cutting) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-37-aksiyon-yurutucu-cift-tipli-type1.md` · Dayanak: ADR-0018 Ek 1 madde 1(e) (warrior parçası), Ek 3, Ek 4, Ek 12, Ek 13; `docs/05` satır 74-76; `docs/06` §6; `docs/03` MEC-MAG-13, MEC-MAG-23, MEC-MAG-24
 
@@ -463,7 +463,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 7. **Telemetri:** yeni olay türü/alan yok.
 8. **Sonraki dilim:** ADR-0018 Ek 12 sırası: CLI-12, envanter doldurma (taş yeniden stoklaması dahil), T-MECH-SKILL botla koşusu, algı eksikleri (F4-53 TASLAK); ADR-0018 Ek 2 paket izleyici genişletmesi hâlâ bekliyor.
 
-## Ek (F4-38): hız kontrol paketi — periyodik `WIZ_SPEEDHACK_CHECK` (CLI-12) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-38): hız kontrol paketi — periyodik `WIZ_SPEEDHACK_CHECK` (CLI-12) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-38-aksiyon-yurutucu-hiz-kontrol-paketi.md` · Dayanak: ADR-0018 madde 7 / Ek 14; `docs/03` CLI-12, MEC-MOV-04, MEC-MOV-09
 
@@ -477,7 +477,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 8. **Kapsam dışı:** geri ışınlamaya tepki (sürüyen seriyi durdurma/yeniden planlama; karar katmanı/F5), `m_LastX/Z` gözlemi, rogue/captain sınırı, istemci saatini taklit.
 9. **Sonraki dilim:** ADR-0018 Ek 14 sırası: envanter doldurma (taş yeniden stoklaması dahil), T-MECH-SKILL botla koşusu, algı eksikleri (F4-53 TASLAK); ADR-0018 Ek 2 paket izleyici genişletmesi hâlâ bekliyor.
 
-## Ek (F4-49): alan-dost skill'ler — Elysian Web (`Moral` 11 = AREA_FRIEND) (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-49): alan-dost skill'ler — Elysian Web (`Moral` 11 = AREA_FRIEND) (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-49-aksiyon-yurutucu-alan-dost-skill.md` · Dayanak: ADR-0018 Ek 1 madde 2, Ek 22, Ek 25; `docs/05` §6 satır 135; `docs/03` MEC-MAG-16, MEC-MAG-18, MEC-MAG-23, MEC-MAG-25
 
@@ -489,7 +489,7 @@ Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `pl
 6. **Telemetri:** yeni olay türü/alan yok (`ACTION_*` alan skill'leri gibi `victims` yazar).
 7. **Sonraki dilim:** ADR-0018 Ek 25 sırası: Elysian Web'in botla ölçümü (Claude çalışma zamanı doğrulaması), `BotMI_K` (buz 70) ve eşyalı mage skill'leri, algı eksikleri (m.10, F4-53 `TASLAK`).
 
-## Ek (F4-53): gözlenen durum tablosu ve heal gözlemi — `Perception` dilim 11, saf mantık (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F4-53): gözlenen durum tablosu ve heal gözlemi — `Perception` dilim 11, saf mantık (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-03 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`) · Plan: `plans/F4-53-algi-gozlenen-durum-tablosu.md` · Dayanak: ADR-0018 Ek 2 madde 4, Ek 26; `docs/03` §16, MEC-BUF-01..07, MEC-BUF-10; `docs/13` §5.2a (`E` sınıfı); `docs/09` §6.1 (`heal_rate`)
 

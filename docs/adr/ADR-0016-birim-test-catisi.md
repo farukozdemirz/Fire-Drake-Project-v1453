@@ -1,4 +1,4 @@
-# ADR-0016: `BotCore` statik kütüphanesi ve birim test çatısı: kendi mini çatımız (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0016: `BotCore` statik kütüphanesi ve birim test çatısı: kendi mini çatımız (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: `docs/13` §11 ("BotCore/ statik kütüphane", "Tests/BotCoreTests/ doctest veya GoogleTest"), `docs/13` §13 (belirlenim: `seed_bot = hash(seed_episode, bot_slot)`), `docs/17` F3 Görev 5 ("Birim test çatısı"), F3 Test ("Sahte olaylarla yük testi")

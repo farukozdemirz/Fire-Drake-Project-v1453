@@ -84,7 +84,7 @@ Olumlu: `completed ≠ win`; MET-OUT-01 hesaplanabilir; WIPE ve süreli türler 
 
 F8 planında `ScenarioRunner` `win_rule` birim/entegrasyon testi (yukarıdaki örnek tabloları birim test vektörü olarak); ilk 20 tekrarlı pilotta `invalid` ≤ %10 ve beraberlik oranı raporu (T-IGT-EVAL-01).
 
-## Ek F8-01: Sonuç değerlendiricisi girdi sözleşmesi ve ADR'nin tanımlamadığı noktalar (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F8-01: Sonuç değerlendiricisi girdi sözleşmesi ve ADR'nin tanımlamadığı noktalar (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-03 · Plan: `plans/F8-01-bot-sonuc-degerlendirici.md` · Dayanak: bu ADR (kurallar ve örnekler), `docs/15` §6b, `docs/16` §3.2/§3.3, MET-OUT-01/05.
 
 1. **Araç ayrı bir oracle'dır `[Ö]`:** `tools/bot-outcome-eval.py` kuralları bu ADR'den **bağımsız** gerçekler: telemetri olaylarından maç sonucunu hesaplar. Sunucu tarafı (`ScenarioRunner` `win_rule`) yazıldığında iki gerçekleme birbirini denetler. Bu ADR'nin örnek tabloları ve `docs/15` §6b örnekleri aracın `--selftest` vakalarıdır; kural yanlış okunursa araç kendini yakalar.

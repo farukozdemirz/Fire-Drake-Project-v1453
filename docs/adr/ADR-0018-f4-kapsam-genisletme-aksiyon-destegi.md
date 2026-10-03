@@ -1,4 +1,4 @@
-# ADR-0018: F4 kapsam genişletmesi: aksiyon desteğinin tamamlanması (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0018: F4 kapsam genişletmesi: aksiyon desteğinin tamamlanması (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (proje sahibi "eksiksiz ama hızlı" dedi; ana hat F4-23'te "F4 tamamlandı" diyerek durdu)
 İlgili: `docs/17` F4 (§2), `docs/phase-reports/F4-taslak.md` §3, ADR-0017 (Ek F4-03: cast sınırı, Ek F4-04: pot, Ek F4-16/18: algı), `docs/05` (skill kataloğu), `docs/03` CLI-03/07/09/12

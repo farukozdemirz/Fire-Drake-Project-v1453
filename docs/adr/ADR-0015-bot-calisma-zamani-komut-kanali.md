@@ -1,4 +1,4 @@
-# ADR-0015: Bot çalışma zamanı komut kanalı: konsol `/bot` + komut dosyası (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0015: Bot çalışma zamanı komut kanalı: konsol `/bot` + komut dosyası (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: F2 kapsamı "`/bot spawn/despawn` (minimum)" (`docs/17` §2), S11 (`docs/02` §11), `docs/13` §10, ADR-0005 (bot durumu IOCP thread'inde), F3 (`+bot`/`/bot` komut aileleri)
@@ -34,14 +34,14 @@ Tek bir komut çekirdeği, iki giriş yolu:
 F2-06: `BotCommands.txt` ile `spawn`/`despawn all`/`list`/yeniden `spawn` senaryosu (`Bot_*.log` satırları); `ENABLED=0` iken dosyanın dokunulmadan kaldığı; kodda komut yürütücüsünün yalnızca `Tick()` çağrı zincirinden erişildiği (`grep`).
 
 
-## Ek (F3-02): `match` komutu (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F3-02): `match` komutu (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
 
 Komut çekirdeğine iki alt komut eklenir (aynı iki giriş yolu, yalnızca IOCP thread'inde): `match start <senaryo> [seed]` ve `match end [sonuç]`. `docs/13` §10'daki `/bot start`/`/bot stop` yerine geçmez; ScenarioRunner (F3-03) bunları `scenario`/`start`/`stop` komutlarının içinden çağırır. `match` bağımsız bir komut olarak kalır ki ScenarioRunner olmadan da (ölçüm betikleri, elle testler) maç sınırları üretilebilsin. `RESPAWN_CYCLES != 0` iken diğer komutlar gibi reddedilir. Sonuçlar `Bot_*.log`'a `BotManager: cmd match ...` satırlarıyla yazılır.
 
 
-## Ek (F3-03): `scenario` komutu ve senaryo dosyası (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F3-03): `scenario` komutu ve senaryo dosyası (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
 
@@ -52,7 +52,7 @@ Senaryo dosyası `./Scenarios/<ad>.yaml` (sunucu çalışma dizini; `BotCommands
 Alternatifler: JSON/INI senaryo biçimi (docs/13 YAML diyor; ileride tam YAML'a evrilme yolu açık kalsın diye aynı sözdizimi alt kümesi), `/bot scenario` + `/bot start` ayrı komutlar (yukarıdaki gerekçeyle reddedildi), tam YAML ayrıştırıcı (F3 için gereksiz bağımlılık/boyut). Geri alma: `ScenarioRunner.*` ve `ExecuteCommand`'daki tek dal kaldırılır.
 
 
-## Ek (F3-04): oyun içi GM komutu `+bot` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F3-04): oyun içi GM komutu `+bot` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
 

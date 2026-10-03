@@ -16,6 +16,7 @@ Görev: `$1` için (boşsa `docs/STATUS.md`'deki "Sıradaki adımlar"dan ilk uyg
 - **Tasarım/içerik kararı gerekirse** (`docs/adr/` altında yeni ADR gerektiren türden) kullanıcıya sorma: önerilen seçeneği sen seç, ADR'yi yaz ve başlığına `(otonom döngüde Claude kararı — gözden geçirilmeli)` ekle, `docs/STATUS.md` "Verilen kararlar"a tek satır ekle. Dayanak sırası: `docs/18` §1'deki mevcut kararlar → `docs/17` → önerilen seçenek.
 - **Geri alınamaz/dışa dönük eylemlere** (push, merge, faz `KABUL_EDILDI`) hiçbir zaman gitme; bunlar zaten yasak.
 - **Faz sınırı:** Önceki planlar bu fazın **tüm** işlerini bitirdiyse (`docs/17` §2'deki faz kapsamı ve çıkış koşulları karşılandıysa) veya sıradaki iş **başka bir fazın** işiyse: yeni plan **yazma**. `docs/templates/PHASE_REPORT.md`'den faz sonuç raporu taslağını `docs/phase-reports/<FAZ>-taslak.md` olarak yaz, `docs/STATUS.md` "Blokajlar"a `faz onayı bekliyor: <FAZ>` satırı ekle, `plans/.aktif-plan`'a **dokunma** ve dur. (Döngü bunu "plan yazılmadı" olarak görüp durur.)
+- **F4 kapsam dondurması (2026-10-03, ADR-0023):** yeni F4 dilimi YAZMA (F4 kapsamı proje sahibi tarafından donduruldu); gerekli bir F4 işi görürsen `docs/STATUS.md` "Blokajlar"a öneri olarak yaz ve başka işe geç. Mevcut F4 planlarının yazımı/doğrulaması etkilenmez.
 - **Elle yapılması gereken bir iş kaldıysa** (ör. insan istemcisiyle oyuna giriş) bunu planın "Kapsam dışı" ve `docs/STATUS.md` "Blokajlar" bölümüne yaz; planı yalnızca DeepSeek'in yapabileceği kısımla sınırla.
 
 ### 0.1 Gece modu (`AUTO_INTEGRATION_BRANCH` dolu)

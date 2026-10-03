@@ -21,7 +21,7 @@ Karakter verisi betikte tek kaynaktan gelir; test tekrarlanabilir. Girişte sunu
 ## Doğrulama
 T-DATA-01, T-DATA-03; insan değerlendirme oturumunda karakterlerin set uyumu.
 
-## Ek F8-02: Kompozisyon/karakter seti hesaplayıcısının kuralları (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek F8-02: Kompozisyon/karakter seti hesaplayıcısının kuralları (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 Tarih: 2026-10-03 · Plan: `plans/F8-02-bot-kompozisyon-denetleyici.md` · Dayanak: `docs/09` §2.3/§2.4 (kompozisyonlar), `docs/15` §6a (16/20 karakter dökümü), `docs/04` §3.3, `db/002_bot_characters.sql` (satır biçimi), REQ-PTY-02.
 
 1. **Araç yalnızca okur `[Ö]`:** `tools/bot-composition-check.py`, `db/002` (ve ileride `db/005`, `db/006`) SQL dosyasındaki `@bots` satırlarını metin olarak ayrıştırır; DB'ye bağlanmaz, SQL çalıştırmaz. Karakter varlığının kaynağı SQL betiğidir (bu ADR "Sonuçlar": tek kaynak).

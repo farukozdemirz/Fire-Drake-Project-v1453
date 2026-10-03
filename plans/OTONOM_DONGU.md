@@ -181,3 +181,7 @@ Ana hat (F4, GameServer C++ zinciri) tek tek ilerler: planlar birbirine bağlı,
 6. Ön-plan başarısız/bulunamaz/birleşemezse döngü **normal yola** (`/plan-olustur`) düşer; hiçbir durumda ilerleme kaybolmaz.
 
 **Sınanma:** sahte `claude` ile kazıma depoda 7 senaryo (hazır, tek-ileri, "iş yok", kapsam dışı kod, commit edilmemiş, TASLAK, bayat+tazeleme) geçti. Gerçek koşuda ilk kullanımda `plans/_logs/auto-loop.log`'da `on-plan` satırlarına bakılır. Çalışan döngüler eski betik kopyasını kullanır; yeni davranış döngü **yeniden başlatılınca** devreye girer.
+
+## 12. F4 kapsam dondurması (2026-10-03, ADR-0023)
+
+Proje sahibi F4 kapsamını **dondurdu**: otonom döngü (`/plan-olustur`, kurtarma adımı) **yeni F4 dilimi yazmaz**. Gerekli görülen bir F4 işi `docs/STATUS.md` "Blokajlar"a öneri olarak yazılır ve proje sahibine sorulur. Mevcut F4 planları (HAZIR/TASLAK/uygulanıyor) ve doğrulama/düzeltme turları etkilenmez. Rogue/okçu ve Type7 kapsam dışıdır (ADR-0022).

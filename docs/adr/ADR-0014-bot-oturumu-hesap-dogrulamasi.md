@@ -1,4 +1,4 @@
-# ADR-0014: Bot oturumu hesap doğrulamasını ve `SET_LOGIN_INFO`'yu atlar (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0014: Bot oturumu hesap doğrulamasını ve `SET_LOGIN_INFO`'yu atlar (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: K-1 (ADR-0001), K-9 (ADR-0012), F2 (S3, S7), `docs/02` §11 S3/S7, `docs/13` §4.3

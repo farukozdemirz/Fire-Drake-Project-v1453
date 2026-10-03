@@ -1,4 +1,4 @@
-# ADR-0007: Telemetri formatı ve depolama: JSONL, sınırlı kuyruk, ayrı yazıcı thread (otonom döngüde Claude kararı — gözden geçirilmeli)
+# ADR-0007: Telemetri formatı ve depolama: JSONL, sınırlı kuyruk, ayrı yazıcı thread (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Durum: KABUL (geçici, proje sahibi gözden geçirecek) · Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`; kullanıcıya sorulamadı)
 İlgili: `docs/16` (olay şeması tek kaynak), `docs/13` §2 (`Telemetry` bileşeni), `docs/17` F3, ADR-0005 (bot durumu IOCP thread'inde)
@@ -31,7 +31,7 @@ F3, her sonraki fazın ölçülebilir olmasını sağlar. `docs/16` olay modelin
 F3-01: öz-sınama (yazıcı duraklatılmış taşma: 856 yumuşak + 952 sert düşürme, toplam yazılan = kuyruktakiler); `PERF_SAMPLE` satırlarının her biri `python3 -m json.tool` ile geçerli; kapalıyken (`TELEMETRY=off` ve `ENABLED=0`) `Logs/bots/` oluşmaz.
 
 
-## Ek (F3-02): maç bağlamı, `<match>.jsonl` ve `summary.json` (otonom döngüde Claude kararı — gözden geçirilmeli)
+## Ek (F3-02): maç bağlamı, `<match>.jsonl` ve `summary.json` (otonom döngüde Claude kararı; proje sahibi onayladı: 2026-10-03, ADR-0023)
 
 Tarih: 2026-10-02 · Karar veren: Claude (gece modu, `AUTO_LOOP=1`)
 
