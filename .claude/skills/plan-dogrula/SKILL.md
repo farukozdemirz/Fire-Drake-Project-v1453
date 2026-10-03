@@ -23,6 +23,16 @@ Sen denetçisin. Amaç kodu "onaylamak" değil, planın gerçekten ve kurallara 
    - Branch yoksa veya commit yoksa bu bir bulgudur.
 4. Çalışma ağacında commit edilmemiş değişiklik var mı bak (`git status`). Commit edilmemiş iş doğrulanmaz.
 
+## 1b. Ön kanıt (otonom döngüde, varsa)
+
+Döngü (`tools/auto-loop.sh` `collect_evidence`) sen başlamadan önce iki dosya üretmiş olabilir: `plans/_logs/evidence/<plan-adı>-generic.md` (betik `tools/verify-evidence.sh`: fark özeti, kodlama, yasak desen taraması, Release + Debug derleme ve test sonuçları, LLM yok) ve `<plan-adı>-plan.md` (kısıtlı DeepSeek V4 Pro "kanıt ajanı": plandaki doğrulama komutları ve çalışma zamanı adımları, ham çıktılarla). Bu dosyalar **ipucudur, kanıt değildir**: ajan uygulayıcıyla aynı model ailesindendir ve yanılabilir. Dosya yoksa ya da `head:` satırı `git rev-parse HEAD` ile aynı değilse yok say ve §2'yi tam yap. Varsa:
+
+1. Derleme ve test sayıları (`generic.md`) HEAD aynıysa yeniden derlemeden kabul edilebilir; yine de sayıları kendi koşunla (`./tools/run-tests.sh Release --no-build`, saniyeler sürer) bir kez doğrula.
+2. Kabul kriterlerinin **en az üçünü kendin yeniden doğrula** (en riskli olanlar: davranış, sunucu, eşik). Testler için tek test adıyla `--no-build` koş; çalışma zamanı kriterinde ajanın bıraktığı ham günlükleri (`Logs/`, `Logs/bots/`, `plans/_logs/evidence/`) kendin oku ve alıntılanan satırları kaynakla karşılaştır. Çalışma zamanı kanıtı yoksa, `ENGEL`/`BELİRSİZ` içeriyorsa ya da değer planla uyuşmuyorsa o kriteri tamamen sen yürüt.
+3. **Kodu (`git diff`) her zaman kendin oku.** Kapsam, yasak desen, kod kalitesi, "testi geçirmek için sabitleme/gevşetme" kararı yalnızca sana aittir; kritik testlerde negatif kontrol (testi bilerek bozup kırmızıya döndür, geri al) yap.
+4. Yerel ortamdan etkilenen kanıtlarda (ini md5 öncesi/sonrası, sunucu kapalı mı) ajanın yazdığına güvenme: `tools/run-servers.sh status` ve md5'i kendin bak.
+5. Raporda her kriter için kanıtın kaynağını belirt: `kanıt: ön kanıt + yeniden doğrulandı (<ne>)` ya da `kanıt: kendi koşum`.
+
 ## 2. Denetim
 
 Ayrıntılı liste: [kontrol-listesi.md](kontrol-listesi.md). Her maddeyi uygula. Özetle:

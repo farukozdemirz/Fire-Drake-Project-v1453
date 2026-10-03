@@ -43,6 +43,12 @@ TRANSIENT_SLEEP_SEC="${TRANSIENT_SLEEP_SEC:-300}"
 # (plans/OTONOM_DONGU.md §11). Varsayilan: ana hatta acik (1), paralel hatta kapali (0).
 PREPLAN="${PREPLAN:-}"
 PREPLAN_DIR="${PREPLAN_DIR:-/mnt/c/dev/fdp-preplan}"
+# Evidence step: before /plan-dogrula the mechanical evidence is collected by tools/verify-evidence.sh
+# (no LLM) and the plan-specific commands / runtime steps by a restricted opencode agent ("evidence",
+# opencode.json). The auditor treats both files as leads and re-checks the key claims (plan-dogrula SKILL 1b).
+EVIDENCE="${EVIDENCE:-1}"
+EVIDENCE_MODEL="${EVIDENCE_MODEL:-opencode-go/deepseek-v4-pro}"
+EVIDENCE_TIMEOUT_SEC="${EVIDENCE_TIMEOUT_SEC:-2400}"
 
 INTEGRATION_BRANCH=""
 TARGET_PHASE=""
@@ -278,6 +284,39 @@ run_opencode() { # $1 = prompt, $2 = log dosyasi
 		fi
 		return $rc
 	done
+}
+
+# Kanit toplama (dogrulamadan once, plan dalinda, sunucular kapali). Basarisizlik dongu icin engel degildir:
+# denetci kanit yoksa tam dogrulamayi kendisi yapar.
+collect_evidence() { # $1 = plan yolu
+	[ "$EVIDENCE" = 1 ] || return 0
+	local plan="$1" name base ev_dir="plans/_logs/evidence" head gen evlog
+	name="$(basename "$plan" .md)"
+	base="${INTEGRATION_BRANCH:-main}"
+	gen="$ev_dir/$name-generic.md"
+	head="$(git rev-parse HEAD)"
+	if [ -f "$gen" ] && grep -q "^- head: $head" "$gen" && [ -f "$ev_dir/$name-plan.md" ]; then
+		log "  kanit: ayni commit icin onceki kanit kullaniliyor ($name)"
+		return 0
+	fi
+	mkdir -p "$ev_dir"
+	rm -f "$gen" "$ev_dir/$name-plan.md"
+	state "Kanit toplaniyor (betik)"
+	log "  -> kanit: tools/verify-evidence.sh (derleme + test, LLM yok)"
+	tools/verify-evidence.sh "$plan" "$base" >>"$MAIN_LOG" 2>&1 || log "  UYARI: verify-evidence.sh sifir olmayan cikis"
+	state "Kanit toplaniyor (opencode $EVIDENCE_MODEL)"
+	evlog="$LOG_DIR/evidence-$name-$(date +%s).log"
+	log "  -> kanit: opencode --agent evidence -m $EVIDENCE_MODEL (log: $evlog)"
+	timeout -k 60 "$EVIDENCE_TIMEOUT_SEC" opencode run --auto --agent evidence -m "$EVIDENCE_MODEL" \
+		"KANIT TOPLAYICISIN, karar vermezsin. Plan: $plan (dal: $(git branch --show-current), taban: $base). Kurallar: kodu, plani ve docs/ dosyalarini DEGISTIRME (izin sistemi zaten engeller); yalnizca plans/_logs/evidence/$name-plan.md dosyasini yaz. Derleme ve testler tools/verify-evidence.sh tarafindan YAPILDI (plans/_logs/evidence/$name-generic.md): tekrarlama, gerekirse oku. Gorev: 1) Plandaki 'Dogrulama komutlari' bolumundeki ve kabul kriterlerindeki komutlari SIRAYLA calistir. 2) '(Claude)' veya 'calisma zamani' isaretli kriterlerin adimlarini plan metnindeki gibi uygula (sunucu baslat/durdur, komut gonder, log oku, ini dosyasini yedekten geri al, md5 oncesi/sonrasi). Plan adim vermiyorsa o kriteri 'BELIRSIZ: adim yok' yaz, adim UYDURMA. 3) Her kriter icin bir blok yaz: kriter no, calistirdigin komutlar (birebir), ciktinin ilgili kismi (birebir; kisaltma varsa belirt), planin bekledigi deger (alinti) ve gordugun deger. PASS/FAIL hukmu yazma. 4) Bitiste sunuculari durdur (tools/run-servers.sh stop), gecici dosyalari ve ini'yi geri al, md5 dogrula ve dosyaya yaz. Bir komut hata verir ya da adim belirsizse dur ve dosyaya 'ENGEL: ...' yaz; kodu duzeltmeye veya cozum uydurmaya calisma. Dosyanin ilk satiri: '# Plan evidence: $name (head $head)'." \
+		</dev/null >"$evlog" 2>&1 || log "  UYARI: kanit ajani sifir olmayan cikis kodu; denetci tam dogrulama yapar."
+	ensure_servers_stopped
+	if [ -n "$(git status --porcelain | grep -v '^?? ' | head -n 1)" ]; then
+		log "  UYARI: kanit adimi izlenen dosyalari degistirdi; geri aliniyor (git checkout -- .) ve kanit gecersiz sayiliyor."
+		git checkout -q -- . 2>/dev/null
+		rm -f "$gen" "$ev_dir/$name-plan.md"
+	fi
+	return 0
 }
 
 # --- On kontroller --------------------------------------------------------
@@ -772,6 +811,7 @@ while true; do
 		if [ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null; then
 			switch_to "$BR" || log "  UYARI: $BR dalina gecilemedi"
 		fi
+		collect_evidence "$PLAN_PATH"
 		state "Claude dogruluyor"
 		log "  -> claude -p /plan-dogrula (dal: $(git branch --show-current), log: $STEP_LOG)"
 		run_claude "/plan-dogrula $PLAN_PATH" "$STEP_LOG" || log "  claude (dogrulama) sifir olmayan cikis kodu; Durum kontrol ediliyor."

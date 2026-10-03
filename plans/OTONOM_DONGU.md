@@ -185,3 +185,13 @@ Ana hat (F4, GameServer C++ zinciri) tek tek ilerler: planlar birbirine bağlı,
 ## 12. F4 kapsam dondurması (2026-10-03, ADR-0023)
 
 Proje sahibi F4 kapsamını **dondurdu**: otonom döngü (`/plan-olustur`, kurtarma adımı) **yeni F4 dilimi yazmaz**. Gerekli görülen bir F4 işi `docs/STATUS.md` "Blokajlar"a öneri olarak yazılır ve proje sahibine sorulur. Mevcut F4 planları (HAZIR/TASLAK/uygulanıyor) ve doğrulama/düzeltme turları etkilenmez. Rogue/okçu ve Type7 kapsam dışıdır (ADR-0022).
+
+## 13. Kanıt adımı (doğrulama öncesi, 2026-10-03)
+
+**Sorun:** `/plan-dogrula` 10-25 dk sürüyor; çoğu derleme/test bekleme ve çalışma zamanı komutlarını sırayla koşmak.
+
+**Çözüm:** doğrulamadan önce döngü `collect_evidence` çalıştırır (`EVIDENCE=1` varsayılan; kapatmak için `EVIDENCE=0`): (1) `tools/verify-evidence.sh` mekanik kanıtı betikle üretir (LLM yok); (2) `opencode --agent evidence -m opencode-go/deepseek-v4-pro` plana özgü komutları ve çalışma zamanı adımlarını koşar, ham çıktıyı `plans/_logs/evidence/<plan>-plan.md`'ye yazar. Ajanın izin kümesi `opencode.json` `agent.evidence`: `plans/_logs/evidence/**` dışında düzenleme yasak (denendi: `BotCore/`, `tools/` yazımı izin sistemi tarafından reddedildi), `git push/merge/reset` yasak.
+
+**Rol (proje sahibi, 2026-10-03):** Pro, Claude'un işini almaz; ona hız kazandırmak için kanıt toplar. Karar Claude'dadır: `plan-dogrula` SKILL §1b: kanıt ipucudur; denetçi en az üç kriteri kendi yeniden doğrular, kodu kendi okur, negatif kontrol yapar, çalışma zamanı kanıtını ham günlüklerden doğrular. Kanıt yok/eski/uyuşmuyorsa tam doğrulama (eski davranış). Kanıt adımı başarısız olursa döngü durmaz.
+
+**Güvenlik ağları:** kanıt adımı izlenen dosyaları değiştirirse `git checkout -- .` ile geri alınır ve kanıt geçersiz sayılır; aynı commit için kanıt yeniden üretilmez (önbellek); zaman aşımı `EVIDENCE_TIMEOUT_SEC` (varsayılan 2400 sn).
