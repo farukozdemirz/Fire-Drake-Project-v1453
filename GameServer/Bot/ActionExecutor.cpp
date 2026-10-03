@@ -51,7 +51,8 @@ static std::string FormatFixed(double value, int precision)
 // 'type' / 'rule' / 'reason' / 'value' / 'limit': CLI-05 checks the speed field, CLI-08 the step in metres,
 // CLI-01/CLI-11 the attack interval / action rate.
 static void EmitFairnessReject(BotSession * s, CUser * user, uint32 decisionId,
-	const char * type, const char * rule, const char * reason, float value, float limit)
+	const char * type, const char * rule, const char * reason, float value, float limit,
+	uint32 skillId = 0)
 {
 	if (!Telemetry::Instance().IsEnabled(TEL_DECISIONS))
 		return;
@@ -61,6 +62,10 @@ static void EmitFairnessReject(BotSession * s, CUser * user, uint32 decisionId,
 		+ "\",\"reason\":\"" + reason
 		+ "\",\"value\":" + FormatFixed(value, 2)
 		+ ",\"limit\":" + FormatFixed(limit, 2);
+
+	// F4-41: only the cast reject path passes a skill id (0 elsewhere keeps the output unchanged).
+	if (skillId != 0)
+		fields += ",\"skill\":" + std::to_string(skillId);
 
 	Telemetry::Instance().Emit(TEL_DECISIONS, "FAIRNESS_REJECT", user->GetSocketID(),
 		s->m_charName.c_str(), fields, false);
@@ -571,7 +576,7 @@ static CastOutcome RejectCast(BotSession * s, CUser * user, BotCore::CastVerdict
 	}
 
 	uint32 decisionId = NextDecisionId(s);
-	EmitFairnessReject(s, user, decisionId, "Cast", rule, reason, value, limit);
+	EmitFairnessReject(s, user, decisionId, "Cast", rule, reason, value, limit, s->m_castSkillId);
 
 	ActionExecutor::EndCast(s);
 	CastOutcome out;
@@ -595,7 +600,8 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 			+ ",\"type\":\"" + type + "\""
 			+ ",\"skill\":" + std::to_string(skillId)
 			+ ",\"target\":" + std::to_string((int)target.id)
-			+ ",\"cycle\":" + std::to_string(cycle);
+			+ ",\"cycle\":" + std::to_string(cycle)
+			+ ",\"mp\":" + std::to_string((int)user->GetMana());
 		if (opcode == MAGIC_CASTING)
 			fields += ",\"cast_ms\":" + std::to_string(castMs);
 		else
@@ -661,7 +667,8 @@ static CastOutcome SubmitCast(BotSession * s, CUser * user, uint8 opcode, uint32
 			+ ",\"ok\":" + (ok ? "true" : "false")
 			+ ",\"reason\":\"" + reason + "\""
 			+ ",\"op\":" + std::to_string(op)
-			+ ",\"code\":" + std::to_string(code);
+			+ ",\"code\":" + std::to_string(code)
+			+ ",\"mp_after\":" + std::to_string((int)user->GetMana());
 		if (area && opcode == MAGIC_EFFECTING)
 			fields += ",\"victims\":" + std::to_string(victims);
 		fields += ",\"latency_us\":" + std::to_string(latencyUs);
