@@ -238,7 +238,7 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 3. **Type7** (Binding/provoke, MB-10, Q-22): W-G peel için gerekip gerekmediği kararı (opsiyonel).
 4. **m.2 ile m.5** ilişkisi: mage'in ana alan skill'leri (110533 Fire burst) hem uçan hem alandır; FLYING fazı (`docs/03` §13.2: CASTING → FLYING → EFFECTING, ~1 sn uçuş) iki dilimde tutarlı kurulmalı.
 5. **m.8:** pot yanında taş/scroll doldurma ve `ScenarioReset` (`docs/15` §6a) ile ortak sözleşme (başlangıç doğrulaması).
-6. **m.10 algı eksikleri** yalnızca oturma bayrağı ve seviye/sınıf değişimi değildir; bu değerlendirme F4-50 (ad, konum yaşı, hız, geçmiş), F4-51 (düşman HP tablosu), F4-52 (skill olay halkası), F4-53 (gözlenen durum, TASLAK) ve F4-54 (tek yönlü görüş teşhisi, KI-DEG-01) planlarını ayrıca yazdı: ADR-0018 m.10 bunlarla eşlenmeli.
+6. **m.10 algı eksikleri** yalnızca oturma bayrağı ve seviye/sınıf değişimi değildir; bu değerlendirme F4-50 (ad, konum yaşı, hız, geçmiş), F4-51 (düşman HP tablosu), F4-52 (skill olay halkası), F4-53 (gözlenen durum, saf mantık, HAZIR; sunucu bağlaması F4-60) ve F4-54 (tek yönlü görüş teşhisi, KI-DEG-01) planlarını ayrıca yazdı: ADR-0018 m.10 bunlarla eşlenmeli.
 7. **Kabul bağlantısı:** her dilimin oyun içi kabulü (`docs/15` §4.9 T-IGT-*) ve faz kapısı (G4, bu belge §5) açıkça bağlanmalı.
 
 ### F11 — Serbest Ronark davranışları (TASLAK, ADR kapılı)

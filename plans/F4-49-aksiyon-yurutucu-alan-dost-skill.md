@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `8ad8bf4`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-49 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-29 (alan: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI`; F4-31 (`SendsAimPoint`, `Moral` 6 party-all) — `KAPANDI`; F4-36 (eşyalı sınıf skill'i kapısı `CastItemSkillSupported`, `no_item`) — `KAPANDI`; F4-46 (priest usta skill'leri, Stone of Priest tüketimi, `docs/05` §9.5) — `KAPANDI` |
