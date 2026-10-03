@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-49 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-29 (alan: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI`; F4-31 (`SendsAimPoint`, `Moral` 6 party-all) — `KAPANDI`; F4-36 (eşyalı sınıf skill'i kapısı `CastItemSkillSupported`, `no_item`) — `KAPANDI`; F4-46 (priest usta skill'leri, Stone of Priest tüketimi, `docs/05` §9.5) — `KAPANDI` |
@@ -212,16 +212,32 @@ git diff --check gece/2026-10-02...bot/F4-49
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-49` — `<kısa-sha> [F4-49] …`
+- Branch / commit'ler: `bot/F4-49` (taban: `gece/2026-10-02` @ `5d2c444`) — `04871fc` `[F4-49] Alan-dost skill (Moral 11) acildi; Elysian Web kapilari ve guard testleri`, `31a4669` `[F4-49] Birim testleri: CastMoralSupported(11) ve Combat_AreaFriendCast_Guard (252 test)`, ardından bu rapor/kayıt commit'i.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `kMoralAreaFriend = 11` + `IsAreaFriendMoral`; `SendsAimPoint` 11'i kapsayacak biçimde genişletildi; `CastMoralSupported` yorumu ve `CastTargetIdField`/`CastCoordField` yorumları güncellendi (`IsAreaMoral` değişmedi).
+  - `tests/BotCoreTests/CombatTests.cpp`: `Combat_CastMoral_Supported` (11 → `true`); yeni `Combat_AreaFriendCast_Guard`; `Combat_ItemSkill_Guard` içindeki eski `CastMoralSupported(11) == false` satırı `true` yapıldı (bkz. sapmalar).
+  - `GameServer/Bot/ActionExecutor.cpp`: **yalnızca** `TickCast` `bool area` üstündeki yorum (`F4-29/F4-31/F4-49`).
+  - `GameServer/Bot/ActionExecutor.h`: **yalnızca** `CastTarget`, `BeginCast` ve `TickCast` yorumları (kod yok).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Değişen dört dosya için uyarı/hata yok. `tools/build.sh Debug` de hatasız.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release rc=0, değişen dosyalarda uyarı yok; `ActionExecutor.h`'yi içeren `.cpp`'ler yeniden derlendi)
+  - K2 ✔ (Debug rc=0)
+  - K3 ✔ (`run-tests.sh Release` ve `Debug`: `252 tests, 0 failed`; `Combat_CastMoral_Supported` ve `Combat_AreaFriendCast_Guard` `[ OK ]`)
+  - K4 ✔ (yasak include yok; yalnızca `<algorithm>`, `<cstdint>`; eklenen `std::min`/`std::max` yok)
+  - K5 ✔ (iki dosyada da yalnızca yorum satırları değişti; `bool area = BotCore::SendsAimPoint(m->bMoral);` aynen; `ActionExecutor.cpp`'de `IsAreaMoral`/`IsAreaFriendMoral` yok)
+  - K6 ✔ (`git diff --stat gece/2026-10-02...bot/F4-49` yalnızca dört dosya; `.vcxproj*`, `BotSession.*`, `BotManager.cpp`, `Telemetry.*` değişmedi; önceki testler geçiyor)
+  - K7 ✔ (yeni ini/komut/thread/telemetri olayı yok; eklenen `Emit(` yok)
+  - K8 ✔ (`file`: dört dosya ASCII + CRLF, değişmedi; `git diff --check` boş)
+  - K9 ✔ (`python3 tools/check-perception-contract.py` → `RESULT: PASS`, R1..R5 ihlal 0, taranan dosya 31)
+  - K10 (çalışma zamanı S1–S7) — `/plan-dogrula`'da Claude'da.
+- Plandan sapmalar ve gerekçeleri:
+  1. Plan §5.2(a) yalnızca `Combat_CastMoral_Supported`'taki `CastMoralSupported(11) == false` satırını (planın dediği `:1197`) güncellemeyi söylüyordu; ancak `Combat_ItemSkill_Guard` içinde (`:1679`) ikinci bir `CastMoralSupported(11) == false` satırı vardı ve bu, planın kendi amacıyla (`Moral 11` artık destekli) doğrudan çelişiyordu. K6'nın "önceki testler geçmeli" koşulu bu satır güncellenmeden sağlanamayacağından satır `true` yapıldı. Değişiklik test beklentisindedir, oyun mekaniğinde / paket biçiminde değil; yalnızca izinli dosyada.
+- Açık sorular: yok. (Çalışma zamanı doğrulaması ve `docs/03` MEC-MAG-25 işlemesi Claude'dadır.)
 
 ---
 
