@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-61 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI` (hepsi `gece/2026-10-02`'ye birleşti): **F5-59** (`NavService`: `Instance()`, `Ready()`, `Grid()`), F5-50 (`NavCheckStep`), F5-58 (kalıcı duvar regresyonu), F4-01 (`SubmitMove`, `CheckMoveStep`), F4-55 (giriş el sıkışması; çalışma zamanı K9-K11 bot girişi buna dayanır). Şemsiye: F5-55 (dilim 3). F5-62 bu planın guard'ına dayanır |
@@ -233,20 +233,30 @@ git diff --check gece/2026-10-02...bot/F5-61
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-61` @ `<sha>`
+- Karar: **DOĞRULANDI**
+- İncelenen: `gece/2026-10-02...bot/F5-61` @ `5b050e5` (2 commit: `24dd471` kod, `5b050e5` rapor). Gece modu (`AUTO_LOOP=1`): birleştirmeyi/push'u döngü betiği yapar, bu oturumda yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `ActionExecutor.cpp`, `NavChordGuard.h`, `NavChordGuardTests.cpp` `touch` edildi; `./tools/build.sh Release` rc=0 ve `Debug` rc=0; iki günlükte `warning Cxxxx` / `error Cxxxx` satırı 0 (yeni uyarı yok) |
+| K2 | ✔ | `run-tests.sh Release` ve `Debug`: `274 tests, 0 failed`; yedi `NavChord_*` `[ OK ]`; `Motion*` dahil mevcut testler geçti |
+| K3 | ✔ | Kendi koşumda: `NAVCHORD real map: vectors=3 blocked=3`; `NAVCHORD planner chords=9138 blocked=0`; `NAVCHORD planner quantised chords=9138 blocked=0`; SKIPPED yok (`build/nav/zone71.navgrid` mevcut) |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-61`: 7 dosya = §4'teki 6 + plan (2 yeni: `NavChordGuard.h`, `NavChordGuardTests.cpp`); `BotMotion.h`, `NavSegment.h`, `docs/`, `tools/`, `proj-GameServer.vcxproj` farkı 0 satır; `git diff --check` boş; `ActionExecutor.cpp` tek `-` satırı `uint32 skillId = 0)` imzası |
+| K5 | ✔ | `grep -n -E "windows.h|stdafx|GameServer|shared/|new |malloc|static " BotCore/NavChordGuard.h` boş (rc=1); `check-perception-contract.py` rc=0, `RESULT: PASS` |
+| K6 | ✔ | Mevcut `CLI-05`/`step_too_long` çağrısı (`ActionExecutor.cpp:109`) ve `BeginMove` çağrısı (`:233`) diff'te yok; yeni çağrı `ActionExecutor.cpp:134` (`"CLI-08"`, `"blocked_chord"`); ret dalı `:139-141` `return out;`, `HandlePacket` `:159`'da, yani ret yolunda çağrılmaz |
+| K7 | ✔ | `Grid() == nullptr` veya bölge ≠ 71 → `navGrid = nullptr` → `CheckMoveChord` `Skipped` (`NavChordGuard.h:37-41`) → yeni `if` girmez; `extraFields` varsayılan `nullptr` (`:57`, `:74`), mevcut çağrıların çıktısı aynı. **Çalışma zamanı da doğruladı (K11)** |
+| K8 | ✔ | `file`: iki yeni dosya `ASCII text, with CRLF line terminators`; `ActionExecutor.cpp` kodlaması öncesi/sonrası ASCII; `kChordIgnoreMeters` tanım `:17`, kullanım `:53` (+ yorum `:29`, `:101`) |
+| K9 | ✔ | **Çalışma zamanı `[V]`** (Release, `bot/F5-61` ucundan; `[BOT] ENABLED=1, NAV=1, TELEMETRY=decisions`; günlükte `nav ready ... crc32=4fd154bc`): bot `BotWP_K` zone 71 (1274,0; 934,0). Hedef seçimi `tools/nav-segment-check.py` oracle'ı ile: (1270; 937) uç hücresi `Walk`, kiriş yalnızca `(317,233)` hücresine (engelli) değiyor. `move BotWP_K 1270 937` → `Bot_3_10_2026.log`: `move stopped (blocked_chord)`; telemetri: `FAIRNESS_REJECT` `rule:"CLI-08"`, `reason:"blocked_chord"`, `value:5.00`, `cell_x:317`, `cell_z:233`, `verdict:"BlockedCell"` (oracle ile aynı hücre); `type:"Move"` `ACTION_SUBMIT` **0**; `list`: konum 1274,0; 934,0 değişmedi |
+| K10 | ✔ | **Çalışma zamanı `[V]`:** temiz hedef (1272; 938) → `ACTION_SUBMIT Move` + `ACTION_RESULT ok`, konum 1272,0; 938,0; 20 m'lik temiz hat (1272→1292) `arrived ... after 3 packets`; 40 m'lik yürüyüşte (1292→1252) ikinci paketten sonra `stop` → `stopped at (1278.4, 938.0)`, durma paketi `speed:0` `ACTION_RESULT ok`, `FAIRNESS_REJECT` yok |
+| K11 | ✔ | **Çalışma zamanı `[V]`:** sunucu yeniden başlatıldı, `NAV=0` (sunucu ini'yi `NAV=0` ile yeniden yazdı), `ENABLED=1`: aynı `move BotWP_K 1270 937` → `arrived at (1270.0, 937.0) after 1 packets`, `ACTION_SUBMIT Move` + `ACTION_RESULT ok`, `FAIRNESS_REJECT` 0, `NavService` satırı yok |
+| K12 | ✔ | `run-servers.sh stop` iki kez de nazik kapanış, `0/3 hazır`; `GameServer.ini` yedekten geri alındı (md5 öncesi = sonrası = `791b71379a7173f877b0dcfc04595a66`), `BotCommands.*` kalmadı. NAV=1 koşusunda toplam `FAIRNESS_REJECT` = **1** (`blocked_chord`), NAV=0 koşusunda **0**. "AC-NAV-03 kapandı" **yazılmadı** (kanıt F5-66) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Kod kalitesi / kurallar: `NavChordGuard.h` yalnızca standart kütüphane + kardeş başlıklar (R4); saf mantık, global/dinamik bellek yok. Guard `SubmitMove`'ta `CheckMoveStep`'ten sonra, `ACTION_SUBMIT`/`HandlePacket` öncesinde; NaN/ızgara dışı fail-closed. Bot sistemi ve `NAV` varsayılan kapalı; oyun mekaniği, hız, adım uzunluğu değişmedi (yalnızca reddedilen paketler artar). `NavService::Grid()` yalnızca `const` okunur. Uygulayıcının dört sapması (özellikle `NavCheckSegment`'in geçiş sırasındaki ilk hücreyi vermesi: gerçek koşuda hücre oracle ile aynı çıktı) gerekçeli ve kabul edildi.
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not (açık risk, `KI-022` açıldı):** `NavChordGuard.h:53` D3 muafiyeti (`< 0,08 m` kiriş denetlenmez) plandaki "gerçek hareket adımları >= 0,1 m" varsayımına dayanıyor; ama `StepToward` son adımı kalan mesafenin tamamı yapar (`BotMotion.h:51`), yani önceki tam adımdan sonra kalan 0 < d < 0,08 m ise bu son paket denetlenmez. `/bot move` hedefi engelli bir hücrenin 0,08 m içindeyse bot en çok 0,08 m engelli hücreye girebilir. Hedef `Walk` hücredeyse etkisi yok; F5-62 yol izleme hedefleri `Walk` hücre merkezleridir; AC-NAV-03 kanıtı (F5-66) bunu ölçer. Karar F5-62 planında (ör. kısa kirişte uç hücresi `Walk` değilse ve başlangıç hücresinden farklıysa reddet) verilmeli.
+  2. **Not:** D5 çıkış noktası kirişi köşeden terk ederse köşeye değen iki yan hücre denetlenmez (çıkış noktası 1e-3 m ileri taşınır, `NavChordGuard.h:124-126`). Yalnızca zaten `Walk` olmayan bir hücreden çıkışta ve tam köşede; etkisi ihmal edilebilir, kayıt için not.
+  3. **Not (üslup):** `NavChordGuardTests.cpp` içindeki tüm `NavChord_*` adları ve satır biçimleri plana uygun; `OutOfBounds` sentetik testi plandan farklı (başlangıç ızgara dışı) ama uygulayıcının gerekçesi doğru.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
