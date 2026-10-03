@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
@@ -302,6 +302,68 @@ SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0
     veriyor; gerekirse küçük bir bakım planı gerekir.
 - Not: Bu araç sunucu davranışını değiştirmez; `ENABLED=0` (varsayılan) hiç etkilenmez.
   Gerçek logda `DEATH`/`DAMAGE` henüz yoktur; kabul `sample.jsonl` + `--selftest` iledir.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F8-01` (taban `gece/2026-10-02-nav`)
+  - `7c245e0 [F8-01] Tur 2: --win-rule ham dizge + 3 selftest vakasi (70)`
+  - plan kaydı commit'i (bu rapor + `Durum`)
+- Değişen dosyalar ve neden:
+  - `tools/bot-outcome-eval.py`: `parse_args` artık `--win-rule` değerini
+    tamsayıya çevirmiyor; ham dizge `opts["win_rule"]`'a atanıyor (değer eksikse
+    "option --win-rule needs a value" hatası korunuyor). Diğer beş seçenek
+    (`--duration-sec`, `--win-margin`, `--early-end-margin`, `--engage-timeout-sec`,
+    `--tick-ms`) `parse_cli_int` ile kalıyor; geçersiz kural adı denetimi
+    (eski satır 134-135) değişmedi. `--selftest`'e üç bağımsız vaka eklendi:
+    `cli_win_rule_option`, `cli_win_rule_priority`, `cli_win_rule_invalid_rc2`
+    (67 -> 70).
+  - `plans/F8-01-bot-sonuc-degerlendirici.md`: yalnızca `Durum` satırı ve bu rapor.
+  - `tools/bot-outcome-eval/sample.jsonl`: git içeriği **değişmedi** (index/blob LF;
+    `git diff --cached` boş). Çalışma ağacındaki CRLF satır sonları bu oturumda
+    LF'e çevrildi (K7 `grep -c $'\r'` = 0); `core.autocrlf=true` kaynaklı,
+    `.gitattributes` bu düzeltme turunun kapsamı dışında (KI-017 ayrı).
+- Doğrulama (`python3 tools/bot-outcome-eval.py ...`):
+  - `--selftest | tail -1`:
+    ```
+    SELFTEST PASS n=70
+    ```
+  - `tools/bot-outcome-eval/sample.jsonl --win-rule timed_score` (rc=0):
+    ```
+    OUTCOME match=SMP-win-1-1 rule=timed_score result=no_result k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+    OUTCOME match=SMP-draw-1-1 rule=timed_score result=no_result k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+    OUTCOME match=SMP-wipe-1-1 rule=timed_score result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=TRUNCATED
+    OUTCOME match=SMP-noeng-1-1 rule=timed_score result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+    SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2
+    ```
+  - K2'nin 23 adlı `grep -c "^PASS <ad>$"` döngüsü: 23 satırın hepsi `1`.
+  - K7: içe aktarımlar yalnız `json/os/sys/tempfile` (`:28-31`); `open(` yazımları
+    yalnızca `:711` (`write_records`) ve `:1264` (selftest), okuma `:175`; ASCII
+    (`grep -P` boş); CR sayısı 0 (iki dosya).
+  - Regresyon: `sample.jsonl` -> `SUMMARY n=4 win_a=2 win_b=0 draw=1 invalid=1 no_result=0`;
+    `sample.jsonl --win-margin 3` -> `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0`;
+    `sample.jsonl --strict` -> rc=1; `--json` assert geçti; `--win-margin 9` -> rc=2.
+  - `./tools/build.sh Release` rc=0, yeni uyarı/hata yok; `./tools/run-tests.sh`
+    son satırı `223 tests, 0 failed` (değişmedi). Sunuculara dokunulmadı
+    (paralel hat `nav`; `run-servers.sh status` ana hattın sunucularını gösteriyor).
+- Kabul kriterleri (düzeltme maddeleri) öz-değerlendirme:
+  - Madde 1 ✔: `--win-rule` ham dizge; eksik değer hatası ve geçersiz ad denetimi
+    (rc=2) korundu; diğer beş seçenek tamsayı kaldı.
+  - Madde 2 ✔: üç yeni bağımsız `case()`; mevcut vaka adları değişmedi, ad
+    yinelemesi yok (K2 `grep -c` = 1); toplam 70.
+  - Madde 3 ✔: yukarıdaki çıktılar beklentiyle birebir (dört maç `rule=timed_score`,
+    `SMP-wipe` `TRUNCATED`, `SMP-noeng` `NO_ENGAGE`,
+    `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2`).
+- Plandan sapmalar / notlar:
+  - `cli_win_rule_option` 2v2 vakasında "A'nın iki kill'i" iki `DEATH` olarak
+    yazıldı; ikisi de aynı B üyesini hedefler, böylece takım sıfıra inmez ve
+    `end=alive_count` olur (değerlendirici ölü bir birimin ikinci ölümünü ayrı
+    `DEATH` olarak sayar; `k_a=2`). Vaka yalnızca CLI kuralının uygulandığını
+    (`rule=wipe_first`) ve wipe olmadığını (`end=alive_count`) doğrular.
+  - `sample.jsonl` çalışma ağacı satır sonu normalizasyonu git içeriğini
+    değiştirmedi; commit'e girmedi.
+- Açık sorular: Tur 1'deki `.gitattributes` (`*.jsonl text eol=lf`) sorusu aynen
+  açık; bu turda KI-017 kapsamı nedeniyle dokunulmadı.
 
 
 ---
