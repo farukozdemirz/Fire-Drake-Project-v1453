@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `0001d04`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2, m.10 algı eksikleri; F6/F7 priest ve stall için ön koşul) |
 | Branch | `bot/F4-53 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-52 (olay halkası, `SkillEvent`) `KAPANDI`; F4-28/F4-31/F4-32 (Type4/party/cure atılabilir, doğrulama için) `KAPANDI` |
