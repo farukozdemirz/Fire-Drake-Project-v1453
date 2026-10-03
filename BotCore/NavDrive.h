@@ -24,7 +24,8 @@ namespace BotCore
 		return (float)(uint16_t)(w * 10.0f + 0.5f) / 10.0f;
 	}
 
-	enum class NavDriveMode { Off, Goto };
+	enum class NavDriveMode { Off, Goto, Follow };
+	enum class NavFollowEnd { None, TargetLost, StuckAbandon, PlanFailed, PathBlocked };
 	enum class NavPlanStatus { None, Planned, InvalidStart, InvalidGoal, NoPath, NodeLimit, ReplanLimit };
 
 	struct NavDriveParams
@@ -42,6 +43,45 @@ namespace BotCore
 		bool  truncated = false;       // the full step was cut at a route vertex because its chord was blocked
 	};
 
+	// Follow-mode parameters (F5-73; docs/12 s4.2, s10, s13.3). The ring is [3.0, 6.4] m: on a 4 m
+	// grid a 6.0 m maximum can leave the ring empty near a cell corner (D2).
+	struct NavFollowDriveParams
+	{
+		NavFollowParams   follow;             // ringMinM = 3.0f, ringMaxM = 6.4f in the constructor
+		NavStuckParams    stuck;              // NavPacketCadenceParams() in the constructor (D9)
+		NavProgressParams progress;           // defaults
+		int   lostGraceMs = 1000;             // D3: <= this the target counts as visible
+		int   lostHoldMs = 6000;              // D3: beyond this the route is dropped and holdStop fires once
+		int   lostAbandonMs = 15000;          // D3: beyond this the drive ends with TargetLost
+		int   planFailAbandon = 10;           // D8: consecutive failed plans that end the drive
+		int   blockedAbandonMs = 5000;        // D10: continuous Blocked step time that ends the drive
+		int   awaitingLogMs = 5000;           // diagnostics only (event), not a stuck rule
+		float stepBackM = 3.0f;               // stage-3 step-back distance
+		NavFollowDriveParams();
+	};
+
+	// One TickFollow call worth of output; the executor (F5-63) turns these into log/telemetry lines.
+	struct NavDriveEvents
+	{
+		bool planned = false;                                   // NavFollower recomputed a plan this call
+		NavFollowStatus planStatus = NavFollowStatus::NoTarget; // valid when planned
+		NavReplanReason planReason = NavReplanReason::None;     // valid when planned
+		int  planExpanded = 0;                                  // A* closed nodes of that plan
+		bool routeAdopted = false;                              // planned && Planned: a fresh route replaced the old one
+		NavProgressVerdict verdict = NavProgressVerdict::Idle;
+		NavRecoveryStep recovery;                               // action != None once per stage entry; .recovered when recovered
+		bool holdStop = false;                                  // D3: once, when the target is lost for > lostHoldMs
+		bool awaitingLong = false;                              // intent active, no packet for >= awaitingLogMs (once per gap)
+		NavFollowEnd ended = NavFollowEnd::None;                // != None => the drive is Off (Reset) after this call
+	};
+
+	inline NavFollowDriveParams::NavFollowDriveParams()
+	{
+		follow.ringMinM = 3.0f;
+		follow.ringMaxM = 6.4f;
+		stuck = NavPacketCadenceParams();
+	}
+
 	class NavDrive
 	{
 	public:
@@ -56,6 +96,30 @@ namespace BotCore
 			m_replans = 0;
 			m_planExpanded = 0;
 			m_planWaypoints = 0;
+
+			// Follow state (F5-73).
+			m_follower.Reset();
+			m_assess.Reset();
+			m_monitor.Reset();
+			m_penalties.Clear();
+			m_sideScratch.clear();
+			m_followPlans = 0;
+			m_planFailCount = 0;
+			m_lastSeenMs = 0;
+			m_arrived = false;
+			m_holding = false;
+			m_awaitingLogged = false;
+			m_activityMs = 0;
+			m_pending = NavRecoveryAction::None;
+			m_resetMonitorNext = false;
+			m_hasPktVec = false;
+			m_pktVx = 0.0f;
+			m_pktVz = 0.0f;
+			m_stepFromX = 0.0f;
+			m_stepFromZ = 0.0f;
+			m_hasBlockedSince = false;
+			m_blockedSince = 0;
+			m_blockedAbandon = false;
 		}
 
 		bool Active() const { return m_mode != NavDriveMode::Off; }
@@ -154,7 +218,7 @@ namespace BotCore
 		NavPlanStatus Replan(const NavGrid & grid, NavPathfinder & finder, float botX, float botZ,
 			const NavDriveParams & params)
 		{
-			if (m_mode == NavDriveMode::Off)
+			if (m_mode != NavDriveMode::Goto)
 				return NavPlanStatus::None;
 			if (m_replans >= kMaxGotoReplans)
 			{
@@ -180,6 +244,36 @@ namespace BotCore
 		int   Replans() const { return m_replans; }
 		int   PlanExpanded() const { return m_planExpanded; }
 		int   PlanWaypoints() const { return m_planWaypoints; }
+
+		// Follow mode (F5-73): moving-target chase on top of the F5-04 follower, the F5-09 stuck
+		// ladder and the F5-57 progress assessor. Pure logic; the caller moves the bot and feeds
+		// each NextFollowStep result back through OnPacketSent/OnPacketRejected.
+		void BeginFollow(int64_t nowMs);
+		void ObserveTarget(int64_t tMs, float x, float z, int16_t speedField, int64_t nowMs);
+		// Call once per bot tick BEFORE asking for a step. `reach` is NavReach (or any type with
+		// ComponentOf); `scratch` is an optional cost layer for the stage-4 penalty field.
+		template <class Reach>
+		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch, const Reach & reach)
+		{
+			return TickFollowImpl<Reach>(grid, finder, nowMs, botX, botZ, botSpeedMps, params, scratch, &reach);
+		}
+		NavDriveEvents TickFollow(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch)
+		{
+			return TickFollowImpl<NavNoReach>(grid, finder, nowMs, botX, botZ, botSpeedMps, params, scratch, nullptr);
+		}
+		NavDriveStep NextFollowStep(const NavGrid & grid, int64_t nowMs, float botX, float botZ,
+			float maxStepM, const NavFollowDriveParams & params);
+		void OnPacketSent(int64_t tMs, const NavDriveStep & step);
+		void OnPacketRejected(int64_t tMs);
+		const NavFollower & Follower() const { return m_follower; }
+		int  RecoveryStage() const { return m_monitor.Stage(); }
+		int  StuckEpisodes() const { return m_monitor.Episodes(); }
+		int  FollowPlans() const { return m_followPlans; }
+		bool Arrived() const { return m_arrived; }
 
 	private:
 		// 0 <= w <= 6553.5, finite. Callers reject anything else (design decision 2).
@@ -230,22 +324,33 @@ namespace BotCore
 			NavSmoothResult smooth;
 			NavSmoothPath(grid, path.cells, params.smooth, smooth);
 
+			AdoptRoute(grid, botX, botZ, smooth.waypoints, qgx, qgz);
+			m_planExpanded = path.expanded;
+			m_planWaypoints = (int)smooth.waypoints.size();
+			return NavPlanStatus::Planned;
+		}
+
+		// Builds and adopts the route [bot] + smoothed waypoint cell centres + [goal] with the start
+		// and end shortcuts (F5-62 design decisions 3/4); Follow (F5-73) reuses it on the follower's
+		// smoothed waypoints. Goto behaviour is unchanged.
+		void AdoptRoute(const NavGrid & grid, float botX, float botZ,
+			const std::vector<NavCell> & waypoints, float goalX, float goalZ)
+		{
 			NavRoutePoint botPt;
 			botPt.x = botX;
 			botPt.z = botZ;
 			NavRoutePoint goalPt;
-			goalPt.x = qgx;
-			goalPt.z = qgz;
+			goalPt.x = goalX;
+			goalPt.z = goalZ;
 
-			// Route per design decision 3: [bot] + smoothed cell centres + [goal].
 			std::vector<NavRoutePoint> route;
-			route.reserve(smooth.waypoints.size() + 2);
+			route.reserve(waypoints.size() + 2);
 			route.push_back(botPt);
-			for (size_t i = 0; i < smooth.waypoints.size(); ++i)
+			for (size_t i = 0; i < waypoints.size(); ++i)
 			{
 				NavRoutePoint pt;
-				pt.x = grid.CellCenter(smooth.waypoints[i].x);
-				pt.z = grid.CellCenter(smooth.waypoints[i].z);
+				pt.x = grid.CellCenter(waypoints[i].x);
+				pt.z = grid.CellCenter(waypoints[i].z);
 				route.push_back(pt);
 			}
 			route.push_back(goalPt);
@@ -260,7 +365,7 @@ namespace BotCore
 
 			// End shortcut: drop ck when c(k-1) -> goal is clear. After the start shortcut the route keeps
 			// [bot, c1..ck, goal] (or [bot, c0..ck, goal]), so route[n-3] is still c(k-1) for >= 4 points.
-			if (smooth.waypoints.size() >= 2 && route.size() >= 4)
+			if (waypoints.size() >= 2 && route.size() >= 4)
 			{
 				const NavRoutePoint & ckm1 = route[route.size() - 3];
 				const NavRoutePoint & goal = route.back();
@@ -269,12 +374,9 @@ namespace BotCore
 			}
 
 			m_route.swap(route);
-			m_goalX = qgx;
-			m_goalZ = qgz;
-			m_planExpanded = path.expanded;
-			m_planWaypoints = (int)smooth.waypoints.size();
+			m_goalX = goalX;
+			m_goalZ = goalZ;
 			RecomputeRoute();
-			return NavPlanStatus::Planned;
 		}
 
 		void RecomputeRoute()
@@ -321,6 +423,11 @@ namespace BotCore
 			return m_route.back();
 		}
 
+		template <class Reach>
+		NavDriveEvents TickFollowImpl(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+			NavCostLayer * scratch, const Reach * reach);
+
 		NavDriveMode m_mode = NavDriveMode::Off;
 		std::vector<NavRoutePoint> m_route;
 		std::vector<float> m_cum;
@@ -330,5 +437,348 @@ namespace BotCore
 		int m_replans = 0;
 		int m_planExpanded = 0;
 		int m_planWaypoints = 0;
+
+		// Follow state (F5-73).
+		NavFollower m_follower;
+		NavProgressAssessor m_assess;
+		NavStuckMonitor m_monitor;
+		NavStuckPenalties m_penalties;
+		std::vector<NavCell> m_sideScratch;
+		int m_followPlans = 0;
+		int m_planFailCount = 0;
+		int64_t m_lastSeenMs = 0;
+		bool m_arrived = false;
+		bool m_holding = false;
+		bool m_awaitingLogged = false;
+		int64_t m_activityMs = 0;
+		NavRecoveryAction m_pending = NavRecoveryAction::None;
+		bool m_resetMonitorNext = false;
+		bool m_hasPktVec = false;
+		float m_pktVx = 0.0f;
+		float m_pktVz = 0.0f;
+		float m_stepFromX = 0.0f;
+		float m_stepFromZ = 0.0f;
+		bool m_hasBlockedSince = false;
+		int64_t m_blockedSince = 0;
+		bool m_blockedAbandon = false;
 	};
+
+	inline void NavDrive::BeginFollow(int64_t nowMs)
+	{
+		Reset();
+		m_mode = NavDriveMode::Follow;
+		m_lastSeenMs = nowMs;
+		m_activityMs = nowMs;
+	}
+
+	inline void NavDrive::ObserveTarget(int64_t tMs, float x, float z, int16_t speedField, int64_t nowMs)
+	{
+		if (m_mode != NavDriveMode::Follow)
+			return;
+		m_follower.ObserveTarget(tMs, x, z, speedField);
+		m_lastSeenMs = nowMs;
+	}
+
+	template <class Reach>
+	NavDriveEvents NavDrive::TickFollowImpl(const NavGrid & grid, NavPathfinder & finder, int64_t nowMs,
+		float botX, float botZ, float botSpeedMps, const NavFollowDriveParams & params,
+		NavCostLayer * scratch, const Reach * reach)
+	{
+		NavDriveEvents ev;
+
+		if (m_mode != NavDriveMode::Follow)
+			return ev;
+		if (!ValidCoord(botX) || !ValidCoord(botZ))
+			return ev;
+
+		// D10: a continuous Blocked step ended the drive.
+		if (m_blockedAbandon)
+		{
+			ev.ended = NavFollowEnd::PathBlocked;
+			Reset();
+			return ev;
+		}
+
+		// D3: target-loss policy.
+		const int64_t lostMs = nowMs - m_lastSeenMs;
+		if (lostMs >= (int64_t)params.lostAbandonMs)
+		{
+			ev.ended = NavFollowEnd::TargetLost;
+			Reset();
+			return ev;
+		}
+		if (lostMs > (int64_t)params.lostHoldMs)
+		{
+			if (!m_holding)
+			{
+				m_holding = true;
+				ev.holdStop = true;
+				m_route.clear();
+				m_cum.clear();
+				m_routeLength = 0.0f;
+				m_pending = NavRecoveryAction::None;
+				m_arrived = false;
+				m_follower.InvalidatePlan();
+				m_assess.SetIntent(false, nowMs);
+			}
+		}
+		else if (lostMs <= (int64_t)params.lostGraceMs)
+		{
+			m_holding = false;
+
+			// (4) plan block: the penalty field is applied only while a penalty is active (D7).
+			const NavCostField * fieldPtr = nullptr;
+			NavCostField field;
+			NavFollowParams follow = params.follow;
+			if (scratch != nullptr && m_penalties.Count(nowMs) > 0)
+			{
+				if (scratch->Size() != grid.Size())
+					scratch->Init(grid);
+				else
+					scratch->Clear();
+				m_penalties.Apply(grid, nowMs, params.stuck, *scratch);
+				field.params = NavCostParams();
+				field.layer = scratch;
+				fieldPtr = &field;
+				follow.smooth.maxLookahead = 1;   // D7: penalties must not be cut by a smooth chord
+			}
+
+			if (m_follower.UpdateReachable(grid, finder, nowMs, botX, botZ, botSpeedMps, follow, *reach, fieldPtr))
+			{
+				const NavFollowPlan & plan = m_follower.Plan();
+				ev.planned = true;
+				ev.planStatus = plan.status;
+				ev.planReason = m_follower.LastReason();
+				ev.planExpanded = plan.expanded;
+				++m_followPlans;
+
+				if (plan.status == NavFollowStatus::Planned)
+				{
+					m_planFailCount = 0;
+					const float gx = NavQuantiseM(grid.CellCenter(plan.goal.x));
+					const float gz = NavQuantiseM(grid.CellCenter(plan.goal.z));
+					AdoptRoute(grid, botX, botZ, plan.smooth.waypoints, gx, gz);
+					ev.routeAdopted = true;
+
+					const float p = NavRouteProgressM(m_route.data(), (int)m_route.size(), botX, botZ);
+					if (m_routeLength - p > params.progress.arriveM)
+					{
+						m_arrived = false;
+						m_assess.SetIntent(true, nowMs);   // D4: before NotifyReplan (SetIntent resets the base)
+					}
+					m_assess.NotifyReplan(nowMs, 0.0f);
+					m_activityMs = nowMs;
+					m_awaitingLogged = false;
+				}
+				else
+				{
+					++m_planFailCount;
+					if (m_planFailCount >= params.planFailAbandon)
+					{
+						ev.ended = NavFollowEnd::PlanFailed;
+						Reset();
+						return ev;
+					}
+				}
+			}
+		}
+
+		// (6) verdict and the awaitingLong diagnostic.
+		ev.verdict = m_assess.Assess(nowMs, params.progress);
+		if (ev.verdict == NavProgressVerdict::AwaitingPacket && !m_awaitingLogged
+			&& nowMs - m_activityMs >= (int64_t)params.awaitingLogMs)
+		{
+			ev.awaitingLong = true;
+			m_awaitingLogged = true;
+		}
+
+		// (7) moving (D5) with the D6 one-tick window reset.
+		bool moving = (ev.verdict == NavProgressVerdict::Progressing || ev.verdict == NavProgressVerdict::Stalled)
+			|| (m_monitor.Stage() > 0 && ev.verdict == NavProgressVerdict::AwaitingPacket);
+		if (m_resetMonitorNext)
+		{
+			moving = false;
+			m_resetMonitorNext = false;
+		}
+
+		const NavRecoveryStep rec = m_monitor.Update(grid, nowMs, botX, botZ, moving, params.stuck);
+		ev.recovery = rec;
+
+		switch (rec.action)
+		{
+		case NavRecoveryAction::Replan:
+			m_follower.InvalidatePlan();
+			break;
+		case NavRecoveryAction::SideStep:
+		case NavRecoveryAction::StepBack:
+			m_pending = rec.action;   // the newest action wins
+			break;
+		case NavRecoveryAction::PenalizeReplan:
+			m_penalties.Add(rec.cellX, rec.cellZ, nowMs, params.stuck);
+			if (m_route.size() >= 2)
+			{
+				const float p = NavRouteProgressM(m_route.data(), (int)m_route.size(), botX, botZ);
+				const NavRoutePoint ahead = PointAt(p + grid.Unit());
+				m_penalties.Add(grid.CellOf(ahead.x), grid.CellOf(ahead.z), nowMs, params.stuck);
+			}
+			m_follower.InvalidatePlan();
+			break;
+		case NavRecoveryAction::Abandon:
+			ev.ended = NavFollowEnd::StuckAbandon;
+			Reset();
+			return ev;
+		default:
+			break;
+		}
+
+		return ev;
+	}
+
+	inline NavDriveStep NavDrive::NextFollowStep(const NavGrid & grid, int64_t nowMs, float botX, float botZ,
+		float maxStepM, const NavFollowDriveParams & params)
+	{
+		NavDriveStep step;
+		if (m_mode != NavDriveMode::Follow)
+			return step;
+		if (!ValidCoord(botX) || !ValidCoord(botZ) || !(maxStepM > 0.0f))
+			return step;
+
+		// A pending stage-2/3 recovery action is consumed once.
+		if (m_pending == NavRecoveryAction::SideStep || m_pending == NavRecoveryAction::StepBack)
+		{
+			const NavRecoveryAction action = m_pending;
+			m_pending = NavRecoveryAction::None;
+
+			float hx = 0.0f;
+			float hz = 0.0f;
+			if (m_route.size() >= 2 && m_routeLength > 0.0f)
+			{
+				const float p = NavRouteProgressM(m_route.data(), (int)m_route.size(), botX, botZ);
+				const NavRoutePoint a = PointAt(p);
+				const NavRoutePoint b = PointAt(p + 2.0f);
+				const float hdx = b.x - a.x;
+				const float hdz = b.z - a.z;
+				const float hlen = std::sqrt(hdx * hdx + hdz * hdz);
+				if (hlen > 1e-6f)
+				{
+					hx = hdx / hlen;
+					hz = hdz / hlen;
+				}
+			}
+
+			bool hasTarget = false;
+			float tx = 0.0f;
+			float tz = 0.0f;
+			if (action == NavRecoveryAction::SideStep)
+			{
+				NavCell cell;
+				if (NavPickSideStep(grid, botX, botZ, hx, hz, params.stuck, m_sideScratch, cell))
+				{
+					tx = grid.CellCenter(cell.x);
+					tz = grid.CellCenter(cell.z);
+					hasTarget = true;
+				}
+			}
+			else if (hx != 0.0f || hz != 0.0f)
+			{
+				const float back = params.stepBackM < maxStepM ? params.stepBackM : maxStepM;
+				tx = botX - hx * back;
+				tz = botZ - hz * back;
+				hasTarget = true;
+			}
+
+			if (hasTarget)
+			{
+				const float dx = tx - botX;
+				const float dz = tz - botZ;
+				const float d = std::sqrt(dx * dx + dz * dz);
+				if (d > maxStepM)
+				{
+					const float s = maxStepM / d;
+					tx = botX + dx * s;
+					tz = botZ + dz * s;
+				}
+
+				const float qx = NavQuantiseM(tx);
+				const float qz = NavQuantiseM(tz);
+				const float rdx = qx - botX;
+				const float rdz = qz - botZ;
+				const float rd = std::sqrt(rdx * rdx + rdz * rdz);
+				if (ValidCoord(qx) && ValidCoord(qz) && rd >= kMinTruncStepM
+					&& CheckMoveChord(&grid, botX, botZ, qx, qz).verdict == ChordVerdict::Ok)
+				{
+					step.kind = NavDriveStep::Step;
+					step.x = qx;
+					step.z = qz;
+					step.routeProgressM = (m_route.size() >= 2)
+						? NavRouteProgressM(m_route.data(), (int)m_route.size(), qx, qz) : 0.0f;
+					const float gdx = qx - m_goalX;
+					const float gdz = qz - m_goalZ;
+					step.distToGoalM = std::sqrt(gdx * gdx + gdz * gdz);
+					m_stepFromX = botX;
+					m_stepFromZ = botZ;
+					return step;
+				}
+			}
+		}
+
+		// Arrival latch (D4), target hold (D3) or no route: no ordinary step.
+		if (m_arrived || m_holding || m_route.size() < 2)
+			return step;
+
+		step = NextStep(grid, botX, botZ, maxStepM);
+		if (step.kind == NavDriveStep::Step || step.kind == NavDriveStep::Arrived)
+		{
+			m_stepFromX = botX;
+			m_stepFromZ = botZ;
+			m_hasBlockedSince = false;
+		}
+		else if (step.kind == NavDriveStep::Blocked)
+		{
+			m_follower.InvalidatePlan();
+			if (!m_hasBlockedSince)
+			{
+				m_hasBlockedSince = true;
+				m_blockedSince = nowMs;
+			}
+			else if (nowMs - m_blockedSince >= (int64_t)params.blockedAbandonMs)
+			{
+				m_blockedAbandon = true;
+			}
+		}
+		return step;
+	}
+
+	inline void NavDrive::OnPacketSent(int64_t tMs, const NavDriveStep & step)
+	{
+		if (m_mode != NavDriveMode::Follow)
+			return;
+
+		// D6: a packet whose displacement reverses the previous packet's direction starts a one-tick
+		// monitor window reset (a U-turning target is not a stuck bot).
+		const float vx = step.x - m_stepFromX;
+		const float vz = step.z - m_stepFromZ;
+		if (m_hasPktVec && m_monitor.Stage() == 0 && vx * m_pktVx + vz * m_pktVz < 0.0f)
+			m_resetMonitorNext = true;
+		m_pktVx = vx;
+		m_pktVz = vz;
+		m_hasPktVec = true;
+
+		m_assess.OnPacketSent(tMs, step.x, step.z, step.routeProgressM, step.distToGoalM);
+		m_activityMs = tMs;
+		m_awaitingLogged = false;
+
+		if (step.kind == NavDriveStep::Arrived)
+		{
+			m_arrived = true;
+			m_assess.SetIntent(false, tMs);
+		}
+	}
+
+	inline void NavDrive::OnPacketRejected(int64_t tMs)
+	{
+		if (m_mode != NavDriveMode::Follow)
+			return;
+		m_assess.OnPacketRejected(tMs);
+	}
 }

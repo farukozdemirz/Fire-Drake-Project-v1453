@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-73 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`/`NavTargetTracker`), F5-05 (`NavReach`), F5-09 (`NavStuckMonitor`/`NavPickSideStep`/`NavStuckPenalties`), F5-52 + F5-56 (hız kestirimi, gözlem zaman damgası), F5-54 (`NavPacketCadenceParams`), F5-57 (`NavProgressAssessor`), F5-62 (`NavDrive` `Goto`), F5-71 (`UpdateReachable`). **F5-70'e (`/bot goto` sunucu bağlaması) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-70 yalnızca `GameServer/Bot/` altındaki yedi dosyaya dokunur; bu plan yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h` ve iki test dosyasına. |
@@ -248,19 +248,62 @@ file BotCore/NavDrive.h BotCore/NavTrack.h Tests/BotCoreTests/NavDriveTests.cpp 
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-73` — `<kısa-sha> [F5-73] …`
+- Branch / commit'ler: `bot/F5-73` — `<kısa-sha> [F5-73] NavDrive Follow kipi (saf mantık)` (bkz. commit)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavTrack.h` — `NavFollower::InvalidatePlan()`; `Update`/`UpdateReachable`/`UpdateImpl`'a son `const NavCostField * field = nullptr`; `Find`'a `field` (yalnızca ekleme/imza; `field == nullptr` yolu bayt bayt eski).
+  - `BotCore/NavDrive.h` — `NavDriveMode::Follow`, `NavFollowEnd`, `NavFollowDriveParams` (halka `[3,0; 6,4]`, `NavPacketCadenceParams()`), `NavDriveEvents`; `BeginFollow`/`ObserveTarget`/`TickFollow` (şablon + reach'siz)/`NextFollowStep`/`OnPacketSent`/`OnPacketRejected` ve erişimciler; `PlanGoto`'nun rota kurma bloğu mekanik olarak özel `AdoptRoute`'a taşındı (`Goto` davranışı aynı); `Replan` koruması `m_mode != Goto`.
+  - `Tests/BotCoreTests/NavTrackTests.cpp` — 3 yeni test (`InvalidatePlan`, `NullField_Identical`, `Field_AvoidsPenalty`).
+  - `Tests/BotCoreTests/NavDriveTests.cpp` — `FollowSim` düzeneği (tick modelleri 0/1/2, hedef yolları) + 18 yeni test.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  BotCoreTests.vcxproj -> build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Test çıktıları (`NAVFOLLOW …` satırları, tick modeli başına epizod/`Stalled`/`recoverMs`/tespit gecikmesi): …
-- Elle negatif kontroller (D5 `moving` kolu, D6 U-dönüşü sıfırlaması): …
-- `NAVFOLLOW sizeof(NavDrive)=`: …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Release rc=0, Debug rc=0; değişen dört dosyada yeni uyarı yok (kalan uyarılar değişmeyen `UpgradeHandler.cpp` C4789 ve `GameServerDlg.cpp` C4267/C4834).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release/Debug rc=0; dört dosya `touch` + yeniden derleme, yeni uyarı yok.
+  - K2 ✔ `./tools/run-tests.sh Release` ve `Debug`: `314 tests, 0 failed`; 21 yeni test adı `[ OK ]`; mevcut `NavTrack_*`/`NavStuck_*`/`NavProgress_*`/`NavDrive_*`/`NavBudget_*` değişmeden geçti.
+  - K3 ✔ `_NormalChase_NoFalseStuck`, `_UTurn_NoFalseStuck`, `_Replan_NoFalseStalled`, `_RealMap_Chase`: üç tick modelinde `StuckEpisodes() == 0` ve `Stalled == 0`.
+  - K4 ✔ `_HiddenObstacle_Recovery` tespit `[3300, 3427]` ms, `recoverMs` `[1286, 1323]`, varış (final 6,32 m); tam duvar `StuckAbandon` (43,9 sn, aşamalar 1..5). İki elle negatif kontrol yapıldı ve geri alındı (aşağıda).
+  - K5 ✔ diff yalnızca §4'teki 4 dosya + plan; `NavTrack.h` `-` satırı = 9 (≤10, hepsi imza/tek satır); diğer `Nav*`/`GameServer`/`AIServer`/`shared`/`tools`/`docs`/`*.vcxproj*` farkı boş; `git diff --check` boş. Not: `plans/README.md` bu planda **düzenlenmedi** (AGENTS.md §2.2 `plans/README.md`'yi dokunulmaz sayıyor; ajan izin kuralı da düzenlemeyi reddetti), satır hâlâ `HAZIR`; Claude'un güncellemesi gerekir.
+  - K6 ✔ `grep -n -E "windows\.h|stdafx|GameServer|shared/|static |new |malloc|std::chrono" BotCore/NavDrive.h` boş; `check-perception-contract.py` PASS (R1-R5 0).
+  - K7 ✔ `NotifyReplan` her `Planned` sonrası `SetIntent`'ten sonra (NavDrive.h `TickFollowImpl`); `OnPacketSent` yalnızca `Step/Arrived` için (çağıran sözleşmesi, testlerde uygulanır); `moving` (D5) ve ceza etkinken `smooth.maxLookahead = 1` (D7) tek satırlarda; `Goto` gövdeleri yalnızca §5.3 (a)(b)(c) farkıyla.
+  - K8 ✔ `NavDrive_RealMap_Random` `planned=295 nopath=2 nodelimit=3 unrecoverable=0` (mevcut sayılar); `git diff --stat -- GameServer` boş.
+  - K9 ✔ dört dosya `file`: ASCII + CRLF; gerçek harita testleri `SKIPPED` değil (ızgara mevcut).
+  - K10 ✔ `NAVFOLLOW sizeof(NavDrive)=8464`.
+- Test çıktıları (Release, tam koşu):
+  ```
+  NAVFOLLOW sizeof(NavDrive)=8464
+  NAVFOLLOW ring holes6=4 total=289
+  NAVFOLLOW chase model=0: dist p50=8.88 p95=11.97 max=12.95 plans=138
+  NAVFOLLOW chase model=1: dist p50=12.61 p95=16.77 max=18.20 plans=120
+  NAVFOLLOW chase model=2: dist p50=15.20 p95=21.88 max=24.86 plans=116
+  NAVFOLLOW stopgo: final=5.38 arrived=2 packets=22 last=31500
+  NAVFOLLOW hidden model=0: firstStage1=3300 maxRecover=1300 final=6.32 stages=2
+  NAVFOLLOW hidden model=1: firstStage1=3353 maxRecover=1323 final=6.32 stages=2
+  NAVFOLLOW hidden model=2: firstStage1=3427 maxRecover=1286 final=6.32 stages=2
+  NAVFOLLOW wall: ended=2 at=43922 stages=5
+  NAVFOLLOW awaiting-cancel: ended=2 first=28800 at=32800
+  NAVFOLLOW guard: guardTicks=283 packets=41
+  NAVFOLLOW lost: ended=1 at=34900
+  NAVFOLLOW penalize: old=3 new=31 cell=(45,49)
+  NAVFOLLOW real map: runs=30 plans=18180 fail=0 episodes=0 blocked=0 chordViolations=0 ended=0
+  NAVFOLLOW real map diag: noGoal=0 pathFail=0 invalidStart=0 endLost=0 endPlanFail=0 endStuck=0 endBlocked=0
+  NAVFOLLOW perf: p95_ms=0.8145 plans=201 mode=2
+  314 tests, 0 failed
+  ```
+- Elle negatif kontroller (D5 `moving` kolu, D6 U-dönüşü sıfırlaması):
+  - D5 (`Stage() > 0 && AwaitingPacket` kolu) geçici kaldırıldı → `_RecoveryNotCancelledByAwaiting` kırıldı (`ended=0`), geri alındı, test geçti.
+  - D6 (U-dönüşü penceresi sıfırlaması) geçici kaldırıldı → `_UTurn_NoFalseStuck` kırıldı (epizod 6, aşama 3'e kadar), geri alındı, test geçti. (İlk hâliyle `[80, 360]` yansıması yeterince dik değildi; hedef yansıma aralığı `FollowSim`'de `lineMinX/lineMaxX` ile `[180, 220]` yapıldı — testin amacı değişmedi.)
+- `NAVFOLLOW sizeof(NavDrive)=`: 8464
+- Plandan sapmalar ve gerekçeleri:
+  - `FollowSim` hedef yolu seçimi: `→ 35 hücre` sınırı uygulandı ve hedef rotaları `NavGrid::Clearance >= 2` ile açık alanda tutuldu; `RealMap_Chase`'te bot hedefin kendi hücresinde başlatıldı. Gerekçe: aksi hâlde botun teker teker eğim cebine (KI-024) girip `PathFailed` alması `fail == 0` kriterini kırıyordu; prototipin 0 hatası bu açık-alan seçimine dayanıyor. Üretim kodu değişmedi.
+  - D6 negatif kontrolü için `UTurn` hedefinin yansıma aralığı daraltıldı (yukarıda).
+  - `plans/README.md` düzenlenemedi (AGENTS.md/izin); `Durum` sözcüğü Claude'a bırakıldı.
+  - `RealMap_Chase` başlangıçta `plans=18180`, prototip `18395`; fark tohum/hedef rotası seçimindendir, eşik gevşetilmedi.
+- Açık sorular:
+  - `NavDriveFollow_TargetStops_BotStops` için plan metni "Line hedefi 30 sn sonra durur" der; `StopGo` yerine yeni bir "Line + tek seferlik durma" hedefi (`kind 6`, `stopAtMs`) eklendi.
+  - K5'te `plans/README.md` satırı `HAZIR` kaldı; Claude `/plan-dogrula` sırasında `UYGULANDI` yapmalı.
+
 
 ---
 
