@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-57 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`), **F5-54** (`NavPacketCadenceParams()` ve `NavGuardBlockDetector`) — `KAPANDI` olmalı |
@@ -240,4 +240,32 @@ plans/F5-57-nav-niyet-ve-gercek-ilerleme.md — Doğrulama Turu 1 düzeltmeleri.
   - Tur 1'deki karar gereği `NotifyReplan` çağıran sözleşmesi (`docs/12` §13.3 + F5-55) Claude tarafından eklenecek; bu turda dokümana dokunulmadı.
 - Açık sorular:
   - Yok. (Talimat 1-10 eksiksiz uygulandı.)
-```
+
+---
+
+### Tur 2 — 2026-10-03 (denetçi)
+
+- **Karar:** DOĞRULANDI
+- **İncelenen commit:** `09c8e0e` (`bot/F5-57`, taban `gece/2026-10-02-nav`; Tur 2 düzeltmesi `e716339`, rapor commit'leri `a3b4fc8`, `09c8e0e`). Paralel hat `nav` (`AUTO_LOOP=1`): sunuculara dokunulmadı; birleştirme/push yapılmadı (birleştirmeyi döngü betiği yapar).
+- **Doğrulama ortamı:** `touch` sonrası `./tools/build.sh Release` ve `Debug`, `./tools/run-tests.sh Release` ve `Debug`, `tools/nav-measure.sh stuck` ve `progress`; `NavStuck.h` yeni kodu ve yeni test vakaları satır satır okundu.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 Release rc=0, yeni uyarı yok | ✔ | `touch` (NavStuck.h, NavStuckTests.cpp, nav_measure.cpp) sonrası rc=0; günlükte `warning` 0; yalnızca `NavStuckTests.cpp` yeniden derlendi |
+| K2 Debug rc=0, uyarı yok | ✔ | rc=0; `warning` 0 |
+| K3 `0 failed`, sekiz yeni ad `[ OK ]`, F5-09/F5-54 değişmez | ✔ | Release ve Debug `217 tests, 0 failed`; sekiz `NavProgress_*` ad `[ OK ]` (RouteProgress, NormalWalk_NoAlarm, Stalled, UTurn_vs_Displacement, Awaiting, Guard, Arrival_Replan, Determinism); mevcut vakalara dokunulmamış |
+| K4 `NormalWalk_NoAlarm` üç modelde, yanlış alarm 0 | ✔ | Dört senaryo (`walk45`, `sprint67`, `corner45` gerçek köşeli, `corner_dense`) × üç tick modeli: `stalled=0 false_alarms=0 monitor_episodes=0`, `progressing` ≫ `awaiting` (örn. model=2: `ticks=6383 stalled=0 awaiting=16 progressing=6367`). `RunProgressWalk` artık `totalLen`'i polylinden hesaplıyor ve `routeProgressM`'i `NavRouteProgressM` izdüşümüyle veriyor (`NavStuckTests.cpp:1686-1760`). Satırların senaryolar arasında birebir aynı olması beklenen: sayaçlar yalnızca paket zamanlamasına bağlı |
+| K5 `Stalled` yalnızca ≥ `periods` paket ve ≥ 3200 ms sonra; U-dönüşü `Progressing` | ✔ | Dondurulmuş süpürme (10 ms adım): ilk `Stalled` **4700** = 1500 + 3200 (`NAVPROGRESS stalled frozen first_ms=4700`, `CHECK(firstStall >= 4700)`); replan sonrası sağlıklı yürüyüşte `Stalled` yok; replan sonrası dondurulmuşta ilk `Stalled` **9200** = 6000 + 3200; 2,5 sn gecikme süpürmesinde `Stalled` yok, 4651..5499 arası `AwaitingPacket`; U-dönüşü `Progressing`, F5-09 aynı paketlerde `NoProgress` (fark `CHECK` ile sabit); duvar boyunca geri-ileri `Stalled`; `Idle`/`Awaiting`/`Blocked` iken `Stalled` üretilmiyor (`NavStuck.h` `Assess` sırası 1→4) |
+| K6 yasak başlık yok, dinamik bellek/global yok, yalnızca `+` satırı | ✔ | Yeni `NavStuck.h` kodunda `windows.h/stdafx/GameServer/shared//new/malloc/std::vector` yok (eşleşmeler yalnızca test dosyasında `std::vector` ve yorum metinlerinde "new route"); sabit boyutlu halka (32), `static constexpr int kCapacity` sabit, durum değil; `NavStuck.h` ve `NavStuckTests.cpp` farkında `-` satırı 0 |
+| K7 kapsam, ASCII + CRLF, `git diff --check` | ✔ | Kod farkı yalnızca `BotCore/NavStuck.h`, `Tests/BotCoreTests/NavStuckTests.cpp`, `tools/nav-measure/nav_measure.cpp` (+977/−2; silinen iki satır Tur 1'de kabul edilen usage/bölüm listesi); `GameServer/ AIServer/ shared/ .vcxproj` farkı 0; üç dosya `ASCII text, with CRLF line terminators`; `git diff --check` kod/plan dosyalarında boş (tabandan farkta `docs/STATUS.md` ve `plans/README.md` yalnızca denetçinin Tur 1 kayıtları) |
+| K8 (Claude) `stuck` ve `progress` yeniden koşu, 6 → 0 | ✔ | `STUCK model=tick110.8+-20+3%late250 feed=every_tick params=F5-09_default false_episodes=6`, `cadence_3200` 0; `PROGRESS ... evaluator=F5-09_default false_episodes=6 first_ms=138917`, `cadence_3200 0`, `assessor 0`; `PROGRESS_TRUE`: F5-09 1500, cadence_3200 3200, assessor **3200** (Tur 1'de 3100) |
+| K9 oyun içi kanıt | — | Bu planda kapanmaz (`BEKLİYOR`, F5-55) |
+
+Uygulayıcı Raporu Tur 2'deki iddialar (217 test, `first_ms=4700/9200`, 6/0/0 tablosu, `assessor 3200`) doğru. Tur 1 bulguları: B1 kapandı (`NotifyReplan` `m_replanMs` yazıyor; `Assess` adım 5'te `m_hasProgressBase` iken yalnızca `t >= m_replanMs` paketler çapa olabilir, `NavStuck.h` `Assess`), B2 kapandı (pencere `periods * periodMs + toleranceMs`), B3 kapandı (gerçek köşeli rota + izdüşüm), B4 kapandı (gerçek replan ve 2,5 sn gecikme vakaları), B5 kapandı (bütünleşme sözleşmesi ve Öklid yedeği başlıkta yazılı), B6 kapandı (`route`/`(void)route;` silindi).
+
+**Notlar (engel değil)**
+
+1. `NotifyReplan` damgası eşitliği: replan ile aynı milisaniyede damgalanmış eski rota paketi (`t == m_replanMs`) çapa olabilir (`>=`). Sözleşme gereği replan paket gönderiminden önce çağrılır; F5-55 entegrasyonunda sıra korunmalı.
+2. Niyet açıkken hiç paket gelmezse karar sonsuza kadar `AwaitingPacket` kalır (`Stalled` üretilmez); bu bilinçli (başlıkta yazılı), "paket yok" karar katmanı/`ActionExecutor` işidir.
+3. `periodMs = 1550`, `periods = 2`, `toleranceMs = 100`, `minProgressM = 1`, 32 örnek `[A]`; T-NAV-04 sonrası güncellenir. `docs/12` §13.3 tablosundaki "≥ 3,1 sn" ile kod 3,2 sn: aynı mertebe, §13.3 notuna yazıldı.
+4. Sözleşme (`NotifyReplan` her yeni rotada; `moving = Progressing || Stalled`; `AwaitingPacket`) `docs/12` §13.3'e ve F5-55 taslağına işlendi.
