@@ -55,8 +55,8 @@ private:
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
 		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false),
 		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false),
-		m_respawnCycles(0), m_speedCheck(true), m_despawnOk(0), m_namesLeft(0), m_scenario(*this),
-		m_script(*this) {}
+		m_respawnCycles(0), m_speedCheck(true), m_despawnOk(0), m_namesLeft(0), m_handshakeWaitTicks(0),
+		m_scenario(*this), m_script(*this) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
 	static void TickCallback();
@@ -107,6 +107,7 @@ private:
 	uint32 m_despawnAfterMs;     // 0 = never despawn ([BOT] DESPAWN_AFTER_SEC)
 	uint32 m_spawnOk;            // IOCP thread only: sessions that reached PHASE_IN_GAME
 	uint32 m_spawnFailed;        // IOCP thread only: sessions that went through FailSession()
+	uint32 m_handshakeWaitTicks; // IOCP thread only: ticks a ready session waited for the login handshake gate
 	bool m_despawnSummaryDone;   // IOCP thread only
 
 	uint32 m_respawnCycles;      // [BOT] RESPAWN_CYCLES: extra spawns per bot after the first (0 = none)

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-55 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F2-03 (bot girişi / spawn durum makinesi), F4-12, F4-13 (görünür oyuncu tablosu, `WIZ_REQ_USERIN`), F4-54 (teşhis sayaçları, kök neden H2) — hepsi `KAPANDI` (`gece/2026-10-02` içinde birleşik; F4-54 merge `cf22667`) |
@@ -171,27 +171,77 @@ grep -n -a "HandshakeGateOpen\|handshakeWaitTicks\|spawn handshake" GameServer/B
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-55` (taban `gece/2026-10-02` @ `2e85af8`). Uygulama commit'i `06445fb`; Durum/rapor commit'i bu dosyayla aynı commit.
 - Değişen dosyalar ve neden:
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/SpawnGate.h` (yeni): `HandshakeGateOpen(int)` + `HandshakeMissesUnit(op1X, op2X, op2Y)` saf mantık, yalnızca `<cstdint>`, ASCII + CRLF.
+  - `Tests/BotCoreTests/SpawnGateTests.cpp` (yeni): üç birim testi (kural, F4-54 asimetri modeli, kapılı/kapısız tick döngüsü).
+  - `BotCore/BotCore.vcxproj` / `Tests/BotCoreTests/BotCoreTests.vcxproj`: yeni dosya satırları (`.filters` yok, doğrulandı).
+  - `GameServer/Bot/BotManager.cpp`: `#include "../../BotCore/SpawnGate.h"`; dosya-statik `CountInHandshake`; `TickSessions` `PHASE_WAIT_SELECT` dalında `GameStart(1)` öncesi kapı denetimi; toplu özetten sonra `spawn handshake` log satırı.
+  - `GameServer/Bot/BotManager.h`: `uint32 m_handshakeWaitTicks;` üyesi + kurucuda `m_handshakeWaitTicks(0)`.
+- Derleme sonucu: `./tools/build.sh Release` rc=0; `BotManager.cpp` ve `SpawnGateTests.cpp` uyarısız derlendi; kalan uyarılar eski (`GameServerDlg.cpp` C4834/C4267, `UpgradeHandler.cpp` C4789). Son satırlar: `Kodun üretilmesi tamamlandı` / `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. `./tools/build.sh Debug` rc=0 (aynı eski uyarılar).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (`Release` rc=0, yeni uyarı yok).
+  - K2 ✔ (`Debug` rc=0, yeni uyarı yok).
+  - K3 ✔ (`run-tests.sh Release` ve `Debug`: `267 tests, 0 failed`; üç `SpawnGate_*` testi `[ OK ]`). Dal açılışında T0=264 (plan 259 bekliyordu; dalda F4-60/F5-60 birleşik), sonuç T0+3.
+  - K4 ✔ (`GameServer` farkı yalnızca `BotManager.cpp`/`.h`; `-` satırları yalnızca kurucu başlatıcı listesinde; `shared/`, `AIServer/`, bot dışı `GameServer/*.cpp` farkı yok).
+  - K5 ✔ (yeni satırlarda `g_pMain|GetUserPtr|GetRegion|m_RegionUserArray|->m_pUser` yok; `check-perception-contract.py` `RESULT: PASS`, R1-R5 ihlal 0, `SpawnGate.h` R4 temiz).
+  - K6 ✔ (yeni ini/komut/thread/paket yok; `SELECT_SETTLE_MS`/`LOADED_DELAY_MS`/`PHASE_TIMEOUT_MS` değişmedi; `ENABLED=0` yolu `m_sessions.empty()` erken dönüşüyle aynı).
+  - K7 ✔ (yeni dosyalar ASCII + CRLF, izlenenlerde `git diff --check` boş; iki vcxproj yeni satırları içeriyor).
+  - K8 ✔ (kapı kodu: `BotManager.cpp:3024-3031`; log: `BotManager.cpp:3389-3391`; kilitlenmez gerekçesi: `PHASE_WAIT_LOADED` her durumda `LOADED_DELAY_MS`=200 ms sonra koşulsuz `GameStart(2)` gönderip `PHASE_IN_GAME`/`FailSession`'a çıkar, dolayısıyla `CountInHandshake` en fazla bir oturum + 200-300 ms için >0 olur).
+  - K9/K10/K11: çalışma zamanı koşusu Claude'da (§6 notu); uygulayıcı oyun içi doğrulama yapmadı.
 - Plandan sapmalar ve gerekçeleri:
+  1. `SpawnGate_OverlapReproducesOneWayView` testinde plan `op1 = {0, 100, 200}`, `op2 = op1 + 200` diyordu; ancak katı pencere (`op1(X) < op2(Y) < op2(X)`) ve 100 ms aralıkta `op1(2) == op2(0) == 200` eşitliği `2!0` yönünü düşürüp sonucu `{1!0, 2!1}` yapar; planın belgelediği F4-54 koşu 1 kümesi ise `{1!0, 2!0, 2!1}`. Plan içi bu tutarsızlık nedeniyle test girdisi el sıkışma aralığı **250 ms** seçildi (`op2 = {250, 350, 450}`); bu, planın *beklenen çıktısını* (üç eksik yön, hiçbir çiftte iki yön) birebir üretir. Kod (`SpawnGate.h`) plandaki gibi katı `<` kaldı; değişen yalnızca testin zaman damgalarıdır.
+  2. `BotManager.h` kurucu başlatıcı listesi bir satır kaydırılarak `m_handshakeWaitTicks(0)` eklendi (K4'te izinli `-` satırı gerekçesi).
 - Açık sorular:
+  1. Sapma 1'deki zamanlama seçimi (250 ms) onaylanıyor mu? Plan metnindeki `+200` ile üretilen küme planın kendi beklediği kümeyle çelişiyor; hangisinin esas alınacağı netleşirse test buna göre sabitlenir.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar:
-- İncelenen:
+- Karar: **DOĞRULANDI** (gece modu: birleştirmeyi döngü betiği yapar; Claude birleştirme/push yapmadı)
+- İncelenen: `bot/F4-55` @ `bf71029` (uygulama `06445fb`, rapor `bf71029`; taban `gece/2026-10-02` @ `2e85af8`). Çalışma ağacı temiz.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | | |
+| K1 | ✔ | `BotManager.cpp` `touch` ile yeniden derlendi: `./tools/build.sh Release` rc=0, `BotManager.cpp` için uyarı 0; dal geçişinden sonra tam yeniden derlemede yalnız eski `GameServerDlg.cpp` C4834/C4267 uyarıları |
+| K2 | ✔ | `BotManager.cpp` + `SpawnGateTests.cpp` `touch`, `./tools/build.sh Debug` rc=0, `warning`/`error` satırı 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `267 tests, 0 failed` (taban 264 + 3; tabandaki `TEST_CASE(` sayısı 265 = 264 test + `MiniTest.h` tanımı); `SpawnGate_RuleOpenOnlyWhenIdle`, `SpawnGate_OverlapReproducesOneWayView`, `SpawnGate_GatedLoopIsSymmetric` iki yapılandırmada `[ OK ]` |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-55`: 7 dosya, `GameServer/` altında yalnız `Bot/BotManager.cpp` (+27) ve `Bot/BotManager.h` (+5/−2); `-` satırları yalnız `BotManager.h:57-58` kurucu başlatıcı listesi (`m_handshakeWaitTicks(0)` eklenirken satır kaydı, raporda açıklanmış); `shared/`, `AIServer/` farkı yok |
+| K5 | ✔ | eklenen kod satırlarında `g_pMain\|GetUserPtr\|GetRegion\|m_RegionUserArray\|->m_pUser` yok (tek eşleşme plan dosyasındaki rapor metni); kapı yalnız `sessions[i]->m_phase` okuyor (`BotManager.cpp:2974`); `check-perception-contract.py` `RESULT: PASS` |
+| K6 | ✔ | yeni ini anahtarı/komut/thread/paket yok; `TickSessions` ilk satırı `m_sessions.empty()` dönüşü aynı (`BotManager.cpp:2982-2983`); `SELECT_SETTLE_MS`/`LOADED_DELAY_MS`/`PHASE_TIMEOUT_MS` satırlarında `-` yok |
+| K7 | ✔ | `SpawnGate.h` ve `SpawnGateTests.cpp`: `file` = ASCII, CRLF (CR sayısı = satır sayısı, ASCII dışı 0); `git diff --check` boş; `BotCore.vcxproj` `:90` `<ClInclude Include="SpawnGate.h" />`, `BotCoreTests.vcxproj` `:100` `<ClCompile Include="SpawnGateTests.cpp" />`; dört değişen dosyada CR'siz satır 0 |
+| K8 | ✔ | rapordaki yerler doğru: kapı `BotManager.cpp:3024-3031`, özet log `:3388-3391` (biçim `spawn handshake: serialized, gate waits %u tick(s)`); kilitlenmezlik gerekçesi kodla uyumlu: `PHASE_WAIT_LOADED` dalı 200 ms sonra koşulsuz `GameStart(2)` gönderir (`:3046-3049`), sonuç `PHASE_IN_GAME` ya da `FailSession`; `PHASE_WAIT_LOADED` yalnızca `:3035`'te atanıyor (grep) |
+| K9 | ✔ | **12/12 simetrik, hepsi tek `spawn` komutuyla** (aşağıdaki tablo) |
+| K10 | ✔ | tek satır `spawn BotWP_K,BotMF_K,BotPHD_K` (F4-54'ün 6/6 asimetrik olduğu koşul) 12/12 simetrik; (a) 6 Karus bot tek `spawn`: 6/6 bot 5'er birim görüyor = **30/30 yön**, hepsi aynı 3×3'te (`list` konumları x 1270-1276, z 905-936); (b) `SPAWN_ON_START` ile üç bot: 3/3 simetrik, `gate waits 3`; (c) **taban ikilisi** (`gece/2026-10-02` @ `2e85af8`) 2 koşu: 2/2 asimetrik (görülen birim sayıları `2/1/1`) → ortam kayması yok, düzeltme farkı yaratıyor |
+| K11 | ✔ | 3 bot: `spawn` komutundan toplu özet satırına 2,20-2,64 sn (12 koşu; ≤ 6 sn); **12 bot tek `spawn`: 4,64 sn (≤ 10 sn), `spawn complete: 12/12 in game, 0 failed`, `gate waits 66 tick(s)`**; `FAILED`/zaman aşımı satırı yok; `ENABLED=0` yolu kodda değişmedi (yalnız `m_sessions.empty()` dönüşü, oturum yokken tick yok) |
 
-- Bulgular (önem sırasıyla):
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+**K9/K10/K11 çalışma zamanı ayrıntısı (Claude yaptı).** `Release`, dal ucundan (`bf71029`) derlenmiş ikililer (`tools/run-servers.sh start --config Release`); her koşuda sunucular yeniden başlatıldı; komutlar `BotCommands.txt` ile (`spawn …`, 6 sn sonra `list` + `see` × bot). `GameServer.ini` koşu boyunca elle değiştirildi (`[BOT] ENABLED=1, MAX_BOTS=16`, (b) için `SPAWN_ON_START`); **iş bitince yedekten geri alındı, md5 önce = sonra = `d16463283c0d41074a2d8b6ec4aee203`**; sunucular kapalı (`0/3`), `BotCommands.*` kalmadı. Süre ölçümü komut dosyasının yazılışı ile günlükteki özet satırının görünmesi arasındaki duvar saatidir (komut yoklama gecikmesi dahil, bu yüzden üst sınırdır). Koşu betiği geçici (`/tmp`), commit edilmedi.
+
+| Koşu | Doğuş sırası (tek `spawn`) | Görülen birim (WP/MF/PHD) | Simetri | `gate waits` | Süre (sn) |
+|---|---|---|---|---|---|
+| 1 | WP, MF, PHD | 2/2/2 | ✔ | 3 | 2,24 |
+| 2 | WP, PHD, MF | 2/2/2 | ✔ | 3 | 2,20 |
+| 3 | MF, WP, PHD | 2/2/2 | ✔ | 3 | 2,33 |
+| 4 | MF, PHD, WP | 2/2/2 | ✔ | 3 | 2,27 |
+| 5 | PHD, WP, MF | 2/2/2 | ✔ | 3 | 2,42 |
+| 6 | PHD, MF, WP | 2/2/2 | ✔ | 3 | 2,30 |
+| 7 | WP, MF, PHD | 2/2/2 | ✔ | 3 | 2,42 |
+| 8 | WP, PHD, MF | 2/2/2 | ✔ | 3 | 2,49 |
+| 9 | MF, WP, PHD | 2/2/2 | ✔ | 3 | 2,42 |
+| 10 | MF, PHD, WP | 2/2/2 | ✔ | 3 | 2,21 |
+| 11 | PHD, WP, MF | 2/2/2 | ✔ | 3 | 2,28 |
+| 12 | PHD, MF, WP | 2/2/2 | ✔ | 3 | 2,64 |
+
+Üç botun konumu 12 koşuda aynı (`BotWP_K` 1274,934; `BotMF_K` 1274,905; `BotPHD_K` 1274,928; hepsi zone 71, aynı 3×3). Sayaçlar her koşuda her botta: `inout_parse_fail 0`, `region recv 0`, `userin stop 0`, `userin recv 1`, `move_unknown 0`, `userin sent 0`; **her botta `inout in + userin units = 2`** (örn. her koşuda 2+0, 1+1, 0+2: giriş sırasındaki ilk bot herkesi yayından, son bot herkesi listeden alıyor: H2 modeliyle birebir). Ek koşular: 6 bot `gate waits 15`, 3,06 sn; 12 bot (6 Karus + 6 Elmorad, hepsi zone 71, 1262-1276 × 890-936) her bot 11 birim görüyor (6 düşman + 5 dost) = **132/132 yön**, `dropped 0`, `unresolved 0`. Kontrol (c): `c1` sırası WP, MF, PHD → görülen `2/1/1`; `c2` sırası PHD, MF, WP → `2/1/1` (birim sayıları asimetri; tabanda `spawn handshake` satırı yok).
+
+- Bulgular (önem sırasıyla): engelleyici bulgu yok.
+  1. **Not (üslup, engel değil):** `BotManager.h:110` `m_handshakeWaitTicks` bildirimde `m_namesLeft` (`:116`) öncesinde, başlatıcı listesinde (`:58`) ondan sonra; MSVC bu sıra uyuşmazlığına varsayılan olarak uyarı vermiyor (derleme uyarısız), davranış etkisi yok. Bir sonraki dokunuşta bildirim sırasına çekilebilir.
+  2. **Not (test gücü):** `SpawnGate_GatedLoopIsSymmetric` içinde `maxInHandshake` sayımı her tick'in başında (yeni el sıkışmalar başlamadan önce) ölçülüyor; aynı tick'te iki oturum başlasaydı sonraki tick'te yakalanırdı, simetri denetimi ve "kapı açık" karşı-testi zaten bunu sınıyor. Kabul edilebilir.
+  3. **Uygulayıcı sorusu (250 ms) cevabı:** onaylandı. Plan §3 madde 4 / §5 adım 7 `op2 = op1 + 200` ile katı pencerede `{1!0, 2!1}` üretir (`op1(2) == op2(0)` eşitliği `<` ile dışarıda kalır); 250 ms aralık planın belgelediği F4-54 koşu 1 kümesini `{1!0, 2!0, 2!1}` üretir. Kod (`SpawnGate.h`) planla aynı; yalnız test girdisi, gerekçesi raporda ve test yorumunda yazılı. Plan metnindeki `+200` bir plan hatasıdır (gerçek sunucuda `GameStart(2)` en az 200 ms + tick yuvarlaması sonra gider). Eşitlik sınırı (`op1(X) == op2(Y)`) modelde "sıralı" sayılıyor; gerçek sunucuda aynı tick içinde sıra `m_sessions` indeksine bağlı ve kapı bunu zaten disjoint yapıyor.
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
+- **Kalan adımlar (KI-DEG-01 kapatma kriteri, §6 sonu):** (1) K1-K11 ✔ (bu tur); (2) plan birleştikten sonra **birleşik ikiliyle** K9 özet koşusu (en az 1 tur, 3 bot, tek `spawn`) tekrarlanacak; (3) `docs/KNOWN_ISSUES.md` KI-DEG-01 satırından "≥ 3 sn" geçici çözümü kaldırılıp çözüm + kanıt (`plan:K9`) yazılacak, `docs/13` §4.3 "Spawn" satırına el sıkışma serileştirmesi eklenecek; (4) gerçek oyuncu girişi çakışması ayrı `KI-` satırı olarak açılacak. Bunlar birleştirmeden sonra yapılır; bu turda KI-DEG-01 satırı değiştirilmedi.

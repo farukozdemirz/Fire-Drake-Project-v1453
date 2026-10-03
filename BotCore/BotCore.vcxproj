@@ -87,6 +87,7 @@
     <ClInclude Include="Perception.h" />
     <ClInclude Include="ScriptPlan.h" />
     <ClInclude Include="Rng.h" />
+    <ClInclude Include="SpawnGate.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
