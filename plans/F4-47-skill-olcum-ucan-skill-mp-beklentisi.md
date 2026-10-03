@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `2135a0c`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 23) |
 | Branch | `bot/F4-47` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-41 (`tools/skill-check.py`), F4-43 (`--mp-regen` hükmü) — `KAPANDI`; F4-46 — `KAPANDI` (merge `f444da0`) |
