@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-37` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-36 (`CastItemSkillSupported` + `no_item` kuralı) — `KAPANDI` (merge `bc15a0b`); F4-26 (`{3, 4}` çifti, tip damgaları iki tip için) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-27 (`quest_locked`) — `KAPANDI` |
@@ -265,4 +265,42 @@ git diff --check gece/2026-10-02...bot/F4-37
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(henüz doldurulmadı)
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-37` @ `da74056` (kod `0afdfa4`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | üç dosya `touch` + `tools/build.sh Release` rc=0; log'da `warning`/`error` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0; `warning C`/`error` 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: rc=0, `249 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `Combat_ItemSkill_Guard`, `Combat_Type1Pair_Guard` (ikisinde de) |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; eklenen satırlarda `std::min`/`std::max` 0; `git diff -- BotCore/BotCombat.h` tek hunk (`CastTypesSupported` + üstündeki yorum); `#include` değişmedi |
+| K5 | ✔ | `git diff --name-only`: `BotCore/BotCombat.h`, `GameServer/Bot/ActionExecutor.h`, `Tests/BotCoreTests/CombatTests.cpp` + plan; `ActionExecutor.cpp`, `BotSession.*`, `BotManager.cpp`, `Telemetry.cpp`, `tools/`, vcxproj farkı 0 satır; `grep -c "CastTypesSupported(m->bType\[0\], m->bType\[1\])" ActionExecutor.cpp` = 1 (`:768`); `false` bekleyen `CastTypesSupported(1, 3\|4)` satırı kalmadı (yalnız `(1, 9)` `false`) |
+| K6 | ✔ | `CastTypesSupported` sayısı 47 → 82 (+35 ≥ 30); `(1, 9)`, `(0, 4)`, `(4, 3)`, `(5, 4)` `false` satırları `Combat_Type1Pair_Guard` içinde; §5.2 b listesinin tamamı (açılan 2, değişmeyen 12, kapalı 22 çift, eşya kapısı 3, tüketilen eşya 3, `MinGatedSince` 3, diğer kurallar 4) mevcut |
+| K7 | ✔ | koddaki farkta eklenen `Emit(` yok (tek eşleşme plan dosyasındaki uygulayıcı metni); yeni ini anahtarı/komut/thread/olay türü yok; `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: üç dosya `ASCII text, with CRLF line terminators` (çalışma ağacı; indeks `i/lf` `core.autocrlf=true` ile depo genelinde aynı); `git diff --check` boş; eklenen satırlarda ASCII dışı karakter yok |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki 248 testin tamamı geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS`, `files scanned: 31` |
+| K11 | ✔ | S1–S8 çalışma zamanında geçti (aşağıda; ölçülemeyenler bulgularda) |
+
+**Çalışma zamanı** (Release `GameServer.exe` `373975eb…`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-062051.jsonl`, `Logs/Bot_3_10_2026.log`; `summary` ve `ENABLED=0` için ayrı yeniden başlatma). Botlar: `BotWG_K` (2984), `BotWP_E` (2985), `BotWP_K` (2986), `BotMF_K` (2987), `BotPHB_K` (2988). Hedef `BotWP_E` (900, 1150); `BotWG_K` 1 m, `BotWP_K` ≈ 1,4 m, `BotMF_K` 8 m. MP değerleri `list`'ten; kümeli +40 yenileme payı her ölçümde olabilir.
+
+- **S1 ✔ Shock Stun (`106820`, `{1, 3}`).** `CastTime 0` ⇒ tek `CastEffect` (`casting` yok, `since_casting_ms 0`), `effected` `op 3` `code 0`; log `cast finished (effected) after 1 cycle(s), 1 ok, 1 packet(s) sent`. MP 5370 → 5160 (**−210 = −250 + 40 yenileme**, tek ödeme); hedef HP 5650 → 5446. `snap BotWP_E events`: **aynı skill, aynı yaş için iki EFFECTING olayı** (`d1=1` ve `d1=0`; Type3 + Type1 yayını) ⇒ sunucu çift yayın kuralı (MEC-MAG-13/24) kanıtlandı.
+- **S2 ✔ Exceed Break (`106815`).** `effected` `code 0`, MP 5200 → 4840 (**−360 = −400 + 40**), hedef HP −176. S1 ile S2 arası 16,4 sn (≥ 1 sn tip kapısı bu ölçümde sınanmadı, bkz. bulgu 4).
+- **S3 ✔ Scream (`106802`, `{1, 4}` + `BeforeAction 1`).** `effected`, **`code 7`** (Type4 süresi; son yankı Type4'ten, `missed` yok); MP 4840 → 4620 (−220 = −300 + iki yenileme; çift ödeme olsaydı ≤ −520). İkinci Scream (ReCastTime 10,1 sn sonrası, ~23 sn): MP 4700 → 4440 (**−260 = −300 + 40, tek ödeme**), yine `effected` `code 7`; çantada **1 adet** `379063000` olduğu hâlde `no_item` değil ⇒ **Scream Scroll tüketilmiyor** `[V]`.
+- **S4 ✔ Leg cutting (`106520`).** `BotWG_K`: `effected` `code 10`, MP 4440 → 4396 (**−44 = −84 + 40**); `BotWP_K`: `effected` `code 10`, MP 5370 → 5286 (**−84 tam**).
+- **S5 ✔ Mage asa skill'i.** `cast BotMF_K 110542 BotWP_E 1` (8 m): tek `CastEffect`, `effected` `code 0`, MP 6021 → 5921 (**−100 tam**), hedef HP 4437 → 4224. `110742` (`[7] = 0`): `srv_fail` `op 4` `code -103`, MP yalnızca yenileme kadar arttı (5921 → 5961). 15 m'de `cast BotMF_K 110542`: `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range` (`value 15.00`, `limit 11.00`), `CastEffect` satırı eklenmedi, MP 6021 sabit.
+- **S6 ✔ Bot kuralları.** `cast BotWG_K 106820 self 1` ⇒ `refused (bad_target)`; `cast BotWP_K 106575 BotWP_E 1` ⇒ `refused (quest_locked)` (`db/003` uygulanmamış); `cast BotWG_K 105520 BotWP_E 1` ⇒ `refused (bad_skill)`; üçünde `ACTION_SUBMIT` Cast sayısı değişmedi (8 → 8), MP değişmedi (yalnız yenileme).
+- **S7 ✔ Gerilemesiz.** F4-26 `{3, 4}` `cast BotMF_K 110609 BotWP_E 1` (Chill): `CastStart` `casting` → `CastEffect` `effected` `code 11`, 2 paket (`since_casting_ms 1655`, plan F4-26 kalıbıyla aynı); F4-28 Type4 `cast BotPHB_K 112603 self 1` `effected` `code 600`; tek tipli Type1 `cast BotWG_K 106525 BotWP_E 1` (Carving) `effected` `code 0`, tek paket. F4-36 Judgment ve F4-35 descent yeniden koşulmadı (bkz. bulgu 5).
+- **S8 ✔ Ayarlar ve temizlik.** `TELEMETRY=summary`: `BotPHB_K` Type4 self-cast `effected`; `live-063425.jsonl`'de `ACTION_` satırı **0**, `PERF_SAMPLE` 3 (`tick_p95_us` 91). `decisions` koşusunda `tick_p95_us` 100–112 (F4-36: 108–427). `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya yerinde kaldı), `Bot_3_10_2026.log` satır sayısı (7074) ve `live-*` sayısı (14) değişmedi. `GameServer.log` son girdi 2.10 02:17 (koşuda yeni hata yok); `Bot_*.log`'da `RobItem`/`exception`/`assert` 0; koşuda `FAIRNESS_REJECT` yalnız 1 (doğru `out_of_range`). Temizlik: botlar despawn (`pool free 16/16`), sunucular `stop` (nazik), `GameServer.ini` yedeğe döndü (`diff` boş), runtime `GameServer.exe` `md5` `cc6886ea…` değişmedi, `BotCommands.*` silindi, çalışma ağacı temiz.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **Düşman bot yürüyüşü:** `BotWP_E` (El Morad başlangıcı 630, 920 ⇒ Karus başlangıcı 1380, 1093) iki kez Ronark canavarlarınca öldürüldü (1309, 1077 ve 1325, 1100 civarı); sonuçta hedef (900, 1150)'de bekletildi, Karus botları oraya yürütüldü (bowl bilgisi, ADR). `BotWP_E` ve `BotMF_K` DB'de ölü (`hp 0`) doğdu, `regene` ile canlandırıldı.
+  2. *(not)* **`{1, 3}` sonucu:** Shock Stun / Exceed Break `code 0` döndü; `-104` (`missed`) bu koşuda görülmedi (5 atış, hepsi hasarlı). `{1, 4}` sonucu Type4 süresi (`7`, `10`) ve `missed` yok: MEC-MAG-24 ile uyumlu.
+  3. *(not)* **Ölçülmeyenler:** Stone of Warrior tüketimi `[D]` (DB okunmaz); Blooding/Blinding/Fire-Ice-Light Staff/`110642` (`BotMI_K`) koşulmadı; hedefte hız debuff'ının tutması ve stun etkisi ölçülmedi (kapsam dışı).
+  4. *(not)* **Same-type kapısı ve aynı `BuffType` yenilemesi:** Scream süresi (7 sn) ReCastTime'dan (10,1 sn) kısa olduğundan ikinci atış debuff bitmiş hedefe yapıldı; "debuff hedefte varken yenileme" (§5.4 satır 6) ve S1→S2 ≥ 1 sn kapı davranışı ayırt edici biçimde ölçülemedi (aralıklar 16 sn ve üstü). `[A]` kaldı.
+  5. *(not)* **Gerilemesiz kapsamı:** F4-36 Judgment (`BotPHD_K`) ve F4-35 descent koşulmadı; kod farkı yalnızca `CastTypesSupported` içinde `type0 == 1` + `type1 != 0` dalını açtığından tek tipli yollar değişmez (birim testlerle sabit).
+  6. *(not)* Uygulayıcı raporu doğru: commit listesi (`0afdfa4` kod, `da74056` rapor), dosyalar, derleme/test çıktısı, sayılar (47 → 82, 249 test) kendi ölçümümle örtüşüyor; sapma yok.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
