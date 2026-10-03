@@ -210,7 +210,10 @@ public:
 	// supported, and flying area skills (Fire/Ice/Thunder burst: Moral 10 + Type3 FlyingEffect, run as
 	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30;
 	// party-targeted skills (Moral 4 single party member or self; Moral 6 whole party with target id -1 and an aim
-	// point; MAGIC.HP >= 10000 "sacrifice" skills stay unsupported; ADR-0017 Ek F4-31) are supported),
+	// point; MAGIC.HP >= 10000 "sacrifice" skills stay unsupported; ADR-0017 Ek F4-31) are supported;
+	// Type5 cure (Moral 2 only: Cure curse, Cure disease; the party-all cure and resurrections stay unsupported;
+	// ADR-0017 Ek F4-32); a cure always reports "effected" when the server broadcasts it, even if nothing was removed
+	// (docs/03 MEC-MAG-19)),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
 	// "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
