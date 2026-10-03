@@ -628,6 +628,8 @@ void BotManager::ExecuteCommand(const std::string & line)
 		CommandMove(args);
 	else if (_stricmp(verb.c_str(), "goto") == 0)
 		CommandGoto(args);
+	else if (_stricmp(verb.c_str(), "follow") == 0)
+		CommandFollow(args);
 	else if (_stricmp(verb.c_str(), "stop") == 0)
 		CommandStop(args);
 	else if (_stricmp(verb.c_str(), "attack") == 0)
@@ -667,7 +669,7 @@ void BotManager::ExecuteCommand(const std::string & line)
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, script, move, goto, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, script, move, goto, follow, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1203,6 +1205,234 @@ void BotManager::CommandGoto(const std::string & args)
 			(double)s->m_navDrive.GoalZ(), (int)speedField);
 	}
 	WriteBotLog(message);
+}
+
+// --- follow (F5-74) log name helpers (D8) ---
+
+static const char * FollowStatusName(BotCore::NavFollowStatus status)
+{
+	switch (status)
+	{
+	case BotCore::NavFollowStatus::Planned: return "Planned";
+	case BotCore::NavFollowStatus::NoGoal: return "NoGoal";
+	case BotCore::NavFollowStatus::InvalidStart: return "InvalidStart";
+	case BotCore::NavFollowStatus::PathFailed: return "PathFailed";
+	default: return "NoTarget";
+	}
+}
+
+static const char * FollowReasonName(BotCore::NavReplanReason reason)
+{
+	switch (reason)
+	{
+	case BotCore::NavReplanReason::First: return "First";
+	case BotCore::NavReplanReason::Moved: return "Moved";
+	case BotCore::NavReplanReason::Interval: return "Interval";
+	default: return "None";
+	}
+}
+
+static const char * FollowStuckKindName(BotCore::NavStuckKind kind)
+{
+	switch (kind)
+	{
+	case BotCore::NavStuckKind::NoProgress: return "NoProgress";
+	case BotCore::NavStuckKind::Oscillation: return "Oscillation";
+	default: return "None";
+	}
+}
+
+static const char * FollowActionName(BotCore::NavRecoveryAction action)
+{
+	switch (action)
+	{
+	case BotCore::NavRecoveryAction::Replan: return "replan";
+	case BotCore::NavRecoveryAction::SideStep: return "side_step";
+	case BotCore::NavRecoveryAction::StepBack: return "step_back";
+	case BotCore::NavRecoveryAction::PenalizeReplan: return "penalize_replan";
+	case BotCore::NavRecoveryAction::Abandon: return "abandon";
+	default: return "none";
+	}
+}
+
+// D1: copy ONE record of the follower's own observation table under m_obsLock, then release. No snapshot,
+// no other bot's CUser. 'nowMs' is the caller's steady_clock ms, the clock of UnitObs timestamps.
+static void ReadFollowObservation(BotSession * s, int targetSid, uint64 nowMs, FollowObservation & out)
+{
+	out = FollowObservation();
+	if (targetSid < 0 || targetSid > 65535)
+		return;
+
+	std::lock_guard<std::mutex> lock(s->m_obsLock);
+	const BotCore::UnitObs * u = s->m_obs.Find((uint16_t)targetSid);
+	if (u == nullptr)
+		return;
+
+	const uint32 posAgeMs = nowMs > u->lastMoveMs ? (uint32)(nowMs - u->lastMoveMs) : 0;
+	out.found = true;
+	out.tMs = u->lastMoveMs;
+	out.x = u->x10 / 10.0f;
+	out.z = u->z10 / 10.0f;
+	out.speedField = u->lastSpeed;
+	out.posState = BotCore::ClassifyPos(u->lastSpeed > 0, posAgeMs);
+}
+
+// /bot follow <bot> <target bot> [speed] (F5-74, D7/D8): chase a moving bot. Same shape as CommandGoto; the
+// target id is read from the target session's m_selfSid (never its CUser: perception contract R3).
+void BotManager::CommandFollow(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() < 2 || words.size() > 3)
+	{
+		WriteBotLog("BotManager: cmd follow: usage: follow <bot> <target bot> [speed]");
+		return;
+	}
+
+	const std::string & name = words[0];
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	const std::string & targetName = words[1];
+	BotSession * t = FindSession(targetName.c_str());
+	if (t == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: unknown or not spawned bot '%s'",
+			IsKnownBotName(targetName) ? targetName.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (t->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: target %s not in game (phase %s)",
+			t->m_charName.c_str(), PhaseName(t->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	long speedField = BotCore::kWalkSpeedField;
+	if (words.size() == 3)
+	{
+		if (!ParseIntStrict(words[2], speedField) || speedField < -32768 || speedField > 32767)
+		{
+			WriteBotLog("BotManager: cmd follow: usage: follow <bot> <target bot> [speed]");
+			return;
+		}
+	}
+
+	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+
+	FollowObservation obs;
+	ReadFollowObservation(s, t->m_selfSid, nowMs, obs);
+
+	MoveOutcome outcome = ActionExecutor::BeginFollow(s, t->m_selfSid, (int16)speedField, obs, now);
+
+	char message[320];
+	if (outcome.kind == MoveOutcome::REFUSED)
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	}
+	else
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: cmd follow: %s following %s (sid %d) at speed %d",
+			s->m_charName.c_str(), t->m_charName.c_str(), t->m_selfSid.load(), (int)speedField);
+	}
+	WriteBotLog(message);
+}
+
+// One follow tick plus its log lines (D8). Called from TickSessions() only, never TickMove().
+static void TickFollowSession(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	uint64 nowMs = (uint64)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+
+	FollowObservation obs;
+	ReadFollowObservation(s, s->m_followTargetSid, nowMs, obs);
+
+	FollowOutcome outcome = ActionExecutor::TickFollow(s, obs, now);
+	const BotCore::NavDriveEvents & ev = outcome.events;
+
+	if (ev.planned && ev.planStatus != BotCore::NavFollowStatus::Planned)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow: plan failed (%s, %s)",
+			s->m_charName.c_str(), FollowStatusName(ev.planStatus), FollowReasonName(ev.planReason));
+		WriteBotLog(message);
+	}
+
+	if (ev.recovery.action != BotCore::NavRecoveryAction::None)
+	{
+		char message[256];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow: stuck %s at cell (%d,%d) stage %d action %s",
+			s->m_charName.c_str(), FollowStuckKindName(ev.recovery.kind), ev.recovery.cellX,
+			ev.recovery.cellZ, ev.recovery.stage, FollowActionName(ev.recovery.action));
+		WriteBotLog(message);
+	}
+
+	if (ev.recovery.recovered)
+	{
+		char message[192];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow: recovered stage %d in %d ms",
+			s->m_charName.c_str(), ev.recovery.recoveredStage, ev.recovery.recoverMs);
+		WriteBotLog(message);
+	}
+
+	if (ev.holdStop)
+	{
+		char message[192];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow: target out of sight, holding", s->m_charName.c_str());
+		WriteBotLog(message);
+	}
+
+	if (ev.awaitingLong)
+	{
+		char message[192];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow: no packet for >= 5000 ms", s->m_charName.c_str());
+		WriteBotLog(message);
+	}
+
+	if (outcome.ended)
+	{
+		char message[256];
+		snprintf(message, sizeof(message),
+			"BotManager: bot %s follow ended (%s) after %u packets, plans %d, stuck episodes %d",
+			s->m_charName.c_str(), outcome.endReason, (unsigned)s->m_movePackets,
+			outcome.endPlans, outcome.endStuckEpisodes);
+		WriteBotLog(message);
+	}
 }
 
 void BotManager::CommandStop(const std::string & args)
@@ -3215,23 +3445,32 @@ void BotManager::TickSessions()
 
 					if (!moveHeld)
 					{
-						MoveOutcome outcome = ActionExecutor::TickMove(s, now);
-						if (outcome.kind == MoveOutcome::ARRIVED)
+						if (s->m_moveActive && s->m_navDrive.Mode() == BotCore::NavDriveMode::Follow)
 						{
-							char message[224];
-							snprintf(message, sizeof(message),
-								"BotManager: bot %s arrived at (%.1f, %.1f) after %u packets",
-								s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
-								(unsigned)s->m_movePackets);
-							WriteBotLog(message);
+							// F5-74: a chase is driven by TickFollow, not TickMove (which would send a
+							// straight step to a stale target position).
+							TickFollowSession(s, now);
 						}
-						else if (outcome.kind == MoveOutcome::REFUSED || outcome.kind == MoveOutcome::FAILED)
+						else
 						{
-							char message[224];
-							snprintf(message, sizeof(message),
-								"BotManager: bot %s move stopped (%s)",
-								s->m_charName.c_str(), outcome.reason);
-							WriteBotLog(message);
+							MoveOutcome outcome = ActionExecutor::TickMove(s, now);
+							if (outcome.kind == MoveOutcome::ARRIVED)
+							{
+								char message[224];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s arrived at (%.1f, %.1f) after %u packets",
+									s->m_charName.c_str(), s->m_pUser->GetX(), s->m_pUser->GetZ(),
+									(unsigned)s->m_movePackets);
+								WriteBotLog(message);
+							}
+							else if (outcome.kind == MoveOutcome::REFUSED || outcome.kind == MoveOutcome::FAILED)
+							{
+								char message[224];
+								snprintf(message, sizeof(message),
+									"BotManager: bot %s move stopped (%s)",
+									s->m_charName.c_str(), outcome.reason);
+								WriteBotLog(message);
+							}
 						}
 					}
 
