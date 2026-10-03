@@ -34,8 +34,8 @@ GameServer başlangıcında zone 71 için bir kez hesaplanır. `C3DMap`, `SMDFil
 | `walk` | 4 m | Olay = 1 ve ana bileşende |
 | `slope` | 4 m | Komşu yükseklik farkı; `|Δh| > P-NAV-MAX-STEP` (başlangıç 2,5 m / 4 m) ise kenar engelli `[Ö]`. Gerçek istemcinin tırmanabildiği eğim T-NAV-02 ile kalibre edilir. |
 | `clearance` | 4 m | En yakın engelli hücreye mesafe (BFS, hücre) |
-| `danger_static` | 4 m | Karşı ulusun guard tower halkası (kapıya ≤ 90 m), canavar spawn dikdörtgenleri + arama menzili. Takıma göre iki ayrı katman (Karus/El Morad). |
-| `danger_dynamic` | 4 m | Görünür düşmanların etki haritası (melee: 15 m çekirdek, mage: 45 m halka), 500 ms'de bir güncellenir |
+| `danger_static` | 4 m | Karşı ulusun guard tower halkası (kapıya ≤ 90 m) **yasaklı** (hücre bayrağı, dışarıdan girilemez; `BotCore/NavDanger.h`, ADR-0006 Eki F5-06), kendi halkası **güvenli işaretli**; canavar spawn dikdörtgenleri + arama menzili (yol maliyeti; henüz yok). Takıma göre iki ayrı katman (Karus/El Morad). |
+| `danger_dynamic` | 4 m | Görünür düşmanların etki haritası (melee: 15 m çekirdek, ağırlık 1,0; mage: 45 m menzil diski, ağırlık 0,6 `[A]`; 8 m doğrusal sönüm `[A]`; hücre başına 0–255, en büyük değer birleşimi), 500 ms'de bir statik katmanın kopyası üzerine yeniden kurulur |
 | `region_graph` | 48 m | Bölge düzeyinde bağlantı grafiği (uzun yollar için hiyerarşik arama) |
 
 Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
@@ -54,21 +54,21 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 ### 4.1 A* tanımı `[Ö]`
 
 - 8 komşu; çapraz geçişte iki ortogonal komşu da açık olmalı (köşe kesme yok).
-- Maliyet = mesafe × (1 + `w_danger`·danger + `w_clear`·max(0, 2 − clearance)) + eğim cezası.
+- Maliyet: adım = mesafe × (1 + 0,5 × (ceza(a) + ceza(b))); ceza(c) = `w_danger`·danger(c) + `w_clear`·max(0, 2 − clearance(c)) + (yasaklı hücrede 10); `w_danger` = 4, `w_clear` = 0,5 `[A]`; ceza ≥ 0 olduğundan octile sezgisel tutarlı kalır. Yasaklı hücreye dışarıdan girilemez (içeriden çıkış serbest); hedef yasaklıysa `InvalidGoal`. Maliyet alanı isteğe bağlıdır (yokken yalnızca mesafe). Eğim cezası yoktur (sert eğim kesmesi `EdgeOpen`'da; T-NAV-02 sonrası). `BotCore/NavDanger.h`, ADR-0006 Eki F5-06, F5-06 planı.
 - Sezgisel: octile mesafe (kabul edilebilir).
-- İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama.
-- Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse ara noktalar atlanır.
+- İkili yığın (binary heap) açık liste, düğüm havuzu; düğüm limiti `P-NAV-MAX-NODES` = 20 000; aşılırsa hiyerarşik arama (bu dilimde yok: F5-02 yalnızca `NodeLimit` = "bilinmiyor" döndürür, "ulaşılamaz" değil; ADR-0006).
+- Yol düzleştirme: hücre merkezleri arasında, ızgara üzerinde Bresenham yürüyüşü engelsizse (her adım `EdgeOpen`; kanonik yön, simetrik) ara noktalar atlanır; açgözlü, en çok `P-NAV-SMOOTH-LOOKAHEAD` = 64 yol hücresi ileri `[A]` (`BotCore/NavSmooth.h`, ADR-0006 Eki F5-03, F5-03 planı). Bresenham `supercover` değildir (bilinen sınırlama, takılma ölçümüyle yeniden değerlendirilir).
 - AIServer `CPathFind`'ın sezgisel ve yürünebilirlik hataları (MB-11) bu uygulamaya **taşınmaz**.
 
 ### 4.2 Hareketli hedef
 
 - Hedefin son 1 sn'lik hız vektöründen öngörü noktası: `p + v·min(1,5 sn, mesafe/kendi_hız)`.
-- Yeniden planlama: hedef ≥ 6 m yer değiştirdiğinde veya 500 ms'de bir (hangisi önce).
-- Menzil hedefi: yol, hedefin etrafında rol menzili halkasındaki en yakın ulaşılabilir hücreye planlanır (warrior: melee halkası; mage: P-MAG-PREF-RANGE).
+- Yeniden planlama: hedef, **son planın yapıldığı konumdan** ≥ 6 m yer değiştirdiğinde veya son plandan 500 ms geçtiğinde (hangisi önce). Hız kestirimi en yeni gözlemden geriye 1 sn içindeki en eski örnekle yapılır; aralık < 100 ms ya da en yeni gözlem > 1 sn eskiyse hız 0. Öngörü noktası yürünebilir değilse süre yarıya indirilir (en çok 3 kez), olmazsa hedefin mevcut konumu kullanılır (`BotCore/NavTrack.h`, ADR-0006 Eki F5-04, F5-04 planı).
+- Menzil hedefi: yol, hedefin etrafında rol menzili halkasındaki en yakın ulaşılabilir hücreye planlanır (warrior: melee halkası; mage: P-MAG-PREF-RANGE). Halka, öngörü noktasından `[ringMinM, ringMaxM]` metre (hücre merkezi uzaklığı); etkin üst sınır en az hücre köşegeninin yarısıdır (4 m ızgarada 2,83 m). "En yakın" = bota octile uzaklığa göre sıralı `Walk` adaylar; en çok 3 aday için A* denenir `[A]`.
 
 ### 4.3 Ulaşılamayan hedef
 
-`unreachable` koşulları: A* başarısız; yol uzunluğu > 3 × düz mesafe ve > 120 m; ya da hedef engelli bir cepte (farklı bileşen). Bu durumda hedef `TARGET_UNREACHABLE` ile 3 sn içinde bırakılır ([09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §5.4, MET-NAV-04).
+`unreachable` koşulları (`BotCore/NavReach.h`, ADR-0006 Eki F5-05, F5-05 planı): (1) hedefin rol halkasında botun bileşeniyle bağlı hiç `Walk` hücresi yok. Bileşen, `EdgeOpen` ile bağlı 8 komşulu hücre kümesidir (eğim cepleri dahil); iki hücre farklı bileşendeyse A* `NoPath` verir, bu A* çalıştırılmadan bilinir. Halkada hiç `Walk` hücresi yoksa da (hedef suda/duvarda/dış bantta) ulaşılamazdır. (2) Planlanan yolun A* maliyeti > 3 × düz mesafe **ve** > 120 m (`Detour`; düz mesafe bot hücre merkezi ile hedef hücre merkezi arası). A*'ın `NodeLimit` vermesi ya da ilk 3 halka adayının başarısız olması ulaşılamaz **değil**, "bilinmiyor"dur (yanlış "ulaşılamaz" geçerli hedefi bıraktırır). Ulaşılamaz yargısı kesintisiz `holdMs` = 1,5 sn `[A]` sürerse hedef `TARGET_UNREACHABLE` ile bırakılır: tespitten bırakmaya 1,5 sn (MET-NAV-04 ≤ 3 sn); başka bir yargı seriyi sıfırlar. Bırakma kararı ve olayı karar katmanındadır ([09](09_PARTY_COORDINATION_AND_TARGET_SELECTION.md) §5.4); `BotCore` yalnızca yargıyı ve "vadesi geldi" bilgisini üretir.
 
 ## 5. Görüş hattı (LoS) ile yürünebilirliğin ayrılması
 
@@ -77,6 +77,13 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
   - `los_grid`: iki nokta arasında ızgara üzerinde engelli hücre var mı (ucuz, kaba).
   - `los_mesh`: N3ShapeMgr alt hücrelerindeki çarpışma üçgenlerine ışın testi + arazi yüksekliği (doğru, pahalı; [`N3BASE/My_3DStruct.h:263-314`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/N3BASE/My_3DStruct.h#L263-L314) `_IntersectTriangle` mevcut ama kullanılmıyor).
 - `P-NAV-LOS-MODE` (varsayılan `advisory`): LoS **aksiyonu engellemez**, yalnızca konum seçimini yönlendirir (ör. priest heal hedefine "görüşü olan" noktayı tercih eder). Gerçek istemcinin engel arkasına skill kullanmaya izin verip vermediği T-NAV-LOS-01 ile ölçülür. İstemci izin vermiyorsa mod `enforce` yapılır ve bot bu durumda aksiyon göndermez (adalet kuralı).
+Uygulama (`BotCore/NavLos.h`, ADR-0006 Eki F5-10, F5-10 planı `[Ö]`/`[A]`; yalnızca `los_grid` + arazi, `los_mesh` yok; bağlama ve T-NAV-LOS-01 ölçümü bu dilimde yok):
+
+- **Hücre kuralı (`NavLosGridClear`):** ışının açık iç kısmını kestiği her ara hücre `Event == 1` olmalı; başlangıç ve bitiş hücreleri muaf; ızgara dışı engelli; köşeye değmek engel değil; hücre sınırına yatan ışın büyük taraftaki hücreye ait. `Walk` değil `Event` kullanılır (göl/eğim cepleri görüşü kapatmaz).
+- **Arazi kuralı (`NavLosTerrainClear`):** göz = zemin + 1,6 m `[A]` her iki uçta; 2 m aralıkla örneklenen zemin ışının 0,25 m `[A]` üstüne çıkarsa engel.
+- **Mod:** `NavLosMode::Advisory` (varsayılan) aksiyonu engellemez; `Enforce` yalnızca görüş açıkken izin verir (`NavLosAllows`). `NavPickLosCell`: hedef halkasındaki bota en yakın görüşlü `Walk` hücre (priest heal / mage cast konumu).
+- **Ölçüm `[V]`:** zone 71'de rastgele `Walk` çiftlerinde görüş açık oranı 20 m'de %89,5, 40 m'de %69,1 (ofset (7,7)), 72 m'de %38,9 (arazi dahil); çağrı ≈ 0,4 µs. Sınırlamalar: engelli hücre sonsuz yüksek, göl kıyıları görüşü kapatır (yanlış negatif), hedef yüksekliği yok.
+
 - Algı: bot, istemciye gelen bilgiyle aynı şekilde 3×3 bölgedeki tüm birimleri görür ([03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §16). İnsan istemcisi birimleri duvar arkasında çiziyorsa bu adaletsiz değildir `[A]`.
 
 ## 6. Hareket uygulaması
@@ -94,10 +101,10 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
 
 | Bölge | Tanım | Bot kuralı |
 |---|---|---|
-| Karşı ulus tower halkası | Karşı ulus kapısına ≤ 90 m (tower'lar 25–50 m halkada, arama menzili 35 m) `[V]` | Girilmez; hedef bu bölgeye girerse takip biter |
-| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge |
-| Canavar alanları | Spawn dikdörtgeni + arama menzili | Yol maliyetini artırır; test arenasında bulunmaz ([15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md) §2) |
-| Arena sınırı (test modu) | Senaryo tanımı | Bot arena dışına yol planlamaz |
+| Karşı ulus tower halkası | Karşı ulus kapısına ≤ 90 m (tower'lar 25–50 m halkada, arama menzili 35 m) `[V]` | Girilmez (yol planlayıcısı dışarıdan yasaklı hücreye girmez, `NavDanger.h`); hedef bu bölgeye girerse takip biter (`InvalidGoal`; bırakma kararı karar katmanında); içeride kalan bot en kısa çıkışla çıkar |
+| Kendi tower halkası | Kendi kapımıza ≤ 90 m | Geri çekilme ve solo RECOVER için güvenli bölge (hücre `Safe` bayrağı; `wSafe` bonusu, §8, F5-07) |
+| Canavar alanları | Spawn dikdörtgeni + arama menzili | Yol maliyetini artırır; test arenasında bulunmaz ([15](15_TEST_ARENA_SCENARIOS_AND_ACCEPTANCE_CRITERIA.md) §2); F5-06'da yok (ertelendi) |
+| Arena sınırı (test modu) | Senaryo tanımı | Bot arena dışına yol planlamaz (arena dairesinin dışı yasaklı: `AddForbidOutsideDisc`) |
 
 ## 8. Güvenli geri çekilme noktası
 
@@ -112,11 +119,22 @@ safe_point(bot, mode):
   return argmax s(c)  (None → last_stand, [11] §4.4)
 ```
 
+Uygulama (`BotCore/NavRetreat.h`, ADR-0006 Eki F5-07, F5-07 planı `[Ö]`/`[A]`):
+
+- **Tek geçişli sel:** adaylar ve yol uzunlukları botun hücresinden tek bir sınırlı Dijkstra taramasıyla bulunur (geometrik uzunluk ≤ R, sınır dahil; `EdgeOpen` kenar kuralı). Seçilen adayın yolu taramanın ebeveyn zinciridir. "Ana bileşende" koşulu ayrıca denetlenmez: sel yalnızca botun bileşenine ulaşır.
+- **Puan (normalleştirilmiş, ağırlıklar `[A]`):** `s = − wDanger·tehlike/255 − wPath·uzunluk/R + wAnchor·yakınlık + wClear·min(clearance, 3)/3 + wSafe·[Safe]` (`wDanger` 3, `wPath` 1, `wAnchor` 1,5, `wClear` 0,5, `wSafe` 1). `yakınlık = max(0, 1 − uzaklık/R)`; dayanak noktası (party: arka hat, solo: kendi kapısı) çağıran verir. `danger_static` ile `danger_dynamic` tek `NavCostLayer`'da birleşiktir (tek `wDanger`). `Safe` bayrağı (kendi tower halkası) `wSafe` bonusu verir.
+- **8 m kuralı:** bir adım, hedef hücre bir melee'ye ≤ 8 m ise ve melee'ye uzaklığı azalıyorsa yasaktır (bölgeye girilmez; bölgenin içinde başlayan bot yalnızca uzaklaşarak çıkar ve düşmanın içinden geçemez). Bölgedeki hücreler aday olamaz. Yalnızca melee tehditleri sayılır.
+- **Yasaklı bölge:** dışarıdan girilmez (F5-06 ile aynı kural), içeriden çıkış serbest; yasaklı hücre aday olamaz.
+- **Sonuç:** `Found` / `NoCandidate` (hiç aday yok → `last_stand`) / `InvalidStart`. Seçilen hücre başlangıç hücresi olabilir. Rota üzerindeki tehlike puanlanmaz (yalnızca 8 m ve yasaklı kuralları); adayın tehlikesi çok yüksekse `last_stand` sayma kararı karar katmanındadır.
+
 ## 9. Formasyon ve yığılmanın önlenmesi
 
-- Rol halkaları: warrior'lar hedefin etrafında 8 yuvadan birini alır (AIServer kuşatma yuvası fikri, [`AIServer/AIUser.cpp:71-121`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L71-L121), bot katmanında yeniden uygulanır).
-- Ayrışma vektörü: aynı party üyeleri arası < 1,5 m ise karşılıklı itme (MET-NAV-06).
-- Priest'ler arası ≥ 8 m ([07](07_PRIEST_BEHAVIOR.md) §11).
+Uygulama (`BotCore/NavFormation.h`, ADR-0006 Eki F5-08, F5-08 planı `[Ö]`/`[A]`):
+
+- **Kuşatma yuvaları:** hedefin etrafında 8 pusula yönünde (sıra: 0 = +z, saat yönünün tersine; AIServer kuşatma yuvası fikri, [`AIServer/AIUser.cpp:12-13`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L12-L13), [`:71-121`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/AIServer/AIUser.cpp#L71-L121), bot katmanında yeniden uygulanır) çağıranın verdiği yarıçapta yuva noktası (testlerde 2,5 m `[A]`: komşu yuvalar 1,91 m). Yuva **kullanılabilir** = yuva noktasının hücresi `Walk`; kullanılamaz yuva verilmez, yerine taşıma (snap) yoktur. Zone 71'de 88 508 `Walk` hedef hücresinin 72 459'unda sekiz yuvanın hepsi kullanılabilir, en kötüsünde 5 `[V]`. Atama **yapışkan** (üye geçerli yuvasını korur) + **açgözlü en yakın çift** (eşitlikte küçük üye, sonra küçük yuva indeksi); fazla üye yuvasız (`-1`) kalır (ikinci halka/bekleme karar katmanının işidir).
+- **Ayrışma vektörü (MET-NAV-06):** aynı party üyelerinden biri başka bir üyeye < 1,5 m ise karşılıklı itme: çift başına `0,5 · (1,5 − d)` (iki üye de uygularsa uzaklık tam 1,5 m), çakışık üyelerde indeks tabanlı belirlenimci yön, toplam 1,0 m'ye kırpılır `[A]`; uygulama duvara çarpmaz (tam, yalnızca-x, yalnızca-z sırasıyla dener). İtme bir yol değildir: hareket katmanı her tick uygular. Ham ölçü `NavCountStackedPairs` (< 1 m çift sayısı; "2 sn'den uzun" süre kuralı telemetri katmanındadır).
+- **Priest aralığı:** iki priest birbirinden ≥ 8 m ([07](07_PRIEST_BEHAVIOR.md) §11) kuvvet değil **seçimdir**: aday hücreler arasından diğer priest'lere ≥ 8 m (sınır dahil) olan ilk aday; yoksa en yakın priest'e en uzak aday (`NavPickSpaced`).
+- **T-NAV-08 `[V]`:** 8 üye 0,6 m içinde yığılı başlar, hedef etrafında yerleşir: tick 3'ten sonra < 1 m çift yok, yerleşmiş formasyonda en küçük çift uzaklığı 1,91 m (düz ızgara); duvar yanı hedefte 6 yuva atanır, yuvasız iki üye birbirinden 1,5 m'ye ayrışır (zone 71).
 
 ## 10. Takılma tespiti ve aşamalı kurtarma
 
@@ -133,13 +151,21 @@ Tespit: hareket halindeyken 1,5 sn boyunca yol üzerindeki ilerleme < 1 m, ya da
 
 Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ısı haritası olarak toplanır (14 §6 global deneyim).
 
+Uygulama (`BotCore/NavStuck.h`, ADR-0006 Eki F5-09, F5-09 planı `[Ö]`/`[A]`; telemetri, ısı haritası ve `NavFollower` bağlaması bu dilimde yok):
+
+- **Tespit:** `NavStuckDetector`, zaman damgalı konum örneklerinden (en çok 256, ≥ 20 ms aralıklı) iki kural: *ilerlemesizlik* = hareket halindeyken 1,5 sn'de **net yer değiştirme** < 1 m (kesin `<`; yol ilerlemesi ölçüsü bağlama planında, `[A]`) ve *salınım* = 4 sn'de aynı iki hücre arasında (sırasız çift) ≥ 3 geçiş; `NoProgress` önce denetlenir. `moving = false` pencereleri sıfırlar.
+- **Merdiven:** `NavStuckMonitor`, tespitte aşama 1'den başlayarak her aşama girişinde **bir kez** eylem döndürür (`Replan`, `SideStep`, `StepBack`, `PenalizeReplan`, `Abandon`); süre sınırları 0,5 / 1 / 1,5 / 1 sn `[O]` dolunca bir üst aşama (tespitten bırakmaya 4 sn). **Başarı** = aşama girişindeki konumdan ≥ 1 m yer değiştirme `[A]` (`recovered`, `recoverMs` = tespitten kurtarmaya, MET-NAV-02); kurtarmadan sonra 10 sn içinde yeni tespit merdivenin **bir sonraki aşamasından** başlar (4'ten sonra doğrudan bırak), aksi hâlde aşama 1 `[A]`. Eylemi yürütmek, "bir önceki yol noktası"nı bilmek ve hedefi bırakmak çağıranın işidir. Salınım bölümünde ilk sıçrama "kurtarıldı" sayılır (iyimser; `kind` ile ayrıştırılır), merdiven yine bırakmayla biter.
+- **Aşama 2 (yan adım):** `NavPickSideStep` = `NavRingCells`'ten (12 m `[A]`) ilk `Walk`, açıklık ≥ 2, `NavLineClear` ve yürüme eksenine ±45° içinde olmayan hücre; koridorda (açıklık 1) yoktur.
+- **Aşama 4 (ceza):** `NavStuckPenalties` (kapasite 32) hücre cezasını 60 sn tutar ve `NavCostLayer`'a tehlike 255 olarak işler (§4.1 maliyetinde adım ≈ 3 ×); yolu bloklamaz (tek hücrelik koridorda maliyet 180 → 196).
+- **T-NAV-04 (birim düzeyi):** gizli tek hücrelik engel önünde sanal bot aşama 2–4 kurtarmalarıyla 27,3 sn'de varır (engelsiz 21,0 sn), üç hücrelik duvarda 17,0 sn'de bırakır `[V]`.
+
 ## 11. Test senaryoları ve kabul kriterleri
 
 | Test | Amaç |
 |---|---|
 | T-NAV-01 | Temel koşu hızı ve hareket paketi sıklığının gerçek istemciyle ölçülmesi |
 | T-NAV-02 | Eğim kalibrasyonu: istemcinin tırmanamadığı eğimlerin işaretlenmesi |
-| T-NAV-03 | 1000 rastgele A* sorgusu: başarı, süre, düğüm sayısı |
+| T-NAV-03 | 1000 rastgele A* sorgusu: başarı, süre, düğüm sayısı. Sorgu dağılımı `[Ö]` ([ADR-0006](adr/ADR-0006-navigasyon-izgara-astar.md) madde 4): kapı kümesi Chebyshev ≤ 64 hücre (256 m); ≤ 150 hücre ve tüm harita kümeleri raporlanır. F5-02'de birim/performans testi olarak gerçeklenir |
 | T-NAV-04 | Dar geçit ve köprü noktalarında 50 geçiş: takılma oranı |
 | T-NAV-05 | Respawn noktasından arenaya yürüyüş süresi (summon değerinin hesabı) |
 | T-NAV-06 | Hareketli hedef takibi (kiting mage) |
@@ -171,6 +197,7 @@ Her aşama telemetride `NAV_RECOVERY` olarak kaydedilir; takılma noktaları ıs
 - Gerçek istemci sürekli harekette `WIZ_MOVE`'u ~1,5 sn'de bir yollar ve paket **hedef noktayı** taşır (`docs/03` §13.2). Bot da aynısını yapar (`kMovePeriodMs = 1500`): iki paket arası yürüyüşte ~6,75 m, sprintte ~10 m tek adımdır. **Ara noktaları sunucu doğrulamaz** (MEC-MOV-03); 4 m ızgarada bir adım 2–3 hücre atlar.
 - **Kural (CLI-08, `[Ö]`):** bot her hareket paketinden önce *kirişi* (önceki paket konumu → yeni konum) denetler: kirişin dokunduğu **tüm** hücreler (muhafazakâr süpercover; hücre köşesi/vertex'ine değme dahil) `Walk` olmalı ve kiriş boyunca `EdgeOpen` eğim kuralı sağlanmalı. Yalnızca varış noktasına bakmak yetmez. Reddedilen paket gönderilmez (`FAIRNESS_REJECT`, kural `CLI-08`, sebep `blocked_chord`).
 - **Duvar bulgusunun sınıflandırması (yeniden üretilebilir: `tools/nav-measure.sh smoothing --n 6000`, bağımsız çapraz kontrol `tools/nav-segment-check.py`, zone 71, WSL `g++ -O2`, `gece/2026-10-02-nav` @ `196857d`) `[V]`:** ham A* yolu kenarları 0/379 054, `NavSmoothPath` segmentleri 0/33 365, 6,75 m paket kirişleri 0/250 000 engelli hücreye değiyor; `NavLineClear` "açık" dediği 360 288 çiftte yanlış-pozitif 0 (sentetik ızgaralar dahil). **Planlayıcısız düz hedef adımı** (`/bot move`/`BeginMove` gibi, 2–3 hücre uzaklıkta iki yürünebilir hücre arası) 6000 çiftin 447'sinde (%7,45) engelli hücreye değiyor. Yani bulgu ham yolda veya düzleştirmede değil, **icradaki yürünebilirlik denetiminin (CLI-08) eksikliğindedir** (F5-50 kiriş denetimi, F5-58 kalıcı regresyon testleri, F5-55 sunucu guard'ı). Örnek vektörler `docs/reports/degerlendirme-2026-10-02-ek.md` §3 ve F5-50. Denetim planlayıcı çıktısı güvenli olsa da **icra tarafında zorunludur**: düz hedef adımı, planlayıcı dışı kaynaklar ve gelecekteki değişiklikler için tek koruma budur.
+- Planlayıcı çıktısı **Walk** denetiminden geçiyor: 998 near64 yolunun 4887 düzleştirilmiş segmenti ve 33 503 paket kirişinde ihlal 0 (rapor §5.1). Bu ölçüm yalnızca `Walk` süpercover'ını kapsıyordu; eğim ölçülmemişti. F5-50 Tur 1 ölçümü `[V: WSL g++ -O2, zone 71]`: kirişin süpercover hücre çiftlerinde `EdgeOpen` eğim kuralı planlayıcı segmentlerinin ~%11,7'sini reddeder (hücre başına yükseklik gürültüsü), uç hücrelerden türeyen Bresenham eğim denetimi ise planlayıcının 6,75 m kirişlerinin %1,9'unu (691/35878) reddeder. Bu yüzden kiriş denetiminin **zorunlu** kuralı `Walk` süpercover'ıdır (AC-NAV-03); eğim katmanı isteğe bağlıdır ve varsayılan kapalıdır (yalnızca tam planlayıcı segmentleri için planlayıcıyla tutarlı). Yukarıdaki kural cümlesindeki "`EdgeOpen` eğim kuralı sağlanmalı" bu karara göre okunur `[Ö]`. Denetim buna rağmen **icra tarafında zorunludur**: düz hedef adımı (`/bot move`), planlayıcı dışı kaynaklar ve gelecekteki değişiklikler için tek koruma budur.
 - **Su:** ayrı bir su katmanı yoktur. SMD olay ızgarası göl kıyılarını engelli işaretler, ana bileşen kuralı iç cepleri dışlar `[V]`/`[I]`; istemcinin suya girip girmediği ve suda yavaşlayıp yavaşlamadığı ölçülmedi `[A]` → T-NAV-09 (yeni). **Eğim:** `maxSlope 0,625` `[A]` (T-NAV-02). **Çapraz köşe:** iki ortogonal komşu da `Walk` olmalı (`EdgeOpen`).
 
 ### 13.2 Hareketli hedefin gözlemi ve hız kestirimi
@@ -189,7 +216,7 @@ Gözlenen hedef (insan veya bot) `WIZ_MOVE`'u ~1,5 sn'de bir gönderir. *(F5-52 
 | `BLOCKED_BY_GUARD` | Paket guard tarafından reddedildi (CLI-08/CLI-05); `STUCK` sayılmaz, ayrı sayılır |
 | `OSCILLATION` | Son 8 sn'de ≥ 4 paket konumu ile A→B→A→B desen (≥ 3 yön değişimi) |
 
-Hedefe varış adımı (< 1 m) takılma değildir. *(Hareket niyeti ve gerçek rota ilerlemesinin birlikte değerlendirilmesi — bekleme/guard-engeli/takılma ayrımı, U-dönüşünde pozitif rota ilerlemesi — F5-57'de; F5-09 varsayılanı tick'le beslenince gecikmeli tick modelinde 600 sn'de 6 yanlış epizod üretir, `NavPacketCadenceParams()` 0: `tools/nav-measure.sh stuck`.)* Yeniden planlama (500 ms) paket sıklığından bağımsızdır. Tespit saf mantık olarak `BotCore`'da yazılır (F5-54), kurtarma aşamaları (§10) onun üstüne F5-09'da.
+Hedefe varış adımı (< 1 m) takılma değildir. *(Hareket niyeti ve gerçek rota ilerlemesinin birlikte değerlendirilmesi F5-57'de `NavProgressAssessor` ile yapıldı `[V]` (sentetik): bekleme (`AwaitingPacket`), guard-engeli (`BlockedByGuard`) ve takılma (`Stalled`) ayrılır; `Stalled` penceresi `2 × 1550 + 100` = 3200 ms `[A]` (tablodaki "≥ 3,1 sn" ile aynı mertebe); U-dönüşünde rota ilerlemesi pozitifse takılma değildir. F5-09 varsayılanı tick'le beslenince gecikmeli tick modelinde 600 sn'de 6 yanlış epizod üretir, `NavPacketCadenceParams()` ve `NavProgressAssessor` 0: `tools/nav-measure.sh stuck` / `progress`. **Çağıran sözleşmesi (F5-55):** her yeni rotada `NotifyReplan` çağrılır (çağrılmazsa değerlendirici paketler arası Öklid yer değiştirmesine düşer); `NavStuckMonitor::Update`'e `moving = (Progressing || Stalled)` verilir, `Idle`/`AwaitingPacket`/`BlockedByGuard` iken `false`; niyet açıkken uzun süre paket yoksa karar `AwaitingPacket` kalır, takılma sayılmaz (karar katmanı/`ActionExecutor` işidir).)* Yeniden planlama (500 ms) paket sıklığından bağımsızdır. Tespit saf mantık olarak `BotCore`'da yazılır (F5-54), kurtarma aşamaları (§10) onun üstüne F5-09'da.
 
 ### 13.4 Arena sınırı, ölüm, doğuş ve savaşa dönüş
 
@@ -217,3 +244,11 @@ F5 yalnızca saf mantık (`BotCore`) olarak kapanamaz. F5 kabulü için: sunucu 
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-01 | v1.0 | İlk sürüm |
+| 2026-10-02 | v1.0+ | §4.1 ve §11 T-NAV-03: `NodeLimit` anlamı ve sorgu dağılımı notu (ADR-0006, F5-02 planı) |
+| 2026-10-02 | v1.0+ | §4.1 yol düzleştirme: `EdgeOpen` tabanlı Bresenham görünürlüğü, açgözlü ayıklama ve `P-NAV-SMOOTH-LOOKAHEAD` `[A]` (ADR-0006 Eki F5-03, F5-03 planı) |
+| 2026-10-02 | v1.0+ | §4.2 hareketli hedef: gözlem/planlama ayrımı, hız kestirimi penceresi, öngörü geri çekilmesi, menzil halkası tanımı (ADR-0006 Eki F5-04, F5-04 planı) |
+| 2026-10-02 | v1.0+ | §4.3 ulaşılamaz hedef: bileşen tabanlı kesin tespit, `Detour` kuralı, `NodeLimit` = bilinmiyor, 1,5 sn bırakma süresi `[A]` (ADR-0006 Eki F5-05, F5-05 planı) |
+| 2026-10-02 | v1.0+ | §2 `danger_*`, §4.1 maliyet formülü, §7 güvenlik bölgeleri: hücre cezası modeli, yasaklı (sert, içeriden çıkış serbest) ve güvenli bayrağı, bant ilkeli tehlike, ağırlıklar `[A]` (ADR-0006 Eki F5-06, F5-06 planı) |
+| 2026-10-02 | v1.0+ | §8 güvenli geri çekilme noktası: tek geçişli sel, normalleştirilmiş puan ve ağırlıklar `[A]`, 8 m melee kuralının kesin biçimi (yaklaşmayan adım), yasaklı kuralı, `Safe` bonusu, `NoCandidate` = `last_stand` sinyali (ADR-0006 Eki F5-07, F5-07 planı) |
+| 2026-10-02 | v1.0+ | §9 formasyon ve yığılma: 8 pusula kuşatma yuvası (kullanılabilir = yuva hücresi `Walk`), yapışkan + açgözlü atama, ayrışma vektörü formülü ve kırpma `[A]`, priest ≥ 8 m seçim olarak, MET-NAV-06 ham ölçü (ADR-0006 Eki F5-08, F5-08 planı) |
+| 2026-10-02 | v1.0+ | §10 takılma tespiti ve kurtarma: net yer değiştirme tabanlı ilerlemesizlik, hücre geçişi salınımı, merdiven durum makinesi (başarı ölçütü, tırmanma belleği `[A]`), yan adım ve hücre düzeyinde 60 sn ceza (ADR-0006 Eki F5-09, F5-09 planı) |

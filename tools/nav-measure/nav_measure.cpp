@@ -7,7 +7,7 @@
 // repeat acceptance timings with the MSVC Release unit tests.
 //
 //   nav_measure <section> [--navgrid PATH] [--seed N] [--n COUNT]
-//   sections: segments | smoothing | synthetic | velocity | arena | budget | stuck | all
+//   sections: segments | smoothing | synthetic | velocity | velocity-robust | arena | budget | budget-scheduled | stuck | progress | all
 //
 // Every section prints one "KEY value ..." line per result so a CI-less wrapper can grep them.
 
@@ -17,6 +17,7 @@
 #include "BotCore/NavSmooth.h"
 #include "BotCore/NavTrack.h"
 #include "BotCore/NavStuck.h"
+#include "BotCore/NavBudget.h"
 
 #include <algorithm>
 #include <chrono>
@@ -480,6 +481,184 @@ namespace
 			total, zero, total > zero ? errSum / (total - zero) : 0.0, errMax);
 	}
 
+	// ---------- velocity-robust (F5-56): arrival jitter/bunching, variable interval, packet loss ----------
+	struct VRObs
+	{
+		int64_t t = 0;
+		float x = 0.0f;
+		int16_t speed = -1;
+	};
+
+	struct VRStats
+	{
+		int ticks = 0;
+		int zero = 0;
+		double p50 = 0.0;
+		double p95 = 0.0;
+		double max = 0.0;
+	};
+
+	float VRQuant(double v)
+	{
+		return (float)(std::floor(v * 10.0 + 0.5) / 10.0);
+	}
+
+	std::vector<VRObs> VRCadence(uint32_t seed, int intervalMs, double jitterMs, double bunchProb)
+	{
+		std::vector<int64_t> sends;
+		for (int64_t t = 1000; t < 120000; t += intervalMs)
+			sends.push_back(t);
+
+		std::mt19937 rng(seed);
+		std::uniform_real_distribution<double> ud(0.0, 1.0);
+		std::vector<double> nominal(sends.size());
+		for (size_t i = 0; i < sends.size(); ++i)
+			nominal[i] = (double)sends[i] + (ud(rng) * 2.0 - 1.0) * jitterMs;
+
+		std::vector<double> arrival(nominal);
+		if (bunchProb > 0.0)
+		{
+			for (size_t i = 1; i + 1 < sends.size(); )
+			{
+				if (ud(rng) < bunchProb)
+				{
+					arrival[i] = nominal[i + 1] - ud(rng) * 10.0;
+					i += 2;
+				}
+				else
+				{
+					++i;
+				}
+			}
+		}
+
+		std::vector<VRObs> out;
+		out.reserve(sends.size());
+		int64_t prev = -1;
+		for (size_t i = 0; i < sends.size(); ++i)
+		{
+			int64_t t = (int64_t)std::llround(arrival[i]);
+			if (t <= prev)
+				t = prev + 1;
+			out.push_back(VRObs{ t, VRQuant(4.5 * (double)sends[i] / 1000.0), (int16_t)45 });
+			prev = t;
+		}
+		return out;
+	}
+
+	std::vector<VRObs> VRVariable(uint32_t seed)
+	{
+		std::mt19937 rng(seed);
+		std::vector<VRObs> out;
+		int64_t t = 1000;
+		while (t < 120000)
+		{
+			out.push_back(VRObs{ t, VRQuant(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1000 + (int64_t)(rng() % 1501u);
+		}
+		return out;
+	}
+
+	std::vector<VRObs> VRLoss(uint32_t)
+	{
+		std::vector<VRObs> out;
+		int64_t t = 1000;
+		int k = 0;
+		while (t < 120000)
+		{
+			if (k % 4 != 3)
+				out.push_back(VRObs{ t, VRQuant(4.5 * (double)t / 1000.0), (int16_t)45 });
+			t += 1500;
+			++k;
+		}
+		return out;
+	}
+
+	VRStats VRRun(const std::vector<VRObs> & obs, double mps)
+	{
+		VRStats s;
+		std::vector<double> errs;
+		const int64_t end = obs.back().t + 4000;
+		for (int64_t now = obs.front().t; now <= end; now += 100)
+		{
+			NavTargetTracker t;
+			for (size_t i = 0; i < obs.size(); ++i)
+			{
+				if (obs[i].t > now)
+					break;
+				t.Observe(obs[i].t, obs[i].x, 0.0f, obs[i].speed);
+			}
+			if (t.Count() < 2)
+				continue;
+			int64_t nt = 0;
+			float nx = 0.0f;
+			float nz = 0.0f;
+			t.Latest(nt, nx, nz);
+			if (now - nt > 4000)
+				continue;
+			float vx = 0.0f;
+			float vz = 0.0f;
+			t.Velocity(now, 4000, 400, vx, vz);
+			const double mag = std::sqrt((double)vx * vx + (double)vz * vz);
+			++s.ticks;
+			if (mag <= 1e-3)
+				++s.zero;
+			else
+				errs.push_back(std::fabs(mag - mps) / mps);
+		}
+		std::sort(errs.begin(), errs.end());
+		s.p50 = Pct(errs, 50);
+		s.p95 = Pct(errs, 95);
+		s.max = errs.empty() ? 0.0 : errs.back();
+		return s;
+	}
+
+	void VelocityRobust(Ctx & c)
+	{
+		struct Scenario { const char * name; int kind; };
+		const Scenario scen[] = {
+			{ "arrival_jitter", 0 },
+			{ "arrival_bunching", 1 },
+			{ "variable_interval", 2 },
+			{ "packet_loss", 3 },
+		};
+		for (const Scenario & sc : scen)
+		{
+			double worstP50 = 0.0, worstP95 = 0.0, worstMax = 0.0, worstZero = 0.0;
+			int p95Seed = 0, maxSeed = 0;
+			for (int seed = 1; seed <= 20; ++seed)
+			{
+				std::vector<VRObs> obs;
+				if (sc.kind == 0)
+					obs = VRCadence((uint32_t)seed, 1500, 150.0, 0.0);
+				else if (sc.kind == 1)
+					obs = VRCadence((uint32_t)seed, 1500, 150.0, 0.05);
+				else if (sc.kind == 2)
+					obs = VRVariable((uint32_t)seed);
+				else
+					obs = VRLoss((uint32_t)seed);
+				const VRStats s = VRRun(obs, 4.5);
+				const double zp = s.ticks > 0 ? 100.0 * (double)s.zero / (double)s.ticks : 0.0;
+				if (s.p50 > worstP50)
+					worstP50 = s.p50;
+				if (s.p95 > worstP95)
+				{
+					worstP95 = s.p95;
+					p95Seed = seed;
+				}
+				if (s.max > worstMax)
+				{
+					worstMax = s.max;
+					maxSeed = seed;
+				}
+				if (zp > worstZero)
+					worstZero = zp;
+			}
+			std::printf("VELOCITYR scenario=%s seeds=20 seed_p95=%d seed_max=%d zero_pct=%.3f err_p50=%.4f err_p95=%.4f err_max=%.4f\n",
+				sc.name, p95Seed, maxSeed, worstZero, worstP50, worstP95, worstMax);
+		}
+	}
+
 	// ---------- arena / respawn ----------
 	void Arena(Ctx & c)
 	{
@@ -543,6 +722,117 @@ namespace
 			std::printf("BUDGET set=%s bots_per_tick=%d ticks=%d query_p50=%.3f query_p95=%.3f query_p99=%.3f tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f\n",
 				s.name, s.bots, s.ticks, Pct(perQuery, 50), Pct(perQuery, 95), Pct(perQuery, 99), Pct(perTick, 50), Pct(perTick, 95), Pct(perTick, 99), Pct(perTick, 100));
 		}
+	}
+
+	// ---------- budget-scheduled: near64 load through NavQueryScheduler (F5-53) ----------
+	// Mode A runs every due query immediately (unscheduled); mode B feeds the same random query
+	// sequence through the scheduler. One line per mode.
+	void BudgetScheduled(Ctx & c)
+	{
+		const int bots = 16;
+		const int ticks = 600;                 // 60 s of virtual time at 100 ms
+		const double budgetMs = 1.5;           // P-NAV-TICK-BUDGET-MS
+		const int intervalTicks = 5;           // 500 ms at 100 ms/tick
+		const int requestsPerBot = 120;
+
+		// Random query sequence shared by both modes: one (start, goal) per request, per bot.
+		std::vector<NavCell> qa;
+		std::vector<NavCell> qg;
+		{
+			std::mt19937 rng(c.seed);
+			for (int b = 0; b < bots; ++b)
+			{
+				for (int k = 0; k < requestsPerBot; ++k)
+				{
+					const NavCell a = c.walk[rng() % c.walk.size()];
+					qa.push_back(a);
+					qg.push_back(RandomNear(c, rng, a, 64));
+				}
+			}
+		}
+
+		auto due = [&](int b, int t)
+		{
+			const int phase100 = NavReplanPhaseMs(b) / 100;
+			return t >= phase100 && (t % intervalTicks) == phase100;
+		};
+
+		auto run = [&](bool scheduled)
+		{
+			NavPathfinder pf;
+			NavPathResult res;
+			NavSearchParams sp;
+			NavQueryScheduler sched;
+			sched.SetMaxWaitMs(1000);
+
+			std::vector<double> tickSum;
+			int64_t longestWait = 0;
+			int64_t requestAt[64];
+			for (int b = 0; b < 64; ++b)
+				requestAt[b] = -1;
+			size_t qIndex = 0;
+			long served = 0;
+
+			for (int t = 0; t < ticks; ++t)
+			{
+				const int64_t nowMs = (int64_t)t * 100;
+				uint16_t batch[64];
+				int n = 0;
+				if (!scheduled)
+				{
+					for (int b = 0; b < bots; ++b)
+						if (due(b, t))
+							batch[n++] = (uint16_t)b;
+				}
+				else
+				{
+					for (int b = 0; b < bots; ++b)
+						if (due(b, t))
+						{
+							if (requestAt[b] < 0)
+								requestAt[b] = nowMs;
+							sched.Request((uint16_t)b, nowMs);
+						}
+					n = sched.NextBatch(nowMs, budgetMs, batch, 64);
+				}
+
+				double sum = 0.0;
+				for (int k = 0; k < n; ++k)
+				{
+					if (qIndex >= qa.size())
+						break;
+					const int b = batch[k];
+					const NavCell a = qa[qIndex];
+					const NavCell g = qg[qIndex];
+					++qIndex;
+					const auto t0 = Clock::now();
+					pf.Find(c.grid, a, g, sp, res);
+					const double ms = MsSince(t0);
+					sum += ms;
+					++served;
+					if (scheduled)
+					{
+						sched.ReportCost((uint16_t)b, ms, res.expanded);
+						if (requestAt[b] >= 0)
+						{
+							const int64_t wait = nowMs - requestAt[b];
+							if (wait > longestWait)
+								longestWait = wait;
+							requestAt[b] = -1;
+						}
+						sched.Cancel((uint16_t)b);
+					}
+				}
+				tickSum.push_back(sum);
+			}
+
+			std::printf("BUDGET_SCHED mode=%s bots=%d ticks=%d budget_ms=%.1f served=%ld tick_p50=%.3f tick_p95=%.3f tick_p99=%.3f tick_max=%.3f longest_wait_ms=%lld pending=%d\n",
+				scheduled ? "B" : "A", bots, ticks, budgetMs, served, Pct(tickSum, 50), Pct(tickSum, 95), Pct(tickSum, 99), Pct(tickSum, 100),
+				(long long)longestWait, sched.Pending());
+		};
+
+		run(false);
+		run(true);
 	}
 
 	// ---------- stuck: the F5-09 detector fed with bot packet-cadence positions ----------
@@ -625,13 +915,163 @@ namespace
 			std::printf("STUCK_TRUE params=%s detected_after_ms=%lld\n", pr == 0 ? "F5-09_default" : "cadence_3200", (long long)detectedAt);
 		}
 	}
+
+	// ---------- progress (F5-57): intent + real route progress, false-alarm table ----------
+	struct ProgRun
+	{
+		long ticks = 0;
+		long stalled = 0;
+		long awaiting = 0;
+		long progressing = 0;
+		long blocked = 0;
+		long stallEpisodes = 0;
+		long detectedMs = -1;
+	};
+
+	// Route-aware walk with the F5-54 packet cadence. The bot intends to move the whole time at
+	// speedMps; the server position and the route progress only jump at packet instants. Three
+	// evaluators share the same event stream: mode 0 = F5-09 defaults alone (Euclidean), mode 1 =
+	// NavPacketCadenceParams alone, mode 2 = NavProgressAssessor (with the monitor for episodes).
+	ProgRun RunProgress(const NavGrid & g, int mode, double tickMean, double tickJitter, double lateProb,
+		double speedMps, int secs, uint32_t seed)
+	{
+		ProgRun out;
+		std::mt19937 rng(seed);
+		std::normal_distribution<double> nd(0.0, tickJitter > 0.0 ? tickJitter : 1.0);
+		std::uniform_real_distribution<double> ud(0.0, 1.0);
+		const double totalLen = speedMps * (double)secs;
+		NavProgressAssessor assessor;
+		assessor.SetIntent(true, 0);
+		const NavProgressParams pp;
+		NavStuckParams def;                     // F5-09 defaults (docs/12 s10 wording)
+		NavStuckParams cad = NavPacketCadenceParams();
+		NavStuckDetector det;
+		NavStuckMonitor monitor;
+		double pos = 0.0, t = 0.0, lastPacket = 0.0;
+		bool inStall = false;
+		while (t < (double)secs * 1000.0)
+		{
+			double dt = tickMean + (tickJitter > 0.0 ? nd(rng) : 0.0);
+			if (ud(rng) < lateProb)
+				dt += 250.0;
+			if (dt < 20.0)
+				dt = 20.0;
+			t += dt;
+			if (t - lastPacket >= 1500.0)
+			{
+				pos += speedMps * (t - lastPacket) / 1000.0;
+				if (pos > totalLen)
+					pos = totalLen;
+				assessor.OnPacketSent((int64_t)t, 1000.0f, (float)pos, (float)pos, (float)(totalLen - pos));
+				lastPacket = t;
+			}
+			if (t < 5000.0)
+				continue;
+			++out.ticks;
+
+			if (mode == 0 || mode == 1)
+			{
+				const NavStuckKind k = det.Observe(g, (int64_t)t, 1000.0f, (float)pos, true,
+					mode == 0 ? def : cad);
+				if (k != NavStuckKind::None)
+				{
+					++out.stalled;
+					if (!inStall)
+						++out.stallEpisodes;
+					inStall = true;
+					if (out.detectedMs < 0)
+						out.detectedMs = (long)t;
+				}
+				else
+				{
+					inStall = false;
+				}
+			}
+			else
+			{
+				const NavProgressVerdict v = assessor.Assess((int64_t)t, pp);
+				if (v == NavProgressVerdict::Stalled)
+				{
+					++out.stalled;
+					if (!inStall)
+						++out.stallEpisodes;
+					inStall = true;
+					if (out.detectedMs < 0)
+						out.detectedMs = (long)t;
+				}
+				else
+				{
+					inStall = false;
+					if (v == NavProgressVerdict::AwaitingPacket)
+						++out.awaiting;
+					else if (v == NavProgressVerdict::Progressing)
+						++out.progressing;
+					else if (v == NavProgressVerdict::BlockedByGuard)
+						++out.blocked;
+				}
+				const bool moving = (v == NavProgressVerdict::Progressing || v == NavProgressVerdict::Stalled);
+				monitor.Update(g, (int64_t)t, 1000.0f, (float)pos, moving, cad);
+			}
+		}
+		if (mode == 2)
+			out.stallEpisodes = monitor.Episodes();
+		return out;
+	}
+
+	void Progress(Ctx & c)
+	{
+		struct Model { const char * name; double mean, jit, late; };
+		const Model models[] = { { "tick100+-0", 100, 0, 0 }, { "tick100+-10", 100, 10, 0 }, { "tick110.8+-20+3%late250", 110.8, 20, 0.03 } };
+		for (const Model & m : models)
+			for (int mode = 0; mode < 3; ++mode)
+			{
+				const ProgRun r = RunProgress(c.grid, mode, m.mean, m.jit, m.late, 4.5, 600, c.seed);
+				std::printf("PROGRESS model=%s evaluator=%s ticks=%ld stalled=%ld awaiting=%ld progressing=%ld blocked=%ld false_episodes=%ld first_ms=%ld\n",
+					m.name, mode == 0 ? "F5-09_default" : (mode == 1 ? "cadence_3200" : "assessor"),
+					r.ticks, r.stalled, r.awaiting, r.progressing, r.blocked, r.stallEpisodes, r.detectedMs);
+			}
+		// True stuck: the position never changes while the bot moves -> detection latency per evaluator.
+		for (int mode = 0; mode < 3; ++mode)
+		{
+			NavStuckDetector det;
+			NavProgressAssessor assessor;
+			assessor.SetIntent(true, 0);
+			assessor.NotifyReplan(0, 0.0f);
+			const NavProgressParams pp;
+			NavStuckParams def;
+			NavStuckParams cad = NavPacketCadenceParams();
+			int64_t detectedAt = -1;
+			int64_t nextPacket = 0;
+			for (int64_t t = 0; t < 20000; t += 100)
+			{
+				bool alarm = false;
+				if (mode == 0 || mode == 1)
+				{
+					alarm = det.Observe(c.grid, t, 1000.0f, 900.0f, true, mode == 0 ? def : cad) != NavStuckKind::None;
+				}
+				else
+				{
+					if (t >= nextPacket)
+					{
+						assessor.OnPacketSent(t, 1000.0f, 900.0f, 0.0f, 100.0f);
+						nextPacket = t + 1500;
+					}
+					alarm = assessor.Assess(t, pp) == NavProgressVerdict::Stalled;
+				}
+				if (alarm && detectedAt < 0)
+					detectedAt = t;
+			}
+			std::printf("PROGRESS_TRUE evaluator=%s detected_after_ms=%lld\n",
+				mode == 0 ? "F5-09_default" : (mode == 1 ? "cadence_3200" : "assessor"), (long long)detectedAt);
+		}
+	}
 }
 
 int main(int argc, char ** argv)
 {
 	if (argc < 2)
 	{
-		std::printf("usage: nav_measure <segments|smoothing|velocity|arena|budget|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
+		std::printf("usage: nav_measure <segments|smoothing|velocity|velocity-robust|arena|budget|budget-scheduled|stuck|progress|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
 		return 2;
 	}
 	std::string section = argv[1];
@@ -665,11 +1105,17 @@ int main(int argc, char ** argv)
 		Synthetic(c);
 	if (all || section == "velocity")
 		Velocity(c);
+	if (all || section == "velocity-robust")
+		VelocityRobust(c);
 	if (all || section == "arena")
 		Arena(c);
 	if (all || section == "budget")
 		Budget(c);
+	if (all || section == "budget-scheduled")
+		BudgetScheduled(c);
 	if (all || section == "stuck")
 		Stuck(c);
+	if (all || section == "progress")
+		Progress(c);
 	return 0;
 }

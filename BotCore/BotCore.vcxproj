@@ -71,6 +71,18 @@
   <ItemGroup>
     <ClInclude Include="BotCombat.h" />
     <ClInclude Include="BotMotion.h" />
+    <ClInclude Include="NavGrid.h" />
+    <ClInclude Include="NavDanger.h" />
+    <ClInclude Include="NavPath.h" />
+    <ClInclude Include="NavSmooth.h" />
+    <ClInclude Include="NavSegment.h" />
+    <ClInclude Include="NavTrack.h" />
+    <ClInclude Include="NavReach.h" />
+    <ClInclude Include="NavRetreat.h" />
+    <ClInclude Include="NavFormation.h" />
+    <ClInclude Include="NavStuck.h" />
+    <ClInclude Include="NavBudget.h" />
+    <ClInclude Include="NavLos.h" />
     <ClInclude Include="Perception.h" />
     <ClInclude Include="ScriptPlan.h" />
     <ClInclude Include="Rng.h" />

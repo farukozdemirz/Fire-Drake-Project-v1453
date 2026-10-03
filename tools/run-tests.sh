@@ -50,6 +50,8 @@ if [ ! -f "$EXE" ]; then
 	exit 2
 fi
 
+cd "$ROOT"
+
 rc=0
 "$EXE" ${ARGS[@]+"${ARGS[@]}"} || rc=$?
 exit "$rc"
