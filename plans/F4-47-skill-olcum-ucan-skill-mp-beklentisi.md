@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 23) |
 | Branch | `bot/F4-47` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-41 (`tools/skill-check.py`), F4-43 (`--mp-regen` hükmü) — `KAPANDI`; F4-46 — `KAPANDI` (merge `f444da0`) |
@@ -188,19 +188,35 @@ git diff --stat gece/2026-10-02...bot/F4-47
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-47` — `<kısa-sha> [F4-47] …`
+- Branch / commit'ler: `bot/F4-47` — `<sha> [F4-47] Uygulandı: skill-check uçan Type3 MP beklentisi (2 × Msp)` (+ rapor stat commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
+  - `tools/skill-check.py`: `new_stat()` `"fly_deltas"`; `analyze()` kayıt kapanışında uçan MP farkını `fly_deltas`'a yönlendirir; `judge_mp()` `regen_base` parametresi; yeni `judge_mp_split()` (`Type1 == 3` uçan için `2 × Msp`, diğerleri tek `Msp`, karışıkta en kötü hüküm); `build_report()` `mp_exp_flying`/`flying_n` alanları ve `judge_mp_split` hükmü; `render_markdown()` `mp_exp_fly | fly_n` sütunları; docstring/`USAGE` uçan kural paragrafı; `run_selftest()` 16 yeni denetim.
+  - `plans/F4-47-skill-olcum-ucan-skill-mp-beklentisi.md`: `Durum` ve bu rapor.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır) ve `./tools/run-tests.sh` son satırı:
   ```
-  …
+    BotCore.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\libs\BotCore.lib
+    Lua.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh` son satırı: `251 tests, 0 failed`
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `python3 tools/skill-check.py --selftest` rc=0, `selftest: 48 checks, 0 failed`.
+  - K2 ✔ 16 adın tamamı `grep -c` ile 1.
+  - K3 ✔ 12 mevcut ad duruyor; `git diff ... | grep '^-' | grep -c 'check("'` = 0.
+  - K4 ✔ `/tmp/fly_k4.jsonl` + `/tmp/fly_k4_magic.txt` ile `{'mp_exp': 50, 'mp_exp_flying': 100, 'flying_n': 3, 'mp_delta_med': 100, 'mp_verdict': 'PASS'}`.
+  - K5 ✔ `python3 tools/skill-script-gen.py --selftest` `selftest: 23 checks, 0 failed` rc=0.
+  - K6 ✔ `./tools/build.sh Release` rc=0, yeni uyarı yok; `run-tests.sh` `251 tests, 0 failed`.
+  - K7 ✔ (aşağıdaki stat) yalnızca `tools/skill-check.py` + plan dosyası; plan dosyasında `Durum` ve bu rapor değişti.
+  - K8 ✔ `file tools/skill-check.py` `Python script, ASCII text executable`; `git ls-files --eol` `i/lf w/lf attr/text eol=lf`.
+- Plandan sapmalar ve gerekçeleri: yok. Kapsam yalnızca `tools/skill-check.py`; C++/`docs/`/ADR değişmedi. `judge_mp` imzasına `regen_base=None` eklendi, mevcut çağrılar (selftest dahil) birebir aynı davranır.
+- Açık sorular: yok.
 - `git diff --stat gece/2026-10-02...bot/F4-47` (gerçek çıktı):
   ```
-  …
+  (ikinci commit'te dolduruldu)
   ```
 
 ---
