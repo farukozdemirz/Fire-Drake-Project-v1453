@@ -217,7 +217,7 @@ git diff --stat gece/2026-10-02-nav...bot/F5-11
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-11` (taban `gece/2026-10-02-nav`); uygulama commit'i ve plan/durum commit'i raporun altındadır (aşağıdaki `commit` alanı push edilmeden dolduruldu).
+- Branch / commit'ler: `bot/F5-11` (taban `gece/2026-10-02-nav`); uygulama `dbf5cc2` (üç araç dosyası), plan/durum `1679cd6` (bu rapor). Plan metnindeki fark yalnızca `Durum` satırı ve "Uygulayıcı Raporu" (doğrulama `git diff` ile teyit edildi).
 - Değişen dosyalar ve neden:
   - `tools/nav-regress.py` (yeni, 1164 satır): `nav-measure` çıktısının `KEY k=v ...` ayrıştırıcısı; `CHECK_META`/`CHECK_FUNCS` (35 denetim, §5.3 tablosunun birebir karşılığı, sınıf D/Z/K/I + kaynak); `PASS/FAIL/WARN/INFO` satırları ve `NAV-REGRESS` özeti; Z denetimleri için `--timing-retries` ile yeniden deneme ve `(attempt a/b)` notu; `--skip-timing` (Z denetimleri `INFO "skipped"`, `budget*` koşulmaz); `--from-file`/`--save`; `--list` (35 satır, kaynak dolu); `--selftest` (27 vaka, gömülü mutasyonlar); `oracle.*` için `tools/nav-segment-check.py` alt süreç çapraz kontrolü (sabit vektörler + `EXAMPLE straight` segmentleri + oracle `--selftest`).
   - `tools/nav-regress.sh` (yeni, 19 satır): `python3 tools/nav-regress.py "$@"` sarmalayıcı; `python3` yoksa çıkış 2.
