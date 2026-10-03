@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-49 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-29 (alan: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI`; F4-31 (`SendsAimPoint`, `Moral` 6 party-all) — `KAPANDI`; F4-36 (eşyalı sınıf skill'i kapısı `CastItemSkillSupported`, `no_item`) — `KAPANDI`; F4-46 (priest usta skill'leri, Stone of Priest tüketimi, `docs/05` §9.5) — `KAPANDI` |
@@ -243,20 +243,38 @@ git diff --check gece/2026-10-02...bot/F4-49
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-49` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-49` @ `1cb22bb` (taban `5d2c444`; üç commit: `04871fc`, `31a4669`, `1cb22bb`; hepsi `[F4-49] ...` biçiminde, merge/rebase/force izi yok; `build/` commit'li değil)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0; dört dosya `touch` edilip yeniden derlendi (`/tmp` günlüğü), `warning` satırı 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, `warning` satırı 0 |
+| K3 | ✔ | `run-tests.sh Release`: `252 tests, 0 failed`; `Debug`: `252 tests, 0 failed`; iki yapılandırmada `[ OK ] Combat_CastMoral_Supported` ve `[ OK ] Combat_AreaFriendCast_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`BotCombat.h:6-7`); eklenen satırlarda `std::min`/`std::max` yok |
+| K5 | ✔ | `ActionExecutor.cpp` ve `.h` farkında yorum olmayan `+`/`-` satırı yok (boş çıktı); `ActionExecutor.cpp:873` `bool area = BotCore::SendsAimPoint(m->bMoral);` aynen; `ActionExecutor.cpp`'de `IsAreaMoral`/`IsAreaFriendMoral` yok (yalnızca `:741` yorumunda `CastMoralSupported`, `:779` ve `:873` mevcut çağrılar) |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-49`: `BotCombat.h`, `ActionExecutor.cpp`, `ActionExecutor.h`, `Tests/BotCoreTests/CombatTests.cpp` + plan dosyası; `.vcxproj*`, `BotSession.*`, `BotManager.cpp`, `Telemetry.*` değişmedi; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu (`@@ -2` ve `@@ -212`); önceki 251 test (güncellenen biri dahil) geçiyor |
+| K7 | ✔ | koda eklenen `Emit(`/ini anahtarı/komut/thread yok; kod farkı `kMoralAreaFriend`, `IsAreaFriendMoral`, `SendsAimPoint`/yorumlar |
+| K8 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; satır sayısı = CRLF sayısı (1074/1841/404/3267), ASCII dışı bayt 0; `git diff --check` boş |
+| K9 | ✔ | `python3 tools/check-perception-contract.py` `RESULT: PASS`, `files scanned: 31` |
+| K10 | ✔ | Çalışma zamanı S1–S7 aşağıda; hepsi beklenenle uyumlu |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- **Çalışma zamanı (K10)** (Release, `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-110215.jsonl`, `Logs/Bot_3_10_2026.log`; çantalar sunucu kapalıyken `bot-refill.sh apply --mp-pots 20` (`ok=12 fail=0`); ini yedekten geri yüklendi (`cmp` aynı), `BotCommands.txt` silindi, botlar `despawn all`, sunucular `stop`). Botlar: `BotPHD_K` (1274,0 / 928,0; çağıran), `BotPHB_K` (1270,0 / 944,0 → 936,0), `BotWP_K` (1272,0 / 934,0 → 1274,0 / 953,0), `BotWP_E` (1274,0 / 928,5; düşman), `BotMF_K` (908,0 / 1150,0 → 1274,0 / 905,0), `BotPHB_E` (1274,0 / 890,0 → 922,0). Hepsi ilgili atıştan ≥ 25 sn önce spawn edildi (blinking süresi geçmiş: kurban/çağıran listeye girdi); `list` mesafeleri `snap`'ten teyit edildi. Hiçbir bot party'de değildi (S7 hariç).
+  - **S1 ✔** `cast BotPHD_K 112825 self 1`: `CastStart` `ACTION_SUBMIT` **`"target":-1`**, `casting` `op 1`; `CastEffect` `"target":-1` → `effected`, `op 3`, **`code 20`**, **`victims 2`**, `mp_after` 3692 → 3052 (**−640 tam**); `snap BotPHD_K events`: `op=1 target=-1 d0=1274 d2=928` (hedef noktası = çağıranın konumu), `op=3 target=2986` (BotWP_K, 6,3 m) ve `target=2984` (çağıran) `d1=1`; **`snap`**: `BotPHD_K` ve `BotWP_K`'da `buff skill=112825 type=27 remain=14s/12s`; `BotPHB_K` (16,5 m, yarıçap dışı) ve düşman `BotWP_E` (0,5 m, hostile) buff'sız `buffs 0`. `BotPHB_K` 8,9 m'ye alınıp tekrar atışta (buff'lar sönmüşken): `victims 3` (çağıran + `BotWP_K` + `BotPHB_K`; party'siz), MP −600 (−640 + ~40 yenileme), üçünde de `type=27`; `BotWP_E` yine buff'sız. **Party aranmadığı kanıtlandı** (hiçbiri party'de değil).
+  - **S2 ✔** S1 tekrarının 4 sn sonrası aynı atış: `ok:false`, `reason:"no_result"`, `op -1`, `victims 0`, log `cast stopped (no_result)`; **MP 2732 → 2132 (−600 = −640 + ~40 yenileme)**: MP yine düşer (MEC-MAG-25 `[D]` ⇒ `[V]`).
+  - **S3 ✔** `BotWP_K` çağırandan 25,0 m (`snap`), `BotPHB_K` `BotWP_K`'dan 17,5 m: `cast BotPHD_K 112825 BotWP_K 1`: `target -1`, `op=1 d2=953` (hedef botun konumu), `effected`, **`op=3` yalnızca `target=2986`**; `snap`: `BotWP_K` `type=27 remain=15s`, `BotPHD_K` (çağıran, hedeften 25 m) ve `BotPHB_K` buff'sız ⇒ **çağıran hedeften > 15 m iken kurban değil** (plan §5.4 satır 2).
+  - **S4 ✔** `cast BotPHD_K 112825 BotMF_K 1` (428 m): paket gitmeden `FAIRNESS_REJECT` `rule MEC-MAG-11`, `out_of_range`, `value 428.07`, `limit 56.00`, log `cast stopped (out_of_range)`; MP değişmedi (yalnızca yenileme).
+  - **S5 ✔** `cast BotMF_K 112825 self 1` ⇒ `refused (bad_skill)`, jsonl'de `BotMF_K` için `CastStart` yok. El Morad: `cast BotPHB_E 212825 self 1` ⇒ `CastStart` `target -1`, `effected`, `op=3` `target=2989` (çağıran) ve `2988` (`BotWP_E`, 6,5 m), `snap`: ikisinde `skill=212825 type=27`; Karus botundan `BotPHD_K` (6,0 m, yarıçap içinde ama düşman) `snap`'te `buffs 0` (`BotPHB_K` bu adımda `snap` edilmedi).
+  - **S6 ✔** `cast BotPHD_K 112825 self 1`, ~1,1 sn sonra ayrı dosyada `cast BotPHD_K off`: `CastCancel` `"target":-1`, `cause "cmd"`, `since_casting_ms 1096`, `cancelled`, `op 4`, `code -100`; log `cast cancelled after 2 packet(s) sent`; MP 2612 → 2692 (yalnızca yenileme, düşüm yok).
+  - **S7 ✔** `BotPHB_K` + `BotPHD_K` party (`pinvite`/`paccept`): `cast BotPHB_K 112557 self 1` (Moral 6 grup heal) ⇒ `CastStart`/`CastEffect` `target -1`, `effected`, `code 0`, `victims 2`, MP −960 (+ ~40). Moral 10 alan `cast BotMF_K 110545 BotWP_E 1` ⇒ `target -1`, `effected`, `victims 2` (El Morad `BotWP_E` 4973 → 4732 ve `BotPHB_E` 3491 → 3242 HP düştü), MP 6021 → 5821 (−200).
+  - Ölçülemeyenler `[Ö]`: Stone of Priest tüketimi (`snap` stok satırı yalnızca `hp_pot`/`mp_pot`), boş kurban listesinde `ConsumeItem()`'ın çalışmaması (§5.4 satır 5; blinking/kimsesiz atış denenmedi), `no_item` ve `srv_fail` (ağaç yetersiz) kolları (bot priest'lerinde tetiklenmez).
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. *(not)* Uygulayıcı sapması yerinde: `Combat_ItemSkill_Guard` içindeki ikinci `CastMoralSupported(11) == false` satırı (`CombatTests.cpp:1679`) `true` yapıldı; planın §5.2(a) yalnızca ilk satırı anıyordu, ancak K6 ("önceki testler geçmeli") ve planın amacı bunu gerektiriyordu; yalnızca izinli test dosyasında, mekanik/paket değişikliği yok.
+  2. *(not)* Plan yolu `tests/BotCoreTests/...` yazıyor, depodaki yol `Tests/BotCoreTests/...` (büyük `T`); içerik ve kapsam etkilenmedi.
+  3. *(not, kurulum)* `BotCommands.txt` sunucuda saniyede bir okunuyor; aynı dosyaya art arda yazılan komutlar bir önceki alınmadan üzerine yazılırsa kaybolur. `cast ... off` aynı dosyada (aynı tick) `cast`'ten hemen sonra verilirse CastStart paketi gitmeden iptal olur (`stopped after 0 packet(s)`, paket yok); CASTING'te iptal sınaması için iki komut ~1,1 sn arayla **ayrı dosyalarla** verilmeli (F4-31 `since_casting 1094` ile aynı).
+  4. *(not)* `snap <bot>` olaylarındaki `op=1 d0/d2` hedef noktasını doğrudan gösteriyor; telemetri (`ACTION_SUBMIT`) hedef noktası alanı taşımıyor, bu plan kapsamında yeni alan gerekmiyor (CLI-07 gerçek istemci paketi `[Ö]` insan testi, `docs/STATUS.md` "isteğe bağlı gözlemler").
+  5. *(not)* Uygulayıcı raporundaki tüm iddialar (commit listesi, dosyalar, `252 tests`, K1–K9) kendi çalıştırmamla örtüşüyor.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
