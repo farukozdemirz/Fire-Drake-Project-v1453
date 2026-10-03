@@ -383,6 +383,30 @@ namespace BotCore
 		return hp < kSacrificeHpCost;
 	}
 
+	// --- resurrection cast (ADR-0017 Ek F4-33, docs/03 MEC-MAG-20) ---
+
+	// MAGIC.Moral 25 = CORPSE_FRIEND (MagicInstance.h): the target must be a dead player of the caster's nation other than
+	// the caster. The server takes MAGIC_TYPE5.NeedStone stones of MAGIC.UseItem from the DEAD TARGET (not the caster)
+	// and resurrects it in place. MAGIC_TYPE5.Type 3 = RESURRECTION (MagicInstance.h); Type 4 = RESURRECTION_SELF (the
+	// item skill 480001) stays closed.
+	constexpr uint8_t kMoralCorpseFriend = 25;
+	constexpr uint8_t kType5Resurrection = 3;
+	constexpr uint32_t kResurrectionStoneItem = 379006000;
+
+	// The resurrections the bot casts: Type5 alone, Moral 25, the Stone of Life, MAGIC_TYPE5.Type RESURRECTION. The caller
+	// still rejects flying effects and "sacrifice" HP costs.
+	inline bool CastResurrectionSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t type5Kind)
+	{
+		return type0 == 5 && type1 == 0 && moral == kMoralCorpseFriend
+			&& useItem == kResurrectionStoneItem && type5Kind == kType5Resurrection;
+	}
+
+	// Morals that need a named target other than the caster: 7 enemy (F4-03) and 25 corpse-friend (F4-33).
+	inline bool CastNeedsOtherTarget(uint8_t moral)
+	{
+		return moral == 7 || moral == kMoralCorpseFriend;
+	}
+
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{
