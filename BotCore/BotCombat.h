@@ -337,14 +337,15 @@ namespace BotCore
 		return moral == kMoralAreaEnemy;
 	}
 
-	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 7 enemy, 8 all (F4-03) and 10 area-enemy (F4-29). A flying area
-	// skill (FlyingEffect != 0: Fire burst, Ice burst, Thunder burst) stays unsupported until its own slice.
-	inline bool CastMoralSupported(uint8_t moral, uint16_t flyingEffect)
+	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 7 enemy, 8 all (F4-03) and 10 area-enemy (F4-29, flying or not:
+	// the flying area skills Fire/Ice/Thunder burst run the same packet shape through CASTING -> FLYING -> EFFECTING,
+	// F4-30). Whether the skill may fly at all is decided by the caller (IsFlyingCast: Type3 only).
+	inline bool CastMoralSupported(uint8_t moral)
 	{
 		if (moral == 1 || moral == 2 || moral == 7 || moral == 8)
 			return true;
 
-		return IsAreaMoral(moral) && flyingEffect == 0;
+		return IsAreaMoral(moral);
 	}
 
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast always carries -1, every other cast the target's id.
