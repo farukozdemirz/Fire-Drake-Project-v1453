@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 16) |
 | Branch | `bot/F4-40` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-04 (`db/002_bot_characters.sql`, 12 bot satırı ve `strItem` düzeni) ve F4-27 (`db/003` betik kalıbı: yedek tablo, öz denetim, geri alma) — `KAPANDI`; F4-04 (pot dilimi, `PotKindOf`), F4-36/F4-37 (taş ve scroll tüketimi) — `KAPANDI` |
@@ -205,4 +205,37 @@ file db/004_bot_inventory.sql db/004_bot_inventory_rollback.sql tools/bot-refill
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(boş)
+### Tur 1 — 2026-10-03
+
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02...bot/F4-40` @ `97d1697` (2 commit: `10fe98d`, `97d1697`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı. Sunucular kapalıydı (`run-servers.sh status` → `0/3`; ilgisiz pid 4336 yok sayıldı).
+- Kriterler:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0, `warning` satırı 0; `./tools/run-tests.sh Release` son satır `251 tests, 0 failed` (taban 251). Kod değişmediği için derleme artımlıdır (yalnızca "derlenir ve sayı değişmedi" kanıtı, plan öyle istiyor) |
+| K2 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-40`: yalnızca `db/004_bot_inventory.sql`, `db/004_bot_inventory_rollback.sql`, `db/README.md`, `tools/bot-refill.sh`, bu plan; `GameServer/ BotCore/ shared/ AIServer/ docs/ db/001..003` farkı 0; `git diff --check` boş |
+| K3 | ✔ | Kendi koşum (sunucular kapalı): `apply` → `BOTSTOCK: rows=12 ok=12 fail=0 changed=5 hp=100 mp=0 life=30 class=50`; tekrar `changed=0`. `grep -c "LIKE 'Bot" db/004_bot_inventory.sql` = 0; 12 ad açık listede (`db/004_bot_inventory.sql:87-90`); betikte satır içeriği basan `SELECT` yok, tek `PRINT` sayaç satırı (`:229-236`) |
+| K4 | ✔ | `apply 7/5/3/11` → `rows=12 ok=12 fail=0 changed=12`; tekrar `changed=0`. (b) denetimi: `:136` (`@keepBefore`, 0..13 + 22..72), `:213` (`@keepAfter`), `:215-217` karşılaştırma; ayrıca `0/0/0/0` ile `changed=12` sonra `changed=0` (boş yuva yolu) |
+| K5 | ✔ | `rollback` → `restored=12`; tekrar `restored=0`; yedek tablo korunur, 0 satır (`SELECT COUNT(*)` = 0); `apply → rollback → apply` → `changed=5` (ilk `apply` ile aynı: rollback ilk durumu getiriyor) |
+| K6 | ✔ | (a) `apply --dry-run` `-v HpPots=100 -v MpPots=0 -v LifeStones=30 -v ClassStones=50` içeren komutu yazdırır, rc 0; (b) `--hp-pots abc`, `10000`, `-1`, bilinmeyen alt komut, bilinmeyen bayrak, `rollback --hp-pots 3` hepsi rc 2; (c) `FDP_REFILL_STATUS_CMD="echo [UP] GameServer"` ve `"echo [FAILED] x"` rc 1, `servers are running, stop them first`, SQL çağrılmadı; `[DOWN]` ile geçer (gerçek `apply` koşularında varsayılan `run-servers.sh status` ile geçti); (d) `--help` rc 0. Betik: `tools/bot-refill.sh:60-150` |
+| K7 | ✔ | `file`: üçü `ASCII text` (sh: `Bourne-Again shell script, ASCII text executable`); CR sayısı 0 (LF); `bash -n` rc 0; indekste `100755`; `db/README.md` farkı yalnızca `+45/-0` |
+| K8 | ertelendi | Çalışma zamanı sınaması (sunucu açma, `BotCommands.txt` ile `spawn`/`snap`/`pot`, kalıcılık) bu turda **yapılmadı**: karar zaten düzeltme gerektiriyor; düzeltme yalnızca geri alma betiğini değiştirir, `apply` yolu aynı kalır. Tur 2'de yapılacak |
+| K9 | ✔ | Rapordaki SQL çıktı satırları, rc'ler, `changed=5`, `STUFF`→`CONVERT` sapması (`db/004_bot_inventory.sql:205`, `db/004_bot_inventory_rollback.sql:29`) kendi koşumlarımla örtüşüyor; satır içeriği/hesap bilgisi rapora girmemiş. Eksik: rollback'in yedek-tablo-yok yolu sınanmamış (aşağıda bulgu 1) |
+
+- Bulgular (önem sırasına göre):
+  1. **`db/004_bot_inventory_rollback.sql:13-17` yedek tablo yokken plana aykırı biçimde hata veriyor.** Plan §3.2: "yedek tablo yoksa `BOTSTOCK_ROLLBACK: restored=0`" (benign, rc 0). Betik `IF OBJECT_ID(...) IS NULL BEGIN PRINT ...; RETURN; END` yazıp `GO` koyuyor; `RETURN` yalnızca o batch'i bitirir, sonraki batch (`:20` `UPDATE ... JOIN dbo.USERDATA_BOT_STOCK_BACKUP`) yine çalışır. Kendi ölçümüm (yedek tablo geçici olarak `sp_rename` ile gizlendi, sonra adı geri verildi, tablo 0 satırla duruyor): `tools/bot-refill.sh rollback` → `BOTSTOCK_ROLLBACK: restored=0` ardından `Msg 208, Level 16 ... Invalid object name 'dbo.USERDATA_BOT_STOCK_BACKUP'` ve **rc=1**. `apply` hiç çalıştırılmamış bir ortamda (yeni kurulum, `apply` öncesi `rollback`) betik hata verir. Uygulayıcı bu yolu sınamadı (raporda yok).
+  2. *(not, engel değil)* Öz denetim (a) `@block` ile karşılaştırıyor; `@block` yazımla aynı kodla üretildiği için bu, şablonun bağımsız yeniden hesabı değil. Plan metni "şablondan yeniden hesaplananla eşit" diyor; ek koruma olarak `db/002` ile bayt eşitliği (7 satırda `changed=0`) uygulayıcı tarafından gösterilmiş. Değişiklik gerekmez.
+  3. *(not)* `STUFF(binary)` → `CONVERT(binary(584), ...)` sapması gerekçeli ve kanıtlı: `changed=0` tekrarları ve apply→rollback→apply tutarlılığı bayt-korunumunu doğruluyor. Kabul.
+  4. *(not)* Geçersiz `-v` değerleri (`HpPots=abc`, `HpPots=10000`) doğrudan `sqlcmd` ile denendi: `RAISERROR` mesajı, rc=1, satıra dokunulmadı (sarmalayıcı zaten rc 2 ile önce reddediyor).
+- DB durumu: tüm koşular `rollback` ile bitti (son `restored=12`, yedek tablo 0 satır); yalnızca betik çıktıları okundu, satır içeriği okunmadı/yazılmadı.
+- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+
+```
+plans/F4-40-bot-envanter-doldurma.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. `db/004_bot_inventory_rollback.sql`: yedek tablo yokken betik `BOTSTOCK_ROLLBACK: restored=0` yazıp **sıfır hatayla** (`-b` ile rc 0) bitmeli. Şu an `IF OBJECT_ID(...) IS NULL BEGIN PRINT ...; RETURN; END` ardından `GO` var; `RETURN` yalnızca o batch'i bitirdiği için sonraki batch'teki `UPDATE ... JOIN dbo.USERDATA_BOT_STOCK_BACKUP` yine çalışıp `Msg 208 Invalid object name` ile rc=1 veriyor. Düzelt: tablo varlık denetimini ve UPDATE/DELETE/COMMIT/`PRINT restored=<N>` bloğunu **aynı batch** içinde `IF OBJECT_ID(N'dbo.USERDATA_BOT_STOCK_BACKUP', N'U') IS NULL BEGIN PRINT 'BOTSTOCK_ROLLBACK: restored=0'; END ELSE BEGIN ... END` biçimine getir (sorgular tablo adını doğrudan içerirse ve derleme yine hata veriyorsa `EXEC sp_executesql` ile çalıştır). Mevcut davranış (yedek varken `restored=12`, ikinci çalıştırmada `restored=0`, tablo korunur, yalnızca 12 bot adı, satır içeriği basılmaz, `CONVERT(binary(584), STUFF(...))`) aynen kalmalı. Arada `GO` ile bölünüp tabloya bağlı kalan ifade bırakma.
+2. Sınama (sunucular kapalıyken, `tools/run-servers.sh status` ile doğrula; yalnızca çıktı satırlarını ve rc'yi rapora yaz):
+   a. Yedek tablo yok durumu: yedek tabloyu geçici olarak `EXEC sp_rename 'dbo.USERDATA_BOT_STOCK_BACKUP','USERDATA_BOT_STOCK_BACKUP_X'` ile gizle, `tools/bot-refill.sh rollback` çalıştır: çıktı `BOTSTOCK_ROLLBACK: restored=0`, **başka hata satırı yok, rc=0**. Sonra tabloyu `EXEC sp_rename 'dbo.USERDATA_BOT_STOCK_BACKUP_X','USERDATA_BOT_STOCK_BACKUP'` ile eski adına döndür (tablo korunmalı, 0 satır).
+   b. Normal dizi: `tools/bot-refill.sh apply` (`rows=12 ok=12 fail=0`), tekrar (`changed=0`), `tools/bot-refill.sh rollback` (`restored=12`), tekrar (`restored=0`, rc=0). Son komut `rollback` olsun (DB ilk durumda kalsın).
+3. `bash -n tools/bot-refill.sh`; `file db/004_bot_inventory_rollback.sql` ASCII + LF kalmalı (`grep -c $'\r'` = 0); `git diff --check` boş. `git diff --stat gece/2026-10-02...bot/F4-40` plan dosyası + §4 dosyaları dışında bir şey göstermemeli. `./tools/build.sh Release` ve `./tools/run-tests.sh Release` (`251 tests, 0 failed`) tekrar çalıştır.
+```
