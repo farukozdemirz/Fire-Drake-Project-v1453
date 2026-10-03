@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-71 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`), F5-05 (`NavReach`), F5-53 (`NavBudget`, chase simülasyonu), F5-69 (eğim 0,45, KI-023'ün kaynağı). **F5-62 ve F5-70'e bağımlı DEĞİLDİR** ve onlarla dosya paylaşmaz (F5-62, `DOĞRULANDI` ve `gece/2026-10-02`ye birleşti: `NavDrive.h`, `NavDriveTests.cpp`, iki `.vcxproj`; bu plan: `NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`). F5-63 (Follow kipi) bu planın `UpdateReachable`ını kullanır |
@@ -434,20 +434,27 @@ git diff --check gece/2026-10-02...bot/F5-71
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-71` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F5-71` @ `42e96c6` (kod commit'i `0c732c4`; gece modu, birleştirmeyi döngü betiği yapar)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `build.sh Release` ve `Debug` rc=0; iki günlükte `warning` sayısı 0 |
+| K2 | ✔ | Release ve Debug `293 tests, 0 failed`; dört `NavTrack_Reach_*` adı `[ OK ]`; `--list` = 293 (289 + 4); diff'te yalnızca `NavBudget_Deferred_Chase_Sim` gövdesi mevcut testlerden değişti |
+| K3 | ✔ | Release B: `follow_stale_ticks=0 without_plan_pct=0.1 dist_mean=12.33` (A 10.86 → eşik 13.58); B2: `follow_stale_ticks=0 without_plan_pct=0.3`. Debug B: `0 / 0.4 / 12.59`; B2: `0 / 0.5`. Release 3 ardışık koşu birebir aynı satırlar. Eşik gevşetilmemiş |
+| K4 | ✔ | `grep -n "pinnedParams\|0\.625" NavBudgetTests.cpp` boş; diff yalnızca 3 düzenleme (`grid.Build()`, `UpdateReachable(..., reach)`, `if (moved) snapWalk`); `NavBudget_RealMap_Load` `Update` çağrısı değişmemiş |
+| K5 | ✔ | `git diff --stat`: `NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp` + plan; `docs/ tools/ GameServer/ AIServer/ shared/ *.vcxproj` farkı 0; `git diff --check` boş; `NavTrack.h` silinen satır 9 ≤ 12 |
+| K6 | ✔ | eklenen satırlarda yasak desen yok (grep boş); `check-perception-contract.py` rc=0 |
+| K7 | ✔ | `NavTrack_Reach_SingleComponent_Identical` (300 senaryo) ve tüm mevcut nav testleri geçti; `Update` bildirimi aynı, gövde farkı §2'deki dört değişiklik (`NavTrack.h` diff'i satır satır okundu) |
+| K8 | ✔ | `file`: üç dosya `ASCII text, with CRLF line terminators` |
+| K9 | ✔ | `GameServer shared AIServer` farkı boş |
 
 - Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+  1. (not) Kod planın §5 adım 2'siyle birebir: `botCell` öne taşındı (`NavTrack.h:389-393`), öngörü kabulü bileşen denetimli (`:419-420`), `limit` kalktı ve döngü `tries < maxTries` (`:454`), bileşen dışı aday A* koşmadan atlanıyor (`:456-457`). `reach` yalnızca `botComp >= 0` iken dereferans edilir; `Update` yolunda `nullptr` ve `botComp = -1` olduğundan `NavNoReach` hiç çağrılmaz. Sorun yok.
+  2. (not) Bilinen sınırlama: bot eğim cebi hücresindeyken planlayıcı çıkamaz (KI-023 ikinci neden). KI-024 olarak açıldı; F5-63'te çözülecek. Test simülasyonu botu `snapWalk` ile ana bileşende tutar (plan gereği).
+  3. (not) Beklenen kayıtlar yapıldı: KI-023 `KAPANDI`, KI-024 açıldı, `docs/12` §4.2 öngörü/halka cümleleri eklendi. F5-63 taslağındaki `NavTrack.h` eklerinin (`ReplanDue/InvalidatePlan/field`) bu planın `UpdateImpl`'ine göre uyarlanması F5-63 HAZIR yapılırken yapılacak (STATUS'ta kayıtlı).
+- Düzeltme talimatı: yok.
 
-```
-…
-```
