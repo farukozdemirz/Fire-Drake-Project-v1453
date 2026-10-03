@@ -7,7 +7,7 @@
 // repeat acceptance timings with the MSVC Release unit tests.
 //
 //   nav_measure <section> [--navgrid PATH] [--seed N] [--n COUNT]
-//   sections: segments | smoothing | synthetic | velocity | velocity-robust | arena | budget | budget-scheduled | stuck | all
+//   sections: segments | smoothing | synthetic | velocity | velocity-robust | arena | budget | budget-scheduled | stuck | progress | all
 //
 // Every section prints one "KEY value ..." line per result so a CI-less wrapper can grep them.
 
@@ -915,13 +915,163 @@ namespace
 			std::printf("STUCK_TRUE params=%s detected_after_ms=%lld\n", pr == 0 ? "F5-09_default" : "cadence_3200", (long long)detectedAt);
 		}
 	}
+
+	// ---------- progress (F5-57): intent + real route progress, false-alarm table ----------
+	struct ProgRun
+	{
+		long ticks = 0;
+		long stalled = 0;
+		long awaiting = 0;
+		long progressing = 0;
+		long blocked = 0;
+		long stallEpisodes = 0;
+		long detectedMs = -1;
+	};
+
+	// Route-aware walk with the F5-54 packet cadence. The bot intends to move the whole time at
+	// speedMps; the server position and the route progress only jump at packet instants. Three
+	// evaluators share the same event stream: mode 0 = F5-09 defaults alone (Euclidean), mode 1 =
+	// NavPacketCadenceParams alone, mode 2 = NavProgressAssessor (with the monitor for episodes).
+	ProgRun RunProgress(const NavGrid & g, int mode, double tickMean, double tickJitter, double lateProb,
+		double speedMps, int secs, uint32_t seed)
+	{
+		ProgRun out;
+		std::mt19937 rng(seed);
+		std::normal_distribution<double> nd(0.0, tickJitter > 0.0 ? tickJitter : 1.0);
+		std::uniform_real_distribution<double> ud(0.0, 1.0);
+		const double totalLen = speedMps * (double)secs;
+		NavProgressAssessor assessor;
+		assessor.SetIntent(true, 0);
+		const NavProgressParams pp;
+		NavStuckParams def;                     // F5-09 defaults (docs/12 s10 wording)
+		NavStuckParams cad = NavPacketCadenceParams();
+		NavStuckDetector det;
+		NavStuckMonitor monitor;
+		double pos = 0.0, t = 0.0, lastPacket = 0.0;
+		bool inStall = false;
+		while (t < (double)secs * 1000.0)
+		{
+			double dt = tickMean + (tickJitter > 0.0 ? nd(rng) : 0.0);
+			if (ud(rng) < lateProb)
+				dt += 250.0;
+			if (dt < 20.0)
+				dt = 20.0;
+			t += dt;
+			if (t - lastPacket >= 1500.0)
+			{
+				pos += speedMps * (t - lastPacket) / 1000.0;
+				if (pos > totalLen)
+					pos = totalLen;
+				assessor.OnPacketSent((int64_t)t, 1000.0f, (float)pos, (float)pos, (float)(totalLen - pos));
+				lastPacket = t;
+			}
+			if (t < 5000.0)
+				continue;
+			++out.ticks;
+
+			if (mode == 0 || mode == 1)
+			{
+				const NavStuckKind k = det.Observe(g, (int64_t)t, 1000.0f, (float)pos, true,
+					mode == 0 ? def : cad);
+				if (k != NavStuckKind::None)
+				{
+					++out.stalled;
+					if (!inStall)
+						++out.stallEpisodes;
+					inStall = true;
+					if (out.detectedMs < 0)
+						out.detectedMs = (long)t;
+				}
+				else
+				{
+					inStall = false;
+				}
+			}
+			else
+			{
+				const NavProgressVerdict v = assessor.Assess((int64_t)t, pp);
+				if (v == NavProgressVerdict::Stalled)
+				{
+					++out.stalled;
+					if (!inStall)
+						++out.stallEpisodes;
+					inStall = true;
+					if (out.detectedMs < 0)
+						out.detectedMs = (long)t;
+				}
+				else
+				{
+					inStall = false;
+					if (v == NavProgressVerdict::AwaitingPacket)
+						++out.awaiting;
+					else if (v == NavProgressVerdict::Progressing)
+						++out.progressing;
+					else if (v == NavProgressVerdict::BlockedByGuard)
+						++out.blocked;
+				}
+				const bool moving = (v == NavProgressVerdict::Progressing || v == NavProgressVerdict::Stalled);
+				monitor.Update(g, (int64_t)t, 1000.0f, (float)pos, moving, cad);
+			}
+		}
+		if (mode == 2)
+			out.stallEpisodes = monitor.Episodes();
+		return out;
+	}
+
+	void Progress(Ctx & c)
+	{
+		struct Model { const char * name; double mean, jit, late; };
+		const Model models[] = { { "tick100+-0", 100, 0, 0 }, { "tick100+-10", 100, 10, 0 }, { "tick110.8+-20+3%late250", 110.8, 20, 0.03 } };
+		for (const Model & m : models)
+			for (int mode = 0; mode < 3; ++mode)
+			{
+				const ProgRun r = RunProgress(c.grid, mode, m.mean, m.jit, m.late, 4.5, 600, c.seed);
+				std::printf("PROGRESS model=%s evaluator=%s ticks=%ld stalled=%ld awaiting=%ld progressing=%ld blocked=%ld false_episodes=%ld first_ms=%ld\n",
+					m.name, mode == 0 ? "F5-09_default" : (mode == 1 ? "cadence_3200" : "assessor"),
+					r.ticks, r.stalled, r.awaiting, r.progressing, r.blocked, r.stallEpisodes, r.detectedMs);
+			}
+		// True stuck: the position never changes while the bot moves -> detection latency per evaluator.
+		for (int mode = 0; mode < 3; ++mode)
+		{
+			NavStuckDetector det;
+			NavProgressAssessor assessor;
+			assessor.SetIntent(true, 0);
+			assessor.NotifyReplan(0, 0.0f);
+			const NavProgressParams pp;
+			NavStuckParams def;
+			NavStuckParams cad = NavPacketCadenceParams();
+			int64_t detectedAt = -1;
+			int64_t nextPacket = 0;
+			for (int64_t t = 0; t < 20000; t += 100)
+			{
+				bool alarm = false;
+				if (mode == 0 || mode == 1)
+				{
+					alarm = det.Observe(c.grid, t, 1000.0f, 900.0f, true, mode == 0 ? def : cad) != NavStuckKind::None;
+				}
+				else
+				{
+					if (t >= nextPacket)
+					{
+						assessor.OnPacketSent(t, 1000.0f, 900.0f, 0.0f, 100.0f);
+						nextPacket = t + 1500;
+					}
+					alarm = assessor.Assess(t, pp) == NavProgressVerdict::Stalled;
+				}
+				if (alarm && detectedAt < 0)
+					detectedAt = t;
+			}
+			std::printf("PROGRESS_TRUE evaluator=%s detected_after_ms=%lld\n",
+				mode == 0 ? "F5-09_default" : (mode == 1 ? "cadence_3200" : "assessor"), (long long)detectedAt);
+		}
+	}
 }
 
 int main(int argc, char ** argv)
 {
 	if (argc < 2)
 	{
-		std::printf("usage: nav_measure <segments|smoothing|velocity|velocity-robust|arena|budget|budget-scheduled|stuck|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
+		std::printf("usage: nav_measure <segments|smoothing|velocity|velocity-robust|arena|budget|budget-scheduled|stuck|progress|all> [--navgrid PATH] [--seed N] [--n COUNT]\n");
 		return 2;
 	}
 	std::string section = argv[1];
@@ -965,5 +1115,7 @@ int main(int argc, char ** argv)
 		BudgetScheduled(c);
 	if (all || section == "stuck")
 		Stuck(c);
+	if (all || section == "progress")
+		Progress(c);
 	return 0;
 }
