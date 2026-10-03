@@ -10,7 +10,7 @@ struct MoveOutcome
 	enum Kind { NOTHING, SENT, ARRIVED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // "ok", "not_in_game", "dead", "sitting", "bad_target", "speed_field",
-	                       // "step_too_long", "handler_noop"
+	                       // "step_too_long", "blocked_chord", "handler_noop"
 };
 
 // Caller-supplied view of the target (ADR-0017 Ek F4-02). Temporary: the /bot attack test driver fills it
