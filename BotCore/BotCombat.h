@@ -314,22 +314,140 @@ namespace BotCore
 		return CAST_OK;
 	}
 
-	// --- dual-typed cast (ADR-0017 Ek F4-26) ---
+	// --- dual-typed cast (ADR-0017 Ek F4-26) and single Type4 cast (ADR-0017 Ek F4-28) ---
 
-	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13): a single type 1 or 3, or the pair Type3 + Type4 (the server
-	// runs Type3 first and Type4 second on the same target). Every other pair stays unsupported.
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19): a single type 1, 3, 4 or 5 (5 =
+	// cure, see CastTypeMoralSupported), or the pair Type3 + Type4 (the server runs Type3 first and Type4 second on the
+	// same target). Every other pair stays unsupported.
 	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
 	{
 		if (type1 == 0)
-			return type0 == 1 || type0 == 3;
+			return type0 == 1 || type0 == 3 || type0 == 4 || type0 == 5;
 
 		return type0 == 3 && type1 == 4;
+	}
+
+	// Type5 (cure, resurrection) is opened only for MAGIC.Moral 2 (friend-with-me, single target: Cure curse, Cure disease;
+	// F4-32). The party-all cure (Bless of God, Moral 6) and the resurrections (Moral 25, MAGIC.UseItem) stay closed.
+	// Every other type passes through; its Moral is checked by CastMoralSupported.
+	inline bool CastTypeMoralSupported(uint8_t type0, uint8_t moral)
+	{
+		return type0 != 5 || moral == 2;
+	}
+
+	// --- area cast (ADR-0017 Ek F4-29, docs/03 MEC-MAG-16, CLI-07) ---
+
+	// MAGIC.Moral 10 = AREA_ENEMY (MagicInstance.h). The server wants target id -1 for every area moral (10..13) and reads
+	// the aim point from sData[0] (x) and sData[2] (z); the bot only opens Moral 10 so far.
+	constexpr uint8_t kMoralAreaEnemy = 10;
+
+	inline bool IsAreaMoral(uint8_t moral)
+	{
+		return moral == kMoralAreaEnemy;
+	}
+
+	// MAGIC.Moral 6 = PARTY_ALL (MagicInstance.h): the whole party within MAGIC_TYPE3/4.Radius of the aim point. Like an area
+	// skill it is cast with target id -1 and the aim point in sData[0] (x) / sData[2] (z); the server picks the victims
+	// (the caster's party members, UserRegionCheck). Moral 4 = PARTY is single-target (a party member or self) and uses the
+	// ordinary packet shape (F4-31, docs/03 MEC-MAG-18).
+	constexpr uint8_t kMoralPartyAll = 6;
+
+	inline bool IsPartyAllMoral(uint8_t moral)
+	{
+		return moral == kMoralPartyAll;
+	}
+
+	// Skills cast with target id -1 and an aim point: area enemy (10, F4-29) and party-all (6, F4-31).
+	inline bool SendsAimPoint(uint8_t moral)
+	{
+		return IsAreaMoral(moral) || IsPartyAllMoral(moral);
+	}
+
+	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 4 party member, 7 enemy, 8 all (F4-03, F4-31), 10 area-enemy
+	// (F4-29, flying or not: F4-30) and 6 party-all (F4-31). Whether the skill may fly at all is decided by the caller
+	// (IsFlyingCast: Type3 only).
+	inline bool CastMoralSupported(uint8_t moral)
+	{
+		if (moral == 1 || moral == 2 || moral == 4 || moral == 7 || moral == 8)
+			return true;
+
+		return SendsAimPoint(moral);
+	}
+
+	// MAGIC.HP >= 10000 is the server's "sacrifice" convention (MagicInstance.cpp:1041-1048): the caster loses 10000 HP
+	// without a health check, which would kill a bot. The bot never opens such a skill (F4-31).
+	constexpr uint16_t kSacrificeHpCost = 10000;
+
+	inline bool CastHpCostSupported(uint16_t hp)
+	{
+		return hp < kSacrificeHpCost;
+	}
+
+	// --- resurrection cast (ADR-0017 Ek F4-33, docs/03 MEC-MAG-20) ---
+
+	// MAGIC.Moral 25 = CORPSE_FRIEND (MagicInstance.h): the target must be a dead player of the caster's nation other than
+	// the caster. The server takes MAGIC_TYPE5.NeedStone stones of MAGIC.UseItem from the DEAD TARGET (not the caster)
+	// and resurrects it in place. MAGIC_TYPE5.Type 3 = RESURRECTION (MagicInstance.h); Type 4 = RESURRECTION_SELF (the
+	// item skill 480001) stays closed.
+	constexpr uint8_t kMoralCorpseFriend = 25;
+	constexpr uint8_t kType5Resurrection = 3;
+	constexpr uint32_t kResurrectionStoneItem = 379006000;
+
+	// The resurrections the bot casts: Type5 alone, Moral 25, the Stone of Life, MAGIC_TYPE5.Type RESURRECTION. The caller
+	// still rejects flying effects and "sacrifice" HP costs.
+	inline bool CastResurrectionSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t type5Kind)
+	{
+		return type0 == 5 && type1 == 0 && moral == kMoralCorpseFriend
+			&& useItem == kResurrectionStoneItem && type5Kind == kType5Resurrection;
+	}
+
+	// Morals that need a named target other than the caster: 7 enemy (F4-03) and 25 corpse-friend (F4-33).
+	inline bool CastNeedsOtherTarget(uint8_t moral)
+	{
+		return moral == 7 || moral == kMoralCorpseFriend;
+	}
+
+	// --- summon cast (ADR-0017 Ek F4-34, docs/03 MEC-MAG-21) ---
+
+	// MAGIC.Type1 = 8 is the warp/summon family. MAGIC_TYPE8.WarpType 12 = "summon a target within the zone": summon friend
+	// (110004/210004), MAGIC.Moral 4 = PARTY, so the target must be a member of the caster's party. The target is teleported
+	// to the CASTER; the caster may not name itself. The other warp types (1 Gate/Escape, 13 cross-zone summon, 20 Blink,
+	// 21 monster summon, 25 descent/Wild advent) stay closed (ADR-0018 Ek 1 madde 1d).
+	constexpr uint8_t kMoralPartyMember = 4;
+	constexpr uint8_t kType8WarpSummon = 12;
+
+	// The summons the bot casts: Type8 alone, Moral 4, no item, MAGIC_TYPE8.WarpType 12. The caller still rejects flying
+	// effects and "sacrifice" HP costs.
+	inline bool CastSummonSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t warpType)
+	{
+		return type0 == 8 && type1 == 0 && moral == kMoralPartyMember
+			&& useItem == 0 && warpType == kType8WarpSummon;
+	}
+
+	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
+	inline int16_t CastTargetIdField(bool area, int16_t targetId)
+	{
+		return area ? int16_t(-1) : targetId;
+	}
+
+	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast and a party-all cast
+	// always send the aim point, also for "self" (the caster's own position is the aim point then).
+	inline int16_t CastCoordField(bool area, bool isSelf, float metres)
+	{
+		return (isSelf && !area) ? int16_t(0) : int16_t(metres);
 	}
 
 	// A skill type that takes part in the same-type gate (MEC-MAG-03: types 1..7).
 	inline bool IsGatedType(uint8_t type)
 	{
 		return type >= 1 && type <= 7;
+	}
+
+	// Quest-gated skill (docs/03 MEC-MAG-14): the server asks for the skill's quest (MAGIC.Etc) unless it runs a Debug
+	// build or the caster is a GM (MagicInstance.cpp:269-275). The bot applies the same rule in every build.
+	inline bool CastQuestAllowed(int etc, bool isGm, bool questDone)
+	{
+		return etc == 0 || isGm || questDone;
 	}
 
 	// One entry per type of a skill: whether the bot effected that type earlier in this spawn and how long ago.

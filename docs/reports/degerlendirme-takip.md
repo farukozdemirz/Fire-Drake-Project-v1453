@@ -30,7 +30,7 @@
 | F5-54 | Takılma tespiti paket sıklığı hazır ayarı + guard-engeli dedektörü (F5-09 sonrası uyarlama) | F5 | HAZIR | başlamadı | T-NAV-04 (takılma ≤ 2/bot-saat): **BEKLİYOR** | `plans/F5-54-nav-takilma-tespiti.md` (nav dalı) |
 | F5-55 | Nav sunucu entegrasyonu ve gerçek harita doğrulaması | F5 | TASLAK | başlamadı | T-NAV-04/05/09/10/11, AC-NAV-01..07: **BEKLİYOR** | `plans/F5-55-nav-sunucu-entegrasyonu-ve-gercek-harita.md` |
 | F5-56 | Hız kestirimi dayanıklılık (zaman damgası, değişken aralık, kayıp, eski veri, ani değişim, sıçrama) | F5 | DOĞRULANDI | `bot/F5-56` (taban `gece/2026-10-02-nav`; birleştirme döngü betiğinde; birim ölçüm yapıldı, oyun içi yok) | T-NAV-06: **BEKLİYOR** | `plans/F5-56-nav-hiz-kestirimi-dayaniklilik.md` |
-| F5-57 | Takılma: hareket niyeti ve gerçek rota ilerlemesi (`NavProgressAssessor`) | F5 | HAZIR | başlamadı | T-NAV-04: **BEKLİYOR** | `plans/F5-57-nav-niyet-ve-gercek-ilerleme.md` |
+| F5-57 | Takılma: hareket niyeti ve gerçek rota ilerlemesi (`NavProgressAssessor`) | F5 | DOĞRULANDI | `bot/F5-57` (taban `gece/2026-10-02-nav`; birleştirme döngü betiğinde; birim + sentetik ölçüm yapıldı: F5-09 varsayılanı 6 yanlış epizot → 0, oyun içi yok) | T-NAV-04: **BEKLİYOR** | `plans/F5-57-nav-niyet-ve-gercek-ilerleme.md` |
 | F5-58 | Duvar denetimi kalıcı regresyonu (ham yol, düzleştirme, `NavLineClear`, düz adım vektörleri) | F5 | HAZIR | başlamadı | AC-NAV-03 (F5-55): **BEKLİYOR** | `plans/F5-58-nav-duvar-denetimi-kalici-regresyon.md` |
 
 ## 2. Plan dışı düzeltmeler (doküman, ADR, araç)

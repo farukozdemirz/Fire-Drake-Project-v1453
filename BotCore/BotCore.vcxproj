@@ -82,6 +82,7 @@
     <ClInclude Include="NavFormation.h" />
     <ClInclude Include="NavStuck.h" />
     <ClInclude Include="NavBudget.h" />
+    <ClInclude Include="NavLos.h" />
     <ClInclude Include="Perception.h" />
     <ClInclude Include="ScriptPlan.h" />
     <ClInclude Include="Rng.h" />

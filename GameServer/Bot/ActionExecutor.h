@@ -31,7 +31,9 @@ struct AttackOutcome
 };
 
 // Caller-supplied view of the cast target (ADR-0017 Ek F4-03). Temporary, like AttackTarget: the /bot cast test
-// driver fills it from the target bot's session (or from the caster itself for "self").
+// driver fills it from the target bot's session (or from the caster itself for "self"). For an area skill
+// (MAGIC.Moral 10) or party-all (Moral 6) 'x/y/z' is the aim point (the target bot's position or the caster's own
+// for "self") and the packet's target id is -1 (ADR-0017 Ek F4-29/F4-31).
 struct CastTarget
 {
 	int16 id;      // target's id (WIZ_MAGIC_PROCESS 'target')
@@ -46,9 +48,11 @@ struct CastOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "flying", "effected", "missed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "bad_target",
+	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
 	                       // "stopping", "cancelled", "dropped", "idle"
+	                       // single Type4 (ADR-0017 Ek F4-28): "effected" carries the duration in the echo code, a redundant
+	                       // buff gives "srv_fail" (docs/03 MEC-MAG-15), a dead / out-of-range target gives "no_result"
 };
 
 struct PotionOutcome
@@ -201,7 +205,25 @@ public:
 	// TickCast() does). 'targetName' empty = self. REFUSED (nothing armed): "not_in_game", "dead",
 	// "bad_skill" (unknown id, other class, level too low, count < 1), "unsupported_skill" (see 5.4 rules;
 	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25; single Type3 + Type4 (dual-typed) skills are
-	// supported, ADR-0017 Ek F4-26), "bad_target" (moral does not match the target kind).
+	// supported, ADR-0017 Ek F4-26; single Type4 (buff/debuff; Moral 1, 2, 7; ADR-0017 Ek F4-28) is supported;
+	// area Moral 10 (non-flying; aim point = the target's position, within MAGIC.Range of the caster, CLI-07) is
+	// supported, and flying area skills (Fire/Ice/Thunder burst: Moral 10 + Type3 FlyingEffect, run as
+	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30;
+	// party-targeted skills (Moral 4 single party member or self; Moral 6 whole party with target id -1 and an aim
+	// point; MAGIC.HP >= 10000 "sacrifice" skills stay unsupported; ADR-0017 Ek F4-31) are supported;
+	// Type5 cure (Moral 2 only: Cure curse, Cure disease; the party-all cure stays unsupported;
+	// ADR-0017 Ek F4-32); a cure always reports "effected" when the server broadcasts it, even if nothing was removed
+	// (docs/03 MEC-MAG-19); resurrection (Type5, Moral 25, the Stone of Life, MAGIC_TYPE5.Type RESURRECTION:
+	// Resurrection of love/grace/favors; the target must be a dead friendly bot other than the caster, the server takes
+	// the stones from the dead target; Bless of God, RESURRECTION_SELF and other item skills stay unsupported;
+	// ADR-0017 Ek F4-33); a resurrection reports "effected" when the server broadcasts it, which does not prove the
+	// target is alive (docs/03 MEC-MAG-20));
+	// summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend; the target must be a party member other than the
+	// caster, the server teleports it to the caster; Gate, Escape, Blink, descent and other warp types stay unsupported;
+	// ADR-0017 Ek F4-34); a summon reports "effected" when the server broadcasts it, which does not prove the target
+	// moved (docs/03 MEC-MAG-21)),
+	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
+	// "bad_target" (moral does not match the target kind; corpse-friend and summon need a named target).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 
@@ -212,6 +234,17 @@ public:
 	// dropped. FAILED: handler produced no result / dead caster / unknown skill, series dropped.
 	// dual-typed: the EFFECTING echo comes from the Type4 part (code = duration), "missed" is never reported,
 	// no echo = "no_result".
+	// single Type4: the EFFECTING echo carries the duration in "code" (never "missed"); a buff whose BuffType is already
+	// on the target fails with "srv_fail" (docs/03 MEC-MAG-15); out-of-range or dead target gives "no_result".
+	// area: the EFFECTING echo is the last packet the server sent (Type3: target -1 broadcast, code 0; {3, 4}/{4, 0}:
+	// last victim's Type4 packet, code = duration); an empty area still gives "effected" and costs MP; "victims" in
+	// ACTION_RESULT counts the per-victim EFFECTING packets (docs/03 MEC-MAG-16).
+	// flying area: FLYING and EFFECTING carry the same target id -1 and aim point; MP is charged at FLYING and again at
+	// EFFECTING (2 x Msp, docs/03 MEC-MAG-12/-17); "victims" counts the per-victim EFFECTING packets of the EFFECTING
+	// step only.
+	// party-all (Moral 6): like area (target id -1, aim point, "victims" = per-member EFFECTING packets of the EFFECTING
+	// step, docs/03 MEC-MAG-18); an empty party still gives "effected" for a heal (the caster is always healed); a group
+	// buff on members that already hold the BuffType gives "no_result"; Moral 4: like single Type4 (MEC-MAG-15).
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 

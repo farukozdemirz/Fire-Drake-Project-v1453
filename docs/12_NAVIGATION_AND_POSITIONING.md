@@ -77,6 +77,13 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
   - `los_grid`: iki nokta arasında ızgara üzerinde engelli hücre var mı (ucuz, kaba).
   - `los_mesh`: N3ShapeMgr alt hücrelerindeki çarpışma üçgenlerine ışın testi + arazi yüksekliği (doğru, pahalı; [`N3BASE/My_3DStruct.h:263-314`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/N3BASE/My_3DStruct.h#L263-L314) `_IntersectTriangle` mevcut ama kullanılmıyor).
 - `P-NAV-LOS-MODE` (varsayılan `advisory`): LoS **aksiyonu engellemez**, yalnızca konum seçimini yönlendirir (ör. priest heal hedefine "görüşü olan" noktayı tercih eder). Gerçek istemcinin engel arkasına skill kullanmaya izin verip vermediği T-NAV-LOS-01 ile ölçülür. İstemci izin vermiyorsa mod `enforce` yapılır ve bot bu durumda aksiyon göndermez (adalet kuralı).
+Uygulama (`BotCore/NavLos.h`, ADR-0006 Eki F5-10, F5-10 planı `[Ö]`/`[A]`; yalnızca `los_grid` + arazi, `los_mesh` yok; bağlama ve T-NAV-LOS-01 ölçümü bu dilimde yok):
+
+- **Hücre kuralı (`NavLosGridClear`):** ışının açık iç kısmını kestiği her ara hücre `Event == 1` olmalı; başlangıç ve bitiş hücreleri muaf; ızgara dışı engelli; köşeye değmek engel değil; hücre sınırına yatan ışın büyük taraftaki hücreye ait. `Walk` değil `Event` kullanılır (göl/eğim cepleri görüşü kapatmaz).
+- **Arazi kuralı (`NavLosTerrainClear`):** göz = zemin + 1,6 m `[A]` her iki uçta; 2 m aralıkla örneklenen zemin ışının 0,25 m `[A]` üstüne çıkarsa engel.
+- **Mod:** `NavLosMode::Advisory` (varsayılan) aksiyonu engellemez; `Enforce` yalnızca görüş açıkken izin verir (`NavLosAllows`). `NavPickLosCell`: hedef halkasındaki bota en yakın görüşlü `Walk` hücre (priest heal / mage cast konumu).
+- **Ölçüm `[V]`:** zone 71'de rastgele `Walk` çiftlerinde görüş açık oranı 20 m'de %89,5, 40 m'de %69,1 (ofset (7,7)), 72 m'de %38,9 (arazi dahil); çağrı ≈ 0,4 µs. Sınırlamalar: engelli hücre sonsuz yüksek, göl kıyıları görüşü kapatır (yanlış negatif), hedef yüksekliği yok.
+
 - Algı: bot, istemciye gelen bilgiyle aynı şekilde 3×3 bölgedeki tüm birimleri görür ([03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §16). İnsan istemcisi birimleri duvar arkasında çiziyorsa bu adaletsiz değildir `[A]`.
 
 ## 6. Hareket uygulaması
@@ -209,7 +216,7 @@ Gözlenen hedef (insan veya bot) `WIZ_MOVE`'u ~1,5 sn'de bir gönderir. *(F5-52 
 | `BLOCKED_BY_GUARD` | Paket guard tarafından reddedildi (CLI-08/CLI-05); `STUCK` sayılmaz, ayrı sayılır |
 | `OSCILLATION` | Son 8 sn'de ≥ 4 paket konumu ile A→B→A→B desen (≥ 3 yön değişimi) |
 
-Hedefe varış adımı (< 1 m) takılma değildir. *(Hareket niyeti ve gerçek rota ilerlemesinin birlikte değerlendirilmesi — bekleme/guard-engeli/takılma ayrımı, U-dönüşünde pozitif rota ilerlemesi — F5-57'de; F5-09 varsayılanı tick'le beslenince gecikmeli tick modelinde 600 sn'de 6 yanlış epizod üretir, `NavPacketCadenceParams()` 0: `tools/nav-measure.sh stuck`.)* Yeniden planlama (500 ms) paket sıklığından bağımsızdır. Tespit saf mantık olarak `BotCore`'da yazılır (F5-54), kurtarma aşamaları (§10) onun üstüne F5-09'da.
+Hedefe varış adımı (< 1 m) takılma değildir. *(Hareket niyeti ve gerçek rota ilerlemesinin birlikte değerlendirilmesi F5-57'de `NavProgressAssessor` ile yapıldı `[V]` (sentetik): bekleme (`AwaitingPacket`), guard-engeli (`BlockedByGuard`) ve takılma (`Stalled`) ayrılır; `Stalled` penceresi `2 × 1550 + 100` = 3200 ms `[A]` (tablodaki "≥ 3,1 sn" ile aynı mertebe); U-dönüşünde rota ilerlemesi pozitifse takılma değildir. F5-09 varsayılanı tick'le beslenince gecikmeli tick modelinde 600 sn'de 6 yanlış epizod üretir, `NavPacketCadenceParams()` ve `NavProgressAssessor` 0: `tools/nav-measure.sh stuck` / `progress`. **Çağıran sözleşmesi (F5-55):** her yeni rotada `NotifyReplan` çağrılır (çağrılmazsa değerlendirici paketler arası Öklid yer değiştirmesine düşer); `NavStuckMonitor::Update`'e `moving = (Progressing || Stalled)` verilir, `Idle`/`AwaitingPacket`/`BlockedByGuard` iken `false`; niyet açıkken uzun süre paket yoksa karar `AwaitingPacket` kalır, takılma sayılmaz (karar katmanı/`ActionExecutor` işidir).)* Yeniden planlama (500 ms) paket sıklığından bağımsızdır. Tespit saf mantık olarak `BotCore`'da yazılır (F5-54), kurtarma aşamaları (§10) onun üstüne F5-09'da.
 
 ### 13.4 Arena sınırı, ölüm, doğuş ve savaşa dönüş
 

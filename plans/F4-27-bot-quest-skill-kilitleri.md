@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `b73d31f`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 3) |
 | Branch | `bot/F4-27` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi, `BeginCast`), F4-25/F4-26 (uçan ve çift tipli skill; `BeginCast`'in destek kuralları değişti: satır numaraları kaymıştır, sembolle bul) — `KAPANDI` olmalı; F2-03 (bot girişi), `db/002_bot_characters.sql` (12 bot satırı) — `KAPANDI` |
@@ -130,17 +130,154 @@ python3 tools/client-tbl-quests.py --server
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (derleme ve birim testler geçti; SQL betikleri yerel `FDP_kn_online`'da çalıştırıldı; çalışma zamanı K8 Claude'un doğrulamasına bırakıldı, sunucu açılmadı)
+- Branch / commit'ler: `bot/F4-27` (taban: `gece/2026-10-02` @ `06a76e8`), commit `ada6ffe` ("[F4-27] Quest ile acilan skill'ler: bot quest kurulumu (db/003) ve BeginCast quest_locked")
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
-- SQL çıktı satırları (`BOTQUEST:` / `BOTQUEST_ROLLBACK:`):
+  - `db/003_bot_quests.sql` (yeni): 12 bot satırına sınıf quest'lerini durum 2 yazar; mevcut kayıtları korur; idempotent; `QuestTestPoints=1` ile BotWP_K/BotMF_K skill puanlarını 80. seviye quest skill'leri için yükseltir; `dbo.USERDATA_BOT_QUEST_BACKUP` yedeği; sonda `BOTQUEST: rows=12 ok=12 fail=0` öz denetimi.
+  - `db/003_bot_quests_rollback.sql` (yeni): yedekten `sQuestCount`/`strQuest`/`strSkill` geri yükler; yedek satırları siler (tablo korunur, ikinci geri alma `restored=0`).
+  - `db/README.md` (değişti): 003 bölümü (ne yapar, sunucular kapalı, `QuestTestPoints`, geri alma).
+  - `BotCore/BotCombat.h` (değişti): saf `CastQuestAllowed(etc, isGm, questDone)` eklendi.
+  - `Tests/BotCoreTests/CombatTests.cpp` (değişti): `Combat_CastQuestAllowed` (5 assert).
+  - `GameServer/Bot/ActionExecutor.cpp` (değişti): `BeginCast` destek kuralından `|| m->sEtc != 0` kaldırıldı; ardından `CastQuestAllowed(...)` ile `quest_locked` ön kontrolü; `PotMagicSupported`'teki `sEtc == 0` aynen kaldı.
+  - `GameServer/Bot/ActionExecutor.h` (değişti): iki yorum satırına `quest_locked` eklendi.
+- Derleme sonucu: `./tools/build.sh Release` rc=0 ve `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (yalnızca eski `UpgradeHandler.cpp` C4789).
+- Birim testler: `./tools/run-tests.sh Release` ve `Debug` → `103 tests, 0 failed`; `[ OK ] Combat_CastQuestAllowed` (önceki 102, yeni 1).
+- SQL çıktı satırları:
+  - İlk uygulama (`-v QuestTestPoints=0`): `changed=12 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - İkinci uygulama: `changed=0 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - `-v QuestTestPoints=1`: `changed=0 ...` (quest'ler aynı), `BOTQUEST: rows=12 ok=12 fail=0`; `BotWP_K` strSkill `sum=142 t5=80 t6=0 t7=42 m=20`, `BotMF_K` `sum=142 t5=80 t6=42 t7=0 m=20`; diğerleri değişmedi
+  - Geri alma: `BOTQUEST_ROLLBACK: restored=12`; ikinci geri alma: `restored=0`
+  - Yeniden uygulama: `changed=12 ...`, `BOTQUEST: rows=12 ok=12 fail=0`
+  - Birleştirme kanıtı (`BotMI_K`'ya elle 500:1 ve 32001:5 enjekte edildi): `changed=1 kept_other=2`, liste `500:1 32001:5 53:2 515:2 516:2 517:2`
 - Kabul kriterleri öz-değerlendirme:
+  - K1: ✔ Release/Debug rc=0, değişen dosyalarda yeni uyarı yok
+  - K2: ✔ 103 tests 0 failed, `Combat_CastQuestAllowed` `[ OK ]`
+  - K3: ✔ fark yalnızca §4 dosyaları; `MagicInstance.cpp`, `shared/`, `db/001*`, `db/002*` farkı 0; `sEtc != 0` kuralı kaldırıldı, `CastQuestAllowed`/`quest_locked` eklendi, `PotMagicSupported` `sEtc == 0` aynen
+  - K4: ✔ ilk `changed=12`, ikinci `changed=0`; `grep -c "LIKE 'Bot"` = 0; satır içeriği basılmaz (yalnızca sayaçlar ve `BOTQUEST`)
+  - K5: ✔ `restored=12`, ardından `changed=12`; yedek tablo 12 satır; mevcut kayıt korunması `kept_other` sayacı ve enjeksiyon kanıtıyla gösterildi
+  - K6: ✔ `QuestTestPoints=1` yalnızca BotWP_K/BotMF_K `strSkill`'ini değiştirdi (142, ağaç ≤ 80, master ≤ 20, `fail=0`); varsayılan `strSkill`'e dokunmaz
+  - K7: ✔ `BotCombat.h` saf (windows.h/stdafx/GameServer/shared yok); ASCII/CRLF korundu; `git diff --check` boş
+  - K8: Claude'un doğrulamasına bırakıldı (sunucu açılmadı)
+  - K9: ✔ (aşağıdaki sapma ve açık soru dürüstçe yazıldı)
 - Plandan sapmalar ve gerekçeleri:
+  - **`QuestTestPoints` değişkeni zorunlu yapıldı (iç `:setvar` yok).** Plan §3.1 item 6 `-v QuestTestPoints=1` ile isteğe bağlı, varsayılan 0 istiyordu. Bu ortamdaki sqlcmd (ODBC 130) **tanımsız bir `$(...)` değişkenine rastlayınca batch'i durduruyor** (rc=1); iç `:setvar QuestTestPoints 0` eklenince bu sqlcmd sürümü dış `-v` geçersiz kılmayı **yok sayıyor** (test edildi: `:setvar` varken `-v QuestTestPoints=1` daima 0 verir). Bu nedenle hem güvenli varsayılanı hem de `-v` geçersiz kılmayı aynı dosyada sağlamak bu sqlcmd ile mümkün değil. Çözüm: `$(QuestTestPoints)` korundu, başlık ve README'de `-v QuestTestPoints=0|1` **zorunlu** kılındı (db/002'deki `$(Upgrade)` kalıbına benzer: orada da değişken zorunlu). K4/K5/K6 beklenen çıktıları `-v QuestTestPoints=0` ile üretildi.
+  - `kept_other` sayacı ve enjeksiyon testi eklendi (K5 kanıtı; plan "eşdeğer" çıktıya izin veriyor). Enjeksiyon sonrası `BotMI_K` ve tüm bot satırları elle temizlendi; DB şu an db/002 durumunda (quest listesi boş, yedek tablo yok).
+  - Geri alma **yedek satırlarını siler** (tabloyu bırakır) — plan "ikinci geri alma etkisizdir" istediği için; yalnızca tabloyu bırakıp satırları bırakmak ikinci çalıştırmada yeniden `restored=12` veriyordu.
 - Açık sorular:
+  - K4/K5/K6 komutlarında `-v QuestTestPoints=0` zorunlu hâle geldi (bkz. sapma). §7'deki örnek komutlar bu değişkeni içermiyor; reader'ın bunu bilmesi gerekir.
+  - `db/003`'ün bot quest'lerini kalıcı bırakması mı, geri alınmış (db/002) durumda bırakması mı istendiği: ben **geri alınmış/temiz** durumda bıraktım (betik istenince uygulanır). Doğrulamada K8, `db/003`'ü `-v QuestTestPoints=1` ile uygular, test eder; sonra istenirse geri alır.
+
+### Tur 2
+
+- Durum: UYGULANDI (düzeltme yalnızca SQL/README; C++ dosyalarına dokunulmadı, derleme/birim test gerekmedi — Tur 1'deki `103 tests, 0 failed` geçerliliğini korur. SQL yeniden doğrulaması yerel `FDP_kn_online`'da sunucular kapalıyken yapıldı.)
+- Branch / commit'ler: `bot/F4-27` (taban: `gece/2026-10-02`); düzeltme commit'i bu turun sonunda atılır.
+- Değişen dosyalar ve neden:
+  - `db/003_bot_quests.sql`: quest kimlikleri artık sunucunun okuduğu **little-endian uint16 + uint8 durum** düzeniyle yazılıyor ve ayrıştırılıyor (bayt0 = id % 256, bayt1 = id / 256, bayt2 = durum); birleştirme döngüsü ve gerekli-kimlik ekleme döngüsü aynı kuralı kullanıyor (`CONVERT(varbinary(2), CAST(@id AS int))` ve `SUBSTRING(...) AS smallint` ayrıştırması kaldırıldı). Öz denetim, yazma kuralından bağımsız sabit 3 baytlık ikili desenlerle (`51=0x330002`, `510=0xFE0102`, `511=0xFF0102`, `53=0x350002`, `515=0x030202`, `516=0x040202`, `517=0x050202`, `54=0x360002`, `518..523=0x060202..0x0B0202`) kayıt-hizalı konumlarda arıyor; eksik satır `fail` sayılıyor. `OldSkill` yedeği, `QuestTestPoints=1` iken yedek satırda NULL ise `strSkill` test düzenine yazılmadan önce dolduruluyor (doluysa ezilmiyor). Idempotans: gerekli kümedeki tüm kimlikler zaten durum 2 ise satır güncellenmiyor ve `changed` sayılmıyor (sıra farkı değişiklik değil). `IF @count > 200 SET @count = 200;` kaldırıldı; `sQuestCount > 200` olan satırda `RAISERROR(16)`.
+  - `db/README.md`: 003 bölümüne "kimlik little-endian uint16 + durum uint8" notu ve ikinci çalıştırmanın `changed=0` bildirmesinin yalnızca gerekli kimlikler zaten durum 2 iken geçerli olduğu eklendi.
+  - `db/003_bot_quests_rollback.sql`: **değişmedi** (davranış aynı).
+- Derleme: yapılmadı (yalnızca SQL/README değişti; C++ dosyalarına dokunulmadı).
+- Yeniden doğrulama çıktıları (sunucular kapalı, yalnızca sayaçlar; `BINARY_CHECKSUM`):
+  - (a) başlangıç (temiz) BINARY_CHECKSUM toplamı = `49263360`; `backup_rows=0`; `BotWP_K`/`BotMF_K` ağaç5 = 70.
+  - (b) `-v QuestTestPoints=0` iki kez: `changed=12 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`; sonra `changed=0 ...`, `ok=12 fail=0`.
+  - (c) `-v QuestTestPoints=1`: `changed=0 ...`, `BOTQUEST: rows=12 ok=12 fail=0`; yedekte `OldSkill` dolu (BotWP_K/BotMF_K) = **2**; `BotWP_K`/`BotMF_K` ağaç5 = 80.
+  - (d) geri alma: `BOTQUEST_ROLLBACK: restored=12`.
+  - (e) geri alma sonrası BINARY_CHECKSUM toplamı = `49263360` = (a); ağaç5 = 70.
+  - (f) temiz durumdan `-v QuestTestPoints=1`: `changed=12 ...`, `ok=12 fail=0`, `OldSkill` dolu = 2; geri alma `restored=12`; toplam = `49263360`, `backup_rows=0`.
+  - (g) birleştirme kanıtı: `BotMI_K`'ya elle `500:1` (`F4 01 01`) ve `32001:5` (`01 7D 05`) yazıldı; `-v QuestTestPoints=0`: `changed=12 kept_other=2`, `BOTQUEST: rows=12 ok=12 fail=0`; bağımsız desen denetimi `kept500=1 kept32001=1 req_patterns=4 mi_count=6`; geri alma `restored=12`, sonra elle enjeksiyon temizlendi → toplam = `49263360`, ağaç5 = 70.
+  - Test sonu: DB rollback uygulanmış (db/002) durumda (toplam `49263360`, ağaç5 = 70, `backup_rows=0`).
+- Kabul kriterleri öz-değerlendirmesi (Tur 1'de doğrulanan C++ kriterleri değişmedi):
+  - Düzeltme 1–5: ✔ (little-endian yaz/oku, bağımsız öz denetim, `OldSkill` yedeği, idempotans, kırpma yerine `RAISERROR`).
+  - Düzeltme 6: ✔ (rollback değişmedi; README notları eklendi).
+  - Düzeltme 7 (a)–(g): ✔ (yukarıdaki çıktılar; DB db/002'de bırakıldı).
+  - Düzeltme 8: ✔ (C++ dosyalarına dokunulmadı).
+- Plandan sapmalar:
+  - İlk öz denetim denemesinde `SUM(CASE WHEN EXISTS ...)` SQL Server 130'da "aggregate on subquery" hatası verdi; `@missing` sayımı ile düzeltildi (bağımsız sabit-desen denetimi korunur, davranış aynı).
+  - Birleştirme testindeki elle enjeksiyon `-Q` ile yapıldı (geçici dosya Windows sqlcmd yolundan okunamıyordu); enjeksiyon/temizliği yalnızca test amaçlıdır, depoya girmedi.
+  - `kept_other` yalnızca gerçekten birleştirme yapılan satırlarda sayılıyor.
+- Açık sorular:
+  - Birleştirme testindeki elle enjeksiyonun geri alınması (`BotMI_K` `sQuestCount=0`) planın istediği "sonunda db/002" için yapıldı; sunucunun ürettiği gerçek kill sayaçları (32001+) doğal yolda bu betiğe girmeye devam eder.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
+
+- **Karar: DÜZELTME GEREKLİ**
+- İncelenen commit: `bot/F4-27` @ `996b5b1` (kod: `ada6ffe`); taban `gece/2026-10-02` @ `06a76e8`. Gece modu: birleştirme/push yapılmadı.
+- Özet: C++ tarafı (`CastQuestAllowed`, `BeginCast`, test) doğru ve çalışma zamanında kanıtlandı. **SQL betiği kimlikleri yanlış bayt sırasıyla yazıyor** (big-endian; sunucu little-endian okur), bu yüzden bot satırlarına yazılan quest'ler sunucuda **hiçbir skill'i açmıyor**. Öz denetim aynı yanlış sırayla ayrıştırdığı için `ok=12 fail=0` yanıltıcı. Ayrıca `QuestTestPoints=1` ile `0`'dan sonra çalıştırılınca geri alma `strSkill`'i döndürmüyor.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `ActionExecutor.cpp` ve `CombatTests.cpp` `touch` edilip yeniden derlendi: Release rc=0, Debug rc=0; derleme günlüğünde `warning`/`error` yok |
+| K2 | ✔ | `run-tests.sh Release` ve `Debug`: `103 tests, 0 failed`; `[ OK ] Combat_CastQuestAllowed` (ikisinde de) |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-27`: 7 izinli dosya + kendi plan dosyası; `MagicInstance.cpp`, `shared/`, `db/001*`, `db/002*`, `docs/`, `AGENTS.md`, `.claude/` farkı 0; `ActionExecutor.cpp:721-739` `sEtc != 0` kaldırıldı, `:744` `CastQuestAllowed`/`quest_locked` eklendi, `:1289` `PotMagicSupported` `m->sEtc == 0` aynen |
+| K4 | ✘ | Sayaçlar (`changed=12`, sonra `0`) yeniden üretildi ve `grep -c "LIKE 'Bot"` = 0, ama yazılan kimlik baytları yanlış (Bulgu 1): `BotWP_K` ilk 9 bayt `00 33 02 | 01 FE 02 | 01 FF 02` (51, 510, 511 big-endian). Sunucu `*(uint16 *)(strQuest + index)` (`DBAgent.cpp:402`) ile `0x3300`, `0xFE01`, `0xFF01` okur |
+| K5 | ✘ | `restored=12` ✔, ardından `changed=12` ✔, yedek 12 satır ✔, `kept_other` sayacı var ✔; fakat `0` → `1` sırasında `strSkill` geri yüklenmiyor (Bulgu 2) |
+| K6 | ✘ | `QuestTestPoints=1` yalnızca `BotWP_K`/`BotMF_K` `strSkill`'ini değiştiriyor (142/80/20 ✔), varsayılan `0` dokunmuyor ✔; ama geri alınamadığı durum var (Bulgu 2) |
+| K7 | ✔ | `BotCombat.h` yalnızca standart başlık/saf; `file` ASCII, BOM yok, dosyalar taban ile aynı satır sonu düzeninde; `git diff --check` boş |
+| K8 | ✘ (SQL verisiyle) / ✔ (kod yolu) | Aşağıdaki çalışma zamanı kaydı |
+| K9 | ✘ | Rapor "DB şu an db/002 durumunda" diyor; doğrulama başında `BotWP_K`/`BotMF_K` `strSkill`'i test düzeninde (ağaç5 = 80) kalmıştı (Bulgu 2); K4 `ok=12` bayt sırasını denetlemiyor |
+
+**Çalışma zamanı (K8; Release `GameServer.exe`, `GameServer.ini` md5 `265a8e1c…` dokunulmadı, botlar `BotWP_K`, `BotMF_K`, hedef `BotWG_E`, zone 71, gözlem `Logs/Bot_3_10_2026.log`, `Logs/bots/2026-10-03/live-*.jsonl`):**
+
+1. Temiz DB'ye `db/003 -v QuestTestPoints=1` (`changed=12`, `BOTQUEST: rows=12 ok=12 fail=0`), sunucu açıldı: `cast BotWP_K 106580 BotWG_E 1` ve `cast BotMF_K 110575 BotWG_E 1` → **`refused (quest_locked)`** (betiğin yazdığı kimlikler sunucuda eşleşmiyor). `cast BotMF_K 110518 BotWG_E 1` (`Etc` 0) → `effected`.
+2. Sunucu kapalıyken yalnızca bu iki bot satırı elle (geçici, commit edilmez) **doğru little-endian** baytlarla yazıldı (`33 00 02 | FE 01 02 | FF 01 02` ve `35 00 02 | 03 02 02 | 04 02 02 | 05 02 02`): Hell blade `106580` → `cast finished (effected) ... 1 packet(s)`, hedef HP 5650 → 5350, `CastEffect` günlükte, `srv_fail` 0; Igzination `110575` → `effected`, hedef HP 5350 → 4253. K8 (a) ✔.
+3. Geri alma (`restored=12`; `strSkill` baz değerine döndü, quest listesi boş), sunucu açık: aynı iki komut **`refused (quest_locked)`**, günlükte o skill'ler için paket/`ACTION_SUBMIT` 0; `110518` `effected`. K8 (b) ve (c) ✔.
+4. Sonuç: kod doğru; düzeltme yalnızca SQL tarafında. Son durum: sunucular kapalı (0/3), DB temiz (bot satırlarında quest listesi boş, `strSkill` db/002 değerinde, yedek tablo var ve 0 satır).
+
+**Bulgular (önem sırasıyla)**
+
+1. **KRİTİK: kimlik bayt sırası ters** (`db/003_bot_quests.sql`, birleştirme döngüsü ve gerekli kimliklerin eklendiği döngü: `CONVERT(varbinary(2), CAST(@id AS int))`). T-SQL `int → varbinary(2)` büyük-endian verir (511 → `01 FF`); sunucu kimliği `uint16` olarak little-endian okur (`DBAgent.cpp:402`, plan §2 "uint16 kimlik (little-endian)"). Sonuç: bot oyuna girince `m_questMap` anahtarları 13056, 65025 vb. olur, `CheckExistEvent(511, 2)` yanlış döner, K8'in asıl amacı sağlanmaz. Çıkışta sunucu bu bozuk kimlikleri geri yazar. Aynı hata ayrıştırmada (`CAST(SUBSTRING(@quest, @i * 3 + 1, 2) AS smallint)`) ve öz denetimde var; ikisi aynı yanlış kuralı kullandığı için `ok=12 fail=0` çıkıyor: öz denetim bu hatayı yakalayamaz. Bu yüzden Uygulayıcı'nın `kept_other` enjeksiyon kanıtı da (`500:1 32001:5`) yalnızca kendi kuralıyla tutarlı.
+2. **`OldSkill` yedeği yalnızca ilk çalıştırmada `QuestTestPoints=1` ise dolar** (`db/003_bot_quests.sql`, yedek `INSERT ... WHERE NOT EXISTS`). Planın kendi sırası (`0`, `0`, `1`, geri alma) ile `OldSkill` NULL kalır; geri alma `ISNULL(..., u.strSkill)` ile `strSkill`'e dokunmaz. Doğrulama başındaki DB'de `BotWP_K`/`BotMF_K` ağaç5 = 80 (db/002: 70) olarak kalmıştı; Uygulayıcı raporundaki "DB db/002 durumunda" iddiası yanlıştı. (Ben `BotWP_K`/`BotMF_K` `strSkill`'ini db/002 değerlerine elle döndürdüm: `0x…4600341400` ve `0x…4634001400`.)
+3. **Idempotans plandan zayıf** (`db/003_bot_quests.sql`, `@changedRow` ve `UPDATE`). Plan §3.1-4: gerekli her kimlik zaten durum 2 ise satır değişmez. Betik her seferinde "diğer kayıtlar + gerekli kayıtlar" sırasına yeniden diziyor; bot bir kez girip çıkınca sunucu listeyi kimlik sırasıyla yazar (`500` araya girer), sonraki çalıştırma `changed=1` der ve satırı yeniden yazar. Plan ve README'deki "ikinci çalıştırma `changed=0`" yalnızca botlar hiç girmemişse doğru.
+4. Küçük: `IF @count > 200 SET @count = 200;` (birleştirme döngüsü) mevcut listeyi sessizce kırpıyor; plan §3.1-4 "sessizce kırpma, hata ver" der. `QUEST_LIMIT` aşan `sQuestCount` gelirse `RAISERROR`.
+5. Not (engel değil): kod/test tarafı çevreye uyumlu (tab, Allman, İngilizce kısa yorum, `[D]` atfı). `QuestTestPoints` zorunlu değişken sapması (iç `:setvar` ile `-v` yok sayılıyor) makul ve README'de yazılı; §7 örnek komutları `-v QuestTestPoints=0` içermiyor, `db/README.md`'deki komut doğru. Uygulayıcı'nın geri almanın yedek satırlarını silmesi (ikinci geri alma `restored=0`) plana uygun.
+
+**Düzeltme talimatı** (aynı metin "Düzeltme talimatı" bloğunda):
+
+```
+plans/F4-27-bot-quest-skill-kilitleri.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. db/003_bot_quests.sql: quest kimliklerini sunucunun okuduğu LITTLE-ENDIAN sırayla yaz ve oku. Kayıt = 3 bayt: bayt0 = kimlik % 256, bayt1 = kimlik / 256, bayt2 = durum (DBAgent.cpp:402). Yazma: CONVERT(varbinary(1), @id % 256) + CONVERT(varbinary(1), @id / 256) + CONVERT(varbinary(1), @state) (gerekli kimlikleri ekleyen döngüde de aynısı; `CONVERT(varbinary(2), CAST(@id AS int))` kalmasın). Ayrıştırma (birleştirme döngüsü ve öz denetim): @id = CAST(SUBSTRING(@quest, @i*3+1, 1) AS tinyint) + 256 * CAST(SUBSTRING(@quest, @i*3+2, 1) AS tinyint); @state = CAST(SUBSTRING(@quest, @i*3+3, 1) AS tinyint). `CAST(... AS smallint)` ile ikili ayrıştırma kalmasın (smallint dönüşümü big-endian okur).
+2. db/003_bot_quests.sql öz denetimi bayt sırasını bağımsız doğrulasın: ayrıştırma kuralına güvenmeden, her gerekli kimlik için beklenen 3 baytlık değeri sabit ikili değer olarak üret (51 -> 0x330002, 510 -> 0xFE0102, 511 -> 0xFF0102, 53 -> 0x350002, 515 -> 0x030202, 516 -> 0x040202, 517 -> 0x050202, 54 -> 0x360002, 518..523 -> 0x060202 .. 0x0B0202) ve satırın kayıt-hizalı konumlarında (SUBSTRING(strQuest, 3*i+1, 3), i < sQuestCount) bulunduğunu denetle; bulunmayan satır fail sayılsın. Çıktı satırı biçimi aynı kalsın (`BOTQUEST: rows=<N> ok=<N> fail=<N>`).
+3. db/003_bot_quests.sql yedek: QuestTestPoints=1 iken, yedek satırının OldSkill'i NULL ise ve satır BotWP_K ya da BotMF_K ise, strSkill test düzenine yazılmadan ÖNCE OldSkill'e mevcut strSkill (CONVERT(varbinary(10), strSkill)) yazılsın (UPDATE dbo.USERDATA_BOT_QUEST_BACKUP ... WHERE OldSkill IS NULL). OldSkill zaten doluysa ezilmesin (tekrar çalıştırmada ilk yedek korunur).
+4. db/003_bot_quests.sql idempotans: gerekli kümedeki her kimlik satırda zaten durum 2 ise o satır için UPDATE yapma ve changed sayma (sıra farkı değişiklik sayılmaz); aksi halde birleştirme aynen. Yedek INSERT davranışı değişmez.
+5. db/003_bot_quests.sql: `IF @count > 200 SET @count = 200;` satırını kaldır; sQuestCount > 200 olan satırda RAISERROR(şiddet 16) ver (sessiz kırpma yok).
+6. db/003_bot_quests_rollback.sql ve db/README.md: rollback davranışı aynı kalır; README'ye "kimlikler little-endian uint16 + durum uint8" notunu ve ikinci çalıştırma `changed=0` ifadesinin ancak gerekli kimlikler zaten durum 2 ise geçerli olduğunu ekle.
+7. Yeniden doğrula (sunucular kapalıyken; satır içeriği basma, yalnızca sayaç ve PASS/FAIL; ölçüm için BINARY_CHECKSUM kullan, CHECKSUM değil: kontrol baytlarını yok sayar): (a) bot satırlarının sQuestCount/strQuest/strSkill BINARY_CHECKSUM toplamını kaydet; (b) `-v QuestTestPoints=0` iki kez (changed=12, sonra 0); (c) `-v QuestTestPoints=1` (OldSkill artık dolu olmalı; BotWP_K/BotMF_K OldSkill NULL değil: yalnızca sayı bildir); (d) rollback `restored=12`; (e) sağlama toplamları (a) ile AYNI olmalı (strSkill dahil); (f) `-v QuestTestPoints=1` + rollback döngüsünü bir de temiz durumdan başlayarak tekrarla; (g) birleştirme kanıtı: BotMI_K'ya elle 500:1 ve 32001:5 yaz (little-endian: F4 01 01, 01 7D 05), betiği çalıştır, `kept_other=2` ve gerekli kimliklerin little-endian baytlarda göründüğünü öz denetimin geçmesiyle göster, sonra rollback. Raporuna "DB şu an db/002 durumunda" yazmadan önce (a) sağlama toplamının geri geldiğini ve BotWP_K/BotMF_K ağaç5'in 70 olduğunu doğrula. Test sonunda DB'yi rollback uygulanmış (db/002) durumda bırak.
+8. C++ dosyalarına (BotCombat.h, CombatTests.cpp, ActionExecutor.cpp/.h) dokunma: doğru ve çalışma zamanında kanıtlandı. Çalışma zamanı K8'i düzeltmeden sonra Claude yeniden yapar (SQL verisiyle).
+```
+
+### Tur 2 — 2026-10-03
+
+- **Karar: DOĞRULANDI**
+- İncelenen commit: `bot/F4-27` @ `2b450db`; taban `gece/2026-10-02` @ `06a76e8`. Gece modu: birleştirme/push yapılmadı (döngü betiği yapar). Tur 2 yalnızca `db/003_bot_quests.sql`, `db/README.md` ve kayıt dosyalarını değiştirdi; C++ dosyaları `ada6ffe`'den beri aynı (`git diff ada6ffe bot/F4-27 -- GameServer BotCore Tests` boş), bu yüzden Tur 1'in derleme (Release/Debug rc=0, uyarı 0) ve birim test (`103 tests, 0 failed`, `Combat_CastQuestAllowed` `[ OK ]`) sonuçları geçerli; yeniden derlenmedi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | Tur 1 (C++ değişmedi) |
+| K2 | ✔ | Tur 1 (C++ değişmedi) |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-27`: yalnızca §4 dosyaları + plan/`plans/README.md`/`docs/STATUS.md` kayıtları; `MagicInstance.cpp`, `shared/`, `db/001*`, `db/002*` farkı 0 |
+| K4 | ✔ | Temiz DB (sağlama `49263360`), `-v QuestTestPoints=0`: `changed=12 kept_other=0 backup_rows=12`, `BOTQUEST: rows=12 ok=12 fail=0`; ikinci: `changed=0`; `grep -c "LIKE 'Bot"` = 0; çıktıda satır içeriği yok. Bayt sırası doğrulandı: `BotWP_K` ilk 9 bayt `330002 FE0102 FF0102` (51, 510, 511 little-endian), `BotMF_K` `350002 030202 040202 …`; öz denetim artık sabit 3 baytlık desenlerle bağımsız (`:222-324`) |
+| K5 | ✔ | Geri alma `restored=12`, ikinci `restored=0`; sağlama toplamı `49263360` = başlangıç (strSkill dahil); temiz durumdan yeniden uygulama `changed=12`; yedek 12 satır, geri almadan sonra 0, tablo duruyor; birleştirme: `BotMI_K`'ya `500:1`, `32001:5` yazıldı → `changed=12 kept_other=2`, sonuç `F40101 017D05 350002 030202 040202 050202` (diğerleri korundu, gerekli kimlikler little-endian), `ok=12` |
+| K6 | ✔ | `QuestTestPoints=1` yalnızca `BotWP_K` (ağaç5/6/7/master = 80/0/42/20) ve `BotMF_K` (80/42/0/20) `strSkill`'ini değiştirdi, `BotMI_K` aynı (52/70/0/20); `0` sonrası `1` çalıştırınca `OldSkill` artık dolu (2 satır) ve geri almada strSkill döndü (sağlama toplamı eşit); `1` ikinci çalıştırmada `changed=0`, `OldSkill` ezilmedi |
+| K7 | ✔ | Tur 1; SQL dosyaları ASCII, CR 0, `git diff --check` boş |
+| K8 | ✔ | Aşağıdaki çalışma zamanı kaydı |
+| K9 | ✔ | Rapor Tur 2 sayıları yeniden üretildi (başlangıç/geri alma sağlama toplamı `49263360`, `kept_other=2`, `OldSkill` = 2); Tur 1'deki yanlış "DB db/002 durumunda" iddiası bu turda doğru |
+
+**Çalışma zamanı (K8; Release `GameServer.exe`, `GameServer.ini` md5 `265a8e1c…` değişmedi, `BotCommands.txt` kanalı, botlar `BotWP_K`, `BotMF_K`, hedef `BotWG_E`, zone 71, `Logs/bots/2026-10-03/live-015259.jsonl` ve `live-015421.jsonl`):**
+
+1. Temiz DB'ye `db/003 -v QuestTestPoints=1` (`changed=12`, `ok=12 fail=0`), sunucu açık: `cast BotWP_K 106580 BotWG_E 1` (Hell blade, `Etc` 511) → `effected`, 1 paket, `CastEffect` `ok:true`; `cast BotMF_K 110575 BotWG_E 1` (Igzination, `Etc` 517) → `effected`, 2 paket; hedef HP 5650 → 3963 (üç cast toplamı); `srv_fail` 0. `110518` (`Etc` 0) → `effected`. K8 (a) ✔, (c) ✔.
+2. Sunucu kapatıldı, geri alma (`restored=12`, sağlama `49263360`), sunucu açıldı: aynı iki komut `refused (quest_locked)`; telemetride bu iki skill için `CastStart`/`CastEffect` ve paket yok, `quest_locked` komut yanıtında; `110518` yine `effected`. K8 (b) ✔, (c) ✔.
+3. Priest quest skill'leri kapsam dışı (plan); priest için yalnızca veri düzeyi (K4: gerekli kimlik desenleri `ok=12` ile denetlendi).
+
+**Ek betik testleri (Tur 2 düzeltme maddeleri):** sıra farkı: `BotMI_K` listesi `53, 500, 515, 516, 517, 32001` sırasına çevrilince (sunucunun kimlik sıralı yazması gibi) `changed=0` (madde 4 ✔); `sQuestCount=201` → `a bot row has more than 200 quest records`, rc=1, sessiz kırpma yok (madde 5 ✔); `BotWG_K`'ya big-endian desen (`00 33 02 | 01 FE 02 | 01 FF 02`) yazılınca betik başarısız oldu (rc=1; bu giriş `0x01FF` kimliği `smallint` taşması verdiği için öz denetime ulaşmadan, bkz. Not 1); öz denetimin sabit desenlerle ayrı çalıştığı Tur 2 kod okumasıyla (`:279-291`) ve doğru bayt çıktısıyla gösterildi.
+
+**Bulgular:** engelleyen yok.
+
+Notlar (engel değil):
+
+1. `db/003_bot_quests_rollback.sql` değişmedi; `db/003_bot_quests.sql:74` `@id smallint`: kimlik ≥ 32768 olan bir kayıt `smallint` taşması hatası verir (`Arithmetic overflow ... value = 65025`, rc=1, transaction geri alınır; sessiz bozulma yok). Botlar için bilinen kimlikler (500, 32001+ sayaçlar) bu sınırın altında; ileride ≥ 32768 kimlik görülürse `@id int` yapılmalı.
+2. `OldSkill` yalnızca `BotWP_K`/`BotMF_K` ve yalnızca `QuestTestPoints=1` iken tutulur (plana uygun). Yedek, betiğin ilk çalıştığı andaki durumu saklar: elle bir enjeksiyondan sonra ilk çalıştırılırsa geri alma o durumu döndürür (bu turda kendi test enjeksiyonum nedeniyle `BotMI_K` elle sıfırlandı).
+3. Test sonu durum: sunucular kapalı (0/3), DB db/002 durumunda (sağlama `49263360`, quest sayısı ≠ 0 olan bot satırı 0, yedek tablo var ve 0 satır), `BotCommands.*` kalmadı.

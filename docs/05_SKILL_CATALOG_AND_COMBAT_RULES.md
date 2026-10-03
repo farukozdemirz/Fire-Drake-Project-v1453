@@ -158,7 +158,7 @@ Tam tablo: `appendix/A3`. Elementli Type3 skill'ler tip kapısına tabidir: sani
 | 110820 | Instantly Magic | Master 15 | 100 | 0 / 25,5 | — | Sonraki cast cooldown kaydı yok | Patlama kombosu |
 | 110825 | Minor Resist | Master 20 | 450 | 1,3 / 0,1 | 56, r=10 | Düşman dirençleri −20, 10 sn | Ortak hedef kümesi öncesi |
 | 110612/110630/110654 | Frozen armor/shell/Ice barrier | Buz 12/30/54 | — | 1,5 / 0,1 | 56 | AC +60/+120/+180 | **Priest AC buff'ıyla çakışır** (§4) |
-| 110015 | Gate | Seviye 15 | 30 | 1,5 / 10 | — | Bind/başlangıca ışınlanma | Ronark'ta warp tipi 1 skill'lerin bir kısmı engelli (MEC-T8); `110015` için T-MECH-T8-02 |
+| 110015 | Gate | Seviye 15 | 30 | 1,5 / 10 | — | Bind/başlangıca ışınlanma | Ronark'ta yalnızca Escape (`110035`) engelli, Gate `110015` engelli değil (kod, MEC-T8-04); çalışma zamanı ölçümü F4-35 S1 |
 
 ## 8. Skill kullanım kuralları (tüm sınıflar)
 

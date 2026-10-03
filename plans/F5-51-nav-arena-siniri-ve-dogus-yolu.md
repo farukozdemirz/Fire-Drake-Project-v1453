@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02-nav) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-51 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-02 (A*), F5-06 (`NavDanger.h`, yasaklı/güvenli bölgeler), F5-07 — `KAPANDI` |

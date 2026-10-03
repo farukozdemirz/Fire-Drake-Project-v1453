@@ -22,7 +22,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_npcInHasLast(false), m_npcInRequests(0), m_npcInUnits(0),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_selfSid(-1),
-		m_castSelfId(-1), m_castEcho(0), m_stateEcho(0),
+		m_castSelfId(-1), m_castEcho(0), m_castEchoVictims(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
 		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0), m_npcInEcho(0)
@@ -74,11 +74,14 @@ void BotSession::OnPacket(Packet & pkt)
 		uint8 op = pkt.read<uint8>(0);
 		uint32 skillId = pkt.read<uint32>(1);
 		int16 caster = pkt.read<int16>(5);
+		int16 victimId = pkt.read<int16>(7);
 		int16 sData3 = pkt.read<int16>(15);
 		if (op >= 1 && op <= 4 && caster == m_castSelfId.load())
 		{
 			m_castEcho = (1ull << 63) | (uint64(op & 0xF) << 48)
 				| (uint64(uint16(sData3)) << 32) | uint64(skillId);
+			if (op == MAGIC_EFFECTING && victimId != -1)
+				m_castEchoVictims++;
 		}
 	}
 

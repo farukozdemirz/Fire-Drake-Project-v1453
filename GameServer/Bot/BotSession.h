@@ -163,6 +163,7 @@ public:
 	std::atomic<int> m_selfSid;                            // written by BotManager::TickSessions() (IOCP thread) when the bot enters the game, read by OnPacket(): own socket id, -1 = none
 	std::atomic<int> m_castSelfId;                         // set by ActionExecutor (IOCP thread), read by OnPacket(): own caster id, -1 = none
 	std::atomic<uint64> m_castEcho;                        // written by OnPacket(): skill result packet, see BotSession.cpp
+	std::atomic<uint32> m_castEchoVictims;                 // written by OnPacket(): own EFFECTING packets with a real target id since the last reset by SubmitCast()
 	std::atomic<uint64> m_stateEcho;                       // written by OnPacket(): own WIZ_STATE_CHANGE broadcast, see BotSession.cpp
 	std::atomic<uint64> m_targetHpEcho;                    // written by OnPacket(): valid bit | echo << 16 | tid of the last WIZ_TARGET_HP reply
 	std::atomic<uint64> m_targetHpValues;                  // written by OnPacket() BEFORE m_targetHpEcho: hp << 32 | maxHp

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `06a76e8`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-26` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03 (cast dilimi: `BeginCast`/`TickCast`/`SubmitCast`, tip kapısı, `m_castEcho`) — `KAPANDI`; F4-24 (cast iptali) — `KAPANDI`; F4-25 (uçan Type3, `CAST_FLYING`) — `KAPANDI` (merge `0954929`) |
