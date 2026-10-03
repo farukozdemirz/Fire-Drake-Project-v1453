@@ -317,8 +317,13 @@ MoveOutcome ActionExecutor::TickMove(BotSession * s, std::chrono::steady_clock::
 
 	// F5-70 D2: a path-following walk (m_navDrive) is driven by TickPathMove; TickSessions() routes the
 	// ARRIVED/REFUSED/FAILED log lines the same way. m_moveActive stays true throughout.
-	if (s->m_navDrive.Active())
+	if (s->m_navDrive.Mode() == BotCore::NavDriveMode::Goto)
 		return TickPathMove(s, now);
+
+	// F5-74 D2: a Follow walk is driven by TickFollow (BotManager::TickSessions). TickMove must not fall
+	// through to the plain walk, which would send a straight step to a stale target position.
+	if (s->m_navDrive.Mode() == BotCore::NavDriveMode::Follow)
+		return out;
 
 	CUser * user = s->m_pUser;
 	if (user == nullptr || !user->isInGame())
@@ -441,7 +446,7 @@ MoveOutcome ActionExecutor::TickPathMove(BotSession * s, std::chrono::steady_clo
 	out.kind = MoveOutcome::NOTHING;
 	out.reason = "ok";
 
-	if (s == nullptr || !s->m_moveActive || !s->m_navDrive.Active())
+	if (s == nullptr || !s->m_moveActive || s->m_navDrive.Mode() != BotCore::NavDriveMode::Goto)
 		return out;
 
 	CUser * user = s->m_pUser;
@@ -516,6 +521,218 @@ MoveOutcome ActionExecutor::TickPathMove(BotSession * s, std::chrono::steady_clo
 		s->m_navDrive.Reset();   // ARRIVED / REFUSED / FAILED end the walk
 
 	return result;
+}
+
+// Maps a NavDrive follow end reason to the executor's text (F5-74, D8).
+static const char * FollowEndReason(BotCore::NavFollowEnd end)
+{
+	switch (end)
+	{
+	case BotCore::NavFollowEnd::TargetLost:   return "target_lost";
+	case BotCore::NavFollowEnd::StuckAbandon: return "stuck_abandon";
+	case BotCore::NavFollowEnd::PlanFailed:   return "plan_failed";
+	case BotCore::NavFollowEnd::PathBlocked:  return "path_blocked";
+	default:                                  return "";
+	}
+}
+
+// --- Follow mode (F5-74) ---
+
+// /bot follow (F5-74, D7/D9): validate, then arm a chase of the moving bot 'targetSid'. The target
+// position/speed come from the follower's own observation table. Every check runs BEFORE the drive is
+// touched, so a refused follow leaves all members (and a walk in progress) untouched.
+MoveOutcome ActionExecutor::BeginFollow(BotSession * s, int targetSid, int16 speedField,
+	const FollowObservation & obs, std::chrono::steady_clock::time_point now)
+{
+	MoveOutcome out;
+	out.kind = MoveOutcome::NOTHING;
+	out.reason = "ok";
+
+	if (!ValidateWalkStart(s, speedField, out))
+		return out;
+
+	CUser * user = s->m_pUser;
+	const BotCore::NavGrid * grid = NavService::Instance().Grid();
+	if (grid == nullptr || NavService::Instance().Reach() == nullptr)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "nav_off";
+		return out;
+	}
+
+	if (user->GetZoneID() != ZONE_RONARK_LAND)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "nav_zone";
+		return out;
+	}
+
+	if (targetSid < 0 || targetSid > 65535 || targetSid == s->m_selfSid)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "bad_target";
+		return out;
+	}
+
+	if (!obs.found)
+	{
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "target_not_visible";
+		return out;
+	}
+
+	const int64_t nowMs = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+
+	s->m_navDrive.BeginFollow(nowMs);
+	if (obs.posState != BotCore::POS_LOST)
+		s->m_navDrive.ObserveTarget((int64_t)obs.tMs, obs.x, obs.z, obs.speedField, nowMs);
+	s->m_followTargetSid = targetSid;
+	s->m_moveActive = true;
+	s->m_moveSpeed = speedField;
+	s->m_movePackets = 0;
+	s->m_moveLastSent = now - std::chrono::milliseconds(BotCore::kMovePeriodMs);   // first packet in this tick
+
+	out.kind = MoveOutcome::SENT;
+	out.reason = "ok";
+	return out;
+}
+
+// One chase tick (F5-74, D2/D3/D5). Plan once per tick (TickFollow), send at most one WIZ_MOVE per
+// elapsed kMovePeriodMs. Recovery side/back steps are ordinary NextFollowStep results. A guard refusal of
+// blocked_chord/step_too_long does not end the chase (D4); every other refusal/failure does.
+FollowOutcome ActionExecutor::TickFollow(BotSession * s, const FollowObservation & obs,
+	std::chrono::steady_clock::time_point now)
+{
+	FollowOutcome out;
+
+	if (s == nullptr || !s->m_moveActive
+		|| s->m_navDrive.Mode() != BotCore::NavDriveMode::Follow)
+		return out;
+
+	CUser * user = s->m_pUser;
+	if (user == nullptr || !user->isInGame())
+	{
+		out.endPlans = s->m_navDrive.FollowPlans();
+		out.endStuckEpisodes = s->m_navDrive.StuckEpisodes();
+		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+		out.ended = true;
+		out.endReason = "not_in_game";
+		return out;
+	}
+
+	const BotCore::NavGrid * grid = NavService::Instance().Grid();
+	if (grid == nullptr || NavService::Instance().Reach() == nullptr)
+	{
+		out.endPlans = s->m_navDrive.FollowPlans();
+		out.endStuckEpisodes = s->m_navDrive.StuckEpisodes();
+		s->m_moveActive = false;
+		s->m_navDrive.Reset();
+		out.ended = true;
+		out.endReason = "nav_off";
+		return out;
+	}
+
+	const int64_t nowMs = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now.time_since_epoch()).count();
+
+	if (obs.found && obs.posState != BotCore::POS_LOST)
+		s->m_navDrive.ObserveTarget((int64_t)obs.tMs, obs.x, obs.z, obs.speedField, nowMs);
+
+	const int plansBefore = s->m_navDrive.FollowPlans();
+	const int stuckBefore = s->m_navDrive.StuckEpisodes();
+
+	const BotCore::NavFollowDriveParams params;
+	BotCore::NavDriveEvents ev = s->m_navDrive.TickFollow(*grid,
+		NavService::Instance().SharedPathfinder(), nowMs, user->GetX(), user->GetZ(),
+		BotCore::MaxStepMeters(s->m_moveSpeed, 1000), params,
+		&NavService::Instance().ScratchLayer(), *NavService::Instance().Reach());
+	out.events = ev;
+
+	if (ev.ended != BotCore::NavFollowEnd::None)
+	{
+		// The drive Reset itself; the counters are gone, so report the pre-call counts (D8).
+		out.endPlans = plansBefore + (ev.planned ? 1 : 0);
+		out.endStuckEpisodes = stuckBefore;
+		out.ended = true;
+		out.endReason = FollowEndReason(ev.ended);
+		out.move = StopMove(s, now);
+		return out;
+	}
+
+	if (ev.holdStop)
+	{
+		// One stop packet; the chase stays armed and no OnPacket* is fed (D5).
+		out.move = SubmitMove(s, user, user->GetX(), user->GetZ(), 0, 0, false,
+			BotCore::kMovePeriodMs, now);
+		if (out.move.kind == MoveOutcome::SENT)
+		{
+			out.packetSent = true;
+			return out;
+		}
+
+		out.endPlans = s->m_navDrive.FollowPlans();
+		out.endStuckEpisodes = s->m_navDrive.StuckEpisodes();
+		s->m_navDrive.Reset();
+		out.ended = true;
+		out.endReason = (out.move.kind == MoveOutcome::REFUSED) ? "packet_refused" : "packet_failed";
+		return out;
+	}
+
+	long long elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_moveLastSent).count();
+	if (elapsed < (long long)BotCore::kMovePeriodMs)
+		return out;
+
+	uint32 elapsedMs = (uint32)elapsed;
+	if (elapsedMs > 2 * BotCore::kMovePeriodMs)
+		elapsedMs = 2 * BotCore::kMovePeriodMs;
+
+	const float maxStep = BotCore::MaxStepMeters(s->m_moveSpeed, elapsedMs);
+	BotCore::NavDriveStep step = s->m_navDrive.NextFollowStep(*grid, nowMs, user->GetX(), user->GetZ(),
+		maxStep, params);
+	if (step.kind == BotCore::NavDriveStep::None)
+		return out;
+
+	if (NeedsReplan(step, user->GetX(), user->GetZ(), maxStep))
+	{
+		// D3: no packet; the drive invalidates its own route on Blocked and re-plans on the next
+		// Interval/Moved within <= 500 ms, from the bot's current position.
+		out.offRouteSkip = true;
+		return out;
+	}
+
+	const bool arrived = step.kind == BotCore::NavDriveStep::Arrived;
+	MoveOutcome result = SubmitMove(s, user, step.x, step.z, arrived ? 0 : s->m_moveSpeed,
+		arrived ? 0 : 3, false, elapsedMs, now);
+	out.move = result;
+
+	if (result.kind == MoveOutcome::SENT)
+	{
+		// Arrival stop also passes through here; m_moveActive stays true on purpose.
+		s->m_navDrive.OnPacketSent(nowMs, step);
+		out.packetSent = true;
+	}
+	else if (result.kind == MoveOutcome::REFUSED
+		&& (strcmp(result.reason, "blocked_chord") == 0 || strcmp(result.reason, "step_too_long") == 0))
+	{
+		// D4: SubmitMove cleared m_moveActive; put it back and retry after one period.
+		s->m_moveActive = true;
+		s->m_navDrive.OnPacketRejected(nowMs);
+		s->m_moveLastSent = now;
+		out.guardRejected = true;
+	}
+	else if (result.kind == MoveOutcome::REFUSED || result.kind == MoveOutcome::FAILED)
+	{
+		out.endPlans = s->m_navDrive.FollowPlans();
+		out.endStuckEpisodes = s->m_navDrive.StuckEpisodes();
+		s->m_navDrive.Reset();
+		out.ended = true;
+		out.endReason = (result.kind == MoveOutcome::REFUSED) ? "packet_refused" : "packet_failed";
+	}
+
+	return out;
 }
 
 AttackOutcome ActionExecutor::BeginAttack(BotSession * s, const std::string & targetName, uint32 count,

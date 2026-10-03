@@ -13,6 +13,32 @@ struct MoveOutcome
 	                       // "step_too_long", "blocked_chord", "handler_noop",
 	                       // /bot goto (F5-70): "nav_off", "nav_zone", "invalid_start", "invalid_goal",
 	                       // "no_path", "node_limit", "replan_limit", "nav_none", "path_blocked"
+	                       // /bot follow (F5-74): "nav_off", "nav_zone", "bad_target", "target_not_visible"
+};
+
+// The followed unit as the follower's own observation table holds it (F5-74, D1). Filled by BotManager under
+// m_obsLock; the executor never locks.
+struct FollowObservation
+{
+	bool found = false;
+	uint64 tMs = 0;            // UnitObs.lastMoveMs (steady_clock ms: the clock of 'now')
+	float x = 0.0f, z = 0.0f;  // metres
+	int16 speedField = -1;     // UnitObs.lastSpeed; -1 unknown, 0 stationary
+	uint8 posState = BotCore::POS_FRESH;
+};
+
+// One follow tick (F5-74). 'move' is the packet result of THIS tick (NOTHING when no packet went out).
+struct FollowOutcome
+{
+	MoveOutcome move;
+	BotCore::NavDriveEvents events;
+	bool packetSent = false;      // a WIZ_MOVE was accepted this tick (step, arrival stop or hold stop)
+	bool guardRejected = false;   // D4: blocked_chord/step_too_long, follow continues
+	bool offRouteSkip = false;    // D3: no packet because the step would exceed the guard limit / was Blocked
+	bool ended = false;           // the follow is over (m_moveActive == false, drive Reset)
+	const char * endReason = "";  // "target_lost","stuck_abandon","plan_failed","path_blocked","packet_refused","packet_failed","nav_off","not_in_game"
+	int endPlans = 0;             // FollowPlans() at the moment of the end (the drive is Reset afterwards)
+	int endStuckEpisodes = 0;     // StuckEpisodes() at the moment of the end
 };
 
 // Caller-supplied view of the target (ADR-0017 Ek F4-02). Temporary: the /bot attack test driver fills it
@@ -189,7 +215,7 @@ public:
 	static MoveOutcome BeginMove(BotSession * s, float tx, float tz, int16 speedField,
 		std::chrono::steady_clock::time_point now);
 
-	// Called once per Tick() for every in-game session.
+	// Called once per Tick() for every in-game session. A Follow walk is driven by TickFollow instead.
 	static MoveOutcome TickMove(BotSession * s, std::chrono::steady_clock::time_point now);
 
 	// Ends an active walk: sends a stop packet at the current position.
@@ -205,8 +231,21 @@ public:
 	static MoveOutcome BeginGoto(BotSession * s, float gx, float gz, int16 speedField,
 		std::chrono::steady_clock::time_point now);
 
-	// Path-following tick; TickMove() calls it while s->m_navDrive.Active().
+	// Path-following tick; TickMove() calls it while s->m_navDrive.Mode() == Goto (Follow is driven by
+	// TickFollow, called from BotManager::TickSessions).
 	static MoveOutcome TickPathMove(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// Validates and arms a chase of the moving bot 'targetSid' at 'speedField' (F5-74). The target's position
+	// and speed come from the follower's own observation table ('obs', filled by BotManager under m_obsLock).
+	// Sends nothing yet (the same tick's TickFollow() does). REFUSED (nothing armed, a walk in progress is
+	// untouched): "not_in_game", "dead", "sitting", "speed_field", "nav_off", "nav_zone", "bad_target"
+	// (invalid id or the bot itself), "target_not_visible" (obs.found false).
+	static MoveOutcome BeginFollow(BotSession * s, int targetSid, int16 speedField,
+		const FollowObservation & obs, std::chrono::steady_clock::time_point now);
+
+	// One chase tick; BotManager::TickSessions() calls it (never TickMove) while s->m_navDrive.Mode() == Follow.
+	static FollowOutcome TickFollow(BotSession * s, const FollowObservation & obs,
+		std::chrono::steady_clock::time_point now);
 
 	// Validates and arms an attack series of 'count' R hits on the target bot 'targetName'; sends nothing yet
 	// (the same Tick()'s TickAttack() does). REFUSED (nothing armed) when the session is not in game / dead
