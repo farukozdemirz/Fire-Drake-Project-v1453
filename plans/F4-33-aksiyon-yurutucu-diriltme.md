@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-33` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-32 (Type5 yolu, `BeginCast` destek koşulu, MEC-MAG-19) — `KAPANDI` (merge `8590e33`); F4-07 (`Regene`, ölüm izleme `m_deadSeen`) — `KAPANDI` |
@@ -265,4 +265,41 @@ git diff --check gece/2026-10-02...bot/F4-33
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-—
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-33` @ `b770f02` (kod `31b4dd6`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0, `warning` 0, `error` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, değişen dosyalarda uyarı/hata 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` ikisinde rc=0, `110 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `Combat_CureCast_Guard`, `Combat_ResurrectionCast_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; eklenen satırlarda `std::min`/`std::max` 0; `-` satırı 0 (`BotCombat.h` yalnızca ekleme, +24) |
+| K5 | ✔ | `ActionExecutor.cpp` `:739` `m_Magictype5Array`, `:741` `CastResurrectionSupported`, `:772` `CastNeedsOtherTarget` (her biri bir kez); `CastTypesSupported(m->bType[0], m->bType[1])`, `CastTypeMoralSupported`, `(m->bFlyingEffect != 0 && !flyingCast)`, `CastMoralSupported`, `CastHpCostSupported(m->sHP)` mevcut `if` içinde yerinde (`:748-755`); `grep -c "m->iUseItem != 0"` = 2 |
+| K6 | ✔ | `git diff --stat`: yalnızca §4'teki 4 dosya + plan dosyası; `ActionExecutor.cpp` iki hunk (destek koşulu `:733`, `wantedTarget` `:769`), ikisi de `BeginCast` içinde; vcxproj, `BotSession.*`, `BotManager.cpp`, `Telemetry.*`, `tools/` farkı boş |
+| K7 | ✔ | kod farkında eklenen `Emit(` yok (tek eşleşme plan dosyasındaki rapor metni); yeni ini anahtarı/komut/thread/olay türü yok; `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; `git diff --check` rc=0, çıktı boş |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki 109 test dahil 110 test geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS` |
+| K11 | ✔ | S1–S7 çalışma zamanında geçti (aşağıda; iki plan-kurulum notu bulgularda) |
+
+**Çalışma zamanı** (Release derlemesi `GameServer.exe`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-041901.jsonl`, `Logs/Bot_3_10_2026.log`; `summary` ve `ENABLED=0` için ayrı yeniden başlatma. Botlar: `BotPHD_K` (2984, diriltici), `BotWP_K` (ceset), `BotMF_E` (öldürücü, `210518` ×16), `BotPHB_K`, `BotMF_K`, `BotWP_E`; hepsi ≤ 12 m içinde). MP ölçümünde sunucu yenilemesi kümeli +40'tır.
+
+- **S1 ✔ Resurrection of love (`112733`).** `BotMF_E` `210518` ×16 ile `BotWP_K` öldürüldü (`hp=0`, konum 1274,955). `cast BotPHD_K 112733 BotWP_K 1`: `CastStart` `ACTION_SUBMIT` **`"target":2985`** (`-1` değil), `cast_ms 1580` → `casting` `op 1`; `CastEffect` → `effected`, `op 3`, `code 0`, **`victims` alanı yok**; log `cast finished (effected) after 1 cycle(s), 1 ok, 2 packet(s) sent`. Hemen `list`: `BotWP_K` **canlı**, `hp` 5650/5650, `mp` **0**/5370, konum 1274,955 (**ölen yerde**); `BotPHD_K` MP **6392 → 5992 (−400 tam, yenileme araya girmedi)**. `snap BotWP_K`: `alive`, `buffs 0`. Aynı yolla `BotPHB_K` (priest) cesedi de dirildi: HP 3491/3491, MP 0 (+40), `BotPHD_K` MP 5672 → 5312 (−400 + 40).
+- **S2 ✔ Hedef hayatta + sonraki ölüm.** `BotWP_K` canlıyken `cast BotPHD_K 112742 BotWP_K 1`: CASTING'te `ok:false`, `srv_fail`, `op 4`, `code -100`; MP 6072 → 6112 (yalnızca yenileme). `BotWP_K` yeniden öldürüldü (`hp=0`, `regene` kullanılmadı), ≥ 26 sn sonra aynı grace: `effected`, `code 0`, hedef canlı (HP tam), MP **6392 → 5792 (−600)**. İkinci ölümde tekrar diriltme çalıştı (`m_deadSeen` temizliği dolaylı doğrulandı), `Bot_*.log`'da `WIZ_REGENE` kaynaklı hata yok.
+- **S3 ✔ Taşlar hedeften tüketilir.** Love (4) + grace (10) sonrası `BotWP_K`'da 16 taş kalmıştı. Yeniden öldürüldü; `cast BotPHD_K 112754 BotWP_K 1` (favors, 30): CASTING'te **`srv_fail`**, MP 6152 → 6192 (yalnızca yenileme). Hemen ardından aynı cesede grace (10 ≤ 16): `effected`, hedef canlı, MP 6192 → 5632 (−600 + 40). Çağıranda 30 taş vardı ve favors reddedildi; denetimin ölü hedefe yapıldığı dolaylı kanıtlandı. Çağıranın taş değişimi okunamaz `[D]`.
+- **S4 ✔ Bot kuralları.** `cast BotPHD_K 112733 self 1` ⇒ `refused (bad_target)`, `ACTION_SUBMIT` yok. `BotWP_K` canlıyken 1274,940'a taşındı (menzilden 22 m uzak), öldürüldü: `cast BotPHD_K 112733 BotWP_K 1` ⇒ **paket gitmeden** `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range`, `value 22.00`, `limit 11.00`, log `cast stopped (out_of_range)`, MP yalnızca yenilendi. Sonraki senaryolarda mesafe ≤ 7 m doğrulandı (`list`).
+- **S5 ✔ Ağaç yetersiz ve düşman ceset.** `BotWP_K` ölüyken (6 taşı vardı, yani taş yetersizliği değil) `cast BotPHB_K 112733 BotWP_K 1`: `CastStart` `srv_fail`, `op 4`, `code -100`, MP 4822 → 4862 (yalnızca yenileme). Düşman ceset: `BotMF_K` `110518` ile `BotMF_E` öldürüldü; `cast BotPHD_K 112733 BotMF_E 1` ⇒ `CastStart` `srv_fail` (`isHostileTo`). Not: bu denemede `BotPHD_K` MP'si tavandaydı (6392/6392), MP'nin değişmediği doğrudan görülemedi; CASTING'te reddedilen cast'te MP düşmez (S2/S3/S5a'da ölçüldü).
+- **S6 ✔ İptal.** `BotPHB_K` ölüyken (30 taş) `cast BotPHD_K 112733 BotPHB_K 1` ve `casting` yanıtı görülür görülmez `cast BotPHD_K off`: `CastCancel` **`"target":2987`**, `cause cmd`, `since_casting_ms 1101`, `cancelled`, `op 4`, `code -100`; `BotPHD_K` MP 6352 → 6392 (yenileme, tavan), `BotPHB_K` ölü kaldı (`hp=0`). (İlk deneme: iptal komutu 1,5 sn sonra gittiği için cast tamamlandı ve `BotWP_K` dirildi; bu bir hata değil, komut dosyası okuma gecikmesi, aşağıdaki not 2.)
+- **S7 ✔ Kapalı kalanlar, gerilemesiz, kapsam.** `cast BotPHD_K 480001 BotWP_K 1` ve `112671 self 1` ⇒ `refused (unsupported_skill)`; `111733 BotWP_K 1` ⇒ `refused (bad_skill)`; üçünde de jsonl'de `ACTION_SUBMIT` yok. Gerilemesiz: F4-32 `112525 self` `effected`, `code 0`, `target 2984`; F4-28 `cast BotPHB_K 112603 self 1` `effected`, **`code 600`**; F4-31 grup heal `112557 self`: `CastStart`/`CastEffect` `"target":-1`, `effected`, `victims 1`; F4-29 Inferno `cast BotMF_K 110545 BotWP_E 1`: `target -1`, `effected`, `victims 1`; Moral 7 `cast BotMF_K 110518 BotWP_E 1`: `"target":2989` (kurban kimliği), `effected`, `victims` yok. `TELEMETRY=summary` (yeniden başlatma): `BotPHD_K` `BotPHB_K` cesedini diriltti (`effected`, hedef HP 3491/3491), `live-043038.jsonl`'de **`ACTION_` satırı 0**, yalnızca `PERF_SAMPLE`. `ENABLED=0` (ini yedeğinden, `[BOT]` yok): `BotCommands.txt` işlenmedi (dosya yerinde kaldı), `Bot_*.log` satır sayısı değişmedi, yeni jsonl yok. `PERF_SAMPLE` `tick_p95_us` normalde 70–528; spawn penceresinde en çok 1222 (önceki planlarla aynı düzey). Sunucu 3/3 UP; `GameServer.log` değişmedi (son yazım 2026-10-02).
+- Temizlik: botlar despawn, sunucular `stop` (nazik), `GameServer.ini` ve `GameServer.exe` orijinallerine döndü (`diff` ini == `GameServer.ini.bak-before-bot-test-20261002`; exe botsuz ikili geri kondu), `BotCommands.txt` silindi, yedekler silindi, çalışma ağacı temiz. **DB durumu:** ölçüm DB'ye yazdı ve `db/002` yeniden uygulanmadı: botların Stone of Life taşları tüketildi (`BotWP_K` ≈ 2, `BotPHB_K` ≈ 22, `BotPHD_K` fazla taş aldı), `BotMF_E` DB'de ölü, konumlar 1274,940–950 civarı. Sonraki diriltme ölçümünden önce `db/002` yeniden uygulanmalıdır.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **Plan S7 kurulum hatası (planlayıcı eksiği):** F4-28 `112603 self` `BotPHD_K` ile `srv_fail` verdi, çünkü `112603` `Skill 1126` ağacındadır ve `BotPHD_*` `strSkill[6] = 0` (yalnızca `BotPHB_*` `[6] = 62`); KI-016 ağaç denetimi, gerileme değil. `BotPHB_K` ile `effected`, `code 600`. Kod değişikliği gerekmez.
+  2. *(not)* **Plan S6 kurulum notu:** komut dosyası saniyede bir okunduğu için "~500 ms" iptal elle yakalanamaz; iptal `casting` yanıtı izlenerek gönderilince `since_casting_ms 1101`'de çalıştı. İptal yolu ölçüldü, 500 ms hedefi planın yanlış beklentisiydi.
+  3. *(not)* **Çalışma zamanı kurulum notları:** (a) `regene` ölü `BotMF_E`'yi El Morad doğuş noktasına (630,920) taşır ve oradan dönüş ~190 m yürüyüşte Death knight/Undying NPC'leri botu öldürdü; (b) zone 71 NPC'leri botları kendiliğinden öldürür (`BotPHB_K` ~2 dk içinde öldü), bu `TELEMETRY=summary` denemesinde ceset kaynağı oldu.
+  4. *(not)* **Sonuç sözleşmesi doğrulandı:** `docs/03` MEC-MAG-20 `[D]` → `[V]`, `v1.15` değişiklik satırı eklendi. `[D]` kalanlar: çağıranın taş değişimi (`+NeedStone/2+1`, ek −1), exp iadesi, "taş EFFECTING'te eksik, yayın yine gider" yarışı, favors `112754` başarılı atımı (hedefte 30 taş bırakılmadı), El Morad `2127xx`.
+  5. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; `ActionExecutor.h` yorum sapması (F4-32 ifadesinden "resurrections" çıkarıldı) kabul.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
