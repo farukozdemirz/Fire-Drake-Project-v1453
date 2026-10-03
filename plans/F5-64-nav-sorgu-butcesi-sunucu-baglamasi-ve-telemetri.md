@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-64 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: **F5-62** (`NavDrive` Goto, merge `8522239`), **F5-73** (`NavDrive` Follow, merge `bc3170d`), **F5-71** (`NavFollower::UpdateReachable`, merge `1bfb885`), **F5-74** (`/bot follow` sunucu bağlaması, merge `23fe31d`), **F5-70** (`/bot goto` sunucu bağlaması, merge `99d7170`), F5-53 (`NavQueryScheduler`, `NavPathCache`, `NavReplanPhaseMs`, `NavWhileDeferred`; `BotCore/NavBudget.h`). F5-65 bu planın kuyruk iptali giriş noktasını (`Reset()` + `scheduler.Cancel`) kullanır |
@@ -227,20 +227,33 @@ git diff --check gece/2026-10-02...bot/F5-64
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-64` @ `<sha>`
+- Karar: **DOĞRULANDI**
+- İncelenen: `gece/2026-10-02...bot/F5-64` @ `89f8b0a` (iki commit: `e66f5ca` kod, `89f8b0a` rapor; çalışma ağacı temizdi). Gece modu: birleştirmeyi ve push'u döngü betiği yapar, bu turda yapılmadı. Sunucular kapalıydı (`run-servers.sh status`: 0/3); çalışma zamanı kriteri yok (saf mantık dilimi), GUI/istemci gerektiren kontrol yok.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `NavDrive.h` ve `NavTrack.h` `touch` edildikten sonra `build.sh Release` rc=0: `ActionExecutor.cpp`, `BotSession.cpp`, `NavDriveTests.cpp`, `NavTrackTests.cpp` yeniden derlendi; uyarılar yalnızca değişmeyen `GameServerDlg.cpp(820,94)` C4834 ve `(1147,16)`/`(1806,18)` C4267. `build.sh Debug` rc=0, aynı iki C4267 uyarısı; `NavDrive`/`NavTrack`/test dosyalarında yeni uyarı yok |
+| K2 | ✔ | Release ve Debug: `331 tests, 0 failed` (315 + 16). Release çıktısında 16 yeni ad `[ OK ]` (`NavFollowDue_MatchesUpdate`, `NavFollowDue_Phase`, `NavDriveQueue_Follow_{SplitEquivalence,PlanDue,PhaseSpread,Deferred_FreshRoute,Deferred_StaleHold,Deferred_FirstPlan,PlanFailed_Split}`, `NavDriveQueue_Goto_{Arm,RunPlan_Equivalence,RequestReplan,Cache,Cancel}`, `NavDriveQueue_Scheduler_FirstPlan16`, `NavDriveQueue_Follow_Load16`). Mevcut test gövdelerine dokunulmamış: `git diff --numstat` `NavDriveTests.cpp` 1026 ekleme / **0 silme**, `NavTrackTests.cpp` 105 / **0** |
+| K3 | ✔ (not 1) | Kendi Release koşumum: `NAVQUEUE first_plan wait_max_ms=300 served=16 ticks=4`; `NAVQUEUE load16 tick_p95_ms=0.023 p99=0.112 max=0.750 wait_max_ms=300 queries=2958 deferred=0 hold=0 stale=0 ended=0`; `NAVQUEUE load16 stale_steps=0 no_plan_bots=0`. Gerçek harita (`tools/nav-export.py`: `zone71.navgrid` n=513) yüklendi; Release ve Debug çıktılarında `SKIPPED` yok (grep boş) |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-64`: yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `Tests/BotCoreTests/NavDriveTests.cpp`, `Tests/BotCoreTests/NavTrackTests.cpp` + plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `tools/`, `docs/`, `*.vcxproj*` ve yasak başlıklarda fark 0. `git diff --check` boş (rc=0). Dört dosya ASCII + CRLF, BOM yok (`file`, `grep -c $'\r'` = satır sayısı) |
+| K5 | ✔ | `grep -n -E "windows.h\|stdafx\|GameServer\|shared/\|static \|new \|malloc" BotCore/NavDrive.h BotCore/NavTrack.h`: `NavDrive.h` boş; `NavTrack.h` yalnızca `:5` (yorum) ve `:25` (`kCapacity`) |
+| K6 | ✔ | `grep -rn -E "PlanFollow\|AssessFollow\|ArmGoto\|RunGotoPlan\|RequestReplan\|FollowPlanDue\|deferHold" GameServer/` boş (`none (expected)`); `GameServer/` farkı 0 |
+| K7 | ✔ | `Tests/BotCoreTests/NavDriveTests.cpp`: `QueueEventsEqual :2340`, `QueueStepsEqual :2355`, `QueueSplitEquiv :2399` (olay eşitliği `:2436`, sayaçlar `:2449-2451`, adım eşitliği `:2457`, konum/uyuşmazlık `:2472-2474`), test `:2478-2501`: 3 model × 3 tohum × 60 s (601 tick, 100 ms) + gizli engel senaryosu. **Bağımsız ölçüm:** geçici bir probe (commit edilmedi, geri alındı) gizli engel senaryosunda `maxStage=2`, `recActions=2` verdi: kurtarma merdiveni her iki sürücüde gerçekten koşuyor ve olay/adım eşitliği bozulmuyor; diğer dokuz koşuda kurtarma yok (beklenen, engel yok). `TickFollow` `All` kolunun diff'i: plan bloğu gövdesi `PlanBlock`'a olduğu gibi taşındı (satırlar özdeş; tek ek `m_routeAtMs/m_routeTargetX/Z/m_deferHeld` damgaları, D6), `All` kolunda `PlanBlock` + `ended` erken dönüşü aynı sırada; `else` (defer) kolu `All`'da çalışmaz |
+| K8 | ✔ | `:2680-2777`: (a) yaş: 6000 ms'ye kadar `holdEvents == 1`, `DeferHeld()`, `RouteStale(6000)`, hold sırasında `NextFollowStep == None`, `staleSteps == 0` (`:2728-2732`); (b) kayma: 16 m, yaş taze, `deferHold`+`DeferHeld`+`RouteStale` (`:2763-2776`); (c) `PlanFollow` sonrası `DeferHeld() == false` ve iki ardışık adım `ChordSampleClean`, `routeProgressM` artıyor (`:2734-2760`); (d) bayat rotada üretilmiş adım 0. `FreshRoute :2634` 4900 ms'ye kadar `deferHold` yok, `FirstPlan :2779` rota yokken `deferHold` yok |
+| K9 | ✔ | `:2876-2940`: 200 çift, 186 planlı: `BeginGoto` ile `ArmGoto + RunGotoPlan(nullptr)` aynı durum, `Route()` bayt bayt (`QueueRoutesEqual :2327`), `RouteLengthM`, `GoalX/Z`, `PlanExpanded`, `PlanWaypoints`; `:2942-2982`: `RequestReplan + RunGotoPlan` rotası `Replan` ile bayt bayt aynı, `Replans() == 1`, ikinci `RequestReplan` `ReplanLimit` + `Off`, `Goto` dışında `None` |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **`NavDrive.h:371` (`FollowPlanDue`), `:837-851` (ertelenme kararı), bilgi (F5-75/F5-76 için):** `AssessFollow`'un ertelenme kararı `FollowPlanDue` koşuluna bağlı. Plan servis edilip **başarısız** olursa (`NoPath` vb.) `plannedAtMs/targetX/Z` güncellendiğinden `FollowPlanDue` ≤ 500 ms `false` olur; bu aralıkta rota hedef kaymasıyla bayatlamış olsa bile `deferHold` verilmez, `NextFollowStep` eski rotada adım üretir, `RouteStale()` ise `true` döner (F5-76'nın `nav_stale_steps` sayacı bunu sayar). `planFailAbandon` (10 plan, ≈ 5 sn) sürücüyü bitirene kadar sürebilir. Bu, F5-73'ün mevcut davranışıdır (başarısız planda eski rotayı izleme); F5-64 yeni bir gerileme getirmedi ve plan bunu kapsam dışı bırakmıştı. `docs/KNOWN_ISSUES.md` KI-027 olarak kaydedildi; F5-75 planı, sunucu tarafında `RouteStale` iken adım göndermeyi ya da bunu sayacın "beklenen" kategorisine yazmayı açıkça karara bağlamalı.
+  2. **`NavDriveTests.cpp:3331` (not 1, K3):** `NAVQUEUE load16 ... stale=0` satırındaki `stale=0` format dizgesinde **sabit** yazıyor (plandaki biçim de öyle); gerçek sayaç ayrı satırda (`stale_steps=%d`, `:3333`) ve `CHECK_EQ(staleSteps, 0)` (`:3335`) ile denetleniyor. Ayrıca bu yükte `deferred=0 hold=0`: ertelenme yolu Load16'da hiç tetiklenmiyor, dolayısıyla `stale_steps == 0` burada kendiliğinden doğru; ertelenme davranışının kanıtı testler 4/5/6'dır (kanıtlar tabloda). Uygulayıcı bunu "Açık sorular"da zaten yazmış. K3'ün `stale=0` ifadesi tek başına kanıt sayılmadı; `stale_steps` satırı ve `CHECK` sayıldı.
+  3. **Sapma 2 (kabul edildi):** `Scheduler_FirstPlan16` plana uygun (sabit 0,3 ms); `Follow_Load16`'da plan "`steady_clock` ile ölçülür, `ReportCost`" diyordu, uygulayıcı `ReportCost`'a sabit 0,3 ms verdi (Debug A*'sı ≈ 20× yavaş, ölçülen maliyetle Debug'da `wait_max_ms > 1100` olacaktı); tick toplamı yine duvar saatiyle ölçülüyor. Gerekçe makul, Debug kabulü korunuyor; ancak zamanlayıcının **gerçek maliyetle** davranışı bu testte kanıtlanmıyor: kanıt çalışma zamanındadır (F5-75/F5-66; AC-NAV-07/MET-PERF-02 kapanmadı, plan da "kapandı" yazmıyor).
+  4. **Sapma 1 ve 3 (kabul edildi):** `Goto_Cache` `kMaxCells` alt durumu sentetik 560×560 ızgarayla (`Put` reddi, `Count() == 0`, plan `Planned`), `StaleHold (c)` yeni rotanın ardışık iki adımıyla; ikisi de plandaki niyeti karşılıyor. Küçük boşluklar: `Goto_Cache` "aynı hücrede farklı nokta" alt durumu yalnızca rota başının bot noktasında olmasını denetliyor ("kalan noktalar aynı" denetlenmiyor, `:3017-3025`); `SplitEquivalence` plandaki "cep ızgarasında PlanFailed" senaryosunu A/B karşılaştırmasında içermiyor (gizli engel senaryosu kullanıldı; `PlanFailed` yolu `PlanBlock` ortak kodudur ve `PlanFailed_Split` (`plans=10 at=4500`) ile mevcut `NavDriveFollow_PlanFailed_Abandon` ayrı ayrı geçiyor).
+  5. **Üslup, §8:** plan "test çıktısı yalnızca belirtilen NAVQUEUE satırları" diyor; testler ek satırlar yazıyor (`NAVQUEUE phase/freshroute/planfail/gotoeq`, `NAVFOLDUE matches`, yalnızca hata hâlinde `split mismatch`). Zararsız, tanılayıcı; engel değil.
+  6. **KI-026 kapanmadı:** F5-64 `NavDrive.h`'ye dokundu ama reach'siz aşırı yükleme boş başvurusu planda "eklenmez/kapsam dışı" olduğundan düzeltilmedi; KI-026 `AÇIK` kaldı, satır numaraları F5-64 ile kaydı.
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
 
 ```
-…
+(Düzeltme gerekmiyor.)
 ```
