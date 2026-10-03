@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02-nav) |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F5-11 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01..F5-10 ve F5-50..F5-58 `KAPANDI` (hepsi `gece/2026-10-02-nav` içinde; `tools/nav-measure/nav_measure.cpp` bölümleri `smoothing`, `synthetic`, `velocity`, `velocity-robust`, `arena`, `budget`, `budget-scheduled`, `stuck`, `progress` hazır) |
