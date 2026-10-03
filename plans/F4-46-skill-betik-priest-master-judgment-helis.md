@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 22) |
 | Branch | `bot/F4-46` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-45 (`bots/config/skill_warrior_k.{spec,txt}`, silaha bağlı Type1 üslup örneği) — `KAPANDI` (merge `5d2ce2e`); F4-42 (`tools/skill-script-gen.py`), F4-43 (`tools/skill-check.py` MP hükmü) — `KAPANDI`; F4-36 (eşya/sınıf taşı skill'leri, `no_item`), F4-40 (envanter doldurma) — `KAPANDI` |
@@ -145,19 +145,33 @@ git diff --stat gece/2026-10-02...bot/F4-46
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-46` — `<kısa-sha> [F4-46] …`
+- Branch / commit'ler: `bot/F4-46` — `402d15f [F4-46] Karus priest usta skill betiği (Judgment, Helis) spec + üretilmiş betik` (uygulama), ardından Durum/rapor commit'i.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır) ve `./tools/run-tests.sh`:
+  - `bots/config/skill_priest_k_master.spec` (yeni): plan §5.1 içeriği aynen; `BotPHD_K` Judgment (`112802`) ve Helis (`112815`) 6 çevrim, hedefler `BotWP_E`/`BotWG_E`.
+  - `bots/config/skill_priest_k_master.txt` (yeni): `skill-script-gen.py` çıktısı (elle düzenlenmedi); 4 `cast` + 1 `list`.
+  - `plans/F4-46-skill-betik-priest-master-judgment-helis.md`: `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar) ve `./tools/run-tests.sh`:
   ```
-  …
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme (K1–K7; K8/K9 Claude'un işi): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh`: son satır `251 tests, 0 failed` (C++ değişmedi).
+- Kabul kriterleri öz-değerlendirme (K1–K7; K8/K9 Claude'un işi):
+  - K1 ✔: yeniden üretim `/tmp/skill_priest_k_master.txt` ile commit'li dosya arasında `diff` boş, çıkış 0.
+  - K2 ✔: `--check` çıkış 0; `ok: 5 steps, 264 bytes, 7 lines, last offset 12500 ms`.
+  - K3 ✔: `cast BotPHD_K` = 4, toplam `cast` = 4, `list` = 1, `raw|pinvite|paccept|pot|move` = 0; ilk ofset `0` (`112802 BotWP_E 2`), sıra `112802 BotWP_E 2`, `112802 BotWG_E 1`, `112815 BotWG_E 2`, `112815 BotWP_E 1`; hedefler yalnızca `BotWP_E`/`BotWG_E`; `112825` = 0.
+  - K4 ✔: ardışık ofset farkları `3500, 2500, 3500, 3000` ms.
+  - K5 ✔: `skill-script-gen.py --selftest` → `selftest: 23 checks, 0 failed`; `skill-check.py --selftest` → `selftest: 32 checks, 0 failed`; iki araç değişmedi.
+  - K6 ✔: `./tools/build.sh Release` hatasız bitti (C++ değişmedi); `./tools/run-tests.sh` → `251 tests, 0 failed`.
+  - K7 ✔: `git diff --stat gece/2026-10-02...bot/F4-46` yalnızca spec, üretilmiş betik ve plan dosyasını gösterir (aşağıda).
+- Plandan sapmalar ve gerekçeleri: Yok. Üretilen çıktı §5.2'deki beklenen ofsetler/bayt sayısıyla birebir.
+- Açık sorular: Yok. K8/K9 (gerçek koşu, sunucu açma, bot konumlandırma) plan gereği Claude'un işidir; DeepSeek sunucu çalıştırmadı.
 - `git diff --stat gece/2026-10-02...bot/F4-46` (gerçek çıktı):
   ```
-  …
+   bots/config/skill_priest_k_master.spec | 11 +++++++++++
+   bots/config/skill_priest_k_master.txt  |  7 +++++++
+   plans/F4-46-skill-betik-priest-master-judgment-helis.md | <Durum/rapor commit'i>
   ```
 
 ---
