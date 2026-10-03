@@ -4,6 +4,7 @@
 #include <BotCore/NavPath.h>
 #include <BotCore/NavSmooth.h>
 #include <BotCore/NavTrack.h>
+#include <BotCore/NavReach.h>
 #include <BotCore/Rng.h>
 
 #include <algorithm>
@@ -1820,4 +1821,228 @@ TEST_CASE("NavTrack_Chase_Sim_Cadence")
 	REQUIRE(perfect > 0);
 	REQUIRE(worstCadence > 0);
 	CHECK((double)worstCadence <= 1.3 * (double)perfect);
+}
+
+namespace
+{
+	// n = 40, unit 4 m, blocked border; a 4x4 plateau (x 20..23, z 18..21) raised 20 m: its cells are
+	// Walk but every edge to the ground is closed by the slope limit, so it is an edge-isolated pocket.
+	BotCore::NavGrid MakePocketGrid()
+	{
+		const int n = 40;
+		std::vector<float> heights = HeightZeros(n);
+		for (int x = 20; x <= 23; ++x)
+		{
+			for (int z = 18; z <= 21; ++z)
+				heights[CellIndex(n, x, z)] = 20.0f;
+		}
+		return MakeNav(n, 4.0f, RingEvents(n), heights);
+	}
+}
+
+TEST_CASE("NavTrack_Reach_LeadInPocket")
+{
+	BotCore::NavGrid grid = MakePocketGrid();
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	REQUIRE(reach.ComponentCount() == 2);
+	REQUIRE(grid.Walk(20, 19));
+	REQUIRE(reach.ComponentOf(20, 19) != reach.ComponentOf(8, 19));
+
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 3.0f;
+	const float botX = grid.CellCenter(8);
+	const float botZ = grid.CellCenter(19);
+
+	// Without labels the 1.5 s lead point (83.6, 78) lands on the plateau; every ring cell is in the pocket.
+	BotCore::NavFollower oldF;
+	oldF.ObserveTarget(0, 70.0f, 78.0f);
+	oldF.ObserveTarget(500, 73.4f, 78.0f);
+	CHECK(oldF.Update(grid, pf, 500, botX, botZ, 4.5f, params));
+	CHECK(oldF.Plan().status == BotCore::NavFollowStatus::PathFailed);
+	CHECK(oldF.Plan().pathStatus == BotCore::NavPathStatus::NoPath);
+	CHECK(oldF.Plan().leadSec == 1.5f);
+	CHECK(oldF.Plan().tries == 2);
+
+	// With labels the lead is halved until its point is back in the bot's component (0.75 s -> (78.5, 78)).
+	BotCore::NavFollower f;
+	f.ObserveTarget(0, 70.0f, 78.0f);
+	f.ObserveTarget(500, 73.4f, 78.0f);
+	CHECK(f.UpdateReachable(grid, pf, 500, botX, botZ, 4.5f, params, reach));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(std::fabs(f.Plan().leadSec - 0.75f) < 1e-4f);
+	CHECK(f.Plan().goal == Cell(19, 19));
+	CHECK_EQ(f.Plan().tries, 1);
+	CHECK(reach.ComponentOf(f.Plan().goal.x, f.Plan().goal.z) == reach.ComponentOf(8, 19));
+	CHECK(!f.Plan().smooth.waypoints.empty());
+	CHECK(SegmentsClear(grid, f.Plan().smooth.waypoints));
+}
+
+TEST_CASE("NavTrack_Reach_SkipPocketCandidates")
+{
+	BotCore::NavGrid grid = MakePocketGrid();
+	BotCore::NavReach reach;
+	reach.Build(grid);
+
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 6.0f;
+	// Target on the pocket's east edge: the ring holds 4 plateau cells (nearest to the bot) and 2
+	// main-component cells (24, 19) and (24, 20) behind it.
+	const float botX = grid.CellCenter(10);
+	const float botZ = grid.CellCenter(19);
+
+	BotCore::NavFollower oldF;
+	oldF.ObserveTarget(0, 94.0f, 80.0f);
+	CHECK(oldF.Update(grid, pf, 0, botX, botZ, 4.5f, params));
+	CHECK(oldF.Plan().status == BotCore::NavFollowStatus::PathFailed);
+	CHECK_EQ(oldF.Plan().tries, 3);
+
+	BotCore::NavFollower f;
+	f.ObserveTarget(0, 94.0f, 80.0f);
+	CHECK(f.UpdateReachable(grid, pf, 0, botX, botZ, 4.5f, params, reach));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(f.Plan().goal == Cell(24, 19));
+	CHECK_EQ(f.Plan().tries, 1);   // the four plateau cells were skipped, not tried
+	CHECK(f.Plan().expanded > 0);
+	CHECK(SegmentsClear(grid, f.Plan().smooth.waypoints));
+
+	// maxTries counts A* runs only: with ringMaxTries = 1 the plan still reaches the first main-component cell.
+	BotCore::NavFollowParams one = params;
+	one.ringMaxTries = 1;
+	BotCore::NavFollower g;
+	g.ObserveTarget(0, 94.0f, 80.0f);
+	CHECK(g.UpdateReachable(grid, pf, 0, botX, botZ, 4.5f, one, reach));
+	CHECK(g.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(g.Plan().goal == Cell(24, 19));
+	CHECK_EQ(g.Plan().tries, 1);
+}
+
+TEST_CASE("NavTrack_Reach_ProvablyUnreachable")
+{
+	BotCore::NavGrid grid = MakePocketGrid();
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 3.0f;
+
+	// (a) Target in the pocket, bot outside: every ring cell is skipped, no A* runs at all.
+	{
+		const float botX = grid.CellCenter(10);
+		const float botZ = grid.CellCenter(19);
+		BotCore::NavFollower oldF;
+		oldF.ObserveTarget(0, 88.0f, 80.0f);
+		CHECK(oldF.Update(grid, pf, 0, botX, botZ, 4.5f, params));
+		CHECK(oldF.Plan().status == BotCore::NavFollowStatus::PathFailed);
+		CHECK_EQ(oldF.Plan().tries, 3);
+		CHECK(oldF.Plan().expanded > 0);
+
+		BotCore::NavFollower f;
+		f.ObserveTarget(0, 88.0f, 80.0f);
+		CHECK(f.UpdateReachable(grid, pf, 0, botX, botZ, 4.5f, params, reach));
+		CHECK(f.Plan().status == BotCore::NavFollowStatus::PathFailed);
+		CHECK(f.Plan().pathStatus == BotCore::NavPathStatus::NoPath);
+		CHECK_EQ(f.Plan().tries, 0);
+		CHECK_EQ(f.Plan().expanded, 0);
+		CHECK(f.Plan().smooth.waypoints.empty());
+
+		// The F5-05 judgement of that plan: provably unreachable by component.
+		BotCore::NavReachJudge judge;
+		const BotCore::NavReachJudgement j = judge.Judge(grid, reach, f.Plan(), params, BotCore::NavUnreachParams(), botX, botZ);
+		CHECK(j.verdict == BotCore::NavReachVerdict::Unreachable);
+		CHECK(j.reason == BotCore::NavUnreachReason::Component);
+	}
+
+	// (b) Bot inside the pocket, target outside: the planner cannot leave the pocket (recorded
+	// limitation, KI: bot stranded in a pocket; not fixed by F5-71).
+	{
+		const float botX = grid.CellCenter(21);
+		const float botZ = grid.CellCenter(19);
+		BotCore::NavFollower f;
+		f.ObserveTarget(0, 50.0f, 78.0f);
+		CHECK(f.UpdateReachable(grid, pf, 0, botX, botZ, 4.5f, params, reach));
+		CHECK(f.Plan().status == BotCore::NavFollowStatus::PathFailed);
+		CHECK_EQ(f.Plan().tries, 0);
+		CHECK_EQ(f.Plan().expanded, 0);
+	}
+
+	// (c) Bot cell not Walk (border cell): no labels apply, identical to Update (InvalidStart).
+	{
+		BotCore::NavFollower a;
+		BotCore::NavFollower b;
+		a.ObserveTarget(0, 50.0f, 78.0f);
+		b.ObserveTarget(0, 50.0f, 78.0f);
+		CHECK(a.Update(grid, pf, 0, 2.0f, 2.0f, 4.5f, params));
+		CHECK(b.UpdateReachable(grid, pf, 0, 2.0f, 2.0f, 4.5f, params, reach));
+		CHECK(a.Plan().status == BotCore::NavFollowStatus::InvalidStart);
+		CHECK(b.Plan().status == BotCore::NavFollowStatus::InvalidStart);
+		CHECK_EQ(a.Plan().tries, b.Plan().tries);
+	}
+}
+
+TEST_CASE("NavTrack_Reach_SingleComponent_Identical")
+{
+	// One edge-connected component (a wall with a gap): UpdateReachable must equal Update bit for bit.
+	const int n = 40;
+	std::vector<int16_t> events = RingEvents(n);
+	for (int z = 1; z <= n - 2; ++z)
+	{
+		if (z < 18 || z > 21)
+			events[CellIndex(n, 20, z)] = 0;
+	}
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, events, HeightZeros(n));
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	REQUIRE(reach.ComponentCount() == 1);
+
+	BotCore::NavPathfinder pf;
+	BotCore::Rng rng(20261004u);
+	std::vector<BotCore::NavCell> walk;
+	for (int x = 0; x < n; ++x)
+		for (int z = 0; z < n; ++z)
+			if (grid.Walk(x, z))
+				walk.push_back(Cell(x, z));
+	REQUIRE(!walk.empty());
+
+	int planned = 0;
+	for (int i = 0; i < 300; ++i)
+	{
+		const BotCore::NavCell bc = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		const BotCore::NavCell tc = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		const float vx = (float)(rng.NextDouble() * 8.0 - 4.0);
+		const float vz = (float)(rng.NextDouble() * 8.0 - 4.0);
+		BotCore::NavFollowParams params;
+		params.ringMinM = (float)(rng.NextBelow(3u));
+		params.ringMaxM = params.ringMinM + (float)(rng.NextBelow(8u));
+		params.ringMaxTries = 1 + (int)rng.NextBelow(4u);
+		const float tx = grid.CellCenter(tc.x);
+		const float tz = grid.CellCenter(tc.z);
+
+		BotCore::NavFollower a;
+		BotCore::NavFollower b;
+		a.ObserveTarget(0, tx, tz);
+		b.ObserveTarget(0, tx, tz);
+		a.ObserveTarget(500, tx + vx * 0.5f, tz + vz * 0.5f);
+		b.ObserveTarget(500, tx + vx * 0.5f, tz + vz * 0.5f);
+		const float bx = grid.CellCenter(bc.x);
+		const float bz = grid.CellCenter(bc.z);
+		const bool ra = a.Update(grid, pf, 500, bx, bz, 4.5f, params);
+		const bool rb = b.UpdateReachable(grid, pf, 500, bx, bz, 4.5f, params, reach);
+		const BotCore::NavFollowPlan & pa = a.Plan();
+		const BotCore::NavFollowPlan & pb = b.Plan();
+		const bool same = ra == rb && pa.status == pb.status && pa.pathStatus == pb.pathStatus
+			&& pa.goal == pb.goal && pa.tries == pb.tries && pa.expanded == pb.expanded
+			&& pa.pathCost == pb.pathCost && pa.predX == pb.predX && pa.predZ == pb.predZ
+			&& pa.leadSec == pb.leadSec && pa.smooth.waypoints.size() == pb.smooth.waypoints.size()
+			&& pa.smooth.length == pb.smooth.length;
+		CHECK(same);
+		if (pa.status == BotCore::NavFollowStatus::Planned)
+			++planned;
+	}
+	CHECK(planned > 150);
 }
