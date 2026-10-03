@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-55 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F2-03 (bot girişi / spawn durum makinesi), F4-12, F4-13 (görünür oyuncu tablosu, `WIZ_REQ_USERIN`), F4-54 (teşhis sayaçları, kök neden H2) — hepsi `KAPANDI` (`gece/2026-10-02` içinde birleşik; F4-54 merge `cf22667`) |
@@ -171,13 +171,30 @@ grep -n -a "HandshakeGateOpen\|handshakeWaitTicks\|spawn handshake" GameServer/B
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-55` (taban `gece/2026-10-02` @ `2e85af8`). Uygulama commit'i `06445fb`; Durum/rapor commit'i bu dosyayla aynı commit.
 - Değişen dosyalar ve neden:
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/SpawnGate.h` (yeni): `HandshakeGateOpen(int)` + `HandshakeMissesUnit(op1X, op2X, op2Y)` saf mantık, yalnızca `<cstdint>`, ASCII + CRLF.
+  - `Tests/BotCoreTests/SpawnGateTests.cpp` (yeni): üç birim testi (kural, F4-54 asimetri modeli, kapılı/kapısız tick döngüsü).
+  - `BotCore/BotCore.vcxproj` / `Tests/BotCoreTests/BotCoreTests.vcxproj`: yeni dosya satırları (`.filters` yok, doğrulandı).
+  - `GameServer/Bot/BotManager.cpp`: `#include "../../BotCore/SpawnGate.h"`; dosya-statik `CountInHandshake`; `TickSessions` `PHASE_WAIT_SELECT` dalında `GameStart(1)` öncesi kapı denetimi; toplu özetten sonra `spawn handshake` log satırı.
+  - `GameServer/Bot/BotManager.h`: `uint32 m_handshakeWaitTicks;` üyesi + kurucuda `m_handshakeWaitTicks(0)`.
+- Derleme sonucu: `./tools/build.sh Release` rc=0; `BotManager.cpp` ve `SpawnGateTests.cpp` uyarısız derlendi; kalan uyarılar eski (`GameServerDlg.cpp` C4834/C4267, `UpgradeHandler.cpp` C4789). Son satırlar: `Kodun üretilmesi tamamlandı` / `proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe`. `./tools/build.sh Debug` rc=0 (aynı eski uyarılar).
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (`Release` rc=0, yeni uyarı yok).
+  - K2 ✔ (`Debug` rc=0, yeni uyarı yok).
+  - K3 ✔ (`run-tests.sh Release` ve `Debug`: `267 tests, 0 failed`; üç `SpawnGate_*` testi `[ OK ]`). Dal açılışında T0=264 (plan 259 bekliyordu; dalda F4-60/F5-60 birleşik), sonuç T0+3.
+  - K4 ✔ (`GameServer` farkı yalnızca `BotManager.cpp`/`.h`; `-` satırları yalnızca kurucu başlatıcı listesinde; `shared/`, `AIServer/`, bot dışı `GameServer/*.cpp` farkı yok).
+  - K5 ✔ (yeni satırlarda `g_pMain|GetUserPtr|GetRegion|m_RegionUserArray|->m_pUser` yok; `check-perception-contract.py` `RESULT: PASS`, R1-R5 ihlal 0, `SpawnGate.h` R4 temiz).
+  - K6 ✔ (yeni ini/komut/thread/paket yok; `SELECT_SETTLE_MS`/`LOADED_DELAY_MS`/`PHASE_TIMEOUT_MS` değişmedi; `ENABLED=0` yolu `m_sessions.empty()` erken dönüşüyle aynı).
+  - K7 ✔ (yeni dosyalar ASCII + CRLF, izlenenlerde `git diff --check` boş; iki vcxproj yeni satırları içeriyor).
+  - K8 ✔ (kapı kodu: `BotManager.cpp:3024-3031`; log: `BotManager.cpp:3389-3391`; kilitlenmez gerekçesi: `PHASE_WAIT_LOADED` her durumda `LOADED_DELAY_MS`=200 ms sonra koşulsuz `GameStart(2)` gönderip `PHASE_IN_GAME`/`FailSession`'a çıkar, dolayısıyla `CountInHandshake` en fazla bir oturum + 200-300 ms için >0 olur).
+  - K9/K10/K11: çalışma zamanı koşusu Claude'da (§6 notu); uygulayıcı oyun içi doğrulama yapmadı.
 - Plandan sapmalar ve gerekçeleri:
+  1. `SpawnGate_OverlapReproducesOneWayView` testinde plan `op1 = {0, 100, 200}`, `op2 = op1 + 200` diyordu; ancak katı pencere (`op1(X) < op2(Y) < op2(X)`) ve 100 ms aralıkta `op1(2) == op2(0) == 200` eşitliği `2!0` yönünü düşürüp sonucu `{1!0, 2!1}` yapar; planın belgelediği F4-54 koşu 1 kümesi ise `{1!0, 2!0, 2!1}`. Plan içi bu tutarsızlık nedeniyle test girdisi el sıkışma aralığı **250 ms** seçildi (`op2 = {250, 350, 450}`); bu, planın *beklenen çıktısını* (üç eksik yön, hiçbir çiftte iki yön) birebir üretir. Kod (`SpawnGate.h`) plandaki gibi katı `<` kaldı; değişen yalnızca testin zaman damgalarıdır.
+  2. `BotManager.h` kurucu başlatıcı listesi bir satır kaydırılarak `m_handshakeWaitTicks(0)` eklendi (K4'te izinli `-` satırı gerekçesi).
 - Açık sorular:
+  1. Sapma 1'deki zamanlama seçimi (250 ms) onaylanıyor mu? Plan metnindeki `+200` ile üretilen küme planın kendi beklediği kümeyle çelişiyor; hangisinin esas alınacağı netleşirse test buna göre sabitlenir.
 
 ---
 
