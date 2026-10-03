@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 24) |
 | Branch | `bot/F4-48` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-47 (`tools/skill-check.py` uçan Type3 MP beklentisi `2 × Msp`, selftest 48) — `KAPANDI` (merge `2135a0c`); F4-42 (`tools/skill-script-gen.py`), F4-25/F4-30 (uçan ve uçan alan cast), F4-29 (alan cast), F4-26 (çift tipli `{3, 4}`), F4-27 (quest kilitleri), F4-40 (envanter doldurma) — `KAPANDI`; F4-45/F4-46 (`bots/config/skill_*.spec` üslup örneği) — `KAPANDI` |
@@ -226,39 +226,72 @@ git diff --stat gece/2026-10-02...bot/F4-48
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-48` — `<kısa-sha> [F4-48] …`
+- Branch / commit'ler: `bot/F4-48` — `994d148 [F4-48] Karus mage tek hedefli/uçan/alan skill betikleri`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır) ve `./tools/run-tests.sh` son satırı:
+  - `bots/config/skill_mage_k_single.spec` + `.txt` (yeni): §5.1 tek hedefli, uçmayan/uçan, tek/çift tipli 8 cast.
+  - `bots/config/skill_mage_k_area.spec` + `.txt` (yeni): §5.2 hafif alan 4 cast.
+  - `bots/config/skill_mage_k_area_heavy.spec` + `.txt` (yeni): §5.3 Supernova + meteor Fall 2 cast.
+  - `plans/F4-48-…md`: `Durum` satırı `UYGULANIYOR` + bu Uygulayıcı Raporu.
+  - Üretilmiş `.txt` dosyaları `tools/skill-script-gen.py` ile spec'lerden üretildi, elle düzenlenmedi.
+- Derleme sonucu (`tools/build.sh Release` son satırlar) ve `./tools/run-tests.sh` son satırı:
   ```
-  …
+  BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  251 tests, 0 failed
   ```
-- Kabul kriterleri öz-değerlendirme (K1–K8; K9/K10 Claude'un işi): K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme (K1–K8; K9/K10 Claude'un işi):
+  - K1 ✔: üç spec için `--out /tmp/<ad>.txt` çıkış 0 ve `diff` boş (üçü de EMPTY).
+  - K2 ✔: `--check` üçü için sırasıyla `ok: 9 steps, 402 bytes, 11 lines, last offset 71420 ms`, `ok: 5 steps, 256 bytes, 7 lines, last offset 42260 ms`, `ok: 3 steps, 192 bytes, 5 lines, last offset 37100 ms`.
+  - K3 ✔: `cast BotMF_K` = 8/4/2, `cast` toplamı aynı, `list` = 1, yasak verb = 0, ilk ofset = 0; hedef alanı yalnızca `BotWP_E`/`BotWG_E` (awk süzgeci boş çıktı).
+  - K4 ✔: kimlikler ve sıra planla birebir (`110503 110539 110551 110570 110651 110515 110527 110615` / `110533 110633 110545 110645` / `110560 110571`); yasak kimlikler 0/0/0.
+  - K5 ✔: ofset farkları `2720 5800 6800 22800 6800 10100 10100 6300` / `4940 3220 16800 17300` / `16800 20300`.
+  - K6 ✔: `skill-script-gen.py --selftest` 23/0, `skill-check.py --selftest` 48/0; iki araç değişmedi.
+  - K7 ✔: `build.sh Release` hatasız (yeni uyarı yok), `run-tests.sh` `251 tests, 0 failed`.
+  - K8 ✔: `git diff --stat gece/2026-10-02...bot/F4-48` yalnızca §4'teki 6 veri dosyası + plan dosyası; `tools`/`BotCore`/`GameServer`/`shared`/`AIServer`/`Tests`/`docs`/`db` yok.
+- Plandan sapmalar ve gerekçeleri: Yok. §5'teki spec'ler aynen yazıldı; `--margin-ms`/`--start-gap-ms` değiştirilmedi; üretilen çıktılar plan bekleyişiyle birebir.
+- Açık sorular: Yok.
 - `git diff --stat gece/2026-10-02...bot/F4-48` (gerçek çıktı):
   ```
-  …
+   bots/config/skill_mage_k_area.spec                     | 13 +++++++++++++
+   bots/config/skill_mage_k_area.txt                      |  7 +++++++
+   bots/config/skill_mage_k_area_heavy.spec               |  8 ++++++++
+   bots/config/skill_mage_k_area_heavy.txt                |  5 +++++
+   bots/config/skill_mage_k_single.spec                   | 18 ++++++++++++++++++
+   bots/config/skill_mage_k_single.txt                    | 11 +++++++++++
+   .../F4-48-skill-betik-mage-karus-tek-hedef-ve-alan.md  |  2 +-
+   7 files changed, 63 insertions(+), 1 deletion(-)
   ```
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-48` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-48` @ `5d826c6` (kod/veri commit'i `994d148`; çalışma ağacı temiz; gece modu, `AUTO_LOOP=1`)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | komut çıktısı |
+| K1 | ✔ | Üç spec için `skill-script-gen.py ... --out /tmp/<ad>.txt` rc=0, `diff /tmp/<ad>.txt bots/config/<ad>.txt` boş (3/3). Ayrıca spec dosyaları plan §5'teki kod bloklarıyla bayt bayt aynı (Python karşılaştırması: `True` ×3). |
+| K2 | ✔ | `--check` rc=0 ×3: `ok: 9 steps, 402 bytes, 11 lines, last offset 71420 ms` / `ok: 5 steps, 256 bytes, 7 lines, last offset 42260 ms` / `ok: 3 steps, 192 bytes, 5 lines, last offset 37100 ms`. |
+| K3 | ✔ | `cast BotMF_K` = 8/4/2, `cast` toplamı aynı, `list` = 1, yasak verb = 0, ilk ofset 0; `awk '$5!="BotWP_E" && $5!="BotWG_E"'` çıktısı boş. |
+| K4 | ✔ | Kimlik sırası `110503 110539 110551 110570 110651 110515 110527 110615` / `110533 110633 110545 110645` / `110560 110571`; yasak kimlik `grep -c` = 0 ×3. |
+| K5 | ✔ | Ofset farkları `2720 5800 6800 22800 6800 10100 10100 6300` / `4940 3220 16800 17300` / `16800 20300`. |
+| K6 | ✔ | `skill-script-gen.py --selftest` `23 checks, 0 failed`; `skill-check.py --selftest` `48 checks, 0 failed`; `git diff --stat ... -- tools` boş. |
+| K7 | ✔ | `./tools/build.sh Release` rc=0 (bağımsız çalıştırıldı; log'da `warning`/`error` satırı 0); `./tools/run-tests.sh` `251 tests, 0 failed`. |
+| K8 | ✔ | Diff yalnızca 6 veri dosyası + plan dosyası (7 dosya); `tools`/`BotCore`/`GameServer`/`shared`/`AIServer`/`Tests`/`docs`/`db` yok; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişti. |
+| K9 | — | Sabaha ertelendi (Claude çalışma zamanı kurulumu: sunucu + 3 bot + yerleştirme; gece modunda yapılmadı, kapsam dışı). |
+| K10 | — | Sabaha ertelendi (K9'a bağlı; betik koşusu ve `skill-check.py` raporu). |
 
+- Diğer denetimler: commit mesajları `[F4-48] ...`; merge/rebase/force izi yok; `build/` commit edilmemiş; 6 dosya ASCII, CR yok (LF); spec yorumları İngilizce; betikte `move/pot/raw/regene` yok (konumlandırma ve HP tazeleme K9'da Claude'da); bot sistemi/mekanik koduna dokunulmadı; yalnızca `MAGIC` okunur (araç zaten böyle). Uygulayıcı raporundaki iddialar (komut çıktıları, diff stat, derleme) yeniden çalıştırmayla uyuşuyor; rapordaki derleme çıktısı kısaltılmış yollarla yapıştırılmış (önemsiz).
 - Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+  1. Engelleyici bulgu yok.
+  2. Not: K9/K10 (çalışma zamanı) bekliyor. Alan betiklerinde iki warrior birbirinden ≤ 6 m, `BotMF_K`'dan < 10 m olmalı; her betikten önce `pot ... 389015000 8` ile HP tazelenir; Ice burst (uçan alan `{3, 4}`) ilk kez koşulacak, `unsupported_skill`/`bad_*` çıkarsa kod diliminin girdisidir. `meteor Fall`/`incineration` (MP 600/390) için mage azami MP'si ölçülmedi `[A]`.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
