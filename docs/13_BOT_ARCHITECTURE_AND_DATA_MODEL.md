@@ -120,6 +120,7 @@ Bot sistemi varsayılan **kapalıdır**; `ENABLED=0` iken aşağıdaki hiçbir a
 | `RESPAWN_CYCLES` | `0` | 0–100000 | F2-05 | Çıkıştan sonra ek yeniden spawn sayısı (soak; ≠ 0 iken `/bot` komutları reddedilir) |
 | `TELEMETRY` | `summary` | `off\|summary\|decisions\|trace` | F3-01 | Telemetri seviyesi (`docs/16` §3.3, ADR-0007) |
 | `TELEMETRY_SELFTEST` | `0` | `0/1` | F3-01 | Yazıcı/taşma öz-sınaması |
+| `NAV` | `0` | `0/1` | F5-59 | `ENABLED=1` iken zone 71 navigasyon ızgarasını açılışta sunucunun bellekteki SMD verisinden kurar (`NavService`); `0` iken hiçbir şey yapılmaz ve yazılmaz |
 
 ## 5. Veri modeli
 
