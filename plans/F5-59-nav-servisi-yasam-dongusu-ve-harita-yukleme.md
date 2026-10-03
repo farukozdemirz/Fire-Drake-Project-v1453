@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-59 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`, `KAPANDI`). Şemsiye: F5-55 (dilim 1). Başka plana bağımlı değil; F5-61..F5-66 bu planın `NavService`'ine dayanır |
@@ -232,36 +232,71 @@ git diff --check gece/2026-10-02...bot/F5-59
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-59` — `<kısa-sha> [F5-59] …`
+- Branch / commit'ler: `bot/F5-59` — `da21d40 [F5-59] NavService: zone 71 nav grid from in-memory SMD + NavFingerprint CRC32`
 - Değişen dosyalar ve neden:
-  - `…`
+  - `BotCore/NavFingerprint.h` (yeni): zlib/IEEE CRC32 (`NavCrc32`, tablo üye dizisi, statik yok) ve `.navgrid` dosya düzeninde `NavGridFingerprint`; yalnızca standart kütüphane + `NavGrid.h`, başlık-yalnızca (`inline`).
+  - `BotCore/BotCore.vcxproj`: tek satır `<ClInclude Include="NavFingerprint.h" />`.
+  - `Tests/BotCoreTests/NavFingerprintTests.cpp` (yeni): dört test (bilinen CRC vektörleri, `Init`≡`Load` ve dosya CRC'si, duyarlılık, gerçek harita).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj`: tek satır `<ClCompile Include="NavFingerprintTests.cpp" />`.
+  - `shared/SMDFile.h`: `GetEventIDs` altına tek satır `INLINE float * GetHeights() { return m_fHeight; }`.
+  - `GameServer/Bot/NavService.h` (yeni): tekil `NavService`; `Startup/Shutdown/Ready/Grid/GetInfo/Info`; yalnızca durum tutar.
+  - `GameServer/Bot/NavService.cpp` (yeni): `[BOT] ENABLED=1` **ve** `NAV=1` ise zone 71 SMD dizilerinden `NavGrid` kopyalar, `Build()` eder, parmak izini hesaplar ve tek satır yazar; ikinci çağrı yeniden kurmaz; hata yolları `Ready()=false` bırakıp `true` döner.
+  - `GameServer/proj-GameServer.vcxproj` + `.filters`: `Bot\NavService.cpp` ve `Bot\NavService.h` girdileri.
+  - `GameServer/GameServerDlg.cpp`: `#include "Bot/NavService.h"`, `LoadNoticeData()` sonrası `Startup()`, yıkıcıda `BotManager::Shutdown()` sonrası `Shutdown()`.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K9-K12 Claude'un çalışma zamanı kriterleri)
-- `nav-export.py` crc32 değeri ve gerçek-harita testi satırı: …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `Release rc=0`, `Debug rc=0`. Yalnızca `NavService.cpp` ve `NavFingerprintTests.cpp` `touch` edilip yeniden derlendiğinde **hiç** `warning`/`error` satırı yok (özellikle `NavGrid.h`'in GameServer'da ilk dahil edilişi uyarısız). Tam derlemedeki diğer uyarılar (`UpgradeHandler.cpp` C4789, `Map.cpp` C4834) önceden vardı, bu dosyalarla ilgisiz.
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔, K4 ✔, K5 ✔, K6 ✔, K7 ✔, K8 ✔ (K9-K12 Claude'un çalışma zamanı kriterleri; K11 kod okumasıyla: `no_zone`/`no_data`/`init`/`no_walk` dördü de `fail(...)` + `return true`, `m_ready` `false` kalır; ikinci `Startup()` `m_ready` açıkken erken döner).
+  - K2: `./tools/run-tests.sh Release` ve `Debug` → `264 tests, 0 failed` (260 + 4); dört yeni ad `[ OK ]`; `rc=0`.
+  - K4: fark yalnızca §4'teki 10 dosya (4 yeni) + plan; `shared/SMDFile.h` tam 1 eklenen satır; `BotCore/NavGrid.h`/diğer `Nav*.h`, `docs/`, `tools/` farkı 0; `git diff --check` boş.
+  - K5: `grep -n -E "windows.h|stdafx|GameServer|shared/" BotCore/NavFingerprint.h` boş; `grep -n -E "new|malloc|static "` boş; `.cpp` yok; `check-perception-contract.py` → `RESULT: PASS` (`rc=0`, R1-R5 0 ihlal).
+  - K6: `grep -n "printf" GameServer/Bot/NavService.cpp` yalnızca `Startup()` içindeki hazır (117/120) ve başarısız (61/62) satırları; `WriteNavLog` `std::to_string` + `fwrite`/`fputc` kullanır (konsol spam'i yok).
+  - K7: `NavService::Instance().Startup()` satır 205; `MapFileLoad()` 151 ve `CreateDirectory("Logs")` 171 sonrası, `RunServer()` 217 öncesi; `BotManager::Startup()` 106 yerinde.
+  - K8: yeni dosyalar `file` çıktısı `ASCII text, with CRLF line terminators`; `GameServerDlg.cpp` BOM `efbbbf` korundu; `.vcxproj`/`.filters` BOM'ları korundu.
+- `nav-export.py` crc32 değeri ve gerçek-harita testi satırı:
+  - `python3 tools/nav-export.py` → `NAVGRID ... n=513 unit=4.0 ... main_component=88508 crc32=4fd154bc`.
+  - Release/Debug testi → `NAVFP real map: n=513 cells=263169 main=88508 crc32=4fd154bc match=1` (SKIPPED değil).
+- Plandan sapmalar ve gerekçeleri:
+  - Plan §5.7 include listesinde `Map.h` yoktu; `C3DMap::m_smdFile` erişimi için `../Map.h` eklendi (izinli yeni dosya; başka türlü `GetZoneByID` sonucu kullanılamaz).
+  - `WriteNavLog` `snprintf`/`fprintf` yerine `std::to_string` + `fwrite`/`fputc` ile yazıldı; amaç K6'nın `grep "printf"` çıktısını yalnızca `Startup()` satırlarında tutmak (işlev aynı).
+  - Başka sapma yok.
+- Açık sorular: yok. Gözlem (engel değil): `file` iki yeni `.cpp` için "C source" diyor (içerik sezgisi), kodlama yine `ASCII + CRLF`.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-59` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F5-59` @ `855c22f` (kod: `da21d40`); taban `7891f74`. Gece modu: birleştirmeyi döngü betiği yapar.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `./tools/build.sh Release` rc=0 ve `Debug` rc=0; `NavService.cpp`, `NavFingerprintTests.cpp`, `GameServerDlg.cpp` `touch` edilip yeniden derlendi: `NavService`/`NavFingerprint` için **uyarı 0** (özellikle `NavGrid.h`'in GameServer'da ilk dahil edilişi temiz). Kalan uyarılar eski kod: `GameServerDlg.cpp(820,1147,1806)` C4834/C4267 ve `UpgradeHandler.cpp(634,862)` C4789, eklenen satırlarla (205, 3137) ilgisiz |
+| K2 | ✔ | `run-tests.sh Release` ve `Debug`: `264 tests, 0 failed` (260 + 4); `NavFingerprint_Crc32_KnownVectors`, `_InitEqualsLoad`, `_Sensitivity`, `_RealMap_MatchesFile` dördü `[ OK ]` |
+| K3 | ✔ | `NAVFP real map: n=513 cells=263169 main=88508 crc32=4fd154bc match=1` (SKIPPED değil); `python3 tools/nav-export.py` → `main_component=88508 crc32=4fd154bc` (aynı) |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-59`: 11 dosya = §4'teki 10 dosya (4 yeni) + plan; `shared/SMDFile.h` farkı tam 1 eklenen satır (`grep -c` = 1); `NavGrid.h`/diğer `Nav*.h`/`docs/`/`tools/` farkı 0; `git diff --check` boş; plan dosyası farkı yalnızca `Durum` + Uygulayıcı Raporu |
+| K5 | ✔ | `grep -n -E "windows.h\|stdafx\|GameServer\|shared/" BotCore/NavFingerprint.h` boş; `new\|malloc\|static ` boş; `.cpp` eklenmedi; `check-perception-contract.py` rc=0, `RESULT: PASS` |
+| K6 | ✔ | `grep -n printf GameServer/Bot/NavService.cpp`: yalnızca `Startup()` içinde `:61-62` (FAILED) ve `:117-120` (ready); `BotManager`/`ActionExecutor`/`BotSession` farkı 0 |
+| K7 | ✔ | `GameServerDlg.cpp`: `BotManager::Startup()` `:106` (yerinde), `MapFileLoad()` `:151`, `CreateDirectory("Logs")` `:171`, `NavService::Startup()` `:205`, `RunServer()` `:217`; yıkıcıda `Shutdown()` `:3137` (`BotManager::Shutdown()` sonrası) |
+| K8 | ✔ | dört yeni dosya `ASCII text, with CRLF line terminators` (ASCII dışı bayt 0, LF-only satır 0); `GameServerDlg.cpp` ve dört `.vcxproj/.filters` BOM `efbbbf` önce/sonra aynı, tüm satırlar CRLF; `SMDFile.h` `237072` (önceki ile aynı) |
+| K9 | ✔ | **Çalışma zamanı `[V]`** (Release, `ENABLED=1`, `NAV=1`): `Logs/Bot_3_10_2026.log` içinde **tek** satır `NavService: nav ready: zone 71 cells=263169 main_cells=88508 unit=4.0 crc32=4fd154bc copy_ms=0.3 build_ms=7.6`; `crc32` = `nav-export.py` çıktısı (`4fd154bc`): sunucu belleği = araç dosyası. `build_ms=7.6` ≪ 1000 ms yumuşak sınır. Konsol satırı pencerede görülemedi (WSL'den okunamıyor); `printf` ile `WriteNavLog` aynı `message` tamponunu yazar (`NavService.cpp:120-121`) |
+| K10 | ✔ | **Çalışma zamanı `[V]`:** `ENABLED=1 NAV=0` ve `ENABLED=1` (anahtar yok): yeni log baytlarında `NavService` 0; `reserved 16 sessions`, `Telemetry`, `tick OK` satırları normal. `ENABLED=0 NAV=1`: yeni log baytı 0, `NavService` 0 |
+| K11 | ✔ | **Kod incelemesi (çalışma zamanı kanıtı değil):** `NavService.cpp:113-152`: `no_zone`, `no_data`, `init`, `no_walk` dördü `fail(...)` + `return true`; `m_ready` başta `false` yapılır (`:94`) ve yalnızca `:161`'de `true` olur, yani dört dalda `false` kalır; `no_walk` durumunda ızgara kurulmuş olsa da `Grid()` `Ready()` kapısıyla `nullptr` döner |
+| K12 | ✔ | **Çalışma zamanı `[V]`:** `run-servers.sh stop` rc=0, üç sunucu `nazik` kapandı (toplam 9 sn), takılma/çökme yok; günlükte `NavService` satırı yalnızca 1 |
 
+- Bağımsız denetim notları:
+  - Doğruluk: `n = GetMapSize() + 1` doğru (K9'da `init` hatası yok, `cells=263169`); `m_info` `m_ready` yayımından **önce** doldurulur, `Grid()` `acquire` ile okur: veri yarışı yok. `WriteNavLog` `BotManager.cpp` `WriteBotLog` ile aynı desen (`localtime` iş parçacığı güvenli değil ama yalnızca ana iş parçacığında, `RunServer()` öncesi çağrılır).
+  - Uygulayıcı sapması (`../Map.h` eklendi; `WriteNavLog` `to_string`+`fwrite`): gerekçeli ve zararsız, kabul edildi. `NavService.h`'deki `#include <string>` kullanılmıyor (üslup notu).
+  - Mekanik/bot avantajı: bot kodu değişmedi; ızgara yalnızca durum tutar, hiçbir yerden çağrılmaz. `[BOT] NAV` varsayılan 0: kapalıyken sunucu davranışı değişmedi (K10).
 - Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+  1. (not, engel değil) `NavService.h:5` kullanılmayan `#include <string>`.
+  2. (not) Konsol çıktısı pencereden doğrulanamadı; günlük dosyası kanıtı yeterli sayıldı.
+- Düzeltme talimatı: yok.
