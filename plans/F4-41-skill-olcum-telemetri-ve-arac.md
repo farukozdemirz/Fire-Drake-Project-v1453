@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
@@ -202,20 +202,37 @@ git diff --stat gece/2026-10-02...bot/F4-41
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-41` @ `<sha>`
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02...bot/F4-41` @ `3da0d20` (kod commit'i `1b72056`)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ (araç kendi selftest'inde) | `python3 tools/skill-check.py --selftest` → `selftest: 25 checks, 0 failed`, çıkış 0; 14 adlı durumun hepsi var (`tools/skill-check.py:578-746`). Ancak sqlcmd yolu selftest'te hiç sınanmıyor (bkz. Bulgu 1). |
+| K2 | ✔ | `./tools/build.sh Release` rc=0, `warning C` sayısı 0; `./tools/build.sh Debug` rc=0, uyarı 0. |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-41`: `ActionExecutor.cpp` (+11/−4), `tools/skill-check.py` (yeni, 807), plan dosyası. `ActionExecutor.cpp` farkı yalnızca §5.2 ekleri: imza `:54-55`, `skill` alanı `:66-68`, `RejectCast` çağrısı `:579`, `"mp"` `:604`, `"mp_after"` `:671`. Karar/guard/eşleme satırı değişmedi. |
+| K4 | ✔ | `"mp"` eklemesi `:604` (`\"mp\"` biçiminde olduğundan düz `"mp"` grep'i yakalamaz; uygulayıcının notu doğru), `mp_after` `:671`, `RejectCast` `s->m_castSkillId` geçiriyor (`:579`; `m_castSkillId` `BeginCast`'te `:821`'de, `RejectCast` çağrılarından `:968/:1013/:1054-1055` önce atanıyor). Dosyadaki tek `"Cast"` tipli çağrı bu; diğer 15 `EmitFairnessReject` çağrısı argümansız (`:102,:202,:421,:1151,:1265,:1590,:1729,:1884,:2040,:2064,:2348,:2372,:2614,:2815,:2994,:3103`). |
+| K5 | ✔ | `python3 tools/check-perception-contract.py` çıkış 0, `RESULT: PASS`. |
+| K6 | ✔ | `./tools/run-tests.sh` → `251 tests, 0 failed`. |
+| K7 | ertelendi | Çalışma zamanı + gerçek `MAGIC` ile araç çalıştırması: araç düzeltilene kadar yapılamaz (Bulgu 1). Düzeltme sonrası Tur 2'de koşulur. |
+| K8 | ertelendi | Çalışma zamanı sınaması Tur 2'de (sunucu, bu turda açılmadı). |
+
+Ek sınamalar (denetçi): `MAGIC` tablosundan alınan gerçek bir skill satırı (`--magic` dosyası) + gerçek telemetri biçiminde sentetik JSONL ile araç doğru hüküm üretti (`mp_exp 180`, `mp_delta_med 180`, `recast_min_gap_ms 25100 ≥ 25000-50`, PASS, `--strict` çıkış 0); var olmayan yol çıkış 2; PATH'siz çağrı çıkış 2. **Varsayılan sqlcmd yolu gerçek veride çöktü** (aşağıda).
 
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **[Engelleyici] `tools/skill-check.py:119` — varsayılan (sqlcmd) yolu gerçek `MAGIC` verisinde `UnicodeDecodeError` ile çöküyor.** `subprocess.run(command, capture_output=True, text=True)` çıktıyı UTF-8 olarak çözer; `MAGIC` tablosunun bazı `EnName` değerlerinde UTF-8 olmayan bayt var (örn. bayt `0xa8`, çıktı konumu 41926). Sonuç: `--magic` verilmeden çalıştırılan her çağrı traceback ile çıkar, çıkış kodu 1 (planın "sqlcmd hatasında stderr'e yaz, çıkış kodu 2" kuralını ve `--strict` ile "FAIL" çıkış kodunu karıştırma riskini ihlal eder). K7 ("`tools/skill-check.py` o dosya ve gerçek `MAGIC` ile çalışır") tam bu yola dayanır. `--selftest` yalnızca `--magic` dosyasını denediği için hatayı yakalamadı. Denetçi doğruladı: baytları alıp `decode("utf-8", errors="replace")` ile çözünce 1839 satır sorunsuz ayrışıyor.
+  2. [Not, engelleyici değil] `tools/skill-check.py:273-274` — `as_int(..., 0)` hiçbir zaman `None` döndürmez, `if skill is None` dalı ölü kod.
+  3. [Not] `tools/skill-check.py:221-232` — `abandoned` kapatılan kaydın `pending` girdisi silinmiyor; ona ait geç gelen bir `ACTION_RESULT` kaydı `completed`'e `abandoned` yerine sonuçla ekleyebilir (nadir; şu an sayaçları yanıltmaz çünkü `abandoned` kayıt hiç `completed`'e girmez, ama geç sonuç gelirse girer). Düzeltme zorunlu değil.
+  4. [Not] Uygulayıcının açık sorusu (uçan skill'lerde MP iki kez düşer, MEC-MAG-12, `mp_verdict` yanlış `FAIL` verebilir): plan §5.3 formülü bilerek özel-durumlamadı; karar F4-42'de (koşu betiği uçan skill seçtiğinde) verilecek. Bu planı engellemez; STATUS'a not düşüldü.
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F4-41-skill-olcum-telemetri-ve-arac.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/skill-check.py `load_magic_sql` (satır ~112-125): `subprocess.run(..., capture_output=True, text=True)` yerine baytları al (`text=True` kaldır) ve `result.stdout.decode("utf-8", errors="replace")` ile çöz; `result.stderr` mesajını da `decode("utf-8", errors="replace")` ile çöz (hata mesajında kullanılıyor). Ayrıştırma (`replace("\r", "").split("\n")` -> `parse_magic_lines`) aynı kalır. Gerçek MAGIC çıktısında UTF-8 olmayan baytlar bulunur; araç çökmemeli, ilgili `EnName` değerinde yer değiştirme karakteri olabilir.
+2. Aynı fonksiyonda `parse_magic_lines` içinde bozuk bir satır `InputError` atıyor; sqlcmd çıktısında beklenmeyen satır (ör. uyarı/boş) varsa araç çökmesin, main() `InputError`'ı zaten çıkış 2 ile yakalıyor: bu davranışı bozma.
+3. `--selftest`'e yeni adlı kontrol ekle `sqlcmd_non_utf8`: `load_magic_sql`'in çağırdığı alt süreci taklit eden (sahte sqlcmd yürütülebilir betiği, ör. geçici klasörde `#!/bin/sh` ile `printf '105660|sacrifice\xa8|180|0|250|67|3|0\n'` yazdıran dosya; chmod +x) ile `load_magic_sql(sahte_yol, "s", "d")` çağır ve sonucun `{105660: ...}` içerdiğini ve çökmediğini doğrula. Sahte betik yürütülemiyorsa (Windows) kontrolü atla ama yine de sayılan kontrol olarak "skipped" adıyla say. Selftest toplam kontrol sayısı artar; son satır `selftest: N checks, 0 failed` biçimi aynı kalır.
+4. Ölü kodu temizle: `analyze` içinde `FAIRNESS_REJECT` dalındaki `if skill is None: skill = 0` iki satırını sil (`as_int(..., 0)` zaten None döndürmez).
+5. Doğrulama: `python3 tools/skill-check.py --selftest` (çıkış 0), `python3 tools/skill-check.py <herhangi bir .jsonl> ` (--magic VERMEDEN) gerçek sqlcmd ile çökmeden çalışsın ve MAGIC satırlarını okusun (yalnızca MAGIC tablosu), `python3 tools/skill-check.py` çıkışları: PATH yok -> 2. Yalnızca `tools/skill-check.py` ve bu plan dosyası değişir; `ActionExecutor.cpp`'e dokunma.
 ```
