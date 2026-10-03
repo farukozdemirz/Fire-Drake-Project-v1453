@@ -561,7 +561,8 @@ TEST_CASE("NavPath_RealMap_Queries")
 
 	finder.Find(grid, a, b, params, r);
 	CHECK(r.status == BotCore::NavPathStatus::Found);
-	CHECK(std::fabs(r.cost - 660.617f) < 0.5f);
+	// ADR-0024 (maxSlope 0.45): the arena route is a little longer (was 660.617 m).
+	CHECK(std::fabs(r.cost - 670.961f) < 0.5f);
 	CHECK(r.expanded <= 20000);
 	CHECK(PathIsValid(grid, r, a, b));
 	std::printf("NAVPATH arena A->B: cost=%.3f expanded=%d cells=%d\n", r.cost, r.expanded, (int)r.cells.size());
@@ -580,7 +581,9 @@ TEST_CASE("NavPath_RealMap_Queries")
 	big.maxNodes = 200000;
 	finder.Find(grid, a, pocket, big, r);
 	CHECK(r.status == BotCore::NavPathStatus::NoPath);
-	CHECK(r.expanded > 88000);
+	// With the huge node budget A* exhausts the whole EdgeOpen main component (87513 cells after
+	// ADR-0024; was 88279) before reporting NoPath.
+	CHECK(r.expanded >= 87513);
 	CHECK(r.expanded <= grid.MainComponentCells());
 
 	finder.Find(grid, a, pocket, params, r);

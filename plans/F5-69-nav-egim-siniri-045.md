@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/12` §2/§3; kapı G5) |
 | Branch | `bot/F5-69 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`, `KAPANDI`), F5-59 (`NavService` aynı `NavParams` varsayılanını kullanır, `KAPANDI`) |
@@ -188,6 +188,77 @@ Karar (planlayıcı, plan "Tur 1 - Claude kararı" bölümü): 0,45 kalır; test
 7. Ek kontrol: git grep -n "0\.625" BotCore Tests çıktısında yalnızca sabitleme valfinin yorumları/atamaları ve NavStuckTests.cpp:458 hız yorumu kalsın.
 8. ./tools/build.sh Release ve Debug (rc=0, değişen dosyalarda yeni uyarı yok), ./tools/run-tests.sh Release ve Debug (0 failed; iki yeni NavGrid testi [ OK ]), ./tools/nav-regress.sh --skip-timing (rc=0, checks=27 pass=27), git diff --check boş; dosyalar ASCII + CRLF. K1-K6 öz-değerlendirmesini güncelle. Raporun "Tur 2" bölümünde: (i) her güncellenen testin eski/yeni değerleri, (ii) varsa SABİTLENDİ listesi, (iii) NAVSLOPE satırı, (iv) NavBudget_RealMap_Load üç koşunun worst_B_p99 değerleri.
 ```
+
+### Tur 2
+
+**Durum:** UYGULANDI (düzeltme talimatı tamam; 0,45 kalır, 8 kırık test 0,45 referansına taşındı, 1 test sabitlendi).
+
+**Branch / commit:** `bot/F5-69` (taban `gece/2026-10-02` @ `9053844`); Tur 1: `05e9e45` (kod+test) ve `f1bf4dd`/`e87c801` (rapor). Tur 2 bu raporda yeni commit ile.
+
+**Yapılanlar:** Düzeltme talimatındaki 8 madde uygulandı. `BotCore/NavGrid.h` 0,45 satırı dışında üretim kodu değişmedi. Kırılan sekiz testin tamamı ya gerçek değerlere çekildi ya da (tek test) hedefi korunarak sabitlendi; hiçbir eşik/CHECK silinmedi veya gevşetilmedi.
+
+**(i) Güncellenen testlerin eski -> yeni değerleri** (ölçüm `./tools/run-tests.sh Release --no-build` çıktısından; 0,45 daha sıkı eğim => daha uzun rota ve daha çok cep):
+
+| Test / CHECK | Eski | Yeni | Not |
+|---|---|---|---|
+| `NavReach_RealMap` ComponentCount | 143 | 401 | 995 cep, çoğu küçük |
+| `NavReach_RealMap` LargestComponent cells | 88279 | 87513 | |
+| `NavReach_RealMap` pockets | 229 | 995 | |
+| `NavReach_RealMap` top-12 bileşen boyutu | 88279,15,11,10,9,6,6,5,4,3,3,3 | 87513,93,79,31,23,15,15,13,13,13,12,11 | daha çok orta boy cep |
+| `NavReach_RealMap` p (173,211) bileşen hücresi | 15 | 5 | p hâlâ ana bileşene bağlı değil |
+| `NavReach_RealMap` p bileşen kimliği | 51 | 137 | |
+| `NavReach_RealMap` cepteki bot A* expanded | 15 | 5 | |
+| `NavReach_RealMap` mage ringConnected | 162 | 146 | ringCells 168 aynı |
+| `NavReach_RealMap` detour çifti | s(218,206)-g(221,211), path 242.108, straight 23.324 | s(211,212)-g(221,212), path 276.451, straight 40.000 | ikisi de ana bileşende ve bağlı; eski çift artık farklı bileşende |
+| `NavReach_Perf` örnekleme | tüm Walk (88508) | ana bileşen filtresi (aynı `Rng` akışı) | mage unreachable 51 -> 37, exact 34 -> 14; `<= %5` korundu |
+| `NavPath_RealMap_Queries` arena A->B cost | 660.617 | 670.961 | rota biraz uzadı |
+| `NavPath_RealMap_Queries` cep expanded | > 88000 | >= 87513 | A* tüm EdgeOpen ana bileşenini (87513) tarıyor; gerçek değer yazıldı |
+| `NavDanger_RealMap` arena düz/f0/k0 cost | 660.617 | 670.961 | |
+| `NavDanger_RealMap` arena field cost / length | 689.103 / 676.617 | 704.831 / 687.931 | |
+| `NavDanger_RealMap` startInside cost / len / forb | 260.137 / 257.137 / 19 | 277.108 / 274.108 / 21 | |
+| `NavDanger_RealMap` s->a düz cost | 253.824 | 270.794 | |
+| `NavDanger_RealMap` cross çifti | ca(371,248)-cb(334,308): plain 310.676 (forb 21), field 315.362 (forb 0) | ca(360,239)-cb(323,297): plain 335.078 (forb 24), field 343.078 (forb 0) | her iki yol ana bileşende; düz yol halkayı kesiyor, alan yolu dolanıyor; `crossField > crossPlain` korundu |
+| `NavRetreat_RealMap` soloA score / len / cand=exp | 2.13283 / 105.657 / 2799 | 2.11074 / 108.971 / 2733 | |
+| `NavRetreat_RealMap` partyA cand=exp | 245 | 239 | |
+| `NavRetreat_RealMap` meleeB cand=exp | 2783 | 2697 | |
+| `NavRetreat_RealMap` ringC cell / score / len / cand / exp | (320,271) / -0.09771 / 89.657 / 1247 / 2424 | (320,270) / -0.10876 / 91.314 / 806 / 1959 | |
+| `NavRetreat_RealMap` arenaD cand=exp | 2089 | 1954 | |
+| `NavStuck_SideStep_RealMap` sidestep_h / sidestep_n / clr2_found | 86017 / 86968 / 66003 | 85208 / 86512 / 65739 | clr2_cells 66265 aynı |
+| `NavDanger_RealMap` printf sabiti (CHECK değil) | 660.617f | 670.961f | yanıltıcı çıktı düzeltildi |
+
+**(ii) SABİTLENDİ listesi (sabitleme valfi):**
+
+- **SABİTLENDİ: `NavBudget_Deferred_Chase_Sim`**, neden: hedef/bot/hareket örneklemesi ana bileşene sınırlandı ve `followStaleTicks` 87/153'ten 0'a indi, ancak mode B'de **deterministik `followStaleTicks = 8`** kaldı; neden örnekleme değil, 0,45'te başarısız bir plan yenilemesinin eski (bayat) planı bırakıp sözleşmenin onu izlemesi. Amacı koruyup 3 denemede yeşile gelmediği için testin `NavParams::maxSlope` değeri `0.625f` ile açıkça kuruldu (`// pinned to the pre-ADR-0024 slope; re-baseline in a follow-up plan`). 0,45 ölçümü (ham): mode B `followStaleTicks=8, stale_hold_ticks=8, without_plan_pct=6.5` (bir koşuda bir bot hiç plan alamadı, `noPlanPerBot=1200`); sabitli 0,625'te `followStaleTicks=0, stale_hold_ticks=0, without_plan_pct=0.1`. Eşik/mantık değişmedi.
+- Sabitlenen test sayısı: **1/3** (sınır içinde).
+
+**(iii) NAVSLOPE satırı:**
+
+`NAVSLOPE real map: main=88508 reach=85508 landmarks=5/5` (0,45; ilan edilen 85000-87000 bandı ve §3 %96-%97 bandı içinde; iki yeni NavGrid testi `[ OK ]`).
+
+**(iv) `NavBudget_RealMap_Load` üç koşunun `worst_B_p99` değerleri** (0,45 + ana bileşen örneklemesi): **1.608 / 1.399 / 1.347** (üçü de <= 4.5; önceki 0,45 ölçümü 4.682-4.879 idi çünkü cep hedefleri pahalı `NoPath` aramaları doğuruyordu). Sabitleme gerekmedi.
+
+**Değişen dosyalar (Tur 2):** `Tests/BotCoreTests/NavReachTests.cpp`, `NavPathTests.cpp`, `NavDangerTests.cpp`, `NavRetreatTests.cpp`, `NavStuckTests.cpp`, `NavBudgetTests.cpp`. `BotCore/NavGrid.h` yalnızca 0,45 satırı/yorum (Tur 1'den). Üretim kodu başka satır değişmedi.
+
+**Derleme/test çıktıları (son satırlar):**
+- `./tools/build.sh Release` rc=0; `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok (Debug'de iki C4267 yalnızca eski `GameServerDlg.cpp`).
+- `./tools/run-tests.sh Release`: `276 tests, 0 failed`; `./tools/run-tests.sh Debug`: `276 tests, 0 failed`; `NavGrid_DefaultSlope_045` ve `NavGrid_RealMap_DefaultSlopeConnectivity` `[ OK ]`.
+- `./tools/nav-regress.sh --skip-timing`: rc=0, `checks=27 pass=27 fail=0 warn=0`.
+- `git diff --check` boş; değişen dosyalar ASCII + CRLF.
+- `git grep -n -E "0\.625" BotCore Tests`: yalnızca `NavBudgetTests.cpp:475` sabitleme ataması ve `NavStuckTests.cpp:458` hız yorumu.
+
+**Sapmalar:** Yok. (Tur 1'deki `python3 tools/nav-export.py` gereksizliği ve Debug test koşusunun atlanması Tur 2'de karşılandı.)
+
+**Açık sorular:**
+1. `NavBudget_Deferred_Chase_Sim` sabitlemesi, 0,45'te plan yenilemesi başarısız olduğunda eski planın izlenmesi davranışını test dışında bırakıyor; bu davranışın (bayat planı izlemek) üretimde istenip istenmediği ayrı bir değerlendirme konusu (F5-62 bağlaması). Claude doğrulamada takip planı açabilir.
+2. `NavReach` bileşen yapısının 143 -> 401 olması ve `NavReach_RealMap` cep çiftlerinin her ADR-0024 sonrası yeniden ölçüm gerektirmesi beklenen bir bakım yükü; referans değerler gerçek grid'e sabit yazıldı.
+
+**Kriter öz-değerlendirmesi:**
+- K1 ✔ (Release + Debug rc=0, değişen dosyalarda yeni uyarı yok)
+- K2 ✔ (`run-tests.sh` Release ve Debug: `276 tests, 0 failed`; iki yeni NavGrid testi `[ OK ]`)
+- K3 ✔ (`git diff --stat` yalnızca §4 dosyaları + plan; `BotCore/NavGrid.h` farkı iki anlamlı satır; `GameServer/`, `shared/`, `tools/`, `docs/` farkı 0; `git diff --check` boş)
+- K4 ✔ (`maxSlope = 0.45f`; `git grep 0\.625` yalnızca sabitleme ataması ve hız yorumu)
+- K5 ✔ (`NAVSLOPE real map: main=88508 reach=85508 landmarks=5/5`)
+- K6 ✔ (`nav-regress --skip-timing` rc=0, `checks=27 pass=27`, taban ile aynı)
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 

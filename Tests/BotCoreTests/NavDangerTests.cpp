@@ -1237,24 +1237,25 @@ TEST_CASE("NavDanger_RealMap")
 
 	// Arena A -> B: the route stays away from both rings.
 	{
+		// ADR-0024 (maxSlope 0.45): re-measured on the real grid, 2026-10-03 (was 660.617 m).
 		pf.Find(grid, a, b, sp, out);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 660.617f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 670.961f) <= 0.01f);
 
 		pf.Find(grid, a, b, sp, out, &fElmZero);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 660.617f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 670.961f) <= 0.01f);
 		CHECK_EQ(ForbiddenOnPath(elm, out.cells), 0);
 
 		pf.Find(grid, a, b, sp, out, &fKarZero);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 660.617f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 670.961f) <= 0.01f);
 
 		pf.Find(grid, a, b, sp, out, &fElm);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 689.103f) <= 0.1f);
-		CHECK(std::fabs(out.length - 676.617f) <= 0.1f);
-		CHECK(out.cost > 660.617f);
+		CHECK(std::fabs(out.cost - 704.831f) <= 0.1f);
+		CHECK(std::fabs(out.length - 687.931f) <= 0.1f);
+		CHECK(out.cost > 670.961f);
 		arenaDefault = out.cost;
 	}
 
@@ -1314,9 +1315,9 @@ TEST_CASE("NavDanger_RealMap")
 		startInsideCost = out.cost;
 		startInsideLen = out.length;
 		startInsideForb = ForbiddenOnPath(elm, out.cells);
-		CHECK(std::fabs(out.cost - 260.137f) <= 0.5f);   // F5-51: forbidden prefix penalty 0
-		CHECK(std::fabs(out.length - 257.137f) <= 0.1f);
-		CHECK_EQ(startInsideForb, 19);
+		CHECK(std::fabs(out.cost - 277.108f) <= 0.5f);   // F5-51: forbidden prefix penalty 0
+		CHECK(std::fabs(out.length - 274.108f) <= 0.1f);
+		CHECK_EQ(startInsideForb, 21);
 		CHECK(!ReenteredForbidden(elm, out.cells));
 		bool left = false;
 		bool prefix = true;
@@ -1335,13 +1336,16 @@ TEST_CASE("NavDanger_RealMap")
 		CHECK(prefix);
 
 		pf.Find(grid, s, a, sp, out);
-		CHECK(std::fabs(out.cost - 253.824f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 270.794f) <= 0.01f);
 	}
 
 	// Cross pair: the plain route cuts through the ring, the field route does not.
 	{
-		const BotCore::NavCell ca = Cell(371, 248);
-		const BotCore::NavCell cb = Cell(334, 308);
+		// Re-measured for ADR-0024 (the old 371,248 -> 334,308 pair no longer cuts the ring):
+		// both routes are in the main component; the plain route crosses forbidden cells (24),
+		// the zero-weighted field route detours around them, so it costs more.
+		const BotCore::NavCell ca = Cell(360, 239);
+		const BotCore::NavCell cb = Cell(323, 297);
 		REQUIRE(grid.Walk(ca.x, ca.z));
 		REQUIRE(grid.Walk(cb.x, cb.z));
 		REQUIRE(!elm.Forbidden(ca.x, ca.z));
@@ -1349,13 +1353,13 @@ TEST_CASE("NavDanger_RealMap")
 
 		pf.Find(grid, ca, cb, sp, out);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 310.676f) <= 0.01f);
+		CHECK(std::fabs(out.cost - 335.078f) <= 0.01f);
 		crossPlain = out.cost;
-		CHECK_EQ(ForbiddenOnPath(elm, out.cells), 21);
+		CHECK_EQ(ForbiddenOnPath(elm, out.cells), 24);
 
 		pf.Find(grid, ca, cb, sp, out, &fElmZero);
 		CHECK(out.status == BotCore::NavPathStatus::Found);
-		CHECK(std::fabs(out.cost - 315.362f) <= 0.05f);
+		CHECK(std::fabs(out.cost - 343.078f) <= 0.05f);
 		crossField = out.cost;
 		CHECK_EQ(ForbiddenOnPath(elm, out.cells), 0);
 		CHECK(crossField > crossPlain);
@@ -1447,7 +1451,7 @@ TEST_CASE("NavDanger_RealMap")
 	}
 
 	std::printf("NAVDANGER real: elm_forbid=%d elm_forbid_walk=%d elm_safe=%d elm_safe_walk=%d; arena A->B cost=%.3f default=%.3f; cross plain=%.3f field=%.3f; start-inside cost=%.3f len=%.3f forb=%d; ring sweep pairs=%d found=%d no_path=%d node_limit=%d plain_cross=%d violations=%d\n",
-		elmForbid, elmForbidWalk, elmSafe, elmSafeWalk, 660.617f, arenaDefault, crossPlain, crossField,
+		elmForbid, elmForbidWalk, elmSafe, elmSafeWalk, 670.961f, arenaDefault, crossPlain, crossField,
 		startInsideCost, startInsideLen, startInsideForb, ringPairs, ringFound, ringNoPath, ringNodeLimit, plainCross, violations);
 }
 

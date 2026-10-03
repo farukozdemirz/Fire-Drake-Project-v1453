@@ -751,8 +751,10 @@ TEST_CASE("NavReach_RealMap")
 	const std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 	const double buildMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-	CHECK_EQ(reach.ComponentCount(), 143);
-	CHECK_EQ(reach.ComponentCells(reach.LargestComponent()), 88279);
+	// ADR-0024 (maxSlope 0.45): the steeper edge rule splits the previous main component into
+	// many more small pockets (229 -> 995 cells); re-measured on the real grid, 2026-10-03.
+	CHECK_EQ(reach.ComponentCount(), 401);
+	CHECK_EQ(reach.ComponentCells(reach.LargestComponent()), 87513);
 
 	int total = 0;
 	int pockets = 0;
@@ -764,11 +766,11 @@ TEST_CASE("NavReach_RealMap")
 		sizes.push_back(c);
 	}
 	CHECK_EQ(total, 88508);
-	CHECK_EQ(total - reach.ComponentCells(reach.LargestComponent()), 229);
-	pockets = 229;
+	CHECK_EQ(total - reach.ComponentCells(reach.LargestComponent()), 995);
+	pockets = 995;
 
 	std::sort(sizes.begin(), sizes.end(), std::greater<int>());
-	const int expected[12] = { 88279, 15, 11, 10, 9, 6, 6, 5, 4, 3, 3, 3 };
+	const int expected[12] = { 87513, 93, 79, 31, 23, 15, 15, 13, 13, 13, 12, 11 };
 	REQUIRE((int)sizes.size() >= 12);
 	for (int k = 0; k < 12; ++k)
 		CHECK_EQ(sizes[(size_t)k], expected[k]);
@@ -776,8 +778,11 @@ TEST_CASE("NavReach_RealMap")
 	const BotCore::NavCell a = Cell(318, 222);
 	const BotCore::NavCell b = Cell(186, 276);
 	const BotCore::NavCell p = Cell(173, 211);
-	const BotCore::NavCell s = Cell(218, 206);
-	const BotCore::NavCell g = Cell(221, 211);
+	// Detour pair re-measured for ADR-0024 (the old 218,206 -> 221,211 pair is no longer in the
+	// same component). s and g are both in the main component and connected, but the direct route
+	// is blocked: the A* path (~276 m) is far longer than the 40 m straight line.
+	const BotCore::NavCell s = Cell(211, 212);
+	const BotCore::NavCell g = Cell(221, 212);
 	REQUIRE(grid.Walk(a.x, a.z));
 	REQUIRE(grid.Walk(b.x, b.z));
 	REQUIRE(grid.Walk(p.x, p.z));
@@ -788,8 +793,8 @@ TEST_CASE("NavReach_RealMap")
 	CHECK(reach.Connected(a, b));
 	CHECK(reach.Connected(s, g));
 	CHECK(!reach.Connected(a, p));
-	CHECK_EQ(reach.ComponentCells(reach.ComponentOf(p.x, p.z)), 15);
-	CHECK_EQ(reach.ComponentOf(p.x, p.z), 51);
+	CHECK_EQ(reach.ComponentCells(reach.ComponentOf(p.x, p.z)), 5);
+	CHECK_EQ(reach.ComponentOf(p.x, p.z), 137);
 
 	const float ax = grid.CellCenter(a.x);
 	const float az = grid.CellCenter(a.z);
@@ -828,14 +833,14 @@ TEST_CASE("NavReach_RealMap")
 		CHECK_EQ(j.ringConnected, 0);
 	}
 
-	// Bot in the pocket: A* exhausts the 15-cell pocket.
+	// Bot in the pocket: A* exhausts the 5-cell pocket.
 	{
 		BotCore::NavFollower f;
 		f.ObserveTarget(0, ax, az);
 		CHECK(f.Update(grid, pf, 0, px, pz, 0.0f, fp));
 		REQUIRE(f.Plan().status == BotCore::NavFollowStatus::PathFailed);
 		CHECK(f.Plan().pathStatus == BotCore::NavPathStatus::NoPath);
-		CHECK_EQ(f.Plan().expanded, 15);
+		CHECK_EQ(f.Plan().expanded, 5);
 		const BotCore::NavReachJudgement j = judge.Judge(grid, reach, f.Plan(), fp, up, px, pz);
 		CHECK(j.verdict == BotCore::NavReachVerdict::Unreachable);
 		CHECK(j.reason == BotCore::NavUnreachReason::Component);
@@ -855,7 +860,7 @@ TEST_CASE("NavReach_RealMap")
 		const BotCore::NavReachJudgement j = judge.Judge(grid, reach, f.Plan(), pm, up, ax, az);
 		CHECK(j.verdict == BotCore::NavReachVerdict::Reachable);
 		CHECK_EQ(j.ringCells, 168);
-		CHECK_EQ(j.ringConnected, 162);
+		CHECK_EQ(j.ringConnected, 146);
 		mageRing = j.ringCells;
 		mageConnected = j.ringConnected;
 	}
@@ -866,11 +871,11 @@ TEST_CASE("NavReach_RealMap")
 		f.ObserveTarget(0, gx, gz);
 		CHECK(f.Update(grid, pf, 0, sx, sz, 0.0f, fp));
 		REQUIRE(f.Plan().status == BotCore::NavFollowStatus::Planned);
-		CHECK(std::fabs(f.Plan().pathCost - 242.108f) <= 0.1f);
+		CHECK(std::fabs(f.Plan().pathCost - 276.451f) <= 0.1f);
 		const BotCore::NavReachJudgement j = judge.Judge(grid, reach, f.Plan(), fp, up, sx, sz);
 		CHECK(j.verdict == BotCore::NavReachVerdict::Unreachable);
 		CHECK(j.reason == BotCore::NavUnreachReason::Detour);
-		CHECK(std::fabs(j.straightM - 23.324f) <= 0.01f);
+		CHECK(std::fabs(j.straightM - 40.000f) <= 0.01f);
 		CHECK(j.pathM > 3.0f * j.straightM);
 		CHECK(j.pathM > 120.0f);
 		detourPath = j.pathM;
@@ -942,6 +947,12 @@ TEST_CASE("NavReach_Perf")
 		const int dx = std::abs(cells[(size_t)si].x - cells[(size_t)gi].x);
 		const int dz = std::abs(cells[(size_t)si].z - cells[(size_t)gi].z);
 		if (std::max(dx, dz) > 64)
+			continue;
+		// ADR-0024 (maxSlope 0.45) leaves ~1% of the Walk cells in edge-isolated pockets; the
+		// judge quality gate is about the main component, so keep the sample there.
+		if (reach.ComponentOf(cells[(size_t)si].x, cells[(size_t)si].z) != reach.LargestComponent())
+			continue;
+		if (reach.ComponentOf(cells[(size_t)gi].x, cells[(size_t)gi].z) != reach.LargestComponent())
 			continue;
 		starts.push_back(cells[(size_t)si]);
 		goals.push_back(cells[(size_t)gi]);
