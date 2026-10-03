@@ -58,7 +58,7 @@ Değerlendirme (2026-10-02) ADR'leri **KABUL** (proje sahibi kararları, 2026-10
 | Q-09 | Yüzde HP buff'ı (Undying) hangi maks HP bileşenine uygulanıyor | Buff matrisi BUF-HP-01 | T-MECH-BUF-03 | F7 |
 | Q-10 | İstemci engel arkasına skill/saldırıya izin veriyor mu | `P-NAV-LOS-MODE` | T-NAV-LOS-01 | F5 |
 | **Q-11** | Arena A'da gerçekten canavar/NPC yok mu; tower'ların kapı önündeki davranışı | Test geçerliliği | T-ENV-ARENA-01..03 | **F1** |
-| Q-12 | Mage Gate (110015) Ronark'ta çalışıyor mu | Mage kaçış seçeneği | T-MECH-T8-02 | F6 |
+| Q-12 | Mage Gate (110015) Ronark'ta çalışıyor mu | Mage kaçış seçeneği | T-MECH-T8-02 | F6 — cevaplandı (2026-10-03): evet, çalışır; çağıran ulusun `START_POSITION` 71 noktasına ışınlanır (F4-35 çalışma zamanı ölçümü, `docs/03` MEC-MAG-22 `[V]`) |
 | Q-13 | Bifrost zamanlayıcısının (`KickOutZoneUsers`) zone 71'i etkileyip etkilemediği | Test kesintisi | Kod incelemesi + 2 saatlik gözlem | F0 |
 | **Q-14** | Soketsiz `CUser` tüm oyun içi kontrolleri geçiyor ve AIServer ile senkron kalıyor mu (guard/NPC'ler botu oyuncu gibi algılıyor mu) | ADR-0001'in fizibilitesi | F2 prototipi | **F2** |
 | Q-15 | Sunucu rastgeleliği (`myrand`) test modunda seed'lenebilir mi | Yeniden üretilebilirlik derecesi | Kod incelemesi | F8 |
