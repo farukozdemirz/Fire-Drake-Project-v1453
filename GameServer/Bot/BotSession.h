@@ -79,6 +79,7 @@ public:
 	uint32 m_actionSeq;                                    // IOCP thread only: per-spawn counter used as decision_id
 	uint32 m_movePackets;                                  // IOCP thread only: WIZ_MOVE packets sent in the current walk
 	BotCore::NavDrive m_navDrive;                          // IOCP thread only: path-following state of /bot goto (F5-70); Active() only while m_moveActive
+	int m_followTargetSid = -1;                            // IOCP thread only: m_selfSid of the bot being followed (F5-74); meaningful while m_navDrive.Mode() == Follow
 
 	bool m_attackActive;                                   // IOCP thread only: an attack series is in progress
 	std::string m_attackTargetName;                        // IOCP thread only: character name of the target bot
