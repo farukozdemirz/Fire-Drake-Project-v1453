@@ -734,7 +734,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
-		|| !BotCore::CastMoralSupported(m->bMoral, m->bFlyingEffect))
+		|| !BotCore::CastMoralSupported(m->bMoral))
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "unsupported_skill";

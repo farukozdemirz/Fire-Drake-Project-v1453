@@ -207,7 +207,8 @@ public:
 	// flying Type3 single-typed skills are supported, ADR-0017 Ek F4-25; single Type3 + Type4 (dual-typed) skills are
 	// supported, ADR-0017 Ek F4-26; single Type4 (buff/debuff; Moral 1, 2, 7; ADR-0017 Ek F4-28) is supported;
 	// area Moral 10 (non-flying; aim point = the target's position, within MAGIC.Range of the caster, CLI-07) is
-	// supported, flying area skills are not, ADR-0017 Ek F4-29),
+	// supported, and flying area skills (Fire/Ice/Thunder burst: Moral 10 + Type3 FlyingEffect, run as
+	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
 	// "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
@@ -225,6 +226,9 @@ public:
 	// area: the EFFECTING echo is the last packet the server sent (Type3: target -1 broadcast, code 0; {3, 4}/{4, 0}:
 	// last victim's Type4 packet, code = duration); an empty area still gives "effected" and costs MP; "victims" in
 	// ACTION_RESULT counts the per-victim EFFECTING packets (docs/03 MEC-MAG-16).
+	// flying area: FLYING and EFFECTING carry the same target id -1 and aim point; MP is charged at FLYING and again at
+	// EFFECTING (2 x Msp, docs/03 MEC-MAG-12/-17); "victims" counts the per-victim EFFECTING packets of the EFFECTING
+	// step only.
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 
