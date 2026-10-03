@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 22) |
 | Branch | `bot/F4-46` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-45 (`bots/config/skill_warrior_k.{spec,txt}`, silaha bağlı Type1 üslup örneği) — `KAPANDI` (merge `5d2ce2e`); F4-42 (`tools/skill-script-gen.py`), F4-43 (`tools/skill-check.py` MP hükmü) — `KAPANDI`; F4-36 (eşya/sınıf taşı skill'leri, `no_item`), F4-40 (envanter doldurma) — `KAPANDI` |
@@ -145,23 +145,66 @@ git diff --stat gece/2026-10-02...bot/F4-46
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-46` — `<kısa-sha> [F4-46] …`
+- Branch / commit'ler: `bot/F4-46` — `402d15f [F4-46] Karus priest usta skill betiği (Judgment, Helis) spec + üretilmiş betik` (uygulama), ardından Durum/rapor commit'i.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır) ve `./tools/run-tests.sh`:
+  - `bots/config/skill_priest_k_master.spec` (yeni): plan §5.1 içeriği aynen; `BotPHD_K` Judgment (`112802`) ve Helis (`112815`) 6 çevrim, hedefler `BotWP_E`/`BotWG_E`.
+  - `bots/config/skill_priest_k_master.txt` (yeni): `skill-script-gen.py` çıktısı (elle düzenlenmedi); 4 `cast` + 1 `list`.
+  - `plans/F4-46-skill-betik-priest-master-judgment-helis.md`: `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar) ve `./tools/run-tests.sh`:
   ```
-  …
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme (K1–K7; K8/K9 Claude'un işi): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh`: son satır `251 tests, 0 failed` (C++ değişmedi).
+- Kabul kriterleri öz-değerlendirme (K1–K7; K8/K9 Claude'un işi):
+  - K1 ✔: yeniden üretim `/tmp/skill_priest_k_master.txt` ile commit'li dosya arasında `diff` boş, çıkış 0.
+  - K2 ✔: `--check` çıkış 0; `ok: 5 steps, 264 bytes, 7 lines, last offset 12500 ms`.
+  - K3 ✔: `cast BotPHD_K` = 4, toplam `cast` = 4, `list` = 1, `raw|pinvite|paccept|pot|move` = 0; ilk ofset `0` (`112802 BotWP_E 2`), sıra `112802 BotWP_E 2`, `112802 BotWG_E 1`, `112815 BotWG_E 2`, `112815 BotWP_E 1`; hedefler yalnızca `BotWP_E`/`BotWG_E`; `112825` = 0.
+  - K4 ✔: ardışık ofset farkları `3500, 2500, 3500, 3000` ms.
+  - K5 ✔: `skill-script-gen.py --selftest` → `selftest: 23 checks, 0 failed`; `skill-check.py --selftest` → `selftest: 32 checks, 0 failed`; iki araç değişmedi.
+  - K6 ✔: `./tools/build.sh Release` hatasız bitti (C++ değişmedi); `./tools/run-tests.sh` → `251 tests, 0 failed`.
+  - K7 ✔: `git diff --stat gece/2026-10-02...bot/F4-46` yalnızca spec, üretilmiş betik ve plan dosyasını gösterir (aşağıda).
+- Plandan sapmalar ve gerekçeleri: Yok. Üretilen çıktı §5.2'deki beklenen ofsetler/bayt sayısıyla birebir.
+- Açık sorular: Yok. K8/K9 (gerçek koşu, sunucu açma, bot konumlandırma) plan gereği Claude'un işidir; DeepSeek sunucu çalıştırmadı.
 - `git diff --stat gece/2026-10-02...bot/F4-46` (gerçek çıktı):
   ```
-  …
+   bots/config/skill_priest_k_master.spec             | 11 +++++++++++
+   bots/config/skill_priest_k_master.txt              |  7 +++++++
+   plans/F4-46-skill-betik-priest-master-judgment-helis.md | 32 ++++++++++++++++------
+   3 files changed, 41 insertions(+), 9 deletions(-)
   ```
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-*(boş)*
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-46` @ `c78c990` (kod/spec commit'i `402d15f`; `c9b3a3e` ve `c78c990` yalnızca `Durum` ve Uygulayıcı Raporu). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı, döngü betiği yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `skill-script-gen.py bots/config/skill_priest_k_master.spec --out /tmp/skill_priest_k_master.txt` rc=0; `diff` boş |
+| K2 | ✔ | `--check` → `ok: 5 steps, 264 bytes, 7 lines, last offset 12500 ms`, rc=0 |
+| K3 | ✔ | `cast BotPHD_K` 4, `cast` 4, `list` 1, `raw\|pinvite\|paccept\|pot\|move` 0; ilk ofset `0` (`112802 BotWP_E 2`), sıra `112802 BotWP_E 2`, `112802 BotWG_E 1`, `112815 BotWG_E 2`, `112815 BotWP_E 1`; `awk $5!=...` çıktısı boş (hedefler yalnızca `BotWP_E`/`BotWG_E`); `112825` 0 |
+| K4 | ✔ | `awk` farkları `3500 2500 3500 3000` |
+| K5 | ✔ | `skill-script-gen.py --selftest` `23 checks, 0 failed`; `skill-check.py --selftest` `32 checks, 0 failed`; `git diff --stat ... -- tools BotCore GameServer shared AIServer Tests docs db` boş |
+| K6 | ✔ | `./tools/build.sh Release` rc=0, 7 proje bağlandı, `warning`/`error` satırı 0; `./tools/run-tests.sh` `251 tests, 0 failed` |
+| K7 | ✔ | `git diff --stat`: yalnızca `skill_priest_k_master.spec`, `skill_priest_k_master.txt` ve plan dosyası; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişti |
+| K8 | ✔ | Çalışma zamanı (aşağıda): `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`; üç bot canlı zone 71; hedefler `BotPHD_K`'ya 0,5 m ve 0,3 m; Scroll/Stone çantada (`bot-refill.sh apply --mp-pots 20`: `ok=12 fail=0`); MP 4782/6392 (≥ 1650); betik `Scripts/skill_priest_k_master.txt` |
+| K9 | ✔ | 5/5 adım, en geç gecikme 71 ms (< 500); 2 skill görünür, ikisinde 3 çevrim başladı ve etkili; `srv_fail` 0, `missed` 0; PASS 2, WARN 0, FAIL 0; MP düşümü 200 ve 350 (beklenenle aynı); taş tüketimi ve Judgment scroll'unun tüketilmemesi ölçülemedi `[Ö]` (plan "yoksa `[Ö]`" der) |
+
+- Biçim: iki yeni dosya ASCII (`file`), depoda LF (`git ls-files --eol`: `i/lf`; çalışma ağacındaki CRLF yalnızca eski dosyalarda `autocrlf` sonucu, `ScriptPlan.h:151` sondaki `\r`'yi kırpar); spec, plan §5.1 bloğuyla aynı; C++/`.vcxproj`/docs/ADR/araçlar/mevcut `bots/config/*` değişmedi.
+- Plan dayanakları yeniden kontrol edildi: `BotCombat.h:143-150` (`CastInRange`, `skillRange == 0` ⇒ `distanceField <= weaponRangeField`), `ActionExecutor.cpp:894-897` ve `:801-808` (`no_item` yalnızca `UseItem != 0`); yerel `MAGIC`: `112802` `200/0/5/0/1/0/7`, `Skill 1128/2`, `UseItem 379066000`, `BeforeAction 4`; `112815` `350/0/5/0/1/0/7`, `Skill 1128/12`, `UseItem 0`, `BeforeAction 4`; `112825` `Moral 11`, `Type1 4`; `ITEM.Range` 191110000/007/008 = 10.
+
+**K8/K9 çalışma zamanı ayrıntısı.** `bot-refill.sh apply --mp-pots 20` (sunucu kapalıyken), `GameServer.ini`'ye geçici `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`, Release sunucu; `BotPHD_K`, `BotWP_E`, `BotWG_E` 6 sn arayla spawn (zone 71; (1274, 928), (1273, 934,5), (1271, 933,5)). `pot BotWP_E 389015000 8` ile `BotWP_E` 3053 → 5650; `move BotWP_E 1274.0 928.5 45`, `move BotWG_E 1274.3 928.0 45`; `list`: `hp > 0`, konumlar 0,5 m / 0,3 m, `BotPHD_K` MP 4782/6392. `script run skill_priest_k_master`: `loaded (5 step(s), last offset 12500 ms)`, `finished skill_priest_k_master: completed, 5/5 step(s) in 12534 ms (max late 71 ms)`. `live-100119.jsonl` üstünde `skill-check.py --min-n 1`: 2 skill, PASS 2, WARN 0, FAIL 0, NO_DATA 0. Betik sonu `list`: `BotPHD_K` MP 3252, `BotWP_E` 4973/5650, `BotWG_E` 4233/5650 (ikisi de hayatta). Botlar `despawn all`, sunucular `stop`, `GameServer.ini` yedekten geri yüklendi (`cmp` aynı), `Scripts/skill_priest_k_master.txt` kopyası ve `BotCommands.txt` silindi. Sonuçlar `docs/05` §9.5'e işlendi.
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `docs/05` §9.5: Judgment ve Helis botla beklendiği gibi çalışıyor (kesin isabet, MP maliyeti tam, recast aralığı ~1,1 sn); bulgu/hata yok.
+  2. Stone of Priest tüketimi ve Judgment scroll'unun korunması ölçülemedi `[Ö]` (telemetri/`snap` eşya sayacı yok; §9.4 Bulgu 3 ile aynı; ayrı iş).
+  3. Hasar miktarı ölçülmedi (kapsam dışı); `list` HP farkları yenilenme içerdiği için yalnızca gözlem `[Ö]`.
+  4. Üslup: Uygulayıcı raporundaki derleme çıktısı kısaltılmış, plan dosyası satır sayısı (`32`) rapordan sonraki commit'le 33 oldu (önemsiz); rc ve `251 tests` doğrulamada yeniden üretildi; başka sapma yok.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
