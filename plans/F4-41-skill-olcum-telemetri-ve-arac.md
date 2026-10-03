@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
@@ -197,6 +197,27 @@ git diff --stat gece/2026-10-02...bot/F4-41
 - Açık sorular:
   - Uçan skill'lerde MP FLYING + EFFECTING'te iki kez düştüğü için (MEC-MAG-12) `mp_delta` `MAGIC.Msp`'nin iki katı olur ve `mp_verdict` `FAIL` verir. Plan §5.3 formülü bilinçli olarak uçuşu özel-durumlamadı; F4-42 koşusunda uçan skill için `--mp-tol`/beklenti ayarı gerekirse karar Claude'a bırakıldı.
   - `mp`/`mp_after` yalnızca operatör/analiz içindir; bot karar yolu bu alanları okumaz (algı sözleşmesi korunur).
+
+### Tur 2 — 2026-10-03 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-41` (aynı branch); kod düzeltmesi commit'i ve `Durum`/rapor commit'i bu maddeden sonra.
+- Değişen dosyalar ve neden:
+  - `tools/skill-check.py`:
+    - `load_magic_sql`: `subprocess.run(..., capture_output=True, text=True)` yerine `capture_output=True` (bayt) ve `stdout`/`stderr` için `decode("utf-8", errors="replace")`; hata mesajı da çözülen `stderr`'i kullanır. Ayrıştırma (`replace("\r", "").split("\n")` → `parse_magic_lines`) ve `parse_magic_lines`'in bozuk satır `InputError` davranışı aynı kaldı (Bulgu 1: gerçek `MAGIC` çıktısındaki UTF-8 olmayan bayt `UnicodeDecodeError` ile çökertiyordu).
+    - `analyze` `FAIRNESS_REJECT` dalından ölü `if skill is None: skill = 0` iki satırı silindi (`as_int(..., 0)` zaten `None` döndürmez) (Bulgu 2).
+    - `--selftest`'e `sqlcmd_non_utf8` adlı kontrol eklendi (15. durum): geçici klasörde `#!/bin/sh` + `printf '105660|sacrifice\250|180|0|250|67|3|0\n'` (bayt `0xA8`) yazdıran sahte sqlcmd betiği `chmod +x` ile çalıştırılır; `load_magic_sql(sahte, "s", "d")` sonucu `{105660: {"msp": 180, ...}}` içerir ve çökmez. Posix değilse (Windows) `sqlcmd_non_utf8_skipped` adıyla sayılan kontrol olarak atlanır. Toplam kontrol 25 → 26; son satır biçimi `selftest: N checks, 0 failed`.
+  - `plans/F4-41-skill-olcum-telemetri-ve-arac.md`: `Durum` satırı (`UYGULANDI`) ve bu rapor.
+- Derleme: Bu turda yalnızca Python aracı değişti (`ActionExecutor.cpp`'e dokunulmadı); C++ derlemesi gerekmedi/koşulmadı. Tur 1'in `./tools/build.sh Release`/`Debug` `rc=0` sonuçları geçerlidir.
+- Doğrulama sonuçları (istenen 5. madde):
+  - `python3 tools/skill-check.py --selftest` → `selftest: 26 checks, 0 failed`, çıkış 0.
+  - `python3 tools/skill-check.py /mnt/c/dev/fdp/server/Logs/bots/2026-10-02/f422_noscript-7-4.jsonl --out /tmp/skillcheck_out.txt` (`--magic` **vermeden**) → çıkış 0, çökme yok, rapor yazıldı.
+  - `load_magic_sql` doğrudan çağrıldığında gerçek `MAGIC`'ten **1839 satır** okundu; **137** `EnName` değerinde yer değiştirme karakteri (`U+FFFD`) var (UTF-8 olmayan baytlar çözüldü; ör. `105660` = `sacrifice`, `msp 180`). Yalnızca `MAGIC` tablosu okunur.
+  - `python3 tools/skill-check.py` (PATH yok) → çıkış 2.
+  - `python3 tools/check-perception-contract.py` → `RESULT: PASS`; `git status` yalnızca `tools/skill-check.py` değişti; `ActionExecutor.cpp` önceki halinde.
+- Kriter öz-değerlendirme: K1 ✔ (26 kontrol); engelleyici Bulgu 1 giderildi; Bulgu 2 (ölü kod) giderildi; Bulgu 3/4 not (davranış/kapsam değişmedi). K7 sqlcmd yolu artık gerçek `MAGIC` ile çalışır (çalışma zamanı ölçümü Claude'da). K2/K6 C++ değişmediği için Tur 1'deki gibi geçerlidir.
+- Plandan sapmalar: Sahte sqlcmd betiğinde örnekteki `\xa8` yerine POSIX octal `\250` kullanıldı; `#!/bin/sh` (dash) `\x` kaçışını yorumlamadığı için bayt `0xA8` bu yolla güvenilir üretilir (amaç aynı: UTF-8 olmayan bayt). Kapsam ve davranış değişmedi.
+- Açık sorular: yok.
 
 ---
 
