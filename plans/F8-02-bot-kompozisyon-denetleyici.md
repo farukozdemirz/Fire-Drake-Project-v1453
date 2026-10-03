@@ -230,7 +230,7 @@ git diff --stat gece/2026-10-02-nav...bot/F8-02
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F8-02` — `<sha> [F8-02] Kompozisyon denetleyicisi (tools/bot-composition-check.py + sample-20.sql, 58 selftest)`
+- Branch / commit'ler: `bot/F8-02` — `6b2ea79 [F8-02] Kompozisyon denetleyicisi: tools/bot-composition-check.py + sample-20.sql (58 selftest)`
 - Değişen dosyalar ve neden:
   - `tools/bot-composition-check.py` (yeni): SQL `@bots` satırlarını metin olarak ayrıştırır, ADR-0002 ad/sınıf kurallarını doğrular, kompozisyon/küme/çift ihtiyaçlarını ve eksik karakter listesini hesaplar; `--selftest` (58 vaka), `--json`, `--strict`, `--target`, `--max-bots`, `--sql`.
   - `tools/bot-composition-check/sample-20.sql` (yeni): §5.7'deki 22 satır aynen; 20 karakterlik hedef durum fixtürü (yürütülebilir SQL değil).
