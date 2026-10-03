@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-70 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-59 (`NavService`, `NAV=1`), F5-61 (kiriş guard'ı `CheckMoveChord`, `SubmitMove` içinde), F5-62 (`BotCore/NavDrive.h`, `Goto` kipi saf mantık; merge `8522239`), F5-69 (eğim 0,45). **F5-71'e bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz (F5-71: `BotCore/NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`; bu plan: yalnızca `GameServer/Bot/` altındaki yedi dosya). Not: `BotSession.h` `NavDrive.h`'yi, o da `NavStuck.h` → `NavTrack.h`'yi dahil eder; F5-71 `gece/2026-10-02`'ye birleşti (`1bfb885`, `KAPANDI`): `NavTrack.h`'ye `NavNoReach`, `NavFollower::UpdateReachable`/`UpdateImpl` şablonları ve `UpdateImpl`'e yönlenen `inline Update` eklendi; bu plan o başlığı değiştirmez, yalnızca GameServer birimlerine dahil edilmesi yeni olur (K1). F5-63 (`Follow`), F5-64, F5-65 bu planın `m_navDrive`/`SharedPathfinder` üzerine kurulur |
@@ -264,17 +264,39 @@ file GameServer/Bot/NavService.h GameServer/Bot/NavService.cpp GameServer/Bot/Ac
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-70` — `<kısa-sha> [F5-70] …`
+- Branch / commit'ler: `bot/F5-70` — `0f5c948 [F5-70] /bot goto sunucu baglamasi: SharedPathfinder, BeginGoto/TickPathMove, m_navDrive, CommandGoto` (+ `Durum: UYGULANDI` commit'i)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/NavService.h`: `#include "../../BotCore/NavPath.h"`, `SharedPathfinder()` bildirimi (D1), `m_pathfinder`/`m_pfThread`/`m_pfViolation` üyeleri; `Grid()/Ready()/GetInfo()/Startup()/Shutdown()` imzaları değişmedi.
+  - `GameServer/Bot/NavService.cpp`: yalnızca `NavService::SharedPathfinder()` gövdesi (`GetCurrentThreadId` + tek kez `VIOLATION` günlüğü; `WriteNavLog` yeniden kullanıldı).
+  - `GameServer/Bot/BotSession.h`: `#include "../../BotCore/NavDrive.h"` + hareket üyelerinin altına `BotCore::NavDrive m_navDrive;`.
+  - `GameServer/Bot/ActionExecutor.h`: `BeginGoto`/`TickPathMove` bildirimleri + `MoveOutcome::reason` yorumuna yeni nedenler.
+  - `GameServer/Bot/ActionExecutor.cpp`: `ValidateWalkStart` yardımcısı (`BeginMove`'un `:205-239` bloğunun birebir taşınması), `PlanReason`, `NeedsReplan`, `BeginGoto`, `TickPathMove`; `BeginMove`/`StopMove`/`AbandonMove`'a `m_navDrive.Reset()`, `TickMove` başına kip satırı.
+  - `GameServer/Bot/BotManager.h`: `CommandGoto` bildirimi.
+  - `GameServer/Bot/BotManager.cpp`: `goto` dağıtımı, bilinmeyen komut metni, `CommandGoto` gövdesi.
+  - `plans/F5-70-nav-goto-sunucu-baglamasi.md`: `Durum` satırı (HAZIR → UYGULANDI).
+- Derleme sonucu (`tools/build.sh Release` son satırlar; `Debug` de rc=0):
   ```
-  …
+  Kod üretiliyor
+  proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Başlangıç ve bitiş ölçümü (`tests,` satırı ve `--list | wc -l`): …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K11-K16 Claude'un çalışma zamanı kriterleri)
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Uyarılar: Release 3, Debug 2 (hepsi `GameServerDlg.cpp`'nin değişmeyen satırları: C4834:820, C4267:1147/1806). `ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `NavService.cpp` ve iki başlıkta yeni uyarı/hata 0.
+- Başlangıç ve bitiş ölçümü: başlangıç `293 tests, 0 failed`, `--list | wc -l` = 293; bitiş `293 tests, 0 failed` (Release ve Debug), `--list | wc -l` = 293 (değişmedi; bu plan test eklemez).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (Release/Debug rc=0; `BotSession.h`/`NavService.h` `touch` edilip yeniden derlendi; ilgili dosyalarda yeni uyarı 0; kalan uyarılar `GameServerDlg.cpp`'de).
+  - K2 ✔ (`293 tests, 0 failed` iki yapılandırmada; test sayısı başlangıçla aynı).
+  - K3 ✔ (`git diff --stat gece/2026-10-02...bot/F5-70` yalnızca 7 kod dosyası + plan; `BotCore/`, `Tests/`, `tools/`, `docs/`, `shared/`, `AIServer/`, `*.vcxproj*` farkı yok; `git diff --check` boş).
+  - K4 ✔ (diff: `ValidateWalkStart` taşıması, `BeginMove` yardımcı + bir `m_navDrive.Reset();`, `TickMove` tek kip satırı, `StopMove`/`AbandonMove` birer `Reset`, yeni `BeginGoto`/`TickPathMove`/`PlanReason`/`NeedsReplan`; `SubmitMove` gövdesi, `StepToward` çağrısı ve `TickMove` süre/adım mantığı farkı 0).
+  - K5 ✔ (`ActionExecutor.cpp:513` `arrived ? 0 : s->m_moveSpeed`; `Blocked`/`fail` yolları `SubmitMove`'dan önce döner, `HandlePacket` yok; `GetMap` yalnızca `:288-289` `BeginMove`'da).
+  - K6 ✔ (`check-perception-contract.py` `RESULT: PASS`, R1-R5 0; `--selftest` rc=0).
+  - K7 ✔ (`NavService.h` imzaları değişmedi; `.cpp` farkı yalnızca `SharedPathfinder`; `BeginGoto` `Grid()==nullptr` iken `:396` döner, `SharedPathfinder` `:412`'de çağrılır ⇒ `NAV=0`'da hiç çağrılmaz).
+  - K8 ✔ (BotManager.cpp farkı yalnızca `goto` dağıtımı, bilinmeyen komut metni, `CommandGoto`; `CommandMove`, `CommandStop`, `TickSessions` farkı 0).
+  - K9 ✔ (dosyalar ASCII + CRLF, BOM yok: `head -c3` = `237072`/`23696e`; `git diff --check` boş).
+  - K10 ✔ (`BeginGoto` yerel `plan`'a planlar; yalnızca `Planned` ise `s->m_navDrive = plan` ve yürüyüş üyelerini yazar (`:421-427`); `nav_off` (`:399`) ve `nav_zone` (`:406`) ret yolları `BotSession` üyesi yazmaz; `ValidateWalkStart` yalnızca `EmitFairnessReject` yapar).
+  - K11-K16: **Claude'un çalışma zamanı kriterleri** — sunucu çalıştırma uygulayıcıya düşmez; bu turda yapılmadı.
+- Plandan sapmalar ve gerekçeleri:
+  - `TickPathMove`'a plandaki sözde koda ek olarak ilk `NextStep` için `step.kind == None` güvenlik dalı eklendi (`path_blocked`, `:483-491`): sözleşme None'u dışlar, ama None olsaydı `NeedsReplan` `false` döner ve `SubmitMove` (0,0) hedefine paket yollardı; ek dal hata yolunu güvenli kılar. Planın geri kalanı birebir uygulandı.
+- Açık sorular:
+  - Yok. (K11-K16 çalışma zamanı sınaması ve ADR-0006 Ek F5-70 yazımı Claude'a bırakıldı.)
 
 ---
 
