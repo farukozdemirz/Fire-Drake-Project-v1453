@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-74 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: **F5-73** (`NavDrive` Follow kipi, saf mantık; merge `bc3170d`), **F5-70** (`/bot goto`, `SharedPathfinder()`, `BotSession::m_navDrive`; merge `99d7170`), F5-59 (`NavService`), F5-61 (kiriş guard'ı), F5-71 (bileşen farkındalıklı takipçi), F4-12/F4-50 (`ObsTable` gözlem tablosu, `UnitObs.lastMoveMs/lastSpeed`). **F5-72'den bağımsız** (F5-72 `KAPANDI`/birleşti, `3bf2ad2`; yalnızca `BotCore/ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py`; bu plan yalnızca `GameServer/Bot/` altındaki yedi dosya) |
@@ -224,17 +224,44 @@ grep -n "TickFollow(" GameServer/Bot/*.cpp
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-74` — `<kısa-sha> [F5-74] …`
+- Branch / commit'ler: `bot/F5-74` (taban `gece/2026-10-02` @ `270d1f3`)
+  - `1df2c52` `[F5-74] NavService: NavReach bilesenleri ve ceza katmani`
+  - `85f7dff` `[F5-74] BotSession: m_followTargetSid uyesi`
+  - `b7c3249` `[F5-74] ActionExecutor: BeginFollow/TickFollow ve kip denetimi`
+  - `9b8f928` `[F5-74] BotManager: /bot follow komutu, takip tick'i ve gunluk satirlari`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/NavService.h/.cpp`: `#include NavReach.h`/`NavDanger.h`; `Reach()` (hazır değilken `nullptr`) ve `ScratchLayer()`; `m_reach`/`m_scratch` üyeleri. `Startup()` `m_grid.Build()` + `MainComponentCells() > 0` denetiminden sonra, `m_ready.store(true)` öncesinde `m_reach.Build(m_grid)` ölçülüp (`no_reach` başarısızlığı korunur), mevcut "nav ready" satırı **aynen** bırakılıp ardından `NavService: reach ready: components=%d largest_cells=%d build_ms=%.1f` yazıldı (D6).
+  - `GameServer/Bot/BotSession.h`: yalnızca `int m_followTargetSid = -1;` (D7); yapıcı/`ResetForRespawn` değişmedi.
+  - `GameServer/Bot/ActionExecutor.h`: `FollowObservation`, `FollowOutcome`, `BeginFollow`/`TickFollow` bildirimleri; `MoveOutcome::reason` yorumuna F5-74 metinleri; `TickMove` yorumu.
+  - `GameServer/Bot/ActionExecutor.cpp`: `TickMove` kip denetimi (`Active()` → `Mode()==Goto`, ardından `Mode()==Follow` → `out`), `TickPathMove` koruması (`Mode()!=Goto`); yeni `FollowEndReason` yardımcısı; `BeginFollow` (tüm denetimler `m_navDrive`'a dokunmadan önce) ve `TickFollow` (D2/D3/D3a/D4/D5; 9 argümanlı `TickFollow` aşırı yüklemesi, `reach`'siz yol çağrılmaz).
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandFollow` bildirimi; `follow` dağıtımı, bilinmeyen komut metni; `FollowStatusName/FollowReasonName/FollowStuckKindName/FollowActionName` ve `ReadFollowObservation` (D1, tek kayıt `m_obsLock` altında); `CommandFollow` (`CommandGoto` kalıbı; hedef kimliği **yalnızca** `t->m_selfSid`); `TickFollowSession` (D8 günlük satırları); `TickSessions` hareket dalında `Mode()==Follow` iken `TickFollowSession`, aksi halde mevcut `TickMove` yolu.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Test sayısı (başlangıç / sonra): …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K11-K17 Claude'un çalışma zamanı kriterleri)
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `Debug` de rc=0. Değişen dosyalar `touch` edilip yeniden derlendiğinde **yeni uyarı yok** (kalan uyarılar yalnızca eski `GameServerDlg.cpp` C4834/C4267).
+- Test sayısı (başlangıç / sonra): **315 / 315** (`./tools/run-tests.sh Release` ve `Debug`, ikisi de `0 failed`). Plan test eklemez; sayı değişmedi.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release/Debug rc=0; `touch` sonrası değişen dosyalarda yeni uyarı 0.
+  - K2 ✔ iki yapılandırmada `315 tests, 0 failed` (başlangıç 315).
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F5-74 -- GameServer/` yalnızca 7 dosya; `BotCore/`, `Tests/`, `tools/`, `docs/`, `shared/`, `AIServer/`, `*.vcxproj*`, `BotSession.cpp` farkı 0. (Tek sapma: `plans/README.md` durum sözcüğü AGENTS.md §2.2 gereği dokunulmadı, bkz. açık sorular.)
+  - K4 ✔ `ActionExecutor.cpp` farkı yalnızca `TickMove`/`TickPathMove` kip satırları + yeni `BeginFollow`/`TickFollow`/`FollowEndReason`; `SubmitMove`, `ValidateWalkStart`, `BeginMove`, `StopMove`, `BeginGoto`, `NeedsReplan` gövdeleri değişmedi (`git diff -U0`).
+  - K5 ✔ kod incelemesi: (a) `NextFollowStep` paket kapısı açıkken tick başına en çok bir kez; (b) her adım `SubmitMove` sonucu tam bir `OnPacketSent`/`OnPacketRejected` (hold/bitiş durma paketleri hariç — plan istisnası); (c) `ObserveTarget` yalnızca `found && posState != POS_LOST`; (d) yalnızca 9 argümanlı `TickFollow(... &ScratchLayer(), *Reach())` çağrılıyor (`ActionExecutor.cpp:647`); (e) `Arrived` paketi `speed 0`, `SubmitMove`'a `arrived=false`; (f) ara adımlarda `speed = s->m_moveSpeed`.
+  - K6 ✔ `python3 tools/check-perception-contract.py` rc=0 (R1-R5 0 ihlal); yeni satırlarda yasaklı simge yok; `->m_pUser` yalnızca `s->m_pUser` (hedef oturum için `t->m_pUser` yok).
+  - K7 ✔ mevcut "nav ready" metni ve `Grid()/Ready()/GetInfo()/Startup()/Shutdown()/SharedPathfinder()` imzaları değişmedi; `m_reach.Build` `m_ready.store(true)`'dan önce (`NavService.cpp:129` Build, `:145` store); `Reach()` hazır değilken `nullptr`.
+  - K8 ✔ kod incelemesi: yeni kod yalnızca `follow` komutu ve `Mode()==Follow` iken çalışır; `Startup()` `NAV=0` iken `Build` çağırmaz (erken dönüş korundu).
+  - K9 ✔ `BeginFollow` tüm denetimleri (`ValidateWalkStart`, `nav_off`, `nav_zone`, `bad_target`, `target_not_visible`) `s->m_navDrive.BeginFollow`/üye yazımlarından **önce** yapar (`ActionExecutor.cpp:531-571`); reddedilen `follow` sürmekte olan `goto`/`move`'u bozmaz.
+  - K10 ✔ yedi dosya `ASCII text, with CRLF line terminators`, BOM yok; `git diff --check` rc=0.
+  - K11–K17: **Claude'un çalışma zamanı kriterleri**; sunucu açılmadı (aşağıda).
+- Plandan sapmalar ve gerekçeleri:
+  - §2'deki satır numaraları `3bf2ad2`'de birkaç satır kaydı; planın "asıl kural işlev adıdır" notu gereği işlev adlarıyla eşleştirildi, davranışsal sapma yok (ör. `TickMove` kip satırı `:320`, `TickPathMove` koruması `:449`).
+  - `plans/README.md` F5-74 satırının durum sözcüğü güncellenmedi: AGENTS.md §2.2 (`plans/README.md` dokunulmaz) ve düzenleme izni reddi. Döngü/Claude günceller.
+- Açık sorular:
+  - K11–K17 (çalışma zamanı) yapılmadı; sunucu `ENABLED=1, NAV=1, TELEMETRY=decisions` ile Claude tarafından koşulacak. Özellikle K17'de `largest_cells == 88508` beklenir; F5-71 uyarınca eğim cebi (KI-024) Follow'da kurtarılmıyor.
+  - `plans/README.md` durum sözcüğünü kimin güncelleyeceği (döngü betiği mi).
 
 ---
 
