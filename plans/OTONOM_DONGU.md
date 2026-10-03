@@ -165,3 +165,19 @@ Ana hat (F4, GameServer C++ zinciri) tek tek ilerler: planlar birbirine bağlı,
 - **Hedef ve konu:** ana hat `--target F4` (F4 bitince durur), ikinci hat `--target F5 --track nav --topic "..."`; konu metni `AUTO_TRACK_TOPIC` ile `/plan-olustur`'a gider (skill §0.2).
 - **Birleştirme:** iki dal ayrı kalır; sonunda `gece/2026-10-02-nav` dalı `gece/2026-10-02`'ye `--no-ff` birleştirilir (çakışma beklenen yerler: `docs/STATUS.md`, `plans/README.md`; Claude çözer), ardından tam derleme ve `run-tests.sh` koşulur. Her iki hat da `main`'e dokunmaz.
 - **Durdurma:** her worktree'nin kendi `plans/.auto-loop-stop` dosyası vardır.
+
+## 11. Ön-plan (ana döngü içi, 2026-10-03)
+
+**Sorun:** `/plan-olustur` 8-20 dk sürüyor (kodu depoda doğruluyor, plan + README + STATUS yazıyor); DeepSeek bu sürede boşta kalıyordu.
+
+**Çözüm:** DeepSeek plan N'i uygularken Claude **ayrı bir worktree'de** (`/mnt/c/dev/fdp-preplan`, dal `<entegrasyon>-preplan`) sıradaki planı önceden yazar. Aç/kapa: `PREPLAN=1` (ana hatta varsayılan açık, paralel hatta kapalı). Kod: `tools/auto-loop.sh` `preplan_*` işlevleri.
+
+**Kurallar (kaliteyi korur):**
+1. **En fazla 1 plan ileride.** Sonuç dosyası (`plans/_logs/preplan.result`) `ready` iken yeni ön-plan başlamaz; kuyrukta (`plans/.queue`) HAZIR plan varsa da başlamaz.
+2. **Bağımsız iş.** Ön-plan, aktif planla aynı konuda olamaz, onun çıktısına bağımlı olamaz, onunla aynı dosyaları değiştiremez; **ADR/karar gerektiren işi seçmez** (körlemesine karar ve ADR numarası çakışması riski). Uygun iş yoksa `plans/.preplan-none`'a neden yazar, plan yazılmaz; döngü normal `/plan-olustur` yoluna düşer (faz sınırı da böyle doğru yerde yakalanır).
+3. **Kapsam koruması:** ön-plan commit'leri yalnızca `plans/` ve `docs/` değiştirebilir; tam olarak 1 yeni plan, Durum `HAZIR`, commit edilmiş, aktif planın dalından farklı olmalı. Aksi `fail` sayılır ve atılır.
+4. **Tüketme:** aktif plan DOĞRULANDI + birleşince döngü ön-plan dalını `merge_branch` ile birleştirir (STATUS/README çakışmasını Claude çözer).
+5. **Bayatlık kontrolü:** ön-plan yazıldığı taban commit'ten beri entegrasyon dalında değişen dosyalardan biri planda geçiyorsa, plan aktif yapılmadan önce Claude **tazeler** (dosya:satır/fonksiyon referanslarını depoda yeniden doğrular, önceki planın getirdiği kodla çelişkiyi giderir; geçersizse İPTAL). Geçmiyorsa olduğu gibi kullanılır.
+6. Ön-plan başarısız/bulunamaz/birleşemezse döngü **normal yola** (`/plan-olustur`) düşer; hiçbir durumda ilerleme kaybolmaz.
+
+**Sınanma:** sahte `claude` ile kazıma depoda 7 senaryo (hazır, tek-ileri, "iş yok", kapsam dışı kod, commit edilmemiş, TASLAK, bayat+tazeleme) geçti. Gerçek koşuda ilk kullanımda `plans/_logs/auto-loop.log`'da `on-plan` satırlarına bakılır. Çalışan döngüler eski betik kopyasını kullanır; yeni davranış döngü **yeniden başlatılınca** devreye girer.

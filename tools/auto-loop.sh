@@ -39,6 +39,10 @@ CLAUDE_MAX_BUDGET_USD="${CLAUDE_MAX_BUDGET_USD:-40}"
 MAX_RECOVERIES_PER_PLAN="${MAX_RECOVERIES_PER_PLAN:-2}"
 MAX_TRANSIENT_RETRIES="${MAX_TRANSIENT_RETRIES:-3}"
 TRANSIENT_SLEEP_SEC="${TRANSIENT_SLEEP_SEC:-300}"
+# On-plan: DeepSeek plan N'i uygularken Claude AYRI worktree'de en fazla BIR sonraki plani onceden yazar
+# (plans/OTONOM_DONGU.md §11). Varsayilan: ana hatta acik (1), paralel hatta kapali (0).
+PREPLAN="${PREPLAN:-}"
+PREPLAN_DIR="${PREPLAN_DIR:-/mnt/c/dev/fdp-preplan}"
 
 INTEGRATION_BRANCH=""
 TARGET_PHASE=""
@@ -52,6 +56,7 @@ LOG_DIR="plans/_logs"
 MAIN_LOG="$LOG_DIR/auto-loop.log"
 STATE_FILE="$LOG_DIR/auto-loop.state"
 STATUS_FILE="docs/STATUS.md"
+PREPLAN_RESULT="$ROOT/$LOG_DIR/preplan.result"
 
 # Claude'a her cagrida verilen sabit yasaklar (birlestirmeyi yalnizca bu betik yapar).
 DENY_TOOLS=("Bash(git push*)" "Bash(git merge*)" "Bash(git rebase*)" "Bash(git reset --hard*)" "Bash(git clean*)" "Bash(rm -rf*)")
@@ -75,6 +80,12 @@ done
 
 NIGHT=false
 [ -n "$INTEGRATION_BRANCH" ] && NIGHT=true
+if [ -z "$PREPLAN" ]; then
+	if [ -z "$TRACK" ]; then PREPLAN=1; else PREPLAN=0; fi
+fi
+$NIGHT || PREPLAN=0
+PREPLAN_BRANCH="${INTEGRATION_BRANCH}-preplan"
+PREPLAN_PID=""
 
 # Skill'ler bu degiskenlere bakarak insansiz/gece modunu bilir.
 export AUTO_LOOP=1
@@ -307,6 +318,7 @@ Ayarlar:
   MAX_CORRECTION_TURNS=$MAX_CORRECTION_TURNS  MAX_ITERATIONS=$MAX_ITERATIONS  MAX_WALLCLOCK_HOURS=$MAX_WALLCLOCK_HOURS
   OPENCODE_TIMEOUT_SEC=$OPENCODE_TIMEOUT_SEC  CLAUDE_TIMEOUT_SEC=$CLAUDE_TIMEOUT_SEC  CLAUDE_MAX_BUDGET_USD=$CLAUDE_MAX_BUDGET_USD
   MAX_RECOVERIES_PER_PLAN=$MAX_RECOVERIES_PER_PLAN  MAX_TRANSIENT_RETRIES=$MAX_TRANSIENT_RETRIES (bekleme ${TRANSIENT_SLEEP_SEC}s)
+  PREPLAN=$PREPLAN (dal: $PREPLAN_BRANCH, worktree: $PREPLAN_DIR)
 Claude yasakları: ${DENY_TOOLS[*]}
 EOF
 	if $PRE_OK; then echo "ÖN KONTROLLER: hepsi tamam."; else echo "ÖN KONTROLLER: BAŞARISIZ — --run reddedilir."; fi
@@ -358,6 +370,7 @@ FINALIZED=false
 finalize() {
 	$FINALIZED && return
 	FINALIZED=true
+	preplan_stop
 	if ! $NIGHT; then stop_keep_awake; stop_heartbeat; return 0; fi
 	log "=== Kapanis: sabah raporu yaziliyor ==="
 	state "kapanis raporu"
@@ -422,6 +435,9 @@ next_plan() { # 0 = yeni plan hazir, 1 = yazilmadi, 2 = hedef tamam
 		log "  -> kuyruktan plan secildi: $qp"
 		return 0
 	fi
+	if $NIGHT && [ "$PREPLAN" = 1 ] && preplan_consume; then
+		return 0
+	fi
 	for try in 1 2; do
 		before="$(cat "$ACTIVE_PLAN_FILE" 2>/dev/null || true)"
 		$NIGHT && { switch_to "$INTEGRATION_BRANCH" || { append_blocker "entegrasyon dalina gecilemedi"; return 1; }; }
@@ -454,6 +470,12 @@ merge_into_integration() { # $1 = plan yolu; 0 = tamam
 	if git merge-base --is-ancestor "$br" "$INTEGRATION_BRANCH"; then
 		return 0
 	fi
+	merge_branch "$br"
+}
+
+# Verilen dali entegrasyon dalina --no-ff birlestirir; cakismayi Claude cozer. 0 = tamam.
+merge_branch() { # $1 = birlestirilecek dal
+	local br="$1" conflicts attempt rlog
 	switch_to "$INTEGRATION_BRANCH" || return 1
 	log "  -> git merge --no-ff $br -> $INTEGRATION_BRANCH"
 	if git merge --no-ff "$br" -m "Merge $br ($INTEGRATION_BRANCH, otonom gece döngüsü)
@@ -479,6 +501,162 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" >>"$MAIN_LOG" 2>&1; t
 	done
 	git merge --abort >>"$MAIN_LOG" 2>&1 || true
 	return 1
+}
+
+# --- On-plan (plans/OTONOM_DONGU.md §11) -------------------------------------
+# Sonuc dosyasi ($PREPLAN_RESULT), tek satir: durum|aktif-plan|taban-commit|plan-yolu|dal|not
+#   ready = yeni plan hazir ($PREPLAN_BRANCH dalinda), none = uygun bagimsiz is yok, fail = basarisiz.
+preplan_alive() { [ -n "${PREPLAN_PID:-}" ] && kill -0 "$PREPLAN_PID" 2>/dev/null; }
+
+preplan_stop() {
+	preplan_alive || return 0
+	pkill -P "$PREPLAN_PID" 2>/dev/null || true
+	kill "$PREPLAN_PID" 2>/dev/null || true
+}
+
+queue_has_ready() { # kuyrukta HAZIR plan var mi (tuketmez)
+	local q="plans/.queue" p
+	[ -f "$q" ] || return 1
+	while IFS= read -r p || [ -n "$p" ]; do
+		p="$(printf '%s' "$p" | tr -d '\r' | sed -E 's/[[:space:]]+$//')"
+		case "$p" in '' | '#'*) continue ;; esac
+		[ "$(plan_durum "$p")" = "HAZIR" ] && return 0
+	done <"$q"
+	return 1
+}
+
+# DeepSeek plan N'i uygularken en fazla BIR sonraki plani arka planda yazdirir. Cagri bos islem olabilir.
+preplan_maybe_start() { # $1 = su an uygulanan plan
+	local st cur br pl
+	[ "$PREPLAN" = 1 ] || return 0
+	[ -f "$DONE_FILE" ] && return 0
+	preplan_alive && return 0
+	if [ -f "$PREPLAN_RESULT" ]; then
+		IFS='|' read -r st cur _ pl br _ <"$PREPLAN_RESULT"
+		case "$st" in
+		ready)
+			# Zaten bir plan ileride (en fazla 1). Dal/plan kayboldiysa sonucu at.
+			if git cat-file -e "$br:$pl" 2>/dev/null; then return 0; fi
+			rm -f "$PREPLAN_RESULT"
+			;;
+		*) [ "$cur" = "$1" ] && return 0 ;; # bu plan icin zaten denendi
+		esac
+	fi
+	queue_has_ready && return 0
+	preplan_run "$1" >/dev/null 2>&1 &
+	PREPLAN_PID=$!
+	log "  on-plan baslatildi (pid $PREPLAN_PID, aktif plan: $1, worktree: $PREPLAN_DIR)"
+}
+
+# Arka plan: ayri worktree'de /plan-olustur calistirir ve sonucu $PREPLAN_RESULT'a yazar.
+preplan_run() { # $1 = su an uygulanan plan
+	local cur_plan="$1" cur_br base slog prompt added nadded plan outside
+	LOG_DIR="$ROOT/$LOG_DIR"
+	MAIN_LOG="$LOG_DIR/auto-loop.log"
+	STATE_FILE="$LOG_DIR/preplan.state"
+	STOP_FILE="$ROOT/$STOP_FILE"
+	TRACK=preplan
+	preplan_result() { printf '%s|%s|%s|%s|%s|%s\n' "$1" "$cur_plan" "${base:-}" "${plan:-}" "$PREPLAN_BRANCH" "$2" >"$PREPLAN_RESULT"; }
+	cur_br="$(plan_branch "$cur_plan")"
+	base="$(git rev-parse "$INTEGRATION_BRANCH")" || { preplan_result fail "entegrasyon dali okunamadi"; return 1; }
+	if [ -e "$PREPLAN_DIR" ]; then
+		git worktree remove --force "$PREPLAN_DIR" >/dev/null 2>&1 || rm -rf "$PREPLAN_DIR"
+	fi
+	git worktree prune
+	if ! git worktree add -q -B "$PREPLAN_BRANCH" "$PREPLAN_DIR" "$base" >/dev/null 2>&1; then
+		preplan_result fail "worktree acilamadi"
+		log "  on-plan: worktree acilamadi ($PREPLAN_DIR)"
+		return 1
+	fi
+	cd "$PREPLAN_DIR" || { preplan_result fail "worktree'ye gecilemedi"; return 1; }
+	slog="$LOG_DIR/preplan-$(basename "$cur_plan" .md)-$(date +%s).log"
+	state "on-plan yaziliyor"
+	log "  on-plan: claude -p /plan-olustur (log: $slog)"
+	prompt="/plan-olustur — ÖN-PLAN MODU (otonom döngü). Şu an ana çalışma ağacından AYRI bir git worktree'sindesin (dal: $PREPLAN_BRANCH, $INTEGRATION_BRANCH ucundan, ${base:0:7}). Aynı anda DeepSeek '$cur_plan' planını uyguluyor; o plan henüz doğrulanmadı ve $INTEGRATION_BRANCH'e birleşmedi, kodu bu çalışma ağacında YOK (yalnızca okumak için: git diff $INTEGRATION_BRANCH...${cur_br:-HEAD}; dal değişmeye devam eder). Görev: o plan bittikten sonra uygulanacak SIRADAKİ tek planı yaz. Zorunlu kurallar: (1) Konu '$cur_plan' ile aynı olamaz ve onun çıktısına BAĞIMLI olamaz: onun yeni ekleyeceği sembolleri/dosyaları kullanma ve onunla aynı dosyaları değiştirme (planının 'Dokunulabilecek dosyalar' listesini oku). (2) Yeni ADR/karar gerektiren bir işi seçme (körlemesine karar ve ADR numarası çakışması riski); böyle bir iş sıradaysa atla. (3) Branch alanına taban olarak $INTEGRATION_BRANCH yaz (önceki plan o zamana kadar birleşmiş olacak). (4) Uygun bağımsız iş yoksa ya da faz sınırındaysan HİÇBİR plan ve faz raporu taslağı yazma; yalnızca 'plans/.preplan-none' dosyasına tek satır neden yaz (git'e ekleme) ve dur. (5) Yalnızca plans/ ve docs/ altında değişiklik yap; GameServer/, AIServer/, shared/ ve BotCore/ koduna dokunma. (6) Diğer tüm /plan-olustur kuralları aynen geçerli: kodu kendin doğrula, kabul kriterleri, README+STATUS güncelle, $PREPLAN_BRANCH dalına commit et. Durum yalnızca tüm bölümler tamamsa HAZIR olur."
+	run_claude "$prompt" "$slog" || log "  on-plan: claude sifir olmayan cikis kodu."
+	if [ -f plans/.preplan-none ]; then
+		preplan_result none "$(head -c 300 plans/.preplan-none | tr '\n|' '  ')"
+		log "  on-plan: uygun bagimsiz plan yok ($(head -c 120 plans/.preplan-none | tr '\n' ' '))"
+	else
+		added="$(git diff --name-only --diff-filter=A "$base" HEAD -- 'plans/*.md' 2>/dev/null | grep -E '^plans/[A-Z][0-9]+-[0-9]+-[^/]+\.md$' || true)"
+		nadded="$(printf '%s' "$added" | grep -c . || true)"
+		plan="$added"
+		outside="$(git diff --name-only "$base" HEAD 2>/dev/null | grep -vE '^(plans|docs)/' || true)"
+		if [ "$nadded" != "1" ]; then
+			plan=""
+			preplan_result fail "eklenen plan sayisi $nadded (1 olmali)"
+		elif [ -n "$(git status --porcelain 2>/dev/null | grep -v '^??' || true)" ]; then
+			preplan_result fail "commit edilmemis degisiklik var"
+		elif [ -n "$outside" ]; then
+			preplan_result fail "plans/ ve docs/ disinda degisiklik: $(printf '%s' "$outside" | tr '\n' ' ' | head -c 200)"
+		elif [ "$(plan_durum "$plan")" != "HAZIR" ]; then
+			preplan_result fail "plan durumu HAZIR degil: $(plan_durum "$plan")"
+		elif [ -n "$cur_br" ] && [ "$(plan_branch "$plan")" = "$cur_br" ]; then
+			preplan_result fail "plan dali aktif planla ayni"
+		else
+			preplan_result ready "yeni plan hazir"
+			log "  on-plan: hazir -> $plan"
+		fi
+		[ "$(cut -d'|' -f1 "$PREPLAN_RESULT")" = "ready" ] || log "  on-plan: kullanilamadi: $(cut -d'|' -f6 "$PREPLAN_RESULT")"
+	fi
+	cd "$ROOT" && git worktree remove --force "$PREPLAN_DIR" >/dev/null 2>&1 || true
+}
+
+# Aktif plan DOGRULANDI+birlestirildikten sonra: hazir on-plan varsa birlestirip aktif plan yapar. 0 = aktif plan yapildi.
+preplan_consume() {
+	local st cur base plan br changed f overlap
+	if preplan_alive; then
+		log "  on-plan henuz suruyor; bekleniyor"
+		state "on-plan bekleniyor"
+		while preplan_alive; do
+			stop_requested && { preplan_stop; return 1; }
+			sleep 15
+		done
+	fi
+	[ -f "$PREPLAN_RESULT" ] || return 1
+	IFS='|' read -r st cur base plan br _ <"$PREPLAN_RESULT"
+	rm -f "$PREPLAN_RESULT"
+	[ "$st" = "ready" ] || return 1
+	if ! git rev-parse --verify --quiet "$br" >/dev/null || ! git cat-file -e "$br:$plan" 2>/dev/null \
+		|| ! git merge-base --is-ancestor "$base" "$INTEGRATION_BRANCH"; then
+		log "  on-plan gecersiz (dal/plan/taban bulunamadi); normal plan yazimina geciliyor"
+		return 1
+	fi
+	if git cat-file -e "$INTEGRATION_BRANCH:$plan" 2>/dev/null; then
+		log "  on-plan atlandi: $plan entegrasyon dalinda zaten var"
+		return 1
+	fi
+	log "  on-plan birlestiriliyor: $plan ($br)"
+	if ! merge_branch "$br"; then
+		log "  UYARI: on-plan birlestirilemedi; normal /plan-olustur yoluna dusuluyor"
+		return 1
+	fi
+	git branch -D "$br" >/dev/null 2>&1 || true
+	# Bayatlik: plan taban commit'te yazildi; aktif plan (ve dogrulamasi) o zamandan beri bu dosyalari degistirdiyse tazele.
+	changed="$(git diff --name-only "$base" "HEAD^1" 2>/dev/null | grep -vE '^(plans/|docs/STATUS\.md$|docs/KNOWN_ISSUES\.md$)' || true)"
+	overlap=""
+	while IFS= read -r f; do
+		[ -n "$f" ] || continue
+		if grep -qF -- "$f" "$plan" || grep -qF -- "$(basename "$f")" "$plan"; then overlap="$overlap $f"; fi
+	done <<<"$changed"
+	if [ -n "$overlap" ]; then
+		local rlog="$LOG_DIR/preplan-refresh-$(basename "$plan" .md)-$(date +%s).log"
+		log "  on-plan bayat olabilir (taban ${base:0:7} sonrasi degisen ve planda gecen dosyalar:$overlap); Claude tazeliyor (log: $rlog)"
+		state "on-plan tazeleniyor"
+		run_claude "ÖN-PLAN TAZELEME (otonom döngü). '$plan' planı, ${base:0:7} commit'indeki koda göre ÖNCEDEN yazıldı; o zamandan beri $INTEGRATION_BRANCH dalında önceki planın işi birleşti ve şu dosyalar değişti: $overlap. Görev: planın tüm dosya:satır, fonksiyon, sabit, imza referanslarını depoda yeniden doğrula ve kaymışsa düzelt; önceki planın getirdiği yeni kodla çelişen adım/kabul kriteri varsa uyarla; plana kısa bir 'Tazeleme' notu ekle. Plan artık yapılamaz veya anlamsızsa Durum'u İPTAL yap ve nedenini plana yaz. Aksi halde Durum HAZIR kalsın. Yalnızca bu plan dosyasını değiştir ve $INTEGRATION_BRANCH dalına commit et (mesaj: [plan] Ön-plan tazelendi). push/merge/rebase/reset yapma." "$rlog" || log "  tazeleme claude cagrisi sifir olmayan kodla bitti."
+		if [ -n "$(git status --porcelain -- "$plan" 2>/dev/null)" ]; then
+			git add -- "$plan" >/dev/null 2>&1 && git commit -q -m "[plan] Ön-plan tazelendi: $(basename "$plan" .md)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" >>"$MAIN_LOG" 2>&1 || true
+		fi
+		if [ "$(plan_durum "$plan")" != "HAZIR" ]; then
+			log "  on-plan tazelemeden sonra HAZIR degil ($(plan_durum "$plan")); normal /plan-olustur yoluna dusuluyor"
+			return 1
+		fi
+	fi
+	printf '%s' "$plan" >"$ACTIVE_PLAN_FILE"
+	log "  -> on-plan secildi: $plan"
+	return 0
 }
 
 log "=== auto-loop.sh basladi (mod: $($NIGHT && echo "gece, dal=$INTEGRATION_BRANCH, hedef=$TARGET_PHASE" || echo klasik), model: $OPENCODE_MODEL / $CLAUDE_MODEL ($CLAUDE_EFFORT)) ==="
@@ -551,6 +729,7 @@ while true; do
 			fi
 			[ -n "$BR" ] && git rev-parse --verify --quiet "$BR" >/dev/null && switch_to "$BR"
 		fi
+		preplan_maybe_start "$PLAN_PATH"
 		ensure_servers_stopped
 		state "DeepSeek uyguluyor ($DURUM)"
 		log "  -> opencode run (log: $STEP_LOG)"
