@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `aeca42b`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapı G4) |
 | Branch | `bot/F4-55 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F2-03 (bot girişi / spawn durum makinesi), F4-12, F4-13 (görünür oyuncu tablosu, `WIZ_REQ_USERIN`), F4-54 (teşhis sayaçları, kök neden H2) — hepsi `KAPANDI` (`gece/2026-10-02` içinde birleşik; F4-54 merge `cf22667`) |

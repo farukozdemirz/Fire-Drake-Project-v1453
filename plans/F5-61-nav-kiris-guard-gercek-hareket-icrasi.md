@@ -2,23 +2,22 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK |
+| Durum | HAZIR |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-61 (taban: gece/2026-10-02)` |
-| Bağımlı olduğu planlar | **F5-59** (`NavService`: `Instance()`, `Ready()`, `Grid()`) `KAPANDI` olmalı. Zaten `KAPANDI`: F5-50 (`NavCheckStep`), F5-58 (kalıcı duvar regresyonu), F4-01 (`SubmitMove`, `CheckMoveStep`). Şemsiye: F5-55 (dilim 3). F5-62 bu planın guard'ına dayanır |
+| Bağımlı olduğu planlar | `KAPANDI` (hepsi `gece/2026-10-02`'ye birleşti): **F5-59** (`NavService`: `Instance()`, `Ready()`, `Grid()`), F5-50 (`NavCheckStep`), F5-58 (kalıcı duvar regresyonu), F4-01 (`SubmitMove`, `CheckMoveStep`), F4-55 (giriş el sıkışması; çalışma zamanı K9-K11 bot girişi buna dayanır). Şemsiye: F5-55 (dilim 3). F5-62 bu planın guard'ına dayanır |
 | İlgili gereksinim / kabul | CLI-08 (`docs/03` §13), `docs/12` §13.1 ("Kural (CLI-08)", "Duvar bulgusunun sınıflandırması"), AC-NAV-03 (engelli hücreye giren hareket = 0), DEG-20; `docs/13` §3 (bot avantajı yasağı); ADR-0017 (adalet koruması); `tools/check-perception-contract.py` R1-R5 PASS kalmalı |
 | Tahmini büyüklük | S–M (6 dosya; 2'si yeni; kod az, kanıt birim testte + çalışma zamanında) |
-| Hazırlayan / tarih | Claude / 2026-10-03 (taslak) |
+| Hazırlayan / tarih | Claude / 2026-10-03 (taslak) → HAZIR 2026-10-03 (gece modu; referanslar `gece/2026-10-02` @ `aeca42b` üzerinde yeniden doğrulandı) |
 
 ---
 
-## Neden TASLAK
+## Yazım turu doğrulaması (HAZIR yapılırken, `gece/2026-10-02` @ `aeca42b`)
 
-Bu plan, F5-59'un `NavService` kodu depoda olmadan yazıldı. HAZIR yapmak için:
-
-1. **F5-59 `KAPANDI`** ve `GameServer/Bot/NavService.h` içinde şu sözleşmenin gerçek kodda bulunduğu doğrulanmış olmalı: `static NavService & Instance()`, `bool Ready() const`, `const BotCore::NavGrid * Grid() const` (hazır değilse `nullptr`), `Startup()`/`Shutdown()`; `[BOT] NAV=1` (varsayılan 0). Sözleşmeden sapma varsa §5 adım 4 buna göre yeniden yazılır.
-2. Yazım turunda yeniden doğrulanacak referanslar (bu taslakta `gece/2026-10-02` @ `9fc2dfe` üzerinde okundu; F4-55/F4-60/F6-* dilimleri satırları kaydırabilir): `GameServer/Bot/ActionExecutor.cpp:19-24` (`MoveStepLimit`), `:53-72` (`EmitFairnessReject`), `:76-163` (`SubmitMove`; guard bloğu `:94-110`, `HandlePacket` `:128`), `:167-228` (`BeginMove`), `:266-284` (`StopMove`); `BotCore/BotMotion.h` (`CheckMoveStep`, `MoveVerdict`, `kStopSlackMeters` = 0,05); `BotCore/NavSegment.h:22-43, 330` (`NavSegmentVerdict`, `NavCheckSegment`, `NavCheckStep`); `GameServer/Define.h:140` (`ZONE_RONARK_LAND = 71`); `Tests/BotCoreTests/NavSegmentAuditTests.cpp` ve `tools/nav-regress/good.txt:4-6` (`EXAMPLE straight step` vektörleri).
-3. **Açık soru (proje sahibi/Claude, HAZIR öncesi):** başlangıç hücresi `Walk` olmayan bot (sunucunun yerleştirdiği konum) için kural (§2 "Karar D5"). Önerilen kural bu taslakta yazılıdır; farklı karar gelirse §3 ve §5 değişir.
+1. **F5-59 sözleşmesi gerçek kodda doğrulandı:** `GameServer/Bot/NavService.h:25` `static NavService & Instance()`, `:37` `bool Ready() const`, `:38` `const BotCore::NavGrid * Grid() const` (hazır değilse `nullptr`), `:31` `Startup()`, `:34` `Shutdown()`; `[BOT] NAV=1` (varsayılan 0). Sapma yok.
+2. **Satırlar doğrulandı (taslakla aynı):** `GameServer/Bot/ActionExecutor.cpp:19-24` (`MoveStepLimit`), `:53-72` (`EmitFairnessReject`, `skillId` varsayılan parametresi `:55`), `:76-163` (`SubmitMove`; nicemleme `:84-92`, guard bloğu `:94-110`, `ACTION_SUBMIT` `:112-122`, `HandlePacket` `:128`), `:167-228` (`BeginMove`), `:230-264` (`TickMove`), `:266-284` (`StopMove`: konumunu `user->GetX()/GetZ()` ile `speed=0` paketi olarak yollar). `SubmitMove`'u çağıran **tek** yer `TickMove` ve `StopMove`'dur; `GameServer/Bot/` altında başka `WIZ_MOVE` üreten kod yoktur (`grep -rn WIZ_MOVE GameServer/Bot` yalnızca `:124` üretir). `BotCore/BotMotion.h:15` `kStopSlackMeters = 0.05f`; `BotCore/NavSegment.h:22-43` (`NavSegmentVerdict`, `NavCheckSegment`), `:330` `NavCheckStep`; `BotCore/NavGrid.h:40-52` (`Size()`, `Unit()`, `InBounds`, `CellOf`, `Walk`); `GameServer/Define.h:140` `ZONE_RONARK_LAND 71`; `GameServer/Unit.h:55` `GetZoneID()`; `tools/nav-regress/good.txt:4-6` üç `EXAMPLE straight step` vektörü; `Tests/BotCoreTests/NavArenaTests.cpp:320-329` `SKIPPED` kalıbı; `Tests/BotCoreTests/NavSegmentAuditTests.cpp:32-46` (`LoadZone71OrSkip`), `:98-128` (`BuildAuditPool`), `:200-237` (6,75 m paket kirişi döngüsü).
+3. **`tools/check-perception-contract.py`:** R2 kısıtlı semboller (`GetUserPtr`, `GetMap`, ...) listesinde `GetZoneID`/`GetX`/`GetZ`/`NavService` **yok**; yeni kod bunlardan yalnızca botun **kendi** konumunu/bölgesini ve `NavService` ızgarasını okur. R4: `NavChordGuard.h` yalnızca standart kütüphane ve kardeş başlıklar içerir.
+4. **Kararlar (otonom döngüde Claude kararı — gözden geçirilmeli; ADR-0006 Ek F5-61):** D5 (başlangıç hücresi `Walk` değilse çıkış muafiyeti) taslaktaki gibi **kabul edildi**; D3 durma/aynı-konum muafiyet eşiği `kStopSlackMeters` (0,05 m) yerine, paket nicemlemesinin köşegen hatasına (en çok 0,0708 m) uyan **`kChordIgnoreMeters = 0.08f`** yapıldı (gerekçe §2 D3). Önkoşul olan F5-59 taslağın "Açık soru" maddesi bu iki karar ile kapandı.
 
 ## 1. Amaç
 
@@ -35,11 +34,11 @@ Bu plan, F5-59'un `NavService` kodu depoda olmadan yazıldı. HAZIR yapmak için
 - F5-59: `NavService::Instance().Grid()` yalnızca **zone 71** ızgarasıdır. Bot başka bölgedeyse denetim uygulanamaz (`Skipped`).
 - **Ön ölçüm `[V ön ölçüm: Claude, Python, 2026-10-03, uygulayıcı yeniden üretmeli]`:** `freezone_a_20050718.smd` olay ızgarasında (`x*513+z`, 4-bağlantılı bileşen) ana bileşen 88 508 hücre (`docs/12` §1 ile aynı); Karus doğuşu (1369,9; 1090,3) → hücre (342, 272) ve El Morad doğuşu (630,0; 920,0) → hücre (157, 230) **ana bileşende** (yani `Walk` olayı 1 + ana bileşen; `clearance` ayrıca değerlendirilmedi); arena A noktaları (1274,5; 892,6) ve (1276,3; 889,0) ana bileşende. Karus doğuş hücresinin güney/doğu komşularından üçü olay 0 (kıyıdadır). Sunucu doğuşta konuma rastgele sapma uygulayabilir (`AttackHandler.cpp` `Regene`; uygulayıcı doğrulasın): başlangıç hücresinin `Walk` olmaması **imkânsız değildir**.
 
-### Tasarım kararları (Claude önerisi; D5 açık sorudur)
+### Tasarım kararları (otonom döngüde Claude kararı — gözden geçirilmeli; ADR-0006 Ek F5-61)
 
 - **D1 ad:** `rule:"CLI-08"`, `reason:"blocked_chord"` (`docs/12` §13.1); ek alanlar `cell_x`, `cell_z`, `verdict` (`BlockedCell`/`OutOfBounds`). Mevcut alanlar (`value` = adım uzunluğu m, `limit` = 0,00) korunur.
 - **D2 sıra:** önce `CheckMoveStep` (CLI-05 hız alanı, CLI-08 adım uzunluğu), sonra kiriş. İkisi de ihlalse ilk ihlal raporlanır (`step_too_long`).
-- **D3 durma paketi:** kiriş uzunluğu `< kStopSlackMeters` (0,05 m; durma/aynı-konum paketi) denetlenmez: bot **her zaman durabilir**.
+- **D3 durma paketi:** kiriş uzunluğu `< kChordIgnoreMeters` (= 0,08 m; `NavChordGuard.h` içinde yeni sabit) denetlenmez: bot **her zaman durabilir**. Neden 0,05 değil: `StopMove` botun **nicemlenmemiş** konumunu (`GetX()` örn. sunucunun doğuş yerleştirmesi) `uint16(x*10+0.5)/10` ile nicemler; eksen başına hata ≤ 0,05 m, köşegen hata ≤ 0,0708 m, yani aynı-konum paketi `kStopSlackMeters`'i aşabilir ve botu hücre kenarında duruyorsa reddedebilirdi. 0,08 m hücrenin (4 m) %2'sidir; gerçek hareket adımları ≥ 0,1 m olduğundan atlama gerçek adım denetimini zayıflatmaz.
 - **D4 atlama:** `NavService::Grid() == nullptr` (NAV=0, ENABLED=0, başlangıç hatası) **veya** bot `GetZoneID() != ZONE_RONARK_LAND` ise `Skipped`: davranış, çıktı ve telemetri bugünküyle bayt bayt aynıdır.
 - **D5 başlangıç hücresi `Walk` değilse (öneri):** deadlock'u önlemek için kiriş, başlangıç hücresinden **çıktığı noktadan** itibaren denetlenir (başlangıç hücresinin kendisi muaf; çıkış noktası 1e-3 m ileri taşınır); kiriş başlangıç hücresinin içinde bitiyorsa `Ok`. Gerekçe: botun o konuma sunucu yerleştirmesiyle gelmesi botun hatası değildir; ama oradan çıkış yürünebilir hücrelere olmalıdır. Başlangıç konumu ızgara dışındaysa `OutOfBounds` (reddedilir). Alternatif (reddet) deadlock üretir: bot doğuş noktasından hiç yürüyemez.
 - **D6 eğim:** `checkSlope = false` (docs/12 §13.1: zorunlu katman `Walk` süpercover'ı).
@@ -88,7 +87,10 @@ Bu listede olmayan bir dosyaya dokunmak gerekirse (ör. `proj-GameServer.vcxproj
    #include "NavSegment.h"
    namespace BotCore
    {
-   	enum class ChordVerdict { Ok, Skipped, BlockedCell, OutOfBounds };
+   	// Packet positions are quantised to 0.1 m: the diagonal error of a stop-in-place packet is <= 0.0708 m.
+	constexpr float kChordIgnoreMeters = 0.08f;
+
+	enum class ChordVerdict { Ok, Skipped, BlockedCell, OutOfBounds };
    	struct ChordResult
    	{
    		ChordVerdict verdict = ChordVerdict::Skipped;
@@ -96,7 +98,7 @@ Bu listede olmayan bir dosyaya dokunmak gerekirse (ör. `proj-GameServer.vcxproj
    		int cellZ = 0;
    		bool startExempt = false;   // the start cell was not Walk and was exempted (D5)
    	};
-   	// grid == nullptr -> Skipped. Chord shorter than kStopSlackMeters -> Ok (a bot can always stop).
+   	// grid == nullptr -> Skipped. Chord shorter than kChordIgnoreMeters -> Ok (a bot can always stop).
    	// Start cell not Walk -> the chord is checked from the point where it leaves the start cell
    	// (moved 1e-3 m past the cell boundary); a chord that ends inside the start cell is Ok.
    	// Start/end outside the grid or non-finite -> OutOfBounds. Slope layer off (checkSlope = false).
@@ -127,10 +129,10 @@ Bu listede olmayan bir dosyaya dokunmak gerekirse (ör. `proj-GameServer.vcxproj
 5. **Testler** (`Tests/BotCoreTests/NavChordGuardTests.cpp`, `MiniTest.h`; adlar sabit; sentetik ızgara `NavGrid::Init` + `Build`, `Rng` sabit tohum):
    - `NavChord_Skipped_NoGrid`: `grid == nullptr` → `Skipped`; hiçbir koşulda `BlockedCell` değil.
    - `NavChord_Synthetic`: 9×9 ızgara, bir duvar sütunu: duvarı kesen kiriş → `BlockedCell` ve doğru hücre; açık satır boyunca → `Ok`; yalnızca hücre köşesine (vertex) değen kiriş duvar köşesindeyse → `BlockedCell` (muhafazakâr); bitiş ızgara dışı → `OutOfBounds`; NaN → `OutOfBounds`; sonuç kiriş yönünden bağımsız (simetri).
-   - `NavChord_StopPacket_NeverBlocked`: uzunluk 0 ve < 0,05 m, başlangıç **engelli** hücrede → `Ok`.
+   - `NavChord_StopPacket_NeverBlocked`: uzunluk 0, 0,0707 m (köşegen nicemleme; (x,z)→(x+0,05; z+0,05)) ve 0,079 m, başlangıç **engelli** hücrede ve **hücre kenarında** → `Ok`; uzunluk 0,2 m ve engelli hücreye giren kiriş → `BlockedCell` (eşik gerçek adımı gizlemez).
    - `NavChord_StartNotWalk`: başlangıç engelli hücrede; yürünebilir hücrelere çıkan kiriş → `Ok` + `startExempt`; engelli hücreye çıkan → `BlockedCell`; başlangıç hücresi içinde biten → `Ok`; başlangıç ızgara dışı → `OutOfBounds`.
    - `NavChord_RealMap_StraightVectors`: `build/nav/zone71.navgrid` yoksa `NAVCHORD real map: SKIPPED (...)` basıp dön (`NavArenaTests.cpp:320-329` kalıbı); varsa `tools/nav-regress/good.txt:4-6` üç vektörü (`(654,818)->(646,806)` hücre `(163,203)`; `(958,946)->(946,958)` hücre `(239,237)`; `(994,1006)->(990,994)` hücre `(248,250)`) `CheckMoveChord` ile `BlockedCell` ve aynı ihlal hücresi vermeli; satır: `NAVCHORD real map: vectors=3 blocked=3`.
-   - `NavChord_RealMap_PlannerPaths_Clean`: gerçek haritada ≥ 200 `near64` planlayıcı yolu (`NavPathfinder` + `NavSmoothPath`, sabit tohum), 6,75 m'lik **paket kirişlerine** bölünmüş (`NavSegmentAuditTests.cpp` yardımcılarını kopyala, `import` yok): kiriş sayısı ≥ 1000, `BlockedCell` **0** (AC-NAV-03 altyapısı; `docs/12` §13.1: 0/250 000). Satır: `NAVCHORD planner chords=<n> blocked=0`.
+   - `NavChord_RealMap_PlannerPaths_Clean`: gerçek haritada ≥ 200 `near64` planlayıcı yolu (`NavPathfinder` + `NavSmoothPath`, sabit tohum), 6,75 m'lik **paket kirişlerine** bölünmüş (`NavSegmentAuditTests.cpp` yardımcılarını kopyala, `import` yok): kiriş sayısı ≥ 1000, `BlockedCell` **0** (AC-NAV-03 altyapısı; `docs/12` §13.1: 0/250 000). Kirişler `NavSegmentAuditTests.cpp:200-237` gibi **nicemlenmemiş** üretilir ve `blocked=0` olmalıdır (CHECK). Ek bilgi satırı (CHECK **yok**): aynı kirişlerin uçları `uint16(x*10+0.5)/10` ile nicemlenip tekrar denetlenir, `NAVCHORD planner quantised chords=<n> blocked=<m>`; `m > 0` ise Uygulayıcı Raporu'nda bulgu olarak yazılır (sunucuya giden değer nicemlenmiştir; planı bloke etmez, F5-62'de `NavDrive` payı için girdidir).
    - `NavChord_Perf` (`#ifndef _DEBUG`): 20 000 kiriş, `CheckMoveChord` p95 ≤ 0,02 ms (PM-M7 ile aynı kapı).
 6. Derle ve test et (§7); `python3 tools/check-perception-contract.py` rc=0.
 7. Sunucu çalıştırma bu planda uygulayıcıya düşmez: çalışma zamanı K9-K12'yi Claude yapar. Uygulayıcı Raporu'nu yaz; `Durum` → `UYGULANDI`.
@@ -144,7 +146,7 @@ Bu listede olmayan bir dosyaya dokunmak gerekirse (ör. `proj-GameServer.vcxproj
 - [ ] K5: `NavChordGuard.h`'de `grep -n -E "windows.h|stdafx|GameServer|shared/|new |malloc|static " ` boş; `python3 tools/check-perception-contract.py` rc=0 (R1-R5 PASS)
 - [ ] K6: `ActionExecutor.cpp`'de mevcut `"CLI-05"`/`"step_too_long"` çağrısı **değişmedi** (`git diff` o satırlarda yok); yeni çağrı `rule:"CLI-08"`, `reason:"blocked_chord"`; kiriş ret yolunda `HandlePacket` çağrısı yok (kod incelemesi, `dosya:satır` raporda)
 - [ ] K7: kiriş denetimi `Skipped` iken (`Grid() == nullptr`) `SubmitMove` akışı ön-değişiklikle aynı: `EmitFairnessReject` mevcut çağrılarının çıktısı bayt bayt aynı (yeni parametre varsayılan `nullptr`)
-- [ ] K8: yeni dosyalar ASCII + CRLF (`file` çıktısı raporda); `git grep -n "kStopSlackMeters" BotCore/NavChordGuard.h` durma paketi muafiyetini gösterir
+- [ ] K8: yeni dosyalar ASCII + CRLF (`file` çıktısı raporda); `git grep -n "kChordIgnoreMeters" BotCore/NavChordGuard.h` durma paketi muafiyetini gösterir (tanım + kullanım ≥ 2 satır)
 - [ ] K9 (Claude, çalışma zamanı; yalnızca bu plan): `GameServer.ini` `[BOT] ENABLED=1, NAV=1, TELEMETRY=decisions`; bir bot doğuş noktasında; Claude, ızgara ve `tools/nav-segment-check.py` mantığıyla **iki yürünebilir hücre arasındaki ama engelli hücreye değen** bir düz hedef bulur (6,75 m içinde) ve `/bot move <bot> <x> <z>` verir: `Bot_*.log`'da `move stopped (blocked_chord)`; telemetride `FAIRNESS_REJECT` `rule:"CLI-08"`, `reason:"blocked_chord"`, `cell_x/cell_z` = hesaplanan hücre; `ACTION_SUBMIT`/`WIZ_MOVE` **yok** (paket gönderilmedi); botun konumu değişmedi (`/bot list`)
 - [ ] K10 (Claude): temiz bir hedefe (kiriş tamamen `Walk`) `/bot move` → yürür ve varır (`arrived ... after N packets`); `/bot stop <bot>` her zaman durur (durma paketi reddedilmez)
 - [ ] K11 (Claude): `NAV=0` (veya anahtar yok) + `ENABLED=1`: K9'daki **aynı** komut eskisi gibi paketi gönderir (`SENT`, `FAIRNESS_REJECT` yok); yani varsayılan davranış değişmedi
@@ -170,7 +172,7 @@ git diff --check gece/2026-10-02...bot/F5-61
 - Denetim **IOCP iş parçacığında** (`SubmitMove`) çalışır; `NavService::Grid()` yalnızca `const` okunur (F5-59: kurulumdan sonra hiç yazılmaz).
 - Maliyet: kiriş başına ~0,0002 ms (PM-M7); tick bütçesini etkilemez.
 - **Dürüstlük:** birim testleri kiriş mantığını ve sunucuya gitmeden önce reddi sınar; botun oyunda engelli hücreye **hiç girmediği** (AC-NAV-03) yalnızca 30 dk'lık çalışma zamanı denetimiyle (F5-66, bağımsız denetim aracı) kanıtlanır. Kiriş yalnızca **paket konumları arasındaki** doğru parçasını denetler; paketler arası gerçek istemci yolu bilinmez (`docs/12` §13.1: ara noktaları sunucu doğrulamaz).
-- D5 (başlangıç hücresi muafiyeti) güvenlik gevşetmesi gibi okunabilir: muafiyet yalnızca **başlangıç hücresi** içindir; çıkış noktasından sonraki her hücre `Walk` olmak zorundadır. Karar proje sahibinde.
+- D5 (başlangıç hücresi muafiyeti) güvenlik gevşetmesi gibi okunabilir: muafiyet yalnızca **başlangıç hücresi** içindir; çıkış noktasından sonraki her hücre `Walk` olmak zorundadır. Karar otonom döngüde Claude'undur (ADR-0006 Ek F5-61), proje sahibi gözden geçirir.
 - Beklenmedik durumda (F5-59 imzası farklı, `SubmitMove` yeniden yazılmış, ek dosya gerekiyor) **dur** ve `Durum: UYGULANIYOR (BLOKE)` ile raporla.
 
 ---

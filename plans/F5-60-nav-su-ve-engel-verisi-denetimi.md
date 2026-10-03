@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `2e85af8`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-60 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-11 (`tools/nav-measure*`, `nav-regress*`), F5-50 (`NavSegment`), F5-58 — hepsi `KAPANDI`. Şemsiye: F5-55 (dilim 2). F5-59'dan **bağımsızdır** (sunucusuz) |
