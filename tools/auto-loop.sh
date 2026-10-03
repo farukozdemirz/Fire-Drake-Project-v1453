@@ -46,7 +46,7 @@ PREPLAN_DIR="${PREPLAN_DIR:-/mnt/c/dev/fdp-preplan}"
 # Evidence step: before /plan-dogrula the mechanical evidence is collected by tools/verify-evidence.sh
 # (no LLM) and the plan-specific commands / runtime steps by a restricted opencode agent ("evidence",
 # opencode.json). The auditor treats both files as leads and re-checks the key claims (plan-dogrula SKILL 1b).
-EVIDENCE="${EVIDENCE:-1}"
+EVIDENCE="${EVIDENCE:-0}"
 EVIDENCE_MODEL="${EVIDENCE_MODEL:-opencode-go/deepseek-v4-pro}"
 EVIDENCE_TIMEOUT_SEC="${EVIDENCE_TIMEOUT_SEC:-2400}"
 

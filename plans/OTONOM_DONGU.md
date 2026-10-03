@@ -195,3 +195,7 @@ Proje sahibi F4 kapsamını **dondurdu**: otonom döngü (`/plan-olustur`, kurta
 **Rol (proje sahibi, 2026-10-03):** Pro, Claude'un işini almaz; ona hız kazandırmak için kanıt toplar. Karar Claude'dadır: `plan-dogrula` SKILL §1b: kanıt ipucudur; denetçi en az üç kriteri kendi yeniden doğrular, kodu kendi okur, negatif kontrol yapar, çalışma zamanı kanıtını ham günlüklerden doğrular. Kanıt yok/eski/uyuşmuyorsa tam doğrulama (eski davranış). Kanıt adımı başarısız olursa döngü durmaz.
 
 **Güvenlik ağları:** kanıt adımı izlenen dosyaları değiştirirse `git checkout -- .` ile geri alınır ve kanıt geçersiz sayılır; aynı commit için kanıt yeniden üretilmez (önbellek); zaman aşımı `EVIDENCE_TIMEOUT_SEC` (varsayılan 2400 sn).
+
+## 14. Debug testleri (ADR-0025, 2026-10-03)
+
+Debug tam test paketi ~10 dk (Release ~35 sn). Karar (proje sahibi): plan doğrulamasında ve uygulamasında Debug'da yalnızca planın eklediği/değiştirdiği testler (`tools/run-changed-tests.sh Debug <taban>`), tam Debug paketi `main` kapısında. Kanıt adımı denemesi (§13, hat `f6` F6-02): hibrit 32 dk, eski akış F5-64 15 dk; kanıt adımı varsayılan **kapalı** (`EVIDENCE=0`), araçlar duruyor.

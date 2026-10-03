@@ -60,6 +60,7 @@ Proje: Knight Online v1453 sunucu emülatörü (C++17, MSVC v143, Win32) üzerin
 ```bash
 ./tools/build.sh Release      # zorunlu; hatasız bitmeli
 ./tools/build.sh Debug        # plan isterse
+./tools/run-changed-tests.sh Debug <taban>   # Debug'da yalnızca planın testleri (ADR-0025); tam Debug paketini koşma
 ```
 
 - Derleme WSL'den Windows MSBuild (VS 2022, v143) ile yapılır. Çıktı: `build/bin/x86-Release/Server/`.

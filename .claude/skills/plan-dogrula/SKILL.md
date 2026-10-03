@@ -42,6 +42,7 @@ Ayrıntılı liste: [kontrol-listesi.md](kontrol-listesi.md). Her maddeyi uygula
 3. **Derleme:** Yapı oturumu geçici branch'e geçirmeyi gerektiriyorsa önce kullanıcıya söyle.
    - `git switch bot/<FAZ>-<NN>`
    - `./tools/build.sh Release`, plan isterse `Debug` da
+   - **Testler (ADR-0025):** Release'te tam paket (`./tools/run-tests.sh Release --no-build`). Debug'da tam paket **koşma**; `./tools/build.sh Debug` derlemesi + `./tools/run-changed-tests.sh Debug <taban>` (yalnızca planın eklediği/değiştirdiği testler). Planın kabul kriteri "Debug tam paket" diyorsa ADR-0025 uyarınca bu seçim olarak oku. Tam Debug paketi `main` kapısında koşulur.
    - Sonra eski branch'e dön.
    - Hatalar ve **yeni** uyarılar not edilir.
 4. **Proje kuralları** (`AGENTS.md` §2–3, `docs/03` §13, `docs/13` §3):

@@ -73,7 +73,7 @@ Planda adı geçecek her fonksiyonu, satırı ve sabiti **depoda aç ve doğrula
 - Şablondaki tüm bölümleri doldur. Özellikle:
   - **Dokunulabilecek dosyalar:** tam liste. Yeni `.cpp`/`.h` dosyaları için `GameServer/proj-GameServer.vcxproj` ve `.filters` satırlarını da ekle.
   - **Uygulama adımları:** numaralı ve somut. Fonksiyon imzalarını, veri yapılarını ve paket alanlarını ver. Gerekirse kısa kod iskeleti ekle ama uygulamayı DeepSeek'e bırak.
-  - **Kabul kriterleri:** her biri komutla, dosya:satırla veya ölçümle doğrulanabilir olmalı. `tools/build.sh Release` hatasız kriteri her planda bulunur.
+  - **Kabul kriterleri:** her biri komutla, dosya:satırla veya ölçümle doğrulanabilir olmalı. `tools/build.sh Release` hatasız kriteri her planda bulunur. Test kriteri (ADR-0025): Release'te tam paket `0 failed`; Debug için yalnızca derleme + planın eklediği/değiştirdiği testler (`tools/run-changed-tests.sh Debug <taban>`), tam Debug paketi yazma.
   - **Kapsam dışı:** DeepSeek'in "iyileştirme" yapıp kapsamı büyütmesini önleyecek açıklıkta yaz.
   - **Kısıtlar:** ilgili `MEC-*`, `CLI-*` kuralları, thread kuralı, kodlama/satır sonu uyarıları.
 - **Plan numarası:** `NN` o fazdaki **sıradaki serbest** numaradır; `50`–`59` aralığı değerlendirme düzeltme planlarına ayrılmıştır (`F4-50..59`, `F5-50..59`, `plans/README.md` "değerlendirme" tablosu) ve **atlanır**. Yani README'deki en yüksek numaradan değil, son *döngü* planından devam et (örn. `F4-24`'ten sonra `F4-25`; `F4-50..54` zaten yazılmıştır, onlar `plans/.queue` ile sırayla uygulanır, yeniden yazma).

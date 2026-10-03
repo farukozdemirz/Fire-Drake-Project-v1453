@@ -51,6 +51,7 @@ Her madde doğrulanabilir olmalı (komut, dosya:satır, ölçüm).
 
 - [ ] K1: …
 - [ ] K2: `tools/build.sh Release` hatasız biter (yeni uyarı yok)
+- [ ] K2b (ADR-0025): `tools/run-tests.sh Release` tam paket `0 failed`; Debug: `tools/build.sh Debug` hatasız + `tools/run-changed-tests.sh Debug <taban>` `0 failed` (tam Debug paketi koşulmaz)
 - [ ] K3: …
 
 ## 7. Doğrulama komutları

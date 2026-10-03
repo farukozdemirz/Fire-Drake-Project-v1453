@@ -292,6 +292,7 @@ Liste: `plans/README.md`.
 | 2026-10-01 | F0-01 | DOĞRULANDI | 10/10 kriter; 2 düşük + 3 bilgi bulgusu (`plans/F0-01…` Doğrulama Raporu). Debug/Release tablosu → `docs/02` §2.1 |
 
 ## Verilen kararlar
+- **2026-10-03 (proje sahibi, ADR-0025):** Debug testleri plan bazında yalnızca planın eklediği/değiştirdiği testlerle koşulur (`tools/run-changed-tests.sh`); tam Debug paketi `main` kapısında ve faz sonunda. Ölçüm: Debug tam paket ~10 dk, Release ~35 sn.
 
 K-1..K-10, 2026-10-01 (`docs/18` §1, `docs/adr/`). Önerilenden farklı seçilenler:
 
