@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `0673515`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 20) |
 | Branch | `bot/F4-44` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-43 (`tools/skill-check.py` yenilenmeye dayanıklı MP hükmü, `bots/config/skill_priest_k.{spec,txt}`) — `KAPANDI` (merge `5318a90`); F4-42 (`tools/skill-script-gen.py`) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-29 (alan skill), F4-26 (çift tipli) — `KAPANDI` |
