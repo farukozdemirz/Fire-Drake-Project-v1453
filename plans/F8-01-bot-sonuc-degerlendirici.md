@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
@@ -198,35 +198,237 @@ git diff --stat gece/2026-10-02-nav...bot/F8-01
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F8-01` — `<kısa-sha> [F8-01] …`
+- Branch / commit'ler: `bot/F8-01` (taban `gece/2026-10-02-nav`)
+  - `8895e8e [F8-01] Maç sonuç değerlendiricisi: tools/bot-outcome-eval.py + örnek + --selftest (67 vaka)`
+  - plan kaydı commit'i (bu rapor + `Durum`)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `tools/bot-outcome-eval.py` (yeni, 1407 satır): §5 sözleşmesine göre maçları gruplar,
+    kural parametrelerini çözer, `killdiff_timed`/`wipe_first`/`timed_score` sonucunu
+    hesaplar, `OUTCOME`/`SUMMARY` (ya da `--json`) yazar; `--selftest` 67 vaka.
+  - `tools/bot-outcome-eval/sample.jsonl` (yeni, 21 satır): §5.7'deki örnek girdi.
+  - `plans/F8-01-bot-sonuc-degerlendirici.md`: yalnızca `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son 7 satır):
   ```
-  …
+    BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+    Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Yeni uyarı/hata yok. `./tools/run-tests.sh` son satırı: `223 tests, 0 failed`
+  (değişmedi). Sunuculara dokunulmadı (paralel hat `nav`; `run-servers.sh status`
+  ana hattın sunucularını gösteriyor, kapatılmadı).
+
+### Doğrulama çıktıları (istenen)
+
+`python3 tools/bot-outcome-eval.py --selftest | tail -1`:
+```
+SELFTEST PASS n=67
+```
+
+`python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl`:
+```
+OUTCOME match=SMP-win-1-1 rule=killdiff_timed result=win_a k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-draw-1-1 rule=killdiff_timed result=draw k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-wipe-1-1 rule=wipe_first result=win_a k_a=2 k_b=0 diff=+2 alive_a=2 alive_b=0 engage_ms=500 end_ms=7000 end=wipe reasons=-
+OUTCOME match=SMP-noeng-1-1 rule=killdiff_timed result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+SUMMARY n=4 win_a=2 win_b=0 draw=1 invalid=1 no_result=0
+```
+
+`... sample.jsonl --win-margin 3`:
+```
+OUTCOME match=SMP-win-1-1 rule=killdiff_timed result=draw k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-draw-1-1 rule=killdiff_timed result=draw k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-wipe-1-1 rule=wipe_first result=win_a k_a=2 k_b=0 diff=+2 alive_a=2 alive_b=0 engage_ms=500 end_ms=7000 end=wipe reasons=-
+OUTCOME match=SMP-noeng-1-1 rule=killdiff_timed result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0
+```
+
+### K10 — ADR-0031-DEG / `docs/15` §6b örnek eşlemesi
+
+| Örnek | Vaka adı | Sonuç |
+|---|---|---|
+| killdiff (14,11,+3) | `kd_14_11` | win_a |
+| killdiff (10,8,+2, sınır) | `kd_10_08` | win_a |
+| killdiff (9,8,+1) | `kd_09_08` | draw |
+| killdiff (8,8,0) | `kd_08_08` | draw |
+| killdiff (8,9,-1) | `kd_08_09` | draw |
+| killdiff (7,9,-2) | `kd_07_09` | win_b |
+| killdiff (3,12,-9) | `kd_03_12` | win_b |
+| killdiff 0-0 (hasar var) | `kd_00_00_damage` | draw |
+| killdiff 0-0 (hasar yok) | `kd_00_00_nodamage` | invalid NO_ENGAGE |
+| margin 3 (14,11) | `kdm3_14_11` | win_a |
+| margin 3 (10,8) | `kdm3_10_08` | draw |
+| margin 3 (7,9) | `kdm3_07_09` | draw |
+| 2v2 (3,1) | `kd2v2_03_01` | win_a |
+| 2v2 (2,1) | `kd2v2_02_01` | draw |
+| wipe: B'nin son botu ölür, A 3 canlı | `wipe_b_last_dies_a3` | win_a |
+| wipe: süre dolar, A 4 / B 2 | `wipe_timeout_a4_b2` | win_a |
+| wipe: süre dolar, 3 / 3 | `wipe_timeout_3_3` | draw |
+| wipe: son botlar aynı tick'te ölür | `wipe_same_tick_draw` | draw |
+
+(Saf `judge_killdiff` sınırları ayrıca `kd_pure_judge_boundaries` vakasında sınanır.)
+
+### Kabul kriterleri öz-değerlendirme
+
+- K1 ✔ `--selftest` çıkış 0, son satır `SELFTEST PASS n=67` (≥ 50), `FAIL ` ile başlayan satır yok.
+- K2 ✔ §5.6 tablosundaki tüm adlar `^PASS <ad>$` olarak bir kez geçer (listeli grep: `missing=0`).
+- K3 ✔ sample çıktısı §5.7'deki 5 satırla birebir aynı (`sample_file_expected` vakası + elle `diff`), çıkış 0.
+- K4 ✔ `--win-margin 3`: `SMP-win` draw, `SMP-wipe` win_a, `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0`.
+- K5 ✔ `--win-margin 9` → 2; var olmayan yol → 2; sample `--strict` → 1; sample → 0; `--json` assert geçti.
+- K6 ✔ (`/tmp/f801-mut`): `judge_killdiff` `>=` → `>` mutasyonu rc=1, 8 `FAIL` (dahil
+  `kd_10_08`, `kdm3_14_11`); aynı-tick sınırı `t_value > t0 + tick_ms` → `>=` mutasyonu
+  rc=1, `wipe_same_tick_draw` `draw` yerine `win_b` (FAIL).
+- K7 ✔ içe aktarımlar yalnız `json/os/sys/tempfile`; yazan `open()` yalnız `--selftest`
+  yollarında (`write_records`, `cli_bad_json_line_rc2`); ASCII; CRLF yok.
+- K8 ✔ (kayıt commit'i sonrası) `git diff --stat gece/2026-10-02-nav...bot/F8-01` yalnız
+  iki yeni dosya + plan; `GameServer/`, `BotCore/`, `Tests/`, `shared/`, `AIServer/`, `docs/` değişmedi.
+- K9 ✔ `tools/build.sh Release` hatasız; `223 tests, 0 failed`.
+- K10 ✔ yukarıdaki eşleme tablosu (killdiff 7 + 0-0 iki durum, margin 3 üç, 2v2 iki, wipe dört).
+
+- Plandan sapmalar ve gerekçeleri:
+  - `--selftest` vaka sayısı 67'dir (istenen ≥ 50); §5.6 tablosundaki adların tamamı aynen var.
+  - `win_killer_*` için önce tek bir toplayıcı vaka yazılmıştı; ad yinelemesini önlemek için
+    her alt vaka ayrı `case()` yapıldı (K2 `grep -c` = 1 şartı).
+  - `sample.jsonl` için `git` `core.autocrlf=true` uyarısı verdi ("LF will be replaced by
+    CRLF"); depodaki blob LF (CR sayısı 0). Çalışma ağacında da LF. `.gitattributes`'a
+    `*.jsonl` satırı eklemek bu planın izinli dosya listesinde değildir, eklenmedi; taze bir
+    CRLF checkout'unda K7 `grep -c $'\r'` şartı etkilenebilir (aşağıdaki açık soru).
+- Açık sorular:
+  - `sample.jsonl` (ve olası başka `.jsonl` araç dosyaları) için `.gitattributes`'a
+    `*.jsonl text eol=lf` eklenmeli mi? Bu plan yalnız iki yeni dosyaya dokunulmasına izin
+    veriyor; gerekirse küçük bir bakım planı gerekir.
+- Not: Bu araç sunucu davranışını değiştirmez; `ENABLED=0` (varsayılan) hiç etkilenmez.
+  Gerçek logda `DEATH`/`DAMAGE` henüz yoktur; kabul `sample.jsonl` + `--selftest` iledir.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F8-01` (taban `gece/2026-10-02-nav`)
+  - `7c245e0 [F8-01] Tur 2: --win-rule ham dizge + 3 selftest vakasi (70)`
+  - plan kaydı commit'i (bu rapor + `Durum`)
+- Değişen dosyalar ve neden:
+  - `tools/bot-outcome-eval.py`: `parse_args` artık `--win-rule` değerini
+    tamsayıya çevirmiyor; ham dizge `opts["win_rule"]`'a atanıyor (değer eksikse
+    "option --win-rule needs a value" hatası korunuyor). Diğer beş seçenek
+    (`--duration-sec`, `--win-margin`, `--early-end-margin`, `--engage-timeout-sec`,
+    `--tick-ms`) `parse_cli_int` ile kalıyor; geçersiz kural adı denetimi
+    (eski satır 134-135) değişmedi. `--selftest`'e üç bağımsız vaka eklendi:
+    `cli_win_rule_option`, `cli_win_rule_priority`, `cli_win_rule_invalid_rc2`
+    (67 -> 70).
+  - `plans/F8-01-bot-sonuc-degerlendirici.md`: yalnızca `Durum` satırı ve bu rapor.
+  - `tools/bot-outcome-eval/sample.jsonl`: git içeriği **değişmedi** (index/blob LF;
+    `git diff --cached` boş). Çalışma ağacındaki CRLF satır sonları bu oturumda
+    LF'e çevrildi (K7 `grep -c $'\r'` = 0); `core.autocrlf=true` kaynaklı,
+    `.gitattributes` bu düzeltme turunun kapsamı dışında (KI-017 ayrı).
+- Doğrulama (`python3 tools/bot-outcome-eval.py ...`):
+  - `--selftest | tail -1`:
+    ```
+    SELFTEST PASS n=70
+    ```
+  - `tools/bot-outcome-eval/sample.jsonl --win-rule timed_score` (rc=0):
+    ```
+    OUTCOME match=SMP-win-1-1 rule=timed_score result=no_result k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+    OUTCOME match=SMP-draw-1-1 rule=timed_score result=no_result k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+    OUTCOME match=SMP-wipe-1-1 rule=timed_score result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=TRUNCATED
+    OUTCOME match=SMP-noeng-1-1 rule=timed_score result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+    SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2
+    ```
+  - K2'nin 23 adlı `grep -c "^PASS <ad>$"` döngüsü: 23 satırın hepsi `1`.
+  - K7: içe aktarımlar yalnız `json/os/sys/tempfile` (`:28-31`); `open(` yazımları
+    yalnızca `:711` (`write_records`) ve `:1264` (selftest), okuma `:175`; ASCII
+    (`grep -P` boş); CR sayısı 0 (iki dosya).
+  - Regresyon: `sample.jsonl` -> `SUMMARY n=4 win_a=2 win_b=0 draw=1 invalid=1 no_result=0`;
+    `sample.jsonl --win-margin 3` -> `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0`;
+    `sample.jsonl --strict` -> rc=1; `--json` assert geçti; `--win-margin 9` -> rc=2.
+  - `./tools/build.sh Release` rc=0, yeni uyarı/hata yok; `./tools/run-tests.sh`
+    son satırı `223 tests, 0 failed` (değişmedi). Sunuculara dokunulmadı
+    (paralel hat `nav`; `run-servers.sh status` ana hattın sunucularını gösteriyor).
+- Kabul kriterleri (düzeltme maddeleri) öz-değerlendirme:
+  - Madde 1 ✔: `--win-rule` ham dizge; eksik değer hatası ve geçersiz ad denetimi
+    (rc=2) korundu; diğer beş seçenek tamsayı kaldı.
+  - Madde 2 ✔: üç yeni bağımsız `case()`; mevcut vaka adları değişmedi, ad
+    yinelemesi yok (K2 `grep -c` = 1); toplam 70.
+  - Madde 3 ✔: yukarıdaki çıktılar beklentiyle birebir (dört maç `rule=timed_score`,
+    `SMP-wipe` `TRUNCATED`, `SMP-noeng` `NO_ENGAGE`,
+    `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2`).
+- Plandan sapmalar / notlar:
+  - `cli_win_rule_option` 2v2 vakasında "A'nın iki kill'i" iki `DEATH` olarak
+    yazıldı; ikisi de aynı B üyesini hedefler, böylece takım sıfıra inmez ve
+    `end=alive_count` olur (değerlendirici ölü bir birimin ikinci ölümünü ayrı
+    `DEATH` olarak sayar; `k_a=2`). Vaka yalnızca CLI kuralının uygulandığını
+    (`rule=wipe_first`) ve wipe olmadığını (`end=alive_count`) doğrular.
+  - `sample.jsonl` çalışma ağacı satır sonu normalizasyonu git içeriğini
+    değiştirmedi; commit'e girmedi.
+- Açık sorular: Tur 1'deki `.gitattributes` (`*.jsonl text eol=lf`) sorusu aynen
+  açık; bu turda KI-017 kapsamı nedeniyle dokunulmadı.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `<sha>`
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `64dfd01` (iki commit: `8895e8e`, `64dfd01`; paralel hat `nav`, gece modu, sunuculara dokunulmadı, birleştirme/push yapılmadı)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `--selftest > /tmp/st.txt` rc=0; son satır `SELFTEST PASS n=67`; `grep -c '^FAIL '` = 0 |
+| K2 | ✔ | Planın 23 adlı `grep -c "^PASS <ad>$"` döngüsü: hepsi `1`; ayrıca §5.6 tablosundaki tüm vaka adları (69 aday, sonuç sözcükleri hariç) `PASS` satırı olarak var |
+| K3 | ✔ | sample çıktısı, plandaki beklenen 5 satırdan çıkarılan dosyayla `diff` boş; rc=0 |
+| K4 | ✔ | `--win-margin 3`: `SMP-win` `draw`, `SMP-wipe` `win_a`, `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0` |
+| K5 | ✔ | `--win-margin 9` rc=2; `/nonexistent` rc=2; sample `--strict` rc=1; sample rc=0; `--json` assert geçti |
+| K6 | ✔ | Kopyada `:284` `fark >= win_margin` → `fark > win_margin`: rc=1, 8 `FAIL` (`kd_pure_judge_boundaries`, `kd_10_08`, `kdm3_14_11`, `kdm1_09_08`, ...), `SELFTEST FAIL failed=8 of 67`. Kopyada `:391` `t_value > t0 + tick_ms` → `>=`: rc=1, `FAIL wipe_same_tick_draw: result: 'win_b' != 'draw'`, `failed=1 of 67` |
+| K7 | ✔ | içe aktarımlar `json/os/sys/tempfile` (`:28-31`); `open(` yazımları yalnızca `:708` (`write_records`) ve `:1261` (selftest); okuma `:172`; ASCII (`grep -P` boş); CR sayısı 0 (iki dosya); shebang `:1` |
+| K8 | ✔ | `git diff --stat`: yalnızca `tools/bot-outcome-eval.py`, `tools/bot-outcome-eval/sample.jsonl`, plan; plan diff'inde silinen satırlar yalnızca şablon satırları ve `Durum` |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning`/`error C` sayısı 0; `./tools/run-tests.sh`: `223 tests, 0 failed` (diff yalnızca `tools/` ve plan olduğundan beklenen) |
+| K10 | ✔ | Uygulayıcı raporundaki eşleme tablosu: killdiff 7 + 0-0 iki durum, margin 3 üç, 2v2 iki, wipe dört; her vaka adı `--selftest` çıktısında `PASS` |
 
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **`--win-rule` komut satırı seçeneği hiç çalışmıyor** (`tools/bot-outcome-eval.py:119-126`, ilgili kullanım `:18`, `:35`, `:40`, plan §1/§5.3). `PARAM_OPTIONS` içindeki tüm seçenekler `parse_cli_int` ile tamsayıya çevriliyor; `--win-rule` değeri bir sözcük (`wipe_first`) olduğundan her zaman `error: option --win-rule needs an integer` ve çıkış 2 veriyor. Kanıt: `python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl --win-rule wipe_first; echo rc=$?` → `error: option --win-rule needs an integer`, `rc=2`. Sonraki doğrulama (`:134-135`) ve çözümleme (`:225-226`) kodu doğru yazılmış ama ulaşılamaz. `--selftest` bu yolu hiç sınamadığı için 67/67 geçiyor; plan §5.6 tablosu da bu CLI seçeneği için vaka istemiyordu (plan boşluğu), ama §1'deki kullanım sözleşmesi ve §5.3 ("komut satırı > `MATCH_START` alanı > varsayılan") açıkça `--win-rule`'ü tanımlıyor. Düzeltme küçük: kapsam dışına çıkmaz.
+  2. Not (engel değil): `parse_cli_int` `int(raw, 10)` kullandığı için `1_0` gibi alt çizgili değer `10` kabul edilir (`:101`); önemsiz.
+  3. Not (engel değil): uygulayıcının açık sorusu (`sample.jsonl` için `.gitattributes`): depodaki blob LF, çalışma ağacında CR yok; ancak `*.jsonl` satırı yok ve `core.autocrlf=true` ile CRLF checkout riski var (KI-009'un aynısı, `.jsonl` için). Bu planın kapsamı dışı olduğundan kapsamı genişletilmedi; `docs/KNOWN_ISSUES.md` KI-017 olarak kaydedildi (küçük bakım planı, `.gitattributes`'a `*.jsonl text eol=lf`).
+  4. Not: kural mantığı (`judge_killdiff`, `eval_killdiff`, `eval_wipe`, `evaluate_match`) planın §5.4'üne satır satır uyuyor: sınırlar dahil (`:284`, `:319`, `:548`), 1v1 özel durumu (`:361-387`), tick penceresi (`:391`), `TRUNCATED` yalnızca başka neden yokken ve sonlanma yokken (`:561-567`), neden sırası `REASON_ORDER`. Ek elle sınama (1v1 wipe, `win_margin: true` → `ERROR`, `timed_score` sayaçları) beklenen çıktıyı verdi.
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F8-01-bot-sonuc-degerlendirici.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/bot-outcome-eval.py parse_args (satır ~119-126): `--win-rule` değeri tamsayıya çevrilmemeli. `--win-rule` için ham dizgeyi `opts["win_rule"]`'a ata (değer eksikse mevcut "option --win-rule needs a value" hatası kalsın); diğer beş seçenek (`--duration-sec`, `--win-margin`, `--early-end-margin`, `--engage-timeout-sec`, `--tick-ms`) `parse_cli_int` ile kalsın. Geçersiz kural adı mevcut satır 134-135 denetimiyle çıkış 2 vermeli (değiştirme).
+2. --selftest'e üç yeni vaka ekle (mevcut 67 vakanın adlarını değiştirme; ad yinelemesi yok; her biri bağımsız `case()`):
+   - `cli_win_rule_option`: `MATCH_START`'ında `win_rule` alanı olmayan 2v2 maç (A'nın iki kill'i, süre dolar), `--win-rule wipe_first` ile koş: `rule=wipe_first` ve `end=alive_count` olmalı.
+   - `cli_win_rule_priority`: `MATCH_START` `win_rule:"killdiff_timed"` iken `--win-rule timed_score` komut satırı değeri kazanır: `result=no_result`, `k_a`/`k_b` dolu.
+   - `cli_win_rule_invalid_rc2`: `--win-rule bogus` -> çıkış 2 ve stdout'ta hiç `OUTCOME` satırı yok.
+3. Doğrula ve raporla: `python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl --win-rule timed_score` çıktısı (dört maç da kuralı komut satırından almalı: `rule=timed_score`; beklenen: `SMP-win` ve `SMP-draw` `no_result`, `SMP-wipe` `invalid` `TRUNCATED` (7100 ms'de biten günlük, 300 sn'lik pencere dolmadan), `SMP-noeng` `invalid` `NO_ENGAGE`; `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2`), `--selftest | tail -1` (`SELFTEST PASS n=70`), K2'nin 23 adlı `grep -c` döngüsü, K7'nin `grep` komutları (ASCII, CR=0, yalnızca stdlib). Başka dosyaya ve başka mantığa dokunma; `.gitattributes` dahil (KI-017 ayrı).
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `6a49224` (Tur 2 kod commit'i `7c245e0`, rapor commit'i `6a49224`; paralel hat `nav`, gece modu; sunuculara dokunulmadı, birleştirme/push yapılmadı: döngü betiği yapar)
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| Tur 1 düzeltme 1 (`--win-rule` ham dizge) | ✔ | `git diff 64dfd01 7c245e0 -- tools/bot-outcome-eval.py`: yalnızca `parse_args` içinde `arg == "--win-rule"` dalı (`opts[...] = raw`), diğer beş seçenek `parse_cli_int`'te. `--win-rule wipe_first` rc=0 ve `rule=wipe_first`; `--win-rule bogus` → `error: invalid --win-rule: bogus`, rc=2, stdout'ta `OUTCOME` yok; `--win-rule` (değersiz) → `option --win-rule needs a value`, rc=2 |
+| Tur 1 düzeltme 2 (3 yeni vaka) | ✔ | `cli_win_rule_option`, `cli_win_rule_priority`, `cli_win_rule_invalid_rc2`: her biri `PASS`, her biri bir kez; mevcut vaka adları değişmedi |
+| Tur 1 düzeltme 3 (çıktılar) | ✔ | `sample.jsonl --win-rule timed_score` kendi koşumumda: dört maç `rule=timed_score`; `SMP-win`/`SMP-draw` `no_result`, `SMP-wipe` `invalid TRUNCATED`, `SMP-noeng` `invalid NO_ENGAGE`; `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2` (beklenenle birebir) |
+| K1 | ✔ | `--selftest` rc=0; `SELFTEST PASS n=70`; `grep -c '^FAIL '` = 0 |
+| K2 | ✔ | 23 adlı `grep -c "^PASS <ad>$"` döngüsü (+ 3 yeni ad): hepsi `1` |
+| K3 | ✔ | sample çıktısı plandaki 5 satırla birebir aynı, rc=0 |
+| K4 | ✔ | `--win-margin 3`: `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0` |
+| K5 | ✔ | `--win-margin 9` rc=2; `/nonexistent` rc=2; `--strict` rc=1; strict'siz rc=0; `--json` assert geçti |
+| K6 | ✔ (Tur 1) | Tur 2 yalnızca `parse_args` ve selftest vakalarını değiştirdi; `judge_killdiff` ve `eval_wipe` değişmedi, Tur 1 mutasyon kanıtı geçerli |
+| K7 | ✔ | içe aktarımlar `json/os/sys/tempfile` (`:28-31`); `open(` yalnızca `:175` (okuma), `:711` (`write_records`), `:1264` (selftest); ASCII (`grep -P` boş); CR sayısı 0 (iki dosya); shebang `:1` |
+| K8 | ✔ | `tools/` altında yalnızca iki dosya + plan; `GameServer/ BotCore/ Tests/ shared/ AIServer/ .gitattributes` diff'i boş. (Branch farkındaki `docs/` ve `plans/README.md` değişiklikleri Claude'un doğrulama kayıtlarıdır, uygulayıcı commit'lerinde yok) |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning`/`error C` sayısı 0; `./tools/run-tests.sh`: `223 tests, 0 failed` |
+| K10 | ✔ | Eşleme tablosu Tur 1'deki gibi, vaka adlarının tümü `PASS` |
+
+- Bulgular:
+  1. Not (engel değil): `cli_win_rule_option` vakasında aynı `bot` (3) iki kez `DEATH` alıyor ve ikisi de kill sayılıyor (`k_a=2`). Gerçek logda ölü birimin ikinci `DEATH`'i `RESPAWN` olmadan gelmez; ADR/Ek F8-01 bu durumu tanımlamıyor, bu yüzden araç davranışı değiştirilmedi. Veri anomalisi için kural sonraki dilimde (sunucu emisyonu planında) ADR Ek'e eklenebilir.
+  2. Not: `parse_cli_int` alt çizgili değeri (`1_0`) kabul eder (Tur 1 notu 2, önemsiz).
+  3. Not: `.jsonl` satır sonu riski KI-017'de kayıtlı (küçük bakım planı); bu planı engellemez.
