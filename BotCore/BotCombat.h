@@ -314,15 +314,19 @@ namespace BotCore
 		return CAST_OK;
 	}
 
-	// --- dual-typed cast (ADR-0017 Ek F4-26) and single Type4 cast (ADR-0017 Ek F4-28) ---
+	// --- dual-typed cast (ADR-0017 Ek F4-26), single Type4 cast (Ek F4-28) and Type1 pairs (Ek F4-37) ---
 
-	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19): a single type 1, 3, 4 or 5 (5 =
-	// cure, see CastTypeMoralSupported), or the pair Type3 + Type4 (the server runs Type3 first and Type4 second on the
-	// same target). Every other pair stays unsupported.
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19, MEC-MAG-24): a single type 1, 3, 4
+	// or 5 (5 = cure, see CastTypeMoralSupported), the pair Type3 + Type4 (the server runs Type3 first and Type4 second on
+	// the same target), or a melee pair Type1 + Type3 / Type1 + Type4 (warrior Scream, Shock Stun, Exceed Break, leg
+	// cutting; the server runs the Type1 hit first, then the Type3 / Type4 part). Every other pair stays unsupported.
 	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
 	{
 		if (type1 == 0)
 			return type0 == 1 || type0 == 3 || type0 == 4 || type0 == 5;
+
+		if (type0 == 1)
+			return type1 == 3 || type1 == 4;
 
 		return type0 == 3 && type1 == 4;
 	}

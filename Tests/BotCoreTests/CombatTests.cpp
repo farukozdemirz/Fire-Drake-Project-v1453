@@ -1030,8 +1030,9 @@ TEST_CASE("Combat_CastTypes_Supported")
 	CHECK_EQ(BotCore::CastTypesSupported(7, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
-	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
-	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
+	// F4-37: melee pairs are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
 	CHECK_EQ(BotCore::CastTypesSupported(1, 9), false);
 	CHECK_EQ(BotCore::CastTypesSupported(2, 3), false);
 	CHECK_EQ(BotCore::CastTypesSupported(2, 4), false);
@@ -1669,8 +1670,9 @@ TEST_CASE("Combat_ItemSkill_Guard")
 	CHECK_EQ(BotCore::CastItemSkillSupported(3, 0, 310310010), false);
 	CHECK_EQ(BotCore::CastItemSkillSupported(4, 0, 379070000), false);
 
-	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
-	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
+	// F4-37: melee pairs are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
 	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
@@ -1691,4 +1693,78 @@ TEST_CASE("Combat_ItemSkill_Guard")
 	CHECK_EQ((int)BotCore::kClassStoneStep, 1000);
 	CHECK_EQ((int)BotCore::kClassWarriorId, 1);
 	CHECK_EQ((int)BotCore::kClassPriestId, 4);
+}
+
+TEST_CASE("Combat_Type1Pair_Guard")
+{
+	// F4-37: the melee pairs Type1 + Type3 and Type1 + Type4 are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
+
+	// single types and the old pair are unchanged
+	CHECK_EQ(BotCore::CastTypesSupported(1, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(6, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(7, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
+
+	// every other pair stays closed
+	CHECK_EQ(BotCore::CastTypesSupported(1, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 2), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 5), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 6), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 7), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 8), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 9), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 2), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(6, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(9, 4), false);
+
+	// the item gate is unchanged and works together with the melee pairs
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379063000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379059000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1065, 0), true);
+
+	// the consumed item: Scream takes the class stone, Shock Stun / Exceed Break take UseItem, leg cutting takes none
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 379063000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 379059000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 0), 0);
+
+	// both types of a melee pair take part in the type gate
+	uint32_t since = 999;
+	BotCore::TypeStamp s13[2] = { { 1, true, 900 }, { 3, true, 400 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(s13, 2, since), 1);
+	CHECK_EQ((int)since, 400);
+
+	BotCore::TypeStamp s14[2] = { { 1, false, 0 }, { 4, true, 1500 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(s14, 2, since), 1);
+	CHECK_EQ((int)since, 1500);
+
+	BotCore::TypeStamp none[2] = { { 1, false, 0 }, { 3, false, 0 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(none, 2, since), 0);
+	CHECK_EQ((int)since, 0);
+
+	// the other rules the melee pairs rely on
+	CHECK_EQ(BotCore::CastMoralSupported(7), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(1, 7), true);
+	CHECK_EQ(BotCore::CastHpCostSupported(0), true);
+	CHECK_EQ(BotCore::IsGatedType(1), true);
 }
