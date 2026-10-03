@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `5d15601`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-39` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-01 (`FDP_PACKET_TRACE`, `PacketTrace.cpp`, `tools/packet-trace-summary.py`) — `KAPANDI`; F1-02 (`tools/trace-session.sh`, `--cli`) — `KAPANDI`; F4-38 — `KAPANDI` (gece dalında) |
