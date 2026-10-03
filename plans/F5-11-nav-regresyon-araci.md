@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F5-11 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01..F5-10 ve F5-50..F5-58 `KAPANDI` (hepsi `gece/2026-10-02-nav` içinde; `tools/nav-measure/nav_measure.cpp` bölümleri `smoothing`, `synthetic`, `velocity`, `velocity-robust`, `arena`, `budget`, `budget-scheduled`, `stuck`, `progress` hazır) |
@@ -216,13 +216,111 @@ git diff --stat gece/2026-10-02-nav...bot/F5-11
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-11` (taban `gece/2026-10-02-nav`); uygulama commit'i ve plan/durum commit'i raporun altındadır (aşağıdaki `commit` alanı push edilmeden dolduruldu).
+- Değişen dosyalar ve neden:
+  - `tools/nav-regress.py` (yeni, 1164 satır): `nav-measure` çıktısının `KEY k=v ...` ayrıştırıcısı; `CHECK_META`/`CHECK_FUNCS` (35 denetim, §5.3 tablosunun birebir karşılığı, sınıf D/Z/K/I + kaynak); `PASS/FAIL/WARN/INFO` satırları ve `NAV-REGRESS` özeti; Z denetimleri için `--timing-retries` ile yeniden deneme ve `(attempt a/b)` notu; `--skip-timing` (Z denetimleri `INFO "skipped"`, `budget*` koşulmaz); `--from-file`/`--save`; `--list` (35 satır, kaynak dolu); `--selftest` (27 vaka, gömülü mutasyonlar); `oracle.*` için `tools/nav-segment-check.py` alt süreç çapraz kontrolü (sabit vektörler + `EXAMPLE straight` segmentleri + oracle `--selftest`).
+  - `tools/nav-regress.sh` (yeni, 19 satır): `python3 tools/nav-regress.py "$@"` sarmalayıcı; `python3` yoksa çıkış 2.
+  - `tools/nav-regress/good.txt` (yeni, 60 satır): `tools/nav-measure.sh all --n 2000 --seed 20261002` gerçek çıktısı (ASCII, LF, `ERROR` yok, `< 160` satır).
+  - Kod/proje/doküman dosyalarına dokunulmadı (`BotCore/`, `GameServer/`, `Tests/`, `shared/`, `AIServer/`, `docs/`, `tools/nav-measure*`, `tools/nav-segment-check.py` farkı 0).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
+  ```
+  Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+  NavLosTests.cpp
+  BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ```
+  `rc=0`. (Sunuculara/`tools/run-servers.sh`'e dokunulmadı; paralel hat.)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `./tools/build.sh Release` rc=0; bu plan derlenen dosyaya dokunmaz.
+  - K2 ✔ `bash tools/nav-regress.sh --selftest` çıkış 0, son satır `selftest PASS`, 27 vaka `ok` (≥ 22); her mutasyon beklenen kimliği `FAIL` (ve `stuck.default.control` `WARN`) yaptı.
+  - K3 ✔ `bash tools/nav-regress.sh --list` çıkış 0, 35 satır (`wc -l` = 35), her satırda kaynak dolu.
+  - K4 ✔ `bash tools/nav-regress.sh` (varsayılan `--n 3000 --seed 20261002`) çıkış 0, son satır `NAV-REGRESS PASS ... fail=0`, süre ≈ 8 sn; çıktının tamamı aşağıda.
+  - K5 ✔ iki ardışık `--save` koşusunda D satırları aynı: `diff <(grep -vE '^(BUDGET|ARENA)' /tmp/nm-a.txt) <(grep -vE '^(BUDGET|ARENA)' /tmp/nm-b.txt)` boş; tüm `ARENA` satırlarında `status`/`expanded` iki dosyada birebir (`ms=` dışında).
+  - K6 ✔ `--from-file /tmp/nm-a.txt` ve `/tmp/nm-b.txt`: `checks=31 pass=31 fail=0 ... attempts=1` (Z yeniden denemesi yok); boş dosya → çıkış 1 (`FAILED` listesi, 27 FAIL); `ERROR` içeren dosya → çıkış 2; olmayan dosya → çıkış 2.
+  - K7 ✔ `bash tools/nav-regress.sh --skip-timing` çıkış 0; `budget.near64.query_p95`/`sched.B.tick_p95`/`sched.B.longest_wait`/`sched.B.served` `INFO "skipped (--skip-timing)"`; `budget*` bölümleri koşulmadı; süre ≈ 2,7 sn (tam koşu ≈ 8 sn).
+  - K8 (kısmi, commit sonrası Claude doğrular) fark yalnızca §4'teki üç dosya + plan; `git diff --check` boş; üç dosya da ASCII + LF.
+  - K9, K10: Claude'un işi (kasıtlı ihlal enjeksiyonu, eşik kaynak denetimi).
+- Çalışma zamanı çıktısı (K4, tamamı):
+  ```
+  PASS  grid.main_cells                  n=513 main_cells=88508  [F5-01, F5-58]
+  PASS  smoothing.raw_bad                raw_bad=0 raw_edges=190074  [docs/12 s13.1, AC-NAV-03]
+  PASS  smoothing.smooth_bad             smooth_bad=0 paths_with_smooth_bad=0 smooth_segments=16574  [docs/12 s13.1]
+  PASS  smoothing.chord_bad              chord_bad=0 chords=125429  [docs/12 s13.1]
+  PASS  smoothing.coverage               paths=2986 (>= 0.9*n=2700)  [sample power [A]]
+  PASS  lineclear.false_positive         false_positive=0 clear=182394  [docs/12 s13.1]
+  PASS  straight.control                 blocked=197 (> 0)  [docs/12 s13.1, F5-58]
+  PASS  synthetic.single_block           false_positive=0 trials=309680 nav_line_clear_true=270320  [docs/12 s13.1]
+  PASS  synthetic.random_clutter         false_positive=0 trials=68335 nav_line_clear_true=20784  [docs/12 s13.1]
+  PASS  velocity.jitter                  zero=0 max_rel_err=0 (<= 0.30)  [docs/12 s13.2, F5-56 [A]]
+  PASS  velocity.robust.arrival_jitter   zero_pct=0 (== 0) err_p95=0.1359 (<= 0.20) err_max=0.1691 (<= 0.30)  [F5-56 s5.3]
+  PASS  velocity.robust.arrival_bunching zero_pct=0 (<= 1) err_p95=0.136 (<= 0.20) err_max=0.5217 (<= 0.60)  [F5-56 s5.3]
+  PASS  velocity.robust.variable_interval zero_pct=0 (== 0) err_p95=0.0156 (<= 0.10)  [F5-56 s5.3]
+  PASS  velocity.robust.packet_loss      zero_pct=0 (== 0) err_p95=0.0074 (<= 0.10)  [F5-56 s5.3]
+  INFO  velocity.legacy_window           legacy 1000 ms window: cadence_ms=500 zero_pct=0.0 cadence_ms=1000 zero_pct=0.0 cadence_ms=1500 zero_pct=100.0 cadence_ms=1540 zero_pct=100.0 cadence_ms=2000 zero_pct=100.0  [docs/12 s13.2]
+  PASS  arena.respawn.found              all 6 respawn queries Found  [F5-51, docs/12 s13.4]
+  PASS  arena.respawn.nodes              karus_respawn_to_arena/10(default) expanded=602 (<= 2000) karus_respawn_to_arena/0 expanded=602 (<= 2000) elmorad_respawn_to_arena/10(default) expanded=2924 (<= 6000) elmorad_respawn_to_arena/0 expanded=2924 (<= 6000)  [F5-51 K5]
+  PASS  arena.inside_out.design          inside-out goal InvalidGoal (policy not relaxed)  [F5-51, AC-NAV-06]
+  PASS  arena.inside_out.nofield         no-field control Found  [F5-51]
+  PASS  budget.near64.query_p95          bots=16 query_p95=0.358 (<= 2.0) bots=64 query_p95=0.409 (<= 2.0) (attempt 1/1)  [AC-NAV-02, MET-PERF-03]
+  INFO  budget.unscheduled               scheduler rationale: mid150 tick_p95=8.348 whole tick_p95=30.907  [docs/12 s13.5]
+  PASS  sched.B.tick_p95                 tick_p95=0.858 (<= 1.5) (attempt 1/1)  [AC-NAV-07, P-NAV-TICK-BUDGET-MS]
+  PASS  sched.B.longest_wait             longest_wait_ms=200 (<= 1000) (attempt 1/1)  [AC-NAV-07, P-NAV-MAX-WAIT]
+  PASS  sched.B.served                   A.served=1920 B.served=1920 (>= 0.9*A=1728) B.pending=0  [F5-53 K5]
+  INFO  sched.A.info                     unscheduled baseline tick_p95=0.789  [F5-53]
+  PASS  stuck.cadence_3200.false         6 model/feed lines false_episodes=0  [AC-NAV-01, MET-NAV-01 [A], docs/12 s13.3, F5-54]
+  PASS  stuck.default.control            false_episodes=6 (> 0: known F5-09 defect present)  [docs/12 s13.3]
+  PASS  stuck.true_positive              detected_after_ms=3200 (3100..3300)  [docs/12 s13.3, F5-57]
+  PASS  progress.assessor.false          3 models false_episodes=0 stalled=0 first_ms=-1  [F5-57, docs/12 s13.3]
+  PASS  progress.assessor.true_positive  detected_after_ms=3200 (3100..3300)  [F5-57]
+  INFO  progress.old.info                old evaluators: tick100+-0/F5-09_default false=0 tick100+-0/cadence_3200 false=0 tick100+-10/F5-09_default false=0 tick100+-10/cadence_3200 false=0 tick110.8+-20+3%late250/F5-09_default false=6 tick110.8+-20+3%late250/cadence_3200 false=0 STUCK_TRUE/F5-09_default=1500 PROGRESS_TRUE/F5-09_default=1500 PROGRESS_TRUE/cadence_3200=3200  [F5-57]
+  PASS  oracle.straight_examples         3 straight examples BLOCKED by oracle  [F5-58 K7]
+  PASS  oracle.fixed_vectors             3 BLOCKED + 1 OK  [F5-58 K5]
+  PASS  oracle.selftest                  nav-segment-check.py selftest PASS  [F5-50]
+  PASS  examples.unexpected              0 unexpected EXAMPLE lines  [docs/12 s13.1]
+  NAV-REGRESS PASS checks=31 pass=31 fail=0 warn=0 info=4 unknown_lines=0 (n=3000 seed=20261002 attempts=1)
+  ```
+- `--selftest` çıktısı:
+  ```
+  ok   good.txt -> 0 FAIL
+  ok   smoothing.raw_bad -> FAIL
+  ok   smoothing.smooth_bad -> FAIL
+  ok   smoothing.chord_bad -> FAIL
+  ok   lineclear.false_positive -> FAIL
+  ok   straight.control -> FAIL
+  ok   synthetic.single_block -> FAIL
+  ok   velocity.jitter -> FAIL
+  ok   velocity.robust.arrival_bunching -> FAIL
+  ok   velocity.robust.variable_interval -> FAIL
+  ok   arena.respawn.found -> FAIL
+  ok   arena.respawn.nodes -> FAIL
+  ok   arena.inside_out.design -> FAIL
+  ok   budget.near64.query_p95 -> FAIL
+  ok   sched.B.tick_p95 -> FAIL
+  ok   sched.B.longest_wait -> FAIL
+  ok   sched.B.served -> FAIL
+  ok   stuck.cadence_3200.false -> FAIL
+  ok   stuck.true_positive -> FAIL
+  ok   progress.assessor.false -> FAIL
+  ok   progress.assessor.true_positive -> FAIL
+  ok   examples.unexpected -> FAIL
+  ok   stuck.default.control -> WARN
+  ok   delete GRID -> FAIL missing line
+  ok   nav-segment-check.py --selftest
+  ok   empty input -> FAIL missing line
+  ok   ERROR input -> exit 2 path
+  selftest: 27 cases, 27 ok
+  selftest PASS
+  ```
+- Plandan sapmalar ve gerekçeleri:
+  1. `--skip-timing` ve Z yeniden denemelerinde `nav-measure.sh` bölüm başına yeniden derlediği için (§5.4 "süre belirgin kısalır" şartı), bu yollarda önce `nav-measure.sh` bir kez `__build__` bölümüyle derlenir (ölçüm yapmaz), sonra derlenmiş `nav_measure` ikilisi doğrudan koşulur; varsayılan tam koşu yine `nav-measure.sh all` ile yapılır. `NAV_MEASURE_OUT`/`NAV_SRC_ROOT` ortam değişkenleri geçer. Bu, `nav-measure.sh`'in `OUT_DIR`/`BIN` yol mantığına bağlıdır; `nav-measure.sh` değişirse araç da güncellenmelidir (plan §8'deki "satır biçimine bağlı" uyarısının kardeşi). `--skip-timing` süresi 2,7 sn (tam koşu 8 sn).
+  2. `--from-file` modunda da `oracle.*` denetimleri ızgara varsa koşar (K6 aynı PASS/FAIL sayılarını istediği için); ızgara yoksa `INFO "skipped: no navgrid"`.
+  3. Özet sayaçları: her kimlik tek satır (`checks` = PASS+FAIL+WARN, `info` ayrı); §5.6 örneğindeki `checks=44` alt-denetim açılımına karşılık gelmez, `--list` sayısı (35) korunur. `unknown_lines` satır türleri tabloda olmayan `KEY` satırlarıdır (bu koşuda 0).
+- Açık sorular:
+  - Yok. (K9 kasıtlı ihlal enjeksiyonu ve K10 eşik-kaynak denetimi Claude'a aittir.)
 
 ---
 
