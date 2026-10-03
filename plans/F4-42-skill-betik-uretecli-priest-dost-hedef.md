@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 18) |
 | Branch | `bot/F4-42` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-41 (`tools/skill-check.py`, cast `mp`/`mp_after`/`skill` telemetrisi) — `KAPANDI` (merge `0901ae0`); F4-40 (envanter doldurma, MP pot stoku) — `KAPANDI`; F4-19/F4-22 (betik ayrıştırıcı ve `Scripts/` yükleyici) — `KAPANDI` |
