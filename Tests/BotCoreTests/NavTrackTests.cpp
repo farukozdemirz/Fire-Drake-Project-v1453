@@ -2046,3 +2046,172 @@ TEST_CASE("NavTrack_Reach_SingleComponent_Identical")
 	}
 	CHECK(planned > 150);
 }
+
+// ---------------------------------------------------------------------------
+// F5-73: InvalidatePlan and the optional A* cost field
+// ---------------------------------------------------------------------------
+
+namespace
+{
+	bool PlanHasCell(const BotCore::NavFollowPlan & plan, int x, int z)
+	{
+		for (size_t i = 0; i < plan.smooth.waypoints.size(); ++i)
+		{
+			if (plan.smooth.waypoints[i].x == x && plan.smooth.waypoints[i].z == z)
+				return true;
+		}
+		return false;
+	}
+}
+
+TEST_CASE("NavTrack_InvalidatePlan_ForcesFirst")
+{
+	const int n = 40;
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 6.0f;
+
+	BotCore::NavFollower f;
+	const float tx = grid.CellCenter(20);
+	const float tz = grid.CellCenter(20);
+	const float bx = grid.CellCenter(10);
+	const float bz = grid.CellCenter(10);
+
+	REQUIRE(f.ObserveTarget(0, tx, tz));
+	REQUIRE(f.Update(grid, pf, 0, bx, bz, 4.5f, params));
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(f.LastReason() == BotCore::NavReplanReason::First);
+	const int replans = f.Replans();
+	const int samples = f.Tracker().Count();
+	CHECK_EQ(replans, 1);
+	CHECK_EQ(samples, 1);
+
+	// The interval is not due yet, so nothing is replanned.
+	CHECK(!f.Update(grid, pf, 100, bx, bz, 4.5f, params));
+
+	f.InvalidatePlan();
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::NoTarget);
+	CHECK_EQ(f.Replans(), replans);
+	CHECK_EQ(f.Tracker().Count(), samples);
+
+	// With the plan forgotten the next update replans with reason First.
+	REQUIRE(f.Update(grid, pf, 100, bx, bz, 4.5f, params));
+	CHECK(f.LastReason() == BotCore::NavReplanReason::First);
+	CHECK(f.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK_EQ(f.Replans(), replans + 1);
+}
+
+TEST_CASE("NavTrack_Update_NullField_Identical")
+{
+	const int n = 40;
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	BotCore::Rng rng(20261005u);
+
+	std::vector<BotCore::NavCell> walk;
+	for (int x = 0; x < n; ++x)
+		for (int z = 0; z < n; ++z)
+			if (grid.Walk(x, z))
+				walk.push_back(Cell(x, z));
+	REQUIRE(!walk.empty());
+
+	BotCore::NavFollower a;
+	BotCore::NavFollower b;
+	BotCore::NavFollower c;
+	BotCore::NavFollower d;
+	int planned = 0;
+
+	for (int i = 0; i < 100; ++i)
+	{
+		const BotCore::NavCell bc = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		const BotCore::NavCell tc = walk[(size_t)rng.NextBelow((uint32_t)walk.size())];
+		const float bx = grid.CellCenter(bc.x);
+		const float bz = grid.CellCenter(bc.z);
+		const float tx = grid.CellCenter(tc.x);
+		const float tz = grid.CellCenter(tc.z);
+		const int64_t t = (int64_t)i * 100;
+
+		a.ObserveTarget(t, tx, tz);
+		b.ObserveTarget(t, tx, tz);
+		c.ObserveTarget(t, tx, tz);
+		d.ObserveTarget(t, tx, tz);
+
+		BotCore::NavFollowParams p;
+		p.ringMinM = 0.0f;
+		p.ringMaxM = 6.0f;
+		p.ringMaxTries = 2;
+
+		const bool ra = a.Update(grid, pf, t, bx, bz, 4.5f, p);
+		const bool rb = b.Update(grid, pf, t, bx, bz, 4.5f, p, nullptr);
+		const bool rc = c.UpdateReachable(grid, pf, t, bx, bz, 4.5f, p, reach);
+		const bool rd = d.UpdateReachable(grid, pf, t, bx, bz, 4.5f, p, reach, nullptr);
+		CHECK_EQ((int)ra, (int)rb);
+		CHECK_EQ((int)rc, (int)rd);
+
+		const BotCore::NavFollowPlan & pa = a.Plan();
+		const BotCore::NavFollowPlan & pb = b.Plan();
+		CHECK(pa.status == pb.status && pa.pathStatus == pb.pathStatus && pa.goal == pb.goal
+			&& pa.tries == pb.tries && pa.expanded == pb.expanded && pa.pathCost == pb.pathCost
+			&& pa.smooth.waypoints.size() == pb.smooth.waypoints.size());
+
+		const BotCore::NavFollowPlan & pc = c.Plan();
+		const BotCore::NavFollowPlan & pd = d.Plan();
+		CHECK(pc.status == pd.status && pc.pathStatus == pd.pathStatus && pc.goal == pd.goal
+			&& pc.tries == pd.tries && pc.expanded == pd.expanded && pc.pathCost == pd.pathCost
+			&& pc.smooth.waypoints.size() == pd.smooth.waypoints.size());
+
+		if (ra)
+			++planned;
+	}
+
+	CHECK(planned > 0);
+}
+
+TEST_CASE("NavTrack_Update_Field_AvoidsPenalty")
+{
+	const int n = 64;
+	BotCore::NavGrid grid = MakeNav(n, 4.0f, RingEvents(n), HeightZeros(n));
+	BotCore::NavPathfinder pf;
+
+	const float bx = grid.CellCenter(5);
+	const float bz = grid.CellCenter(32);
+	const float tx = grid.CellCenter(58);
+	const float tz = grid.CellCenter(32);
+
+	BotCore::NavFollowParams params;
+	params.ringMinM = 0.0f;
+	params.ringMaxM = 3.0f;
+	params.smooth.maxLookahead = 1;
+
+	// Field-less plan: the unique shortest route is the straight row z = 32, so it holds P.
+	BotCore::NavFollower plain;
+	REQUIRE(plain.ObserveTarget(0, tx, tz));
+	REQUIRE(plain.Update(grid, pf, 0, bx, bz, 4.5f, params));
+	REQUIRE(plain.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(PlanHasCell(plain.Plan(), 30, 32));
+
+	BotCore::NavCostLayer layer;
+	layer.Init(grid);
+	layer.AddDangerBand(grid.CellCenter(30), grid.CellCenter(32), 0.0f, 0.5f, 0.0f, 1.0f);
+	BotCore::NavCostField field;
+	field.layer = &layer;
+	field.params = BotCore::NavCostParams();
+
+	BotCore::NavFollower f1;
+	REQUIRE(f1.ObserveTarget(0, tx, tz));
+	REQUIRE(f1.Update(grid, pf, 0, bx, bz, 4.5f, params, &field));
+	CHECK(f1.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(!PlanHasCell(f1.Plan(), 30, 32));
+
+	BotCore::NavReach reach;
+	reach.Build(grid);
+	BotCore::NavFollower f2;
+	REQUIRE(f2.ObserveTarget(0, tx, tz));
+	REQUIRE(f2.UpdateReachable(grid, pf, 0, bx, bz, 4.5f, params, reach, &field));
+	CHECK(f2.Plan().status == BotCore::NavFollowStatus::Planned);
+	CHECK(!PlanHasCell(f2.Plan(), 30, 32));
+}

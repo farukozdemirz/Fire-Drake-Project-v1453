@@ -170,15 +170,20 @@ namespace BotCore
 	{
 	public:
 		void Reset();   // forget observations and plan: status NoTarget, reason None, Replans() 0
+		// Forget only the plan (status NoTarget): the observations, LastReason() and Replans() are
+		// kept, so the next Update with a live observation replans with reason First (F5-73).
+		void InvalidatePlan() { m_plan = NavFollowPlan(); }
 		// Feed a target position when the perception layer reports one (tMs = observation time).
 		// speedField = -1 when unknown (see NavTargetTracker::Observe). False when dropped
 		// (tMs <= newest stored time).
 		bool ObserveTarget(int64_t tMs, float x, float z, int16_t speedField = -1);
 		// Call once per bot tick. Returns true when a plan was (re)computed during this call
 		// (Plan() then holds the result, also for NoGoal/InvalidStart/PathFailed). Returns false when
-		// nothing was due or no target was observed yet (Plan() unchanged).
+		// nothing was due or no target was observed yet (Plan() unchanged). `field` (F5-73) is an
+		// optional A* cost field; nullptr keeps the old behaviour bit for bit.
 		bool Update(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
-			float botX, float botZ, float botSpeedMps, const NavFollowParams & params);
+			float botX, float botZ, float botSpeedMps, const NavFollowParams & params,
+			const NavCostField * field = nullptr);
 		// Same as Update, but with edge-connected component labels (F5-71; `Reach` is NavReach or any
 		// type with `int ComponentOf(int x, int z) const`, -1 = off-grid / not Walk). When the bot's
 		// own cell is labelled: a lead-predicted point is accepted only inside the bot's component,
@@ -186,9 +191,10 @@ namespace BotCore
 		// bounds A* runs). Bot cell not labelled (not Walk / off-grid): identical to Update.
 		template <class Reach>
 		bool UpdateReachable(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
-			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach & reach)
+			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach & reach,
+			const NavCostField * field = nullptr)
 		{
-			return UpdateImpl<Reach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, &reach);
+			return UpdateImpl<Reach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, &reach, field);
 		}
 
 		const NavFollowPlan & Plan() const { return m_plan; }
@@ -199,7 +205,8 @@ namespace BotCore
 	private:
 		template <class Reach>
 		bool UpdateImpl(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
-			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach);
+			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach,
+			const NavCostField * field);
 
 		NavTargetTracker m_tracker;
 		NavFollowPlan m_plan;
@@ -350,14 +357,15 @@ namespace BotCore
 	};
 
 	inline bool NavFollower::Update(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
-		float botX, float botZ, float botSpeedMps, const NavFollowParams & params)
+		float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const NavCostField * field)
 	{
-		return UpdateImpl<NavNoReach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, nullptr);
+		return UpdateImpl<NavNoReach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, nullptr, field);
 	}
 
 	template <class Reach>
 	bool NavFollower::UpdateImpl(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
-		float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach)
+		float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach,
+		const NavCostField * field)
 	{
 		int64_t targetT = 0;
 		float tx = 0.0f;
@@ -456,7 +464,7 @@ namespace BotCore
 				if (botComp >= 0 && reach->ComponentOf(m_candidates[i].x, m_candidates[i].z) != botComp)
 					continue;   // provably NoPath: not worth an A* run, not a try
 
-				pathfinder.Find(grid, botCell, m_candidates[i], params.search, m_path);
+				pathfinder.Find(grid, botCell, m_candidates[i], params.search, m_path, field);
 				++m_plan.tries;
 				m_plan.expanded += m_path.expanded;
 				m_plan.pathStatus = m_path.status;
