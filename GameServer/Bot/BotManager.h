@@ -75,6 +75,7 @@ private:
 	void RefreshStatusSnapshot(std::chrono::steady_clock::time_point now);         // IOCP thread only
 	void CommandMatch(const std::string & args);
 	void CommandMove(const std::string & args);
+	void CommandGoto(const std::string & args);
 	void CommandStop(const std::string & args);
 	void CommandAttack(const std::string & args);
 	void CommandCast(const std::string & args);

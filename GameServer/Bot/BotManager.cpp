@@ -626,6 +626,8 @@ void BotManager::ExecuteCommand(const std::string & line)
 		m_script.Command(args);
 	else if (_stricmp(verb.c_str(), "move") == 0)
 		CommandMove(args);
+	else if (_stricmp(verb.c_str(), "goto") == 0)
+		CommandGoto(args);
 	else if (_stricmp(verb.c_str(), "stop") == 0)
 		CommandStop(args);
 	else if (_stricmp(verb.c_str(), "attack") == 0)
@@ -665,7 +667,7 @@ void BotManager::ExecuteCommand(const std::string & line)
 	else
 	{
 		snprintf(message, sizeof(message),
-			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, script, move, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
+			"BotManager: cmd unknown command '%s' (spawn, despawn, list, match, scenario, script, move, goto, stop, attack, cast, pot, sit, stand, target, regene, pinvite, paccept, pdecline, pleave, ppromote, pkick, pchat, see, npcs, snap)", verb.c_str());
 		WriteBotLog(message);
 	}
 }
@@ -1121,6 +1123,85 @@ void BotManager::CommandMove(const std::string & args)
 		snprintf(message, sizeof(message),
 			"BotManager: cmd move: %s walking to (%.1f, %.1f) at speed %d",
 			s->m_charName.c_str(), x, z, (int)speedField);
+	WriteBotLog(message);
+}
+
+// /bot goto <bot> <x> <z> [speed] (F5-70): same shape as CommandMove, but the walk follows a planned
+// navigation path (NAV=1, zone 71). The planning time around BeginGoto is measured and reported.
+void BotManager::CommandGoto(const std::string & args)
+{
+	std::vector<std::string> words;
+	SplitWords(args, words);
+
+	if (words.size() < 3 || words.size() > 4)
+	{
+		WriteBotLog("BotManager: cmd goto: usage: goto <bot> <x> <z> [speed]");
+		return;
+	}
+
+	const std::string & name = words[0];
+	BotSession * s = FindSession(name.c_str());
+	if (s == nullptr)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd goto: unknown or not spawned bot '%s'",
+			IsKnownBotName(name) ? name.c_str() : "?");
+		WriteBotLog(message);
+		return;
+	}
+
+	if (s->m_phase != BotSession::PHASE_IN_GAME)
+	{
+		char message[224];
+		snprintf(message, sizeof(message),
+			"BotManager: cmd goto: %s not in game (phase %s)",
+			s->m_charName.c_str(), PhaseName(s->m_phase));
+		WriteBotLog(message);
+		return;
+	}
+
+	double x = 0.0, z = 0.0;
+	if (!ParseDoubleStrict(words[1], x) || !ParseDoubleStrict(words[2], z))
+	{
+		WriteBotLog("BotManager: cmd goto: usage: goto <bot> <x> <z> [speed]");
+		return;
+	}
+
+	long speedField = BotCore::kWalkSpeedField;
+	if (words.size() == 4)
+	{
+		if (!ParseIntStrict(words[3], speedField) || speedField < -32768 || speedField > 32767)
+		{
+			WriteBotLog("BotManager: cmd goto: usage: goto <bot> <x> <z> [speed]");
+			return;
+		}
+	}
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	MoveOutcome outcome = ActionExecutor::BeginGoto(s, (float)x, (float)z, (int16)speedField, t0);
+	double elapsedMs = std::chrono::duration<double, std::milli>(
+		std::chrono::steady_clock::now() - t0).count();
+
+	char message[320];
+	if (outcome.kind == MoveOutcome::REFUSED)
+	{
+		if (strcmp(outcome.reason, "node_limit") == 0)
+			snprintf(message, sizeof(message),
+				"BotManager: cmd goto: %s refused (%s) [not planned: search budget exhausted, reachability unknown]",
+				s->m_charName.c_str(), outcome.reason);
+		else
+			snprintf(message, sizeof(message),
+				"BotManager: cmd goto: %s refused (%s)", s->m_charName.c_str(), outcome.reason);
+	}
+	else
+	{
+		snprintf(message, sizeof(message),
+			"BotManager: cmd goto: %s planned %d waypoints, route %.1f m, expanded %d, %.2f ms, walking to (%.1f, %.1f) at speed %d",
+			s->m_charName.c_str(), s->m_navDrive.PlanWaypoints(), (double)s->m_navDrive.RouteLengthM(),
+			s->m_navDrive.PlanExpanded(), elapsedMs, (double)s->m_navDrive.GoalX(),
+			(double)s->m_navDrive.GoalZ(), (int)speedField);
+	}
 	WriteBotLog(message);
 }
 

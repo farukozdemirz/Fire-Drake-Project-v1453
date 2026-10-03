@@ -8,6 +8,7 @@
 #include "IBotSink.h"
 #include "../../BotCore/BotCombat.h"
 #include "../../BotCore/Perception.h"
+#include "../../BotCore/NavDrive.h"
 
 class CUser;
 
@@ -77,6 +78,7 @@ public:
 	std::chrono::steady_clock::time_point m_moveLastSent;  // IOCP thread only: when the last WIZ_MOVE went out
 	uint32 m_actionSeq;                                    // IOCP thread only: per-spawn counter used as decision_id
 	uint32 m_movePackets;                                  // IOCP thread only: WIZ_MOVE packets sent in the current walk
+	BotCore::NavDrive m_navDrive;                          // IOCP thread only: path-following state of /bot goto (F5-70); Active() only while m_moveActive
 
 	bool m_attackActive;                                   // IOCP thread only: an attack series is in progress
 	std::string m_attackTargetName;                        // IOCP thread only: character name of the target bot
