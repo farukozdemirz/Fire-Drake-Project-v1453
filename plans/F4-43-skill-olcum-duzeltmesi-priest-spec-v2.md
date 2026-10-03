@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 19) |
 | Branch | `bot/F4-43` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-42 (`tools/skill-script-gen.py`, `bots/config/skill_priest_k.{spec,txt}`) — `KAPANDI` (merge `28cc1d6`); F4-41 (`tools/skill-check.py`) — `KAPANDI` |

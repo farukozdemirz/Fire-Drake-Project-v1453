@@ -20,8 +20,12 @@ Telemetry fields used (F4-41+):
 Usage:
     python3 tools/skill-check.py PATH [PATH ...]
         [--magic FILE | --sqlcmd P --server S --db D]
-        [--mp-tol N] [--ms-tol N] [--min-n N] [--json] [--out FILE] [--strict]
+        [--mp-tol N] [--ms-tol N] [--min-n N] [--mp-regen N]
+        [--json] [--out FILE] [--strict]
     python3 tools/skill-check.py --selftest
+
+--mp-regen N  MP the bot may regenerate during one cast, capped at half the
+skill cost (default 60; 0 = strict).
 
 PATH is a .jsonl file or a folder (scanned recursively for *.jsonl).
 """
@@ -38,6 +42,9 @@ DEFAULT_SQLCMD = "/mnt/c/Program Files/Microsoft SQL Server/Client SDK/ODBC/130/
 DEFAULT_SERVER = ".\\SQLEXPRESS"
 DEFAULT_DB = "FDP_kn_online"
 
+# Max MP the bot may regenerate during one cast window [A] (observed +20/+40).
+DEFAULT_MP_REGEN = 60
+
 MAGIC_QUERY = ("SELECT MagicNum, RTRIM(EnName), Msp, CastTime, ReCastTime, "
                "Range, Type1, Type2 FROM MAGIC")
 
@@ -45,13 +52,14 @@ USAGE = (
     "Usage:\n"
     "  python3 tools/skill-check.py PATH [PATH ...]\n"
     "      [--magic FILE | --sqlcmd P --server S --db D]\n"
-    "      [--mp-tol N] [--ms-tol N] [--min-n N] [--json] [--out FILE] [--strict]\n"
+    "      [--mp-tol N] [--ms-tol N] [--min-n N] [--mp-regen N] [--json] [--out FILE] [--strict]\n"
     "  python3 tools/skill-check.py --selftest\n"
     "Options:\n"
     "  --magic FILE  MAGIC rows (MagicNum|EnName|Msp|CastTime|ReCastTime|Range|Type1|Type2)\n"
     "  --mp-tol N    allowed MP drop band +/- N (default 10)\n"
     "  --ms-tol N    recast lower-bound tolerance in ms (default 50)\n"
     "  --min-n N     minimum samples for an MP verdict (default 3)\n"
+    "  --mp-regen N  MP the bot may regenerate during one cast, capped at half the skill cost (default 60; 0 = strict)\n"
     "  --json        write one JSON object instead of Markdown\n"
     "  --out FILE    write the report to FILE (UTF-8, LF) instead of stdout\n"
     "  --strict      exit 1 when any skill verdict is FAIL\n"
@@ -165,7 +173,7 @@ def bump(mapping, key):
     mapping[key] = mapping.get(key, 0) + 1
 
 
-def analyze(paths, magic, mp_tol, ms_tol, min_n):
+def analyze(paths, magic, mp_tol, ms_tol, min_n, mp_regen=DEFAULT_MP_REGEN):
     """Merges cast telemetry per bot and returns the skill report."""
     stats = {}
     totals = {
@@ -307,10 +315,11 @@ def analyze(paths, magic, mp_tol, ms_tol, min_n):
                     and record["t_start"] is not None):
                 stat["cast_ms"].append(record["t_effect"] - record["t_start"])
 
-    return build_report(stats, totals, magic, mp_tol, ms_tol, min_n)
+    return build_report(stats, totals, magic, mp_tol, ms_tol, min_n, mp_regen)
 
 
-def build_report(stats, totals, magic, mp_tol, ms_tol, min_n):
+def build_report(stats, totals, magic, mp_tol, ms_tol, min_n,
+                 mp_regen=DEFAULT_MP_REGEN):
     rows = []
     for skill in sorted(stats):
         stat = stats[skill]
@@ -325,7 +334,7 @@ def build_report(stats, totals, magic, mp_tol, ms_tol, min_n):
         mp_min = min(deltas) if deltas else None
         mp_med = int(statistics.median(deltas)) if deltas else None
         mp_max = max(deltas) if deltas else None
-        mp_verdict = judge_mp(mp_exp, deltas, mp_tol, min_n)
+        mp_verdict = judge_mp(mp_exp, deltas, mp_tol, mp_regen, min_n)
 
         min_gap = min_recast_gap(stat["effect_times"])
         recast_verdict = judge_recast(recast_exp, min_gap, ms_tol)
@@ -393,18 +402,17 @@ def build_report(stats, totals, magic, mp_tol, ms_tol, min_n):
     return {"skills": rows, "summary": summary}
 
 
-def judge_mp(mp_exp, deltas, mp_tol, min_n):
+def judge_mp(mp_exp, deltas, mp_tol, mp_regen, min_n):
     if mp_exp is None or len(deltas) < min_n:
         return "NO_DATA"
-    low = mp_exp - mp_tol
-    high = mp_exp + mp_tol
-    all_inside = all(low <= delta <= high for delta in deltas)
-    if all_inside:
-        return "PASS"
-    median = statistics.median(deltas)
-    if low <= median <= high:
+    regen = min(mp_regen, mp_exp // 2)          # regeneration cannot refund more than half the cost
+    floor = mp_exp - regen
+    top = max(deltas)
+    if top > mp_exp + mp_tol or top < floor:
+        return "FAIL"
+    if top < mp_exp - mp_tol or min(deltas) < floor:
         return "WARN"
-    return "FAIL"
+    return "PASS"
 
 
 def min_recast_gap(effect_times):
@@ -562,17 +570,24 @@ def run_selftest():
     with tempfile.TemporaryDirectory() as tmp:
         case_index = [0]
 
-        def run_case(records, magic, mp_tol=10, ms_tol=50, min_n=3):
+        def run_case(records, magic, mp_tol=10, ms_tol=50, min_n=3,
+                     mp_regen=DEFAULT_MP_REGEN):
             case_index[0] += 1
             path = os.path.join(tmp, "case%02d.jsonl" % case_index[0])
             write_jsonl(path, records)
-            return analyze([path], magic, mp_tol, ms_tol, min_n)
+            return analyze([path], magic, mp_tol, ms_tol, min_n, mp_regen)
 
         magic = {
             110518: {"name": "Fire ball", "msp": 40, "cast_time": 0,
                      "recast_time": 0, "range": 6, "type1": 3, "type2": 0},
             110530: {"name": "Chain cast", "msp": 40, "cast_time": 2000,
                      "recast_time": 30, "range": 6, "type1": 3, "type2": 0},
+            110601: {"name": "regen80", "msp": 80, "cast_time": 0,
+                     "recast_time": 0, "range": 6, "type1": 3, "type2": 0},
+            110602: {"name": "regen160", "msp": 160, "cast_time": 0,
+                     "recast_time": 0, "range": 6, "type1": 3, "type2": 0},
+            110603: {"name": "regen625", "msp": 625, "cast_time": 0,
+                     "recast_time": 0, "range": 6, "type1": 3, "type2": 0},
         }
 
         # 1. mp_ok: three casts, delta 40 == Msp 40.
@@ -613,6 +628,33 @@ def run_selftest():
                                   reason="effected", code=0, mp_after=60))
         row = find_row(run_case(records, magic), 110518)
         check("mp_no_data", row["mp_verdict"] == "NO_DATA")
+
+        # 3b. judge_mp regeneration allowance (DEFAULT_MP_REGEN 60, capped at half).
+        def mp_case(skill, drops, min_n=3, mp_regen=None):
+            records = []
+            before = 10000
+            for index, drop in enumerate(drops):
+                records.append(submit("CastEffect", 900 + index,
+                                      t=1000 * index, skill=skill, mp=before))
+                records.append(result("CastEffect", 900 + index,
+                                      t=1000 * index + 10, reason="effected",
+                                      code=0, mp_after=before - drop))
+            if mp_regen is None:
+                return run_case(records, magic, min_n=min_n)
+            return run_case(records, magic, min_n=min_n, mp_regen=mp_regen)
+
+        row = find_row(mp_case(110601, [80, 40, 80]), 110601)
+        check("mp_regen_pass", row["mp_verdict"] == "PASS")
+        row = find_row(mp_case(110603, [585], min_n=1), 110603)
+        check("mp_regen_single_warn", row["mp_verdict"] == "WARN")
+        row = find_row(mp_case(110602, [40, 40], min_n=2), 110602)
+        check("mp_below_floor_fail", row["mp_verdict"] == "FAIL")
+        row = find_row(mp_case(110601, [80, 100], min_n=2), 110601)
+        check("mp_over_fail", row["mp_verdict"] == "FAIL")
+        row = find_row(mp_case(110602, [160, 60], min_n=2), 110602)
+        check("mp_regen_min_warn", row["mp_verdict"] == "WARN")
+        row = find_row(mp_case(110601, [80, 40, 80], mp_regen=0), 110601)
+        check("mp_regen_zero_strict", row["mp_verdict"] == "WARN")
 
         # 4. recast_ok / recast_fail / recast_no_data (ReCastTime 30 == 3000 ms).
         recast_magic = {
@@ -786,6 +828,7 @@ def main(argv=None):
     parser.add_argument("--mp-tol", type=int, default=10)
     parser.add_argument("--ms-tol", type=int, default=50)
     parser.add_argument("--min-n", type=int, default=3)
+    parser.add_argument("--mp-regen", type=int, default=DEFAULT_MP_REGEN)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--out")
     parser.add_argument("--strict", action="store_true")
@@ -793,6 +836,8 @@ def main(argv=None):
 
     if not args.paths:
         parser.error("at least one PATH is required")
+    if args.mp_regen < 0:
+        parser.error("--mp-regen must not be negative")
 
     try:
         if args.magic:
@@ -802,7 +847,8 @@ def main(argv=None):
         resolved = collect_paths(args.paths)
         if not resolved:
             raise InputError("no .jsonl files found")
-        report = analyze(resolved, magic, args.mp_tol, args.ms_tol, args.min_n)
+        report = analyze(resolved, magic, args.mp_tol, args.ms_tol, args.min_n,
+                         args.mp_regen)
     except InputError as exc:
         sys.stderr.write("error: %s\n" % exc)
         return 2
