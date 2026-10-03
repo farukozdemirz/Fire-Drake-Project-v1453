@@ -225,6 +225,8 @@ Hedefe varış adımı (< 1 m) takılma değildir. *(Hareket niyeti ve gerçek r
   *Mod ayrımı (proje sahibi kararı 2026-10-02, ADR-0033-DEG):* bu madde yalnızca **arena modu** içindir; serbest Ronark modunda güvenli konuma çekilme, yeniden gruplanma ve savaşa dönüş ayrıca planlanır (`docs/17` F11-a/b/c).
 - **Doğuş ve dönüş:** doğan bot arena dışındadır, dönüş yürüyerek (~52 sn Karus, ~142 sn El Morad, 4,5 m/s) veya summon'la olur; arenaya girdikten sonra "savaş alanında kal" kuralı başlar. Dönüş yolu planı (doğuş → arena kenarı) kısa ömürlü önbellekte tutulur (§13.5).
 
+- **Arena A yüzeyi (T-ENV-ARENA-02, 2026-10-03, insan istemcisi + ızgara) `[V]`:** arena A merkezi (1274, 890) yaklaşık **8 m yüksekte bir plato**; güneydoğu kenarında zemin 8 m'den 1–2 m'ye düşen **kayalık bir sırt** var, (1260, 904) ile (1300, 888) arasında diyagonal bir bantta kenar eğimi 0,45'i (ADR-0024) aşar, istemcide de bu kayalıktan çıkılamıyor (dolanmak gerekir). Botlar sırttan çıkmaya çalışmaz, planlayıcı dolanır (Karus doğuş → arena rotası 0,45 ile +%11).
+
 ### 13.5 Çoklu bot yol bütçesi
 
 Ölçüm (rapor §5.5, **WSL `g++ -O2`, ORT-G; yalnız `NavPathfinder::Find`; her bot her tick bir sorgu, kuyruksuz üst yük; MSVC değil, gerçek `Tick()` değil** `[V: ORT-G, Y2]`, zone 71, tek iş parçacığı): 16 bot aynı tick'te near64 sorgusu → tick toplamı p95 2,83 ms (max 7,2); mid150 → p95 8,8 ms; tüm harita → p95 30 ms; 64 bot near64 → p95 9,5 ms. Bu sayılar bütçe **gerekçesidir**, kabul kanıtı değildir; MSVC Release sayıları §13.5.1'dedir (aynı sorgu için MSVC ≈ ×1,4-1,6 yavaştır). MET-PERF-02 hedefi tüm BotManager için 16 bot p95 ≤ 5 ms olduğundan nav için ayrı bütçe şarttır. Strateji `[Ö]` (F5-53):
