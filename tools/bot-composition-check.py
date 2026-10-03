@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checks bot character set coverage against the 8v8 EVAL compositions.
 
-Parses the @bots rows of the db/002 (and future db/003) SQL script as text,
+Parses the @bots rows of the db/002 (and future db/005, db/006) SQL script as text,
 validates them against the ADR-0002 character naming/class rules, and reports
 which additional characters are needed for the composition sets (small, min16,
 full20) and for each EVAL pairing.  Implements the rules of ADR-0002 Ek F8-02

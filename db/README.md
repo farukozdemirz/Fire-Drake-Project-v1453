@@ -121,3 +121,7 @@ tools/bot-refill.sh apply
 tools/bot-refill.sh apply --hp-pots 7 --mp-pots 5 --life-stones 3 --class-stones 11
 tools/bot-refill.sh rollback
 ```
+
+## Numara ayırma notu (2026-10-03)
+
+`db/001`..`db/004` uygulanmış/yazılmış betiklerdir ve **yeniden numaralandırılmaz**: 001 `MAGIC.Etc`, 002 bot karakterleri, 003 bot quest (F4-27), 004 bot envanter (F4-40). 8v8 için karakter genişletme betikleri **`db/005`** (ilk 16 karakter, F8-03) ve **`db/006`** (+4 çeşitlilik karakteri, F8-04) olarak ayrılmıştır. Eski kayıtlarda (`docs/reports/*`, kapanmış planlar) 16/20 karakter için geçen "`db/003`" ifadesi bu betikleri kasteder; `db/003` her zaman bot quest betiğidir.

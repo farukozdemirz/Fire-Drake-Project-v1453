@@ -306,7 +306,7 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | G7a Priest destek | Buff, cure, debuff, diriltme, iki priest | ADR-0018 m.4, m.6, m.8; F4-52/53 | T-IGT-PRI-01, T-PRI-03..06/08 | küçük takım |
 | G7b Mage summon | Güvenli summon akışı | ADR-0018 m.6 (summon dilimi), G6c | T-IGT-MAG-01 | küçük takım |
 | G7c Takım | Ortak hedef, debuff çağrısı, healer'a geçiş, regroup/geri çekilme | G7a, G7b | T-IGT-PTY-01, T-IGT-SUR-01, T-PTY-* | 2v2..5v5 |
-| G8 8v8 ve baseline | Sıfırlanabilir, tekrarlanabilir değerlendirme | `db/003` (ulus başına 10, toplam **20**: 16 + 4, `docs/15` §6a), `ScenarioReset` (§6a, ADR-0032-DEG), `win_rule` türleri (§6b, ADR-0031-DEG), `evalset-v1` | T-IGT-EVAL-01, AC-EVAL-01..03 | MVP sonu |
+| G8 8v8 ve baseline | Sıfırlanabilir, tekrarlanabilir değerlendirme | `db/005` (16 karakter, F8-03) ve `db/006` (+4 çeşitlilik, F8-04; ulus başına 10, toplam **20**; `docs/15` §6a; `db/003` zaten bot quest betiğidir), `ScenarioReset` (§6a, ADR-0032-DEG), `win_rule` türleri (§6b, ADR-0031-DEG), `evalset-v1` | T-IGT-EVAL-01, AC-EVAL-01..03 | MVP sonu |
 | G9 öğrenme | L1 | G8 | AC-LRN-01..08 | "iyileşme yok" geçerli |
 | G11 serbest Ronark | F11 (güvenli konuma çekilme, yeniden gruplanma, savaşa dönüş dahil) | G8, ADR | T-FREE-01..08 | taslak |
 | G12 karakter bazlı öğrenme | F12 | G9 | AC-CHR-01..06 | taslak |
