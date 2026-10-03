@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `c88dd95`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-30` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-25 (uçan Type3: CASTING → FLYING → EFFECTING, `CastManaNeed`, `CheckCastFly/Land`) — `KAPANDI`; F4-26 (`{3, 4}` çifti) — `KAPANDI`; F4-29 (alan skill: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI` (merge `78ae6b7`) |
