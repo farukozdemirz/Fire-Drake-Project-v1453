@@ -452,6 +452,39 @@ namespace BotCore
 		return warpType == kType8WarpDescent;
 	}
 
+	// --- item-requiring class skills (ADR-0017 Ek F4-36, docs/03 MEC-MAG-23) ---
+
+	// MagicInstance.h CLASS_STONE_BASE_ID: with MAGIC.BeforeAction 1..4 (ClassWarrior..ClassPriest, User.h) the server takes
+	// ONE class stone 379058000 + BeforeAction * 1000 (379059000 Warrior, 379061000 Mage, 379062000 Priest) and treats
+	// MAGIC.UseItem as a required, not consumed item; otherwise it takes MAGIC.UseItem (a few scrolls are never taken:
+	// MagicInstance::ConsumeItem).
+	constexpr uint32_t kClassStoneBase = 379058000;
+	constexpr uint32_t kClassStoneStep = 1000;
+	constexpr uint32_t kClassWarriorId = 1;
+	constexpr uint32_t kClassPriestId = 4;
+
+	// A skill with MAGIC.UseItem != 0 is opened for the bot when it is a CLASS skill (MAGIC.Skill != 0) of Type1, 3 or 4;
+	// the type/Moral/flying shape is still judged by the other Cast*Supported functions. Item-effect magics (Skill == 0:
+	// potions, scrolls, food) go through the potion path, Type5 + item (resurrection, F4-33) has its own path and
+	// Type2/6/8 + item stay closed. A skill without an item always passes (this function judges the item only).
+	inline bool CastItemSkillSupported(uint8_t type0, uint16_t skill, uint32_t useItem)
+	{
+		if (useItem == 0)
+			return true;
+
+		return skill != 0 && (type0 == 1 || type0 == 3 || type0 == 4);
+	}
+
+	// The item the server takes for a cast (MagicInstance.cpp:252-255): the class stone for BeforeAction 1..4, else
+	// MAGIC.UseItem. The server checks BOTH MAGIC.UseItem and this item (CanUseItem) when UseItem != 0.
+	inline uint32_t CastConsumeItem(uint32_t beforeAction, uint32_t useItem)
+	{
+		if (beforeAction >= kClassWarriorId && beforeAction <= kClassPriestId)
+			return kClassStoneBase + beforeAction * kClassStoneStep;
+
+		return useItem;
+	}
+
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{

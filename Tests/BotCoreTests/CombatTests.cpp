@@ -1646,3 +1646,49 @@ TEST_CASE("Combat_WarpCast_Guard")
 	d.mana = 49;
 	CHECK_EQ((int)BotCore::CheckCastStart(d), (int)BotCore::CAST_REJECT_NO_MANA);
 }
+
+TEST_CASE("Combat_ItemSkill_Guard")
+{
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1105, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 0, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(8, 1100, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(0, 0, 0), true);
+
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1105, 379070000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1106, 379070000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 1108, 379065000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1128, 379066000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379063000), true);
+
+	CHECK_EQ(BotCore::CastItemSkillSupported(5, 1127, 379006000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(8, 1100, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(2, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(6, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(0, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 0, 389001000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 0, 310310010), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 0, 379070000), false);
+
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
+	CHECK_EQ(BotCore::CastMoralSupported(11), false);
+	CHECK_EQ(BotCore::CastMoralSupported(7), true);
+	CHECK_EQ(BotCore::CastMoralSupported(10), true);
+	CHECK_EQ(BotCore::CastMoralSupported(6), true);
+
+	CHECK_EQ((int)BotCore::CastConsumeItem(3, 379065000), 379061000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(4, 379066000), 379062000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 379063000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(2, 379000000), 379060000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 379070000), 379070000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(5, 379070000), 379070000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 0), 0);
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 0), 379059000);
+	CHECK_EQ((int)BotCore::kClassStoneBase, 379058000);
+	CHECK_EQ((int)BotCore::kClassStoneStep, 1000);
+	CHECK_EQ((int)BotCore::kClassWarriorId, 1);
+	CHECK_EQ((int)BotCore::kClassPriestId, 4);
+}
