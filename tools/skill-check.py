@@ -25,7 +25,11 @@ Usage:
     python3 tools/skill-check.py --selftest
 
 --mp-regen N  MP the bot may regenerate during one cast, capped at half the
-skill cost (default 60; 0 = strict).
+              skill cost (default 60; 0 = strict).
+
+A cast that went through CastFly on a Type1 == 3 skill is judged against
+2 * Msp (MEC-MAG-12); regeneration allowance is min(--mp-regen, Msp // 2);
+other casts keep the single Msp expectation.
 
 PATH is a .jsonl file or a folder (scanned recursively for *.jsonl).
 """
@@ -63,6 +67,8 @@ USAGE = (
     "  --json        write one JSON object instead of Markdown\n"
     "  --out FILE    write the report to FILE (UTF-8, LF) instead of stdout\n"
     "  --strict      exit 1 when any skill verdict is FAIL\n"
+    "  A flying Type1 == 3 cast is judged against 2 * Msp (MEC-MAG-12);\n"
+    "  other casts keep the single Msp expectation.\n"
 )
 
 EVENTS = ("ACTION_SUBMIT", "ACTION_RESULT", "FAIRNESS_REJECT")
@@ -164,6 +170,7 @@ def new_stat():
         "codes": {},
         "rejects": {},
         "deltas": [],
+        "fly_deltas": [],
         "effect_times": [],
         "cast_ms": [],
     }
@@ -303,7 +310,11 @@ def analyze(paths, magic, mp_tol, ms_tol, min_n, mp_regen=DEFAULT_MP_REGEN):
                 bump(stat["codes"], record["code"])
             if outcome in ("effected", "missed"):
                 if record["mp_before"] is not None and record["mp_after"] is not None:
-                    stat["deltas"].append(record["mp_before"] - record["mp_after"])
+                    delta = record["mp_before"] - record["mp_after"]
+                    if record.get("flying"):
+                        stat["fly_deltas"].append(delta)
+                    else:
+                        stat["deltas"].append(delta)
             if outcome == "effected" and record["t_effect"] is not None:
                 stat["effect_times"].append((record["bot"], record["t_effect"]))
             magic_row = magic.get(skill)
@@ -330,11 +341,15 @@ def build_report(stats, totals, magic, mp_tol, ms_tol, min_n,
         if magic_row is not None and magic_row.get("recast_time") is not None:
             recast_exp = magic_row["recast_time"] * 100
 
-        deltas = stat["deltas"]
-        mp_min = min(deltas) if deltas else None
-        mp_med = int(statistics.median(deltas)) if deltas else None
-        mp_max = max(deltas) if deltas else None
-        mp_verdict = judge_mp(mp_exp, deltas, mp_tol, mp_regen, min_n)
+        all_deltas = stat["deltas"] + stat["fly_deltas"]
+        mp_min = min(all_deltas) if all_deltas else None
+        mp_med = int(statistics.median(all_deltas)) if all_deltas else None
+        mp_max = max(all_deltas) if all_deltas else None
+        mp_verdict = judge_mp_split(magic_row, stat["deltas"], stat["fly_deltas"],
+                                    mp_tol, mp_regen, min_n)
+        mp_exp_flying = None
+        if magic_row is not None and magic_row.get("type1") == 3 and mp_exp is not None:
+            mp_exp_flying = 2 * mp_exp
 
         min_gap = min_recast_gap(stat["effect_times"])
         recast_verdict = judge_recast(recast_exp, min_gap, ms_tol)
@@ -372,10 +387,12 @@ def build_report(stats, totals, magic, mp_tol, ms_tol, min_n,
             "rejects": stat["rejects"],
             "code_hist": stat["codes"],
             "mp_exp": mp_exp,
+            "mp_exp_flying": mp_exp_flying,
             "mp_delta_min": mp_min,
             "mp_delta_med": mp_med,
             "mp_delta_max": mp_max,
-            "mp_n": len(deltas),
+            "mp_n": len(all_deltas),
+            "flying_n": len(stat["fly_deltas"]),
             "mp_verdict": mp_verdict,
             "recast_exp_ms": recast_exp,
             "recast_min_gap_ms": min_gap,
@@ -402,16 +419,35 @@ def build_report(stats, totals, magic, mp_tol, ms_tol, min_n,
     return {"skills": rows, "summary": summary}
 
 
-def judge_mp(mp_exp, deltas, mp_tol, mp_regen, min_n):
+def judge_mp(mp_exp, deltas, mp_tol, mp_regen, min_n, regen_base=None):
     if mp_exp is None or len(deltas) < min_n:
         return "NO_DATA"
-    regen = min(mp_regen, mp_exp // 2)          # regeneration cannot refund more than half the cost
+    base = mp_exp if regen_base is None else regen_base
+    regen = min(mp_regen, base // 2)            # regeneration cannot refund more than half the cost
     floor = mp_exp - regen
     top = max(deltas)
     if top > mp_exp + mp_tol or top < floor:
         return "FAIL"
     if top < mp_exp - mp_tol or min(deltas) < floor:
         return "WARN"
+    return "PASS"
+
+
+def judge_mp_split(magic_row, deltas, fly_deltas, mp_tol, mp_regen, min_n):
+    """Judges plain casts against Msp and flying Type3 casts against 2 * Msp (MEC-MAG-12)."""
+    msp = magic_row["msp"] if magic_row else None
+    if magic_row is None or magic_row.get("type1") != 3:
+        # no doubling: every sample is judged against Msp (flying or not)
+        return judge_mp(msp, deltas + fly_deltas, mp_tol, mp_regen, min_n)
+    plain = judge_mp(msp, deltas, mp_tol, mp_regen, min_n)
+    flying = judge_mp(None if msp is None else 2 * msp, fly_deltas, mp_tol, mp_regen, min_n,
+                      regen_base=msp)
+    parts = [verdict for verdict in (plain, flying) if verdict != "NO_DATA"]
+    if not parts:
+        return "NO_DATA"
+    for verdict in ("FAIL", "WARN"):
+        if verdict in parts:
+            return verdict
     return "PASS"
 
 
@@ -461,13 +497,13 @@ def render_markdown(report):
     lines.append("")
     lines.append(
         "| skill | name | started | effected | missed | srv_fail | no_result | "
-        "guard_reject | rejects | code_hist | mp_exp | mp_delta_min | mp_delta_med | "
+        "guard_reject | rejects | code_hist | mp_exp | mp_exp_fly | fly_n | mp_delta_min | mp_delta_med | "
         "mp_delta_max | mp_verdict | recast_exp_ms | recast_min_gap_ms | "
         "recast_verdict | cast_ms_med | effect_verdict | verdict |")
     lines.append(
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     if not report["skills"]:
-        lines.append("| (none) | | | | | | | | | | | | | | | | | | | | |")
+        lines.append("| (none) | | | | | | | | | | | | | | | | | | | | | | |")
     for row in report["skills"]:
         cells = [
             str(row["skill"]),
@@ -481,6 +517,8 @@ def render_markdown(report):
             format_map(row["rejects"]),
             format_map(row["code_hist"]),
             format_number(row["mp_exp"]),
+            format_number(row["mp_exp_flying"]),
+            str(row["flying_n"]),
             format_number(row["mp_delta_min"]),
             format_number(row["mp_delta_med"]),
             format_number(row["mp_delta_max"]),
@@ -805,6 +843,119 @@ def run_selftest():
                 check("sqlcmd_non_utf8", row_ok)
         else:
             check("sqlcmd_non_utf8_skipped", True)
+
+        # 16. flying Type3 MP doubling (MEC-MAG-12): expected cost is 2 * Msp.
+        fly_magic = {
+            110515: {"name": "Fire ball", "msp": 50, "cast_time": 1500,
+                     "recast_time": 43, "range": 78, "type1": 3, "type2": 0},
+            110099: {"name": "Arrow", "msp": 50, "cast_time": 1500,
+                     "recast_time": 0, "range": 78, "type1": 2, "type2": 1},
+        }
+
+        def flying_cast(index, skill, drop, base=6000):
+            t = 10000 * index
+            d = 10 * index
+            return [
+                submit("CastStart", d, t=t, skill=skill, mp=base),
+                result("CastStart", d, t=t + 10, reason="casting"),
+                submit("CastFly", d + 1, t=t + 100, skill=skill),
+                result("CastFly", d + 1, t=t + 110, reason="flying"),
+                submit("CastEffect", d + 2, t=t + 1100, skill=skill),
+                result("CastEffect", d + 2, t=t + 1110, reason="effected", code=0,
+                       mp_after=base - drop),
+            ]
+
+        def plain_cast(index, skill, drop, base=6000):
+            t = 10000 * index
+            d = 100 + 10 * index
+            return [
+                submit("CastEffect", d, t=t, skill=skill, mp=base),
+                result("CastEffect", d, t=t + 10, reason="effected", code=0,
+                       mp_after=base - drop),
+            ]
+
+        def cast_records(builder, skill, drops, min_n=3, mp_regen=None):
+            records = []
+            for index, drop in enumerate(drops):
+                records += builder(index, skill, drop)
+            if mp_regen is None:
+                return run_case(records, fly_magic, min_n=min_n)
+            return run_case(records, fly_magic, min_n=min_n, mp_regen=mp_regen)
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 110515, 100)
+        report = run_case(records, fly_magic)
+        row = find_row(report, 110515)
+        check("flying_mp_pass", row["mp_verdict"] == "PASS")
+        check("flying_mp_fields", row["mp_exp"] == 50 and row["mp_exp_flying"] == 100
+              and row["flying_n"] == 3)
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 110515, 50)
+        row = find_row(run_case(records, fly_magic), 110515)
+        check("flying_single_drop_fail", row["mp_verdict"] == "FAIL")
+
+        row = find_row(cast_records(flying_cast, 110515, [100, 80, 100]), 110515)
+        check("flying_regen_pass", row["mp_verdict"] == "PASS")
+
+        row = find_row(cast_records(flying_cast, 110515, [100, 70, 100]), 110515)
+        check("flying_below_floor_warn", row["mp_verdict"] == "WARN")
+
+        row = find_row(cast_records(flying_cast, 110515, [100, 160], min_n=2), 110515)
+        check("flying_over_fail", row["mp_verdict"] == "FAIL")
+
+        row = find_row(cast_records(flying_cast, 110515, [100, 100], min_n=3), 110515)
+        check("flying_no_data", row["mp_verdict"] == "NO_DATA")
+
+        row = find_row(cast_records(flying_cast, 110515, [100, 80, 100], mp_regen=0), 110515)
+        check("flying_regen_zero_warn", row["mp_verdict"] == "WARN")
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 110515, 100)
+            records += plain_cast(index, 110515, 50)
+        report = run_case(records, fly_magic)
+        row = find_row(report, 110515)
+        check("mixed_pass", row["mp_verdict"] == "PASS" and row["flying_n"] == 3)
+        check("mixed_fields", row["mp_delta_min"] == 50 and row["mp_delta_max"] == 100)
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 110515, 100)
+            records += plain_cast(index, 110515, 100)
+        row = find_row(run_case(records, fly_magic), 110515)
+        check("mixed_plain_wrong_fail", row["mp_verdict"] == "FAIL")
+
+        records = []
+        for index in range(3):
+            records += plain_cast(index, 110515, 50)
+        row = find_row(run_case(records, fly_magic), 110515)
+        check("plain_unchanged", row["mp_verdict"] == "PASS" and row["flying_n"] == 0)
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 110099, 50)
+        row = find_row(run_case(records, fly_magic), 110099)
+        check("flying_type2_single", row["mp_verdict"] == "PASS"
+              and row["mp_exp_flying"] is None and row["flying_n"] == 3)
+
+        records = []
+        for index in range(3):
+            records += flying_cast(index, 999998, 100)
+        row = find_row(run_case(records, fly_magic), 999998)
+        check("flying_unknown_skill", row["mp_exp"] is None
+              and row["mp_exp_flying"] is None and row["mp_verdict"] == "NO_DATA")
+
+        md_lines = [line for line in render_markdown(report).split("\n")
+                    if line.startswith("|")]
+        check("render_columns", md_lines[0].count("|") == md_lines[1].count("|")
+              == md_lines[2].count("|")
+              and "mp_exp_fly" in md_lines[0] and "fly_n" in md_lines[0])
+
+        parsed = json.loads(render_json(report))["skills"][0]
+        check("render_json_fields", "flying_n" in parsed and "mp_exp_flying" in parsed)
 
     if failures:
         for name in failures:
