@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-35` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-34 (summon istisnası: `BeginCast` Type8 bloğu, `wantedTarget`) — `KAPANDI` (merge `1ac6c55`); F4-28 (`Moral` 1 `self` kuralı) — `KAPANDI`; F4-31 (`Moral` 4 party hedefli) — `KAPANDI`; F4-08 (party kurulumu `/bot pinvite`, `/bot paccept`; yalnızca çalışma zamanı sınaması için) — `KAPANDI` |
@@ -257,16 +257,36 @@ git diff --check gece/2026-10-02...bot/F4-35
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-35` — `<kısa-sha> [F4-35] …`
+- Branch / commit'ler: `bot/F4-35` (taban: `gece/2026-10-02`) — `e0d5f06 [F4-35] Type8 warp dilimi: CastWarpSupported + BeginCast Gate/descent istisnasi`; plan Durum/rapor commit'i bunun ardından
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h` — `kMoralSelf`/`kType8WarpGate`/`kType8WarpDescent` sabitleri ve `CastWarpSupported` + `CastWarpNeedsOtherTarget` eklendi (`CastSummonSupported`'tan sonra, yalnızca ekleme).
+  - `GameServer/Bot/ActionExecutor.cpp` — `BeginCast` Type8 bloğu tek `m_Magictype8Array` okumasıyla `summon`/`warp`/`warpOther` bayraklarına genişletildi; destek koşulu `!resurrection && !summon && !warp`; `wantedTarget` satırına `|| warpOther` eklendi.
+  - `GameServer/Bot/ActionExecutor.h` — yalnızca `BeginCast` yorumu (Gate/descent maddesi, `bad_target` açıklaması).
+  - `Tests/BotCoreTests/CombatTests.cpp` — yeni `Combat_WarpCast_Guard` (111 → 112).
+  - `plans/F4-35-...md` — Durum satırı ve Uygulayıcı Raporu.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  proj-GameServer.vcxproj -> …\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> …\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> …\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Release rc=0, Debug rc=0; değişen dört dosyada uyarı/hata yok (grep boş). Kalan C4789 uyarıları `UpgradeHandler.cpp`'de, önceden var.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dosyalarda uyarı yok (dört dosya `touch` edilip yeniden derlendi).
+  - K2 ✔ Debug rc=0, değişen dosyalarda uyarı yok.
+  - K3 ✔ `Release` ve `Debug`: `112 tests, 0 failed`; `Combat_CastTypes_Supported`, `Combat_SummonCast_Guard`, `Combat_WarpCast_Guard` `[ OK ]`.
+  - K4 ✔ `BotCore/BotCombat.h` sunucu başlığı içermez; `git diff` yalnızca ekleme, `std::min`/`std::max` yok.
+  - K5 ✔ `m_Magictype8Array` tam 1; `CastSummonSupported`/`CastWarpSupported`/`CastWarpNeedsOtherTarget` üç satır; `CastNeedsOtherTarget(m->bMoral)` satırı `|| summon || warpOther;` ile bitiyor; `if (!resurrection && !summon && !warp` var; destek koşulu terimleri ve `m->iUseItem != 0` (2) yerinde.
+  - K6 ✔ `ActionExecutor.cpp` yalnızca `BeginCast` içinde iki hunk; `--stat`yalnızca §4'teki 4 dosya + plan; yasak dosyalar değişmedi.
+  - K7 ✔ Yeni `Emit(` yok; yeni ini/komut/thread/telemetri olay türü/alanı yok.
+  - K8 ✔ Dört dosya CRLF/ASCII, `file` durumu korundu; `git diff --check` boş.
+  - K9 ✔ Guard çağrı sayıları (CheckMoveStep 2, CheckAttack 1, CheckCastStart/Effect/Fly/Land/Cancel 1, CheckPotion 1); önceki 111 test hâlâ geçiyor.
+  - K10 ✔ `tools/check-perception-contract.py` `RESULT: PASS` (19 dosya; R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0).
+  - K11 — Claude'un `/plan-dogrula` çalışma zamanı sınaması (S1–S8); uygulayıcı yapmaz.
+- Plandan sapmalar ve gerekçeleri:
+  - Yeni testte iki `CHECK_EQ(BotCore::CastRecastMs(...), <lit>)` satırı MSVC C4389 (işaretli/işaretsiz) uyarısı verdi; K1 gereği `(int)` dönüşümü eklendi. Test değerleri ve kapsamı planla aynı.
+  - Descent guard testi için ikinci `CastStartCheck` değişkeni plan metnindeki gibi yeniden `c` adıyla değil `d` olarak adlandırıldı (aynı işlev kapsamında yeniden bildirim olmaması için). Davranış aynı.
+- Açık sorular: yok.
 
 ---
 
