@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-73 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`/`NavTargetTracker`), F5-05 (`NavReach`), F5-09 (`NavStuckMonitor`/`NavPickSideStep`/`NavStuckPenalties`), F5-52 + F5-56 (hız kestirimi, gözlem zaman damgası), F5-54 (`NavPacketCadenceParams`), F5-57 (`NavProgressAssessor`), F5-62 (`NavDrive` `Goto`), F5-71 (`UpdateReachable`). **F5-70'e (`/bot goto` sunucu bağlaması) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-70 yalnızca `GameServer/Bot/` altındaki yedi dosyaya dokunur; bu plan yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h` ve iki test dosyasına. |
@@ -309,20 +309,28 @@ file BotCore/NavDrive.h BotCore/NavTrack.h Tests/BotCoreTests/NavDriveTests.cpp 
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-73` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F5-73` @ `911429b` (kod commit'i `8df3081`; rapor commit'i `911429b`). Mod: gece (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push **yapılmadı**; birleştirmeyi döngü betiği yapar. Taban `gece/2026-10-02` = `main` = `fa24182`. Sunucular `[DOWN]` idi (derleme öncesi denetlendi).
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | Dört dosya `touch` + `./tools/build.sh Release` rc=0, çıktıda `warning` 0; `./tools/build.sh Debug` rc=0, `NavDrive`/`NavTrack` için uyarı yok |
+| K2 | ✔ | `./tools/run-tests.sh Release` ve `Debug`: `314 tests, 0 failed` (293 + 21); 21 yeni test adının tümü `[ OK ]` (Release çıktısı satır satır görüldü); `NavDrive_RealMap_Random` `planned=295 nopath=2 nodelimit=3 unrecoverable=0` |
+| K3 | ✔ | `_NormalChase_NoFalseStuck`, `_UTurn_NoFalseStuck`, `_Replan_NoFalseStalled`, `_RealMap_Chase` `[ OK ]`; `NAVFOLLOW real map: runs=30 plans=18180 fail=0 episodes=0 blocked=0 chordViolations=0 ended=0` (3 tick modeli, `NavReach` aşırı yüklemesi) |
+| K4 | ✔ | `NAVFOLLOW hidden model=0/1/2: firstStage1=3300/3353/3427 maxRecover=1300/1323/1286 final=6.32 stages=2`; `wall: ended=2 at=43922 stages=5` (`StuckAbandon`); `awaiting-cancel: ended=2 at=32800`. **Negatif kontroller bağımsız yeniden yapıldı** (geçici düzenleme, `git checkout` ile geri alındı, ağaç temiz): D5 `moving` kolu kaldırılınca `_RecoveryNotCancelledByAwaiting` kırıldı (`ended=0`); D6 koşulu `false &&` ile kapatılınca `_UTurn_NoFalseStuck` kırıldı (`StuckEpisodes` 10 / 8 / 6 ≠ 0, üç tick modeli). Sonra Release yeniden derlenip `314 tests, 0 failed` doğrulandı |
+| K5 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-73`: `NavDrive.h`, `NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp` + plan dosyası; `NavStuck/NavGrid/NavPath/NavSmooth/NavDanger/NavBudget/NavReach/Perception/BotMotion/NavChordGuard.h`, `GameServer/`, `AIServer/`, `shared/`, `tools/`, `docs/`, `*.vcxproj*` farkı boş; `NavTrack.h` farkı yalnızca ekleme + `Update`/`UpdateReachable`/`UpdateImpl` imzaları + `Find` çağrısı (`-` satırı 9); `git diff --check` boş. Plan dosyasında `-` satırları yalnızca şablon yer tutucuları ve `Durum`. `plans/README.md` uygulayıcı tarafından değiştirilmedi (AGENTS.md §2.2); durum sözcüğünü bu doğrulama günceller |
+| K6 | ✔ | `grep -n -E "windows.h|stdafx|GameServer|shared/|static |new |malloc|std::chrono" BotCore/NavDrive.h` boş (rc=1); `python3 tools/check-perception-contract.py` rc=0 |
+| K7 | ✔ | `NavDrive.h:567` `SetIntent(true)` → `:569` `NotifyReplan` (her `Planned` plandan sonra; ilk paketten önce, paket yalnızca `NextFollowStep` sonrası); `:596-597` `moving` (D5) tam plandaki ifade; `:543` `maxLookahead = 1` yalnızca ceza etkin dalında; `:752-776` `OnPacketSent` Follow dışında etkisiz, `NextFollowStep` yalnızca `Step/Arrived` için çağıran sözleşmesi (testlerde uygulanır); `Goto` gövdeleri: `git diff`te yalnızca `Reset()` eklemeleri, `Replan` koruması (`:221`) ve `PlanGoto` → `AdoptRoute` taşıması |
+| K8 | ✔ | `NavDrive_RealMap_Random` sayıları aynı (K2); `git diff --stat -- GameServer` boş; `NAVDRIVE perf: begin_p95_ms=0.8593 step_p95_ms=0.0007` (Goto perf, değişmedi mertebesinde) |
+| K9 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; gerçek harita testleri `SKIPPED` değil (`build/nav/zone71.navgrid` mevcut; `RealMap_Chase` ve `Perf` `[ OK ]`, çıktı satırları var) |
+| K10 | ✔ | `NAVFOLLOW sizeof(NavDrive)=8464` (Release çıktısında görüldü) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not (gizli tanımsız davranış, KI-026):** reach'siz `TickFollow` aşırı yüklemesi `TickFollowImpl<NavNoReach>(…, nullptr)` çağırır (`BotCore/NavDrive.h:266`), ama gövde `*reach` ile **boş gösterici başvurusu bağlar** (`:546`) ve `UpdateReachable` onun adresini alıp `UpdateImpl`'e geçirir (`NavTrack.h:197`). `NavNoReach::ComponentOf` `this`'e dokunmadığı ve her iki dalda da sonuç `-1` olduğu için Release/Debug'da davranış doğru (testler); ama bu C++'ta tanımsızdır ve `NavTrack.h:353` yorumunun ("never dereferenced") sözleşmesini bozar. Düzeltme: reach'siz aşırı yükleme yerel bir `const NavNoReach none;` nesnesinin adresini geçirmeli. Sunucu bağlaması (F5-63) gerçek `NavReach` kullandığı için yalnızca reach'siz çağıran (testler) etkilenir; `KNOWN_ISSUES` KI-026 olarak kaydedildi, F5-64 `NavDrive.h`'ye dokunurken (ya da ayrı küçük planla) düzeltilsin.
+  2. **Not (plandan sapma, kabul):** `_UTurn_NoFalseStuck` hedef yansıma aralığı `[180, 220]` m'ye daraltıldı (`NavDriveTests.cpp:1650`); planın `[80, 360]` geometrisi D6 negatif kontrolünde testi kırmadı (U-dönüşü 62 sn'de bir; yeterince sık değil). Daraltılmış testin D6'yı gerçekten denetlediği bağımsız olarak doğrulandı (yukarıda K4: kural kapalıyken 10/8/6 epizod). Planın prototip iddiası (açık alanda 600 sn'de 2 epizod, D6 olmadan) bu kadar seyrek U-dönüşüyle yeniden üretilmedi; D6'nın gerekliliği daraltılmış geometride kanıtlıdır.
+  3. **Not (plandan sapma, kabul; dürüstlük):** `_RealMap_Chase`'te hedef rotaları `NavGrid::Clearance >= 2` ile açık alanda tutuldu ve bot hedefin hücresinde başlatıldı; böylece test eğim cebine (KI-024) girmiyor ve `fail == 0` kriteri bu seçime dayanıyor. Prototip sayısı 18 395 plan, burada 18 180 (hedef rotası seçimi farkı). KI-024'ün sıklığı ve "cepte takipten vazgeçme" (D8) gerçek haritada **ölçülmedi**; F5-66'da ölçülür.
+  4. **Not:** `NextFollowStep` kurtarma adımı ürettiğinde kesintisiz-`Blocked` sayacı (`m_hasBlockedSince`) sıfırlanmaz (`NavDrive.h:734` yalnızca sıradan `NextStep` `Step/Arrived` sonucunda sıfırlar; kurtarma dalı `:644-701` `Step` dönüp çıkar). D10 metni "Step/Arrived kesintiyi sıfırlar" der; kurtarma adımı da `Step` döner ama sıfırlamaz. Etkisi ihmal edilebilir (5 sn kesintisiz `Blocked` süresince kurtarma adımı da gelmesi gerekir) — F5-63 gözlem verisiyle değerlendirilir.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
