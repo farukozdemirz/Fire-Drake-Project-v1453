@@ -89,4 +89,29 @@ namespace BotCore
 
 		return MOVE_OK;
 	}
+
+	// --- speed check slice (ADR-0017 Ek F4-38, docs/03 CLI-12 / MEC-MOV-09) ---
+
+	constexpr uint32_t kSpeedCheckPeriodMs = 10000;   // docs/03 CLI-12 [V]: the client sends WIZ_SPEEDHACK_CHECK every 10.0 s in game
+
+	// True when the next WIZ_SPEEDHACK_CHECK is due: kSpeedCheckPeriodMs after the previous one or, before the first one of
+	// this spawn, kSpeedCheckPeriodMs after the bot entered the game.
+	inline bool SpeedCheckDue(bool hasLast, uint32_t sinceLastMs, uint32_t sinceInGameMs)
+	{
+		return hasLast ? sinceLastMs >= kSpeedCheckPeriodMs : sinceInGameMs >= kSpeedCheckPeriodMs;
+	}
+
+	// Client clock carried by the packet (f32 seconds): time since the bot entered the game. The server never reads it
+	// (User.cpp:3643-3668 is #if 0) [A].
+	inline float SpeedCheckClockSeconds(uint32_t sinceInGameMs)
+	{
+		return sinceInGameMs / 1000.0f;
+	}
+
+	// Distance in metres from which CUser::SpeedHackTime() sends a player back to the last checked position:
+	// dist^2 / 100 >= limit + 10 (User.cpp:3627-3631), so dist = sqrt(100 * (limit + 10)).
+	inline float SpeedCheckWarpDistance(int16_t serverLimitField)
+	{
+		return std::sqrt(100.0f * (serverLimitField + 10.0f));
+	}
 }

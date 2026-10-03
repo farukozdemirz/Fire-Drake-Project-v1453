@@ -3167,3 +3167,93 @@ NpcInOutcome ActionExecutor::TickNpcIn(BotSession * s, std::chrono::steady_clock
 	out.received = received;
 	return out;
 }
+
+// --- speed check slice (ADR-0017 Ek F4-38) ---
+
+SpeedCheckOutcome ActionExecutor::TickSpeedCheck(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	SpeedCheckOutcome out;
+	out.kind = SpeedCheckOutcome::NOTHING;
+	out.reason = "ok";
+	out.warpX = 0;
+	out.warpZ = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame() || user->isDead())
+		return out;
+
+	uint32 sinceInGameMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_inGameSince).count();
+	uint32 sinceLastMs = s->m_speedHasLast ? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_speedLast).count() : 0;
+
+	if (!BotCore::SpeedCheckDue(s->m_speedHasLast, sinceLastMs, sinceInGameMs))
+		return out;
+
+	uint32 decisionId = NextDecisionId(s);
+	float clock = BotCore::SpeedCheckClockSeconds(sinceInGameMs);
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"SpeedCheck\""
+			+ ",\"clock\":" + FormatFixed(clock, 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Client format: u8 flag 0 + f32 client clock (docs/03 CLI-12 [V]).
+	Packet pkt(WIZ_SPEEDHACK_CHECK);
+	pkt << uint8(0) << clock;
+
+	s->m_warpEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	// The packet went out, so the timing/counters move regardless of the server's answer. Not counted in the CLI-11
+	// window: this is automatic client traffic, not a player action.
+	s->m_speedHasLast = true;
+	s->m_speedLast = now;
+	s->m_speedChecks++;
+
+	// The server answers with a WIZ_WARP only when it sends the bot back (CharacterMovementHandler.cpp:642-644).
+	uint64 e = s->m_warpEcho.load();
+	bool warped = (e & (1ull << 63)) != 0;
+	float warpX = warped ? (float)(((e >> 16) & 0xFFFF) / 10.0) : 0.0f;
+	float warpZ = warped ? (float)((e & 0xFFFF) / 10.0) : 0.0f;
+	if (warped)
+		s->m_speedWarps++;
+
+	const char * reason = warped ? "warped" : "passed";
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"SpeedCheck\""
+			+ ",\"ok\":" + (warped ? "false" : "true")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		if (warped)
+			fields += ",\"warp_x\":" + FormatFixed(warpX, 1)
+				+ ",\"warp_z\":" + FormatFixed(warpZ, 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (warped)
+	{
+		out.kind = SpeedCheckOutcome::FAILED;
+		out.reason = reason;
+		out.warpX = warpX;
+		out.warpZ = warpZ;
+	}
+	else
+	{
+		out.kind = SpeedCheckOutcome::SENT;
+		out.reason = reason;
+	}
+	return out;
+}

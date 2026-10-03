@@ -197,6 +197,8 @@ bool BotManager::Startup()
 		respawnCycles = 100000;
 	m_respawnCycles = (uint32)respawnCycles;
 
+	m_speedCheck = ini.GetInt("BOT", "SPEEDHACK_CHECK", 1) != 0;
+
 	auto & mgr = g_pMain->m_socketMgr;
 	std::lock_guard<std::recursive_mutex> lock(mgr.GetLock());
 
@@ -3118,6 +3120,19 @@ void BotManager::TickSessions()
 							"BotManager: bot %s npcin failed (%s)",
 							s->m_charName.c_str(), npcIn.reason);
 						WriteBotLog(message);
+					}
+
+					if (m_speedCheck)
+					{
+						SpeedCheckOutcome speed = ActionExecutor::TickSpeedCheck(s, now);
+						if (speed.kind == SpeedCheckOutcome::FAILED)
+						{
+							char message[224];
+							snprintf(message, sizeof(message),
+								"BotManager: bot %s speedcheck: server warped it back to (%.1f, %.1f)",
+								s->m_charName.c_str(), speed.warpX, speed.warpZ);
+							WriteBotLog(message);
+						}
 					}
 				}
 

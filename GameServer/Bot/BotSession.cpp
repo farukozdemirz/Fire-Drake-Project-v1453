@@ -20,12 +20,13 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_chatHasLast(false), m_chatLastHash(0),
 		m_userInHasLast(false), m_userInRequests(0), m_userInUnits(0),
 		m_npcInHasLast(false), m_npcInRequests(0), m_npcInUnits(0),
+		m_speedHasLast(false), m_speedChecks(0), m_speedWarps(0),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_selfSid(-1),
 		m_castSelfId(-1), m_castEcho(0), m_castEchoVictims(0), m_stateEcho(0),
 		m_targetHpEcho(0), m_targetHpValues(0), m_regeneEcho(0),
 		m_partyInviteAtMs(0), m_partyInviteEcho(0), m_partyErrorEcho(0), m_partyJoinEcho(0),
-		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0), m_npcInEcho(0)
+		m_partyLeaveEcho(0), m_chatEchoHash(0), m_chatEcho(0), m_obsUnresolved(0), m_userInEcho(0), m_npcUnresolved(0), m_npcInEcho(0), m_warpEcho(0)
 {
 	for (int i = 0; i < 256; i++)
 		m_opcodeCount[i] = 0;
@@ -403,6 +404,15 @@ void BotSession::OnPacket(Packet & pkt)
 			m_hp.Invalidate(id);
 		}
 	}
+
+	// Server-side warp: u16 x, u16 z (both x10; CharacterMovementHandler.cpp:642-644). CUser::Send() delivers it on the same
+	// thread, inside HandlePacket(), so TickSpeedCheck() can read it right after the call.
+	if (opcode == WIZ_WARP && pkt.size() >= 4)
+	{
+		uint16 x = pkt.read<uint16>(0);
+		uint16 z = pkt.read<uint16>(2);
+		m_warpEcho = (1ull << 63) | (uint64(x) << 16) | uint64(z);
+	}
 }
 
 void BotSession::ResetForRespawn()
@@ -497,6 +507,10 @@ void BotSession::ResetForRespawn()
 	m_npcInRequests = 0;
 	m_npcInUnits = 0;
 	m_npcInEcho = 0;
+	m_speedHasLast = false;
+	m_speedChecks = 0;
+	m_speedWarps = 0;
+	m_warpEcho = 0;
 	m_selectResult = SELECT_PENDING;
 	m_packetTotal = 0;
 	m_attackEcho = 0;

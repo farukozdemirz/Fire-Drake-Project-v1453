@@ -55,7 +55,7 @@ private:
 		m_shuttingDown(false), m_timerThreadId(0), m_skippedTicks(0),
 		m_tickCount(0), m_tickThreadId(0), m_spawnSummaryDone(false),
 		m_despawnAfterMs(0), m_spawnOk(0), m_spawnFailed(0), m_despawnSummaryDone(false),
-		m_respawnCycles(0), m_despawnOk(0), m_namesLeft(0), m_scenario(*this),
+		m_respawnCycles(0), m_speedCheck(true), m_despawnOk(0), m_namesLeft(0), m_scenario(*this),
 		m_script(*this) {}
 
 	static uint32 THREADCALL TimerThreadProc(void * lpParam);
@@ -110,6 +110,7 @@ private:
 	bool m_despawnSummaryDone;   // IOCP thread only
 
 	uint32 m_respawnCycles;      // [BOT] RESPAWN_CYCLES: extra spawns per bot after the first (0 = none)
+	bool m_speedCheck;           // [BOT] SPEEDHACK_CHECK: send WIZ_SPEEDHACK_CHECK every 10 s per in-game bot (1 = on, default)
 	uint32 m_despawnOk;          // IOCP thread only: despawns that returned their slot
 	uint32 m_namesLeft;          // IOCP thread only: despawns whose account/character name was still registered
 
