@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/12` §2/§3; kapı G5) |
 | Branch | `bot/F5-69 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`, `KAPANDI`), F5-59 (`NavService` aynı `NavParams` varsayılanını kullanır, `KAPANDI`) |
@@ -262,4 +262,30 @@ Karar (planlayıcı, plan "Tur 1 - Claude kararı" bölümü): 0,45 kalır; test
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(boş)
+### Tur 1 — 2026-10-03
+
+**Karar: DOĞRULANDI** (gece modu; birleştirmeyi döngü betiği yapar, bu oturum birleştirme/push yapmadı). İncelenen commit: `bot/F5-69` @ `aa98cf3` (taban `gece/2026-10-02` @ `9053844`; plan Tur 1'de BLOKE olup Claude kurtarma kararıyla genişletildi, Tur 2 uygulaması incelendi).
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 derleme | ✔ | `./tools/build.sh Release` rc=0 (uyarı 0); `./tools/build.sh Debug` rc=0, uyarı çıktısında değişen dosyalara ait uyarı yok |
+| K2 testler | ✔ | Release ve Debug ayrı ayrı koşuldu: `276 tests, 0 failed`; `NavGrid_DefaultSlope_045` ve `NavGrid_RealMap_DefaultSlopeConnectivity` `[ OK ]` (iki yapılandırmada) |
+| K3 kapsam | ✔ | `git diff --stat gece/2026-10-02...bot/F5-69`: yalnızca `BotCore/NavGrid.h`, sekiz `Tests/BotCoreTests/Nav*Tests.cpp` (genişletilmiş §4 listesi: Grid, Segment, Reach, Path, Danger, Retreat, Stuck, Budget), plan, `plans/README.md`; `GameServer/`, `AIServer/`, `shared/`, `tools/`, `docs/` farkı 0; `git diff --check` boş; 9 kod dosyası ASCII + CRLF + tab girinti (çalışma ağacında doğrulandı) |
+| K4 sabitler | ✔ | `BotCore/NavGrid.h:24` `float maxSlope = 0.45f;`; `git grep -n -E "0\.625" BotCore Tests` yalnızca `NavBudgetTests.cpp:475` (sabitleme ataması) ve `NavStuckTests.cpp:458` (hız yorumu) |
+| K5 gerçek harita | ✔ | `NAVSLOPE real map: main=88508 reach=85508 landmarks=5/5` (Release ve Debug aynı; 85 000-87 000 bandında, %96,6) |
+| K6 nav-regress | ✔ | `./tools/nav-regress.sh --skip-timing` rc=0, `checks=27 pass=27 fail=0 warn=0` (taban ile aynı) |
+| K7 çalışma zamanı | — | Plan sunucu kodu değiştirmiyor; kapsam dışı (birim + gerçek harita testleri yukarıda) |
+
+**Bağımsız ek denetimler:**
+- `NavBudget_RealMap_Load` üç tam koşu (Release, `NavBudget` filtresi): `worst_B_p99` 1.321 / 1.314 / 1.488 (üçü de <= 4.5), `worst_A_p95` 2.47-2.50; uygulayıcının 1.347-1.608 ölçümüyle uyumlu (ölçüm gürültüsü içinde).
+- **Sabitleme iddiası doğrulandı:** geçici deneme (commit edilmedi, dosya geri alındı): `NavBudget_Deferred_Chase_Sim` içindeki `pinnedParams.maxSlope` 0,45'e çevrilince `NAVBUDGET chase mode=B ... stale_hold_ticks=8 follow_stale_ticks=8` ve `CHECK_EQ(b.followStaleTicks, 0) failed: 8 != 0` (`NavBudgetTests.cpp:879`) çıkıyor, yani sorun örnekleme değil gerçek davranış; 0,625'te `0`. Sabitleme planın valfi içinde (1/3), eşik/mantık değişmedi.
+- Eşik gevşetme taraması: değişen CHECK'lerin hiçbiri silinmedi veya eşiği büyütülmedi; yalnızca beklenen sayaç/maliyet değerleri, iki çift koordinatı (`NavReach_RealMap` detour çifti, `NavDanger_RealMap` cross çifti; ikisinde de amaç korunmuş: yorumda neden yazılı) ve üç testin örneklemesi (`NavReach_Perf`, `NavBudget_RealMap_Load`, `NavBudget_Deferred_Chase_Sim`) ana bileşene sınırlandı. Yön kontrolü: tüm maliyetler arttı (660,617 -> 670,961; 689,103 -> 704,831; 310,676 -> 335,078), bileşen sayısı 143 -> 401, ana bileşen 88 279 -> 87 513; hepsi daha dik sınırdan beklenen yönde.
+- Üretim kodu: `BotCore/NavGrid.h` farkı yalnızca varsayılan ve yorum (+4/-3 satır, `EdgeOpen` ve algoritma aynı). `[BOT] NAV=0`/`ENABLED=0` yolu etkilenmez.
+
+**Bulgular (engelleyici değil, not):**
+1. `Tests/BotCoreTests/NavBudgetTests.cpp:471-478`: `NavBudget_Deferred_Chase_Sim` 0,625'e sabitli; 0,45'te gerçek bir davranış bulgusu gizleniyor (başarısız plan yenilemesinde bayat planın izlenmesi, `follow_stale_ticks=8`; uygulayıcı bir koşuda bir botun hiç plan almadığını da bildirdi: `noPlanPerBot=1200`, `without_plan_pct=6.5`). Üretimde `NAV=1` iken `NavService` varsayılan `NavParams` (0,45) kullanıyor; yani test, üretimin kullandığı eğimde koşmuyor. Takip için `docs/KNOWN_ISSUES.md` KI-023 açıldı; sonraki plan: bayat plan izleme sözleşmesini 0,45'te incele ve sabitlemeyi kaldır (F5-62 yol izleme ile birlikte ya da ondan önce).
+2. Sabitli testte ana bileşen örneklemesi (`mainWalk`, `NavReach` kullanımı) ek karmaşıklık: sabitleme sonrası 0,625 ızgarasında gereksiz ama zararsız (test yeşil, baz davranış aynı kaldı). Takip planında sabitleme kalkınca anlam kazanacağı için silinmedi.
+3. `NavPath_RealMap_Queries` cep kontrolü `expanded > 88000` yerine `>= 87513` (yeni ana bileşen boyutu): gevşetme değil, "tüm EdgeOpen bileşenini tarar" amacını yeni değerle koruyor; ama sayı doğrudan ızgaraya bağlı, bir sonraki eğim/ızgara değişiminde yine güncellenmeli (uygulayıcının açık soru 2'si ile aynı bakım yükü).
+4. Taban ayrımı: `main..bot/F5-69` farkı F5-61 dosyalarını da içerir (taban `gece/2026-10-02`); doğrulama doğru tabanla yapıldı.
+
+**Uygulayıcı sorularına cevap:** (1) Sabitleme valfi kullanımı onaylandı, takip planı KI-023 ile kayda geçti. (2) Bileşen yapısı 143 -> 401 beklenen sonuç; referans çiftleri artık gerçek ızgaraya sabit yazılı, `docs/12` §3 sonucu ile uyumlu.
