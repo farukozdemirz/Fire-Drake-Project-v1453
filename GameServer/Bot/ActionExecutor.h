@@ -167,6 +167,17 @@ struct NpcInOutcome
 	int received;          // NPCs the reply carried; valid only when kind == SENT
 };
 
+// Result of ActionExecutor::TickSpeedCheck (ADR-0017 Ek F4-38).
+struct SpeedCheckOutcome
+{
+	enum Kind { NOTHING, SENT, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "passed" (no WIZ_WARP came back). FAILED: "warped" (the server sent
+	                       // the bot back: WIZ_WARP echo). NOTHING: "ok" (not due, not in game, dead).
+	float warpX;           // valid only when kind == FAILED: the position the WIZ_WARP carried (metres)
+	float warpZ;
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -378,4 +389,11 @@ public:
 	// passed (the ids stay pending). Result only from the reply the server published (m_npcInEcho). Not counted in the
 	// CLI-11 window (automatic client traffic).
 	static NpcInOutcome TickNpcIn(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// Called once per Tick() for every in-game, living session. Sends one WIZ_SPEEDHACK_CHECK (u8 0, f32 client clock)
+	// through CUser::HandlePacket() when BotCore::SpeedCheckDue says so (CLI-12: every 10 s in game, the first one 10 s
+	// after entering the game). Result only from the WIZ_WARP the server published during the call (m_warpEcho): none ->
+	// SENT "passed", one -> FAILED "warped". Not counted in the CLI-11 window (automatic client traffic); no guard rule can
+	// reject it, a tick that is not due returns NOTHING without an event.
+	static SpeedCheckOutcome TickSpeedCheck(BotSession * s, std::chrono::steady_clock::time_point now);
 };

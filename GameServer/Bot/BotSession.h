@@ -147,6 +147,11 @@ public:
 	uint32 m_npcInRequests;                                // IOCP thread only: WIZ_REQ_NPCIN requests sent in this spawn
 	uint32 m_npcInUnits;                                   // IOCP thread only: total NPCs carried by the replies in this spawn
 
+	bool m_speedHasLast;                                   // IOCP thread only: m_speedLast is valid for this spawn
+	std::chrono::steady_clock::time_point m_speedLast;     // IOCP thread only: when the last WIZ_SPEEDHACK_CHECK went out
+	uint32 m_speedChecks;                                  // IOCP thread only: WIZ_SPEEDHACK_CHECK packets sent in this spawn
+	uint32 m_speedWarps;                                   // IOCP thread only: of those, how many the server answered with a WIZ_WARP
+
 	std::mutex m_obsLock;                                  // guards m_obs and m_obsPending: OnPacket() may run on any thread
 	BotCore::ObsTable m_obs;                               // guarded by m_obsLock: players in view, from received packets only (Perception, ADR-0017 Ek F4-12)
 	BotCore::PendingIds m_obsPending;                      // guarded by m_obsLock: ids of the last WIZ_REGIONCHANGE the table did not know (Perception, ADR-0017 Ek F4-13)
@@ -179,6 +184,7 @@ public:
 	std::atomic<uint64> m_userInEcho;                      // written by OnPacket(): valid bit (63) | number of units parsed from the last WIZ_REQ_USERIN reply
 	std::atomic<uint32> m_npcUnresolved;                   // written by OnPacket(): ids of the last WIZ_NPC_REGION that were not in m_npcs
 	std::atomic<uint64> m_npcInEcho;                       // written by OnPacket(): valid bit (63) | number of NPCs parsed from the last WIZ_REQ_NPCIN reply
+	std::atomic<uint64> m_warpEcho;                        // written by OnPacket(): valid bit (63) | x << 16 | z (both x10) of the last WIZ_WARP
 
 	// Diagnostic counters for the one-way view investigation (plan F4-54, KI-DEG-01). They are written by
 	// OnPacket() only (any thread) and read by CommandSee on the IOCP thread; no behavior depends on them.
