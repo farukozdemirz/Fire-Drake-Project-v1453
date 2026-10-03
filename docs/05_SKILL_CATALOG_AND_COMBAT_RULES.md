@@ -285,7 +285,27 @@ Recast: en küçük aralık Judgment 1109 ms, Helis 1094 ms (beklenen alt sını
 
 **Ölçülemeyenler `[Ö]`.** Stone of Priest tüketimi (beklenen 50 → 44; Helis `UseItem 0` olsa da `ConsumeItem()` taşı düşürmeye çalışır `[D]`) ve Judgment'ın Scroll'u tüketmemesi: telemetri/`snap` eşya sayacı vermiyor (§9.4 Bulgu 3 ile aynı sınır).
 
-**Kurulum notu.** Koşu öncesi `list` ile HP/MP/konum denetlendi, `BotWP_E` HP'si (3053/5650) `pot BotWP_E 389015000 8` ile tazelendi (§9.4 Bulgu 2); çantalar `bot-refill.sh apply --mp-pots 20` ile dolduruldu. Elysian Web `112825` botla atılamaz (`Moral 11` `CastMoralSupported` dışında) ve ölçülmedi.
+**Kurulum notu.** Koşu öncesi `list` ile HP/MP/konum denetlendi, `BotWP_E` HP'si (3053/5650) `pot BotWP_E 389015000 8` ile tazelendi (§9.4 Bulgu 2); çantalar `bot-refill.sh apply --mp-pots 20` ile dolduruldu. Elysian Web `112825` bu koşuda botla atılamıyordu (`Moral 11` `CastMoralSupported` dışında); F4-49 ile açıldı ve ölçüldü (§9.7).
+
+### 9.7 Bot koşusu: Elysian Web, alan-dost skill (`Moral` 11) (F4-49, 2026-10-03)
+
+Altı bot (zone 71, hepsi atıştan ≥ 25 sn önce spawn edilmiş): Karus priest `BotPHD_K` (çağıran, usta ağacı 20; (1274,0, 928,0)), `BotPHB_K` ((1270,0, 944,0 → 936,0)), `BotWP_K` ((1272,0, 934,0 → 1274,0, 953,0)), `BotMF_K` (`bad_skill`), El Morad `BotWP_E` (düşman; (1274,0, 928,5)) ve `BotPHB_E` ((1274,0, 922,0)); `[BOT] TELEMETRY=decisions`; çantalar `bot-refill.sh apply --mp-pots 20`. Hiçbir atış için party kurulmadı (S7 hariç). Skill: `112825`/`212825` (`Type1 4`, `Moral 11`, `Msp 640`, `CastTime 15`, `Range 56`, `Radius 15`, `Duration 20`, `BuffType 27`).
+
+| Senaryo | Sonuç | Kanıt |
+|---|---|---|
+| `self`, çevrede 6,3 m dost, 16,5 m dost, 0,5 m düşman | `effected`, `code 20`, `victims 2`; buff yalnızca çağıran ve 6,3 m'deki `BotWP_K`'da; 16,5 m'deki `BotPHB_K` ve düşman `BotWP_E` buff'sız | `ACTION_RESULT`, `snap` (`buff skill=112825 type=27`), `op=1 target=-1 d0=1274 d2=928` |
+| `self`, üç dost yarıçapta (8,9 m ve 6,3 m), party'siz | `victims 3` | aynı |
+| 4 sn sonra aynı atış | `no_result`, `op -1`, `victims 0`; **MP yine −640** | `mp_after` 2732 → 2132 (−600 = −640 + ~40 yenileme) |
+| hedef adıyla, hedef çağırandan 25 m | hedef noktası = hedefin konumu (`op=1 d2=953`); kurban yalnızca `BotWP_K` (çağıran hedeften 25 m ⇒ kurban değil) | `snap` olayları: tek `op=3 target=2986` |
+| hedef 428 m | `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range`, `limit 56,00`; paket yok | jsonl |
+| `BotMF_K` | `refused (bad_skill)`, paket yok | log |
+| El Morad `212825 self` | `effected`; kurbanlar `BotPHB_E` ve 6,5 m'deki `BotWP_E`; yarıçaptaki Karus botu (düşman) `BotPHD_K` buff'sız | `snap` |
+| CASTING'te `off` (`since_casting_ms 1096`) | `CastCancel` hedef `-1`, `cancelled`, `op 4`, `code -100`; MP düşmez | jsonl |
+| gerilemesiz | Moral 6 grup heal `112557` (party'li): `effected`, `victims 2`; Moral 10 `110545`: `effected`, `victims 2` (iki düşmanın HP'si düştü) | jsonl, `list` |
+
+**Sonuç.** MEC-MAG-25 `[V]`: sunucu kurbanları ulus + yarıçap ile seçer, **party aranmaz**; bot yalnızca hedef `-1` + hedef noktası gönderir. Karar katmanı (F7) için: alan-dost tüm ulusu kapsar, tekrar atış 20 sn içinde `no_result` verir ve MP'yi yine harcar (taş da `[D]`).
+
+**Ölçülemeyenler `[Ö]`.** Stone of Priest tüketimi (`snap` eşya sayacı yok, §9.4 Bulgu 3 ile aynı sınır) ve boş kurban listesinde `ConsumeItem()`'ın çalışmaması (denenmedi). **Kurulum notu.** `BotCommands.txt` saniyede bir okunur: CASTING'te iptal sınaması için `cast` ve `cast ... off` ~1,1 sn arayla **ayrı dosyalarla** verilmeli; aynı dosyada verilince CastStart paketi gitmeden iptal olur.
 
 ## Değişiklik günlüğü
 

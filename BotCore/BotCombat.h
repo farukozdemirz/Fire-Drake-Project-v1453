@@ -361,15 +361,26 @@ namespace BotCore
 		return moral == kMoralPartyAll;
 	}
 
-	// Skills cast with target id -1 and an aim point: area enemy (10, F4-29) and party-all (6, F4-31).
+	// MAGIC.Moral 11 = AREA_FRIEND (MagicInstance.h): every non-hostile unit within MAGIC_TYPE4.Radius of the aim point
+	// (CMagicProcess::UserRegionCheck: !isHostileTo, so the caster's whole nation in the zone, party membership is not
+	// asked). Like area enemy (10) and party-all (6) it is cast with target id -1 (UserCanCast demands it for Moral
+	// 10..13) and the aim point in sData[0] (x) / sData[2] (z); the server picks the victims (F4-49, docs/03 MEC-MAG-25).
+	constexpr uint8_t kMoralAreaFriend = 11;
+
+	inline bool IsAreaFriendMoral(uint8_t moral)
+	{
+		return moral == kMoralAreaFriend;
+	}
+
+	// Skills cast with target id -1 and an aim point: area enemy (10, F4-29), party-all (6, F4-31) and area friend (11, F4-49).
 	inline bool SendsAimPoint(uint8_t moral)
 	{
-		return IsAreaMoral(moral) || IsPartyAllMoral(moral);
+		return IsAreaMoral(moral) || IsPartyAllMoral(moral) || IsAreaFriendMoral(moral);
 	}
 
 	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 4 party member, 7 enemy, 8 all (F4-03, F4-31), 10 area-enemy
-	// (F4-29, flying or not: F4-30) and 6 party-all (F4-31). Whether the skill may fly at all is decided by the caller
-	// (IsFlyingCast: Type3 only).
+	// (F4-29, flying or not: F4-30), 6 party-all (F4-31) and 11 area-friend (F4-49). Whether the skill may fly at all is
+	// decided by the caller (IsFlyingCast: Type3 only).
 	inline bool CastMoralSupported(uint8_t moral)
 	{
 		if (moral == 1 || moral == 2 || moral == 4 || moral == 7 || moral == 8)
@@ -489,14 +500,15 @@ namespace BotCore
 		return useItem;
 	}
 
-	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
+	// WIZ_MAGIC_PROCESS 'target' field: an area cast, a party-all cast and an area-friend cast always carry -1, every other
+	// cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{
 		return area ? int16_t(-1) : targetId;
 	}
 
-	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast and a party-all cast
-	// always send the aim point, also for "self" (the caster's own position is the aim point then).
+	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast, a party-all cast and an
+	// area-friend cast always send the aim point, also for "self" (the caster's own position is the aim point then).
 	inline int16_t CastCoordField(bool area, bool isSelf, float metres)
 	{
 		return (isSelf && !area) ? int16_t(0) : int16_t(metres);

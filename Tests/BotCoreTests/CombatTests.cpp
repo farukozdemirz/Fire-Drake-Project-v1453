@@ -1185,12 +1185,12 @@ TEST_CASE("Combat_CastMoral_Supported")
 	CHECK_EQ(BotCore::CastMoralSupported(7), true);
 	CHECK_EQ(BotCore::CastMoralSupported(8), true);
 	CHECK_EQ(BotCore::CastMoralSupported(10), true);
+	CHECK_EQ(BotCore::CastMoralSupported(11), true);
 
 	CHECK_EQ(BotCore::CastMoralSupported(0), false);
 	CHECK_EQ(BotCore::CastMoralSupported(3), false);
 	CHECK_EQ(BotCore::CastMoralSupported(5), false);
 	CHECK_EQ(BotCore::CastMoralSupported(9), false);
-	CHECK_EQ(BotCore::CastMoralSupported(11), false);
 	CHECK_EQ(BotCore::CastMoralSupported(12), false);
 	CHECK_EQ(BotCore::CastMoralSupported(13), false);
 	CHECK_EQ(BotCore::CastMoralSupported(14), false);
@@ -1676,7 +1676,7 @@ TEST_CASE("Combat_ItemSkill_Guard")
 	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
-	CHECK_EQ(BotCore::CastMoralSupported(11), false);
+	CHECK_EQ(BotCore::CastMoralSupported(11), true);
 	CHECK_EQ(BotCore::CastMoralSupported(7), true);
 	CHECK_EQ(BotCore::CastMoralSupported(10), true);
 	CHECK_EQ(BotCore::CastMoralSupported(6), true);
@@ -1767,4 +1767,75 @@ TEST_CASE("Combat_Type1Pair_Guard")
 	CHECK_EQ(BotCore::CastTypeMoralSupported(1, 7), true);
 	CHECK_EQ(BotCore::CastHpCostSupported(0), true);
 	CHECK_EQ(BotCore::IsGatedType(1), true);
+}
+
+TEST_CASE("Combat_AreaFriendCast_Guard")
+{
+	// F4-49: Moral 11 = AREA_FRIEND (Elysian Web 112825) is a distinct moral; IsAreaMoral stays Moral 10 only
+	CHECK_EQ(BotCore::IsAreaFriendMoral(11), true);
+	CHECK_EQ(BotCore::IsAreaFriendMoral(10), false);
+	CHECK_EQ(BotCore::IsAreaFriendMoral(6), false);
+	CHECK_EQ(BotCore::IsAreaFriendMoral(12), false);
+	CHECK_EQ(BotCore::IsAreaFriendMoral(13), false);
+
+	CHECK_EQ(BotCore::SendsAimPoint(11), true);
+	CHECK_EQ(BotCore::SendsAimPoint(10), true);
+	CHECK_EQ(BotCore::SendsAimPoint(6), true);
+	CHECK_EQ(BotCore::SendsAimPoint(4), false);
+	CHECK_EQ(BotCore::SendsAimPoint(7), false);
+	CHECK_EQ(BotCore::SendsAimPoint(12), false);
+	CHECK_EQ(BotCore::SendsAimPoint(13), false);
+
+	CHECK_EQ(BotCore::CastMoralSupported(12), false);
+	CHECK_EQ(BotCore::CastMoralSupported(13), false);
+
+	// every gate of the skill opens for Elysian Web: Type4 {4, 0}, Moral 11, class skill 1128, the Stone of Priest
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(4, 11), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 1128, 379062000), true);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 379062000), 379062000);
+	CHECK_EQ(BotCore::CastHpCostSupported(0), true);
+	CHECK_EQ(BotCore::IsFlyingCast(4, 0), false);
+
+	// an item-requiring Type4 skill that is not a class skill stays closed
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 0, 379062000), false);
+
+	// the aim point packet shape (target id -1, sData[0..2] = aim point, also for "self")
+	CHECK_EQ((int)BotCore::CastTargetIdField(BotCore::SendsAimPoint(11), 2990), -1);
+	CHECK_EQ((int)BotCore::CastTargetIdField(BotCore::SendsAimPoint(11), -1), -1);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(11), true, 80.9f), 80);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(11), false, 123.7f), 123);
+
+	CHECK_EQ((int)BotCore::CastRecastMs(1), 100);
+
+	BotCore::CastStartCheck c = {};
+	c.distanceM = 0.0f;
+	c.skillRange = 56;
+	c.msp = 640;
+	c.reCastMs = BotCore::CastRecastMs(1);
+	c.typeGated = true;
+	c.mana = 640;
+	c.standing = true;
+	c.needsStanding = false;
+	c.actionsInWindow = 0;
+
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	c.mana = 639;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
+
+	c.mana = 640;
+	c.distanceM = 55.9f;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	c.distanceM = 56.0f;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+
+	c.distanceM = 0.0f;
+	c.hasSkillLast = true;
+	c.sinceSkillLastMs = 99;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_RECAST);
+
+	c.sinceSkillLastMs = 100;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
 }

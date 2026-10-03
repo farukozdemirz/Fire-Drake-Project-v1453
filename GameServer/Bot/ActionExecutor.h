@@ -32,8 +32,8 @@ struct AttackOutcome
 
 // Caller-supplied view of the cast target (ADR-0017 Ek F4-03). Temporary, like AttackTarget: the /bot cast test
 // driver fills it from the target bot's session (or from the caster itself for "self"). For an area skill
-// (MAGIC.Moral 10) or party-all (Moral 6) 'x/y/z' is the aim point (the target bot's position or the caster's own
-// for "self") and the packet's target id is -1 (ADR-0017 Ek F4-29/F4-31).
+// (MAGIC.Moral 10), party-all (Moral 6) or area-friend (Moral 11) 'x/y/z' is the aim point (the target bot's position
+// or the caster's own for "self") and the packet's target id is -1 (ADR-0017 Ek F4-29/F4-31/F4-49).
 struct CastTarget
 {
 	int16 id;      // target's id (WIZ_MAGIC_PROCESS 'target')
@@ -220,6 +220,8 @@ public:
 	// area Moral 10 (non-flying; aim point = the target's position, within MAGIC.Range of the caster, CLI-07) is
 	// supported, and flying area skills (Fire/Ice/Thunder burst: Moral 10 + Type3 FlyingEffect, run as
 	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30;
+	// area-friend (Moral 11: Elysian Web; the server buffs every non-hostile unit within the type's Radius of the aim
+	// point, ADR-0017 Ek F4-49) is supported;
 	// party-targeted skills (Moral 4 single party member or self; Moral 6 whole party with target id -1 and an aim
 	// point; MAGIC.HP >= 10000 "sacrifice" skills stay unsupported; ADR-0017 Ek F4-31) are supported;
 	// Type5 cure (Moral 2 only: Cure curse, Cure disease; the party-all cure stays unsupported;
@@ -268,6 +270,9 @@ public:
 	// party-all (Moral 6): like area (target id -1, aim point, "victims" = per-member EFFECTING packets of the EFFECTING
 	// step, docs/03 MEC-MAG-18); an empty party still gives "effected" for a heal (the caster is always healed); a group
 	// buff on members that already hold the BuffType gives "no_result"; Moral 4: like single Type4 (MEC-MAG-15).
+	// area-friend (Moral 11): like area (target id -1, aim point, "victims" = per-victim EFFECTING packets, docs/03
+	// MEC-MAG-25); a victim that already holds the BuffType is skipped silently, so a repeat cast on the same victims
+	// gives "no_result".
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 
