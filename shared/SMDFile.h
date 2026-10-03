@@ -35,6 +35,7 @@ public:
 	INLINE int GetZRegionMax() { return m_nZRegion - 1; }
 
 	INLINE short * GetEventIDs() { return m_ppnEvent; }
+	INLINE float * GetHeights() { return m_fHeight; }
 
 	INLINE ObjectEventArray	* GetObjectEventArray() { return &m_ObjectEventArray; }
 	INLINE _OBJECT_EVENT * GetObjectEvent(int objectindex) { return m_ObjectEventArray.GetData(objectindex); }

@@ -93,6 +93,7 @@
     <ClCompile Include="NavStuckTests.cpp" />
     <ClCompile Include="NavBudgetTests.cpp" />
     <ClCompile Include="NavLosTests.cpp" />
+    <ClCompile Include="NavFingerprintTests.cpp" />
     <ClCompile Include="PerceptionTests.cpp" />
     <ClCompile Include="RngTests.cpp" />
     <ClCompile Include="ScriptTests.cpp" />

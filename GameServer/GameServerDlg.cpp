@@ -17,6 +17,7 @@
 #include "DBAgent.h"
 
 #include "Bot/BotManager.h"
+#include "Bot/NavService.h"
 
 using namespace std;
 
@@ -199,6 +200,9 @@ bool CGameServerDlg::Startup()
 	// Logs End
 
 	LoadNoticeData();
+
+	// F5-59: navigation grid of zone 71 ([BOT] NAV=1 only; failure is logged and never fatal).
+	NavService::Instance().Startup();
 
 	printf("\n");
 	if (!m_luaEngine.Initialise())
@@ -3130,6 +3134,7 @@ void CGameServerDlg::SendFlyingSantaOrAngel()
 CGameServerDlg::~CGameServerDlg() 
 {
 	BotManager::Instance().Shutdown();
+	NavService::Instance().Shutdown();
 
 	printf("Waiting for timer threads to exit...");
 	foreach (itr, g_timerThreads)

@@ -27,7 +27,7 @@
 
 ## 2. Navigasyon veri katmanları `[Ö]`
 
-GameServer başlangıcında zone 71 için bir kez hesaplanır. `C3DMap`, `SMDFile`'ın friend sınıfıdır ([`shared/SMDFile.h:69-70`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/shared/SMDFile.h#L69-L70)); yükseklik ve olay ızgarasına kopyalamadan erişilebilir.
+GameServer başlangıcında zone 71 için bir kez hesaplanır. `C3DMap`, `SMDFile`'ın friend sınıfıdır ([`shared/SMDFile.h:69-70`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/shared/SMDFile.h#L69-L70)); yükseklik ve olay ızgarasına kopyalamadan erişilebilir. **Sunucu yolu (F5-59, `[V]` çalışma zamanı 2026-10-03):** `[BOT] ENABLED=1` ve `NAV=1` iken `NavService::Startup()` (`GameServerDlg.cpp`, `MapFileLoad()` ve `Logs` sonrası, `RunServer()` öncesi) zone 71 olay ve yükseklik dizilerini `SMDFile`'dan bir kez `BotCore::NavGrid`'e kopyalar (`GetMapSize() + 1` = 513), `Build()` eder ve `Ready()` ile sunar; `.navgrid` dosyası sunucuda **okunmaz**. Doğruluk `BotCore/NavFingerprint.h` CRC32 ile kanıtlandı: sunucu günlüğündeki `crc32=4fd154bc` = `tools/nav-export.py` dosyası, `main_cells=88508`, `copy_ms=0.3`, `build_ms=7.6` (Release).
 
 | Katman | Hücre | İçerik |
 |---|---|---|
