@@ -76,3 +76,48 @@ etkisizdir):
 ```bash
 sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -i db/003_bot_quests_rollback.sql
 ```
+
+## 004 — Bot envanter doldurma (ADR-0018 Ek 16, KI-DEG-05)
+
+Bot çantası `USERDATA.strItem` içinde kalıcıdır ve Ronark'ta onu yeniden
+dolduran bir oyun eylemi yoktur (`docs/11` STK-04); tüketilen potlar, sınıf
+taşları ve diriltme taşları bu yüzden her oturumda azalır. Betik, 12 bot
+satırının **çanta yuvalarını (14..21)** senaryo stokuna geri yazar: tüketilmeyen
+720 HP (`389014000`) ve 1920 MP (`389020000`) potlarından birer adet, tüketilen
+Water of bless (`389015000`, `HpPots`), Potion of Ancient Spirit (`389220000`,
+`MpPots`), Stone of life (`379006000`, `LifeStones`), sınıf taşı (`ClassStones`),
+sınıf scroll'u ve (yalnızca mage) Spell of impact (`379070000`). Ekipman
+(0..13) ve çantanın kalanı (22..72) değişmez.
+- **Sunucular kapalıyken** çalıştırılmalıdır: oyundaki bir karakter çıkışta
+  bellekteki çantayı `USERDATA`'ya geri yazar (ADR-0032-DEG).
+- Yalnızca 12 bot satırına (açık ad listesi) dokunur; başka satır/tablo okunmaz.
+  Satır içeriği ekrana basılmaz (yalnızca sayaç satırı).
+- Dört değişken **zorunludur** ve `0..9999` tamsayı olmalıdır; `0` o yuvayı boş
+  bırakır. `db/002` ile eşdeğer varsayılanlar: `HpPots=100, MpPots=0,
+  LifeStones=30, ClassStones=50`. Betik idempotenttir (ikinci çalıştırma
+  `changed=0`). Eski 14..21 baytları `dbo.USERDATA_BOT_STOCK_BACKUP` tablosuna
+  bir kez alınır (tekrar çalıştırma yedeği ezmez).
+- Beklenen çıktı: `BOTSTOCK: rows=12 ok=12 fail=0 changed=<N> hp=... mp=...
+  life=... class=...`; geri alma: `BOTSTOCK_ROLLBACK: restored=<N>`.
+
+Uygula (değişkenler her çalıştırmada verilir):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v HpPots=100 -v MpPots=0 -v LifeStones=30 -v ClassStones=50 -i db/004_bot_inventory.sql
+```
+
+Geri al (yedek tablo `dbo.USERDATA_BOT_STOCK_BACKUP` korunur; ikinci geri alma
+etkisizdir):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -i db/004_bot_inventory_rollback.sql
+```
+
+İnce sarmalayıcı (sunucuların kapalı olduğunu denetler, `--dry-run` yalnızca
+komutu yazdırır):
+
+```bash
+tools/bot-refill.sh apply
+tools/bot-refill.sh apply --hp-pots 7 --mp-pots 5 --life-stones 3 --class-stones 11
+tools/bot-refill.sh rollback
+```
