@@ -123,6 +123,18 @@ bool NavService::Startup()
 		return true;
 	}
 
+	// F5-74 D6: label the EdgeOpen-connected components of the Walk cells once, right after the grid;
+	// only the (read-only) Reach() pointer is exposed. A grid with no components is unusable.
+	const std::chrono::steady_clock::time_point reachStart = std::chrono::steady_clock::now();
+	m_reach.Build(m_grid);
+	const double reachMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - reachStart).count();
+
+	if (m_reach.ComponentCount() <= 0)
+	{
+		fail("no_reach");
+		return true;
+	}
+
 	m_info.zone = ZONE_RONARK_LAND;
 	m_info.n = n;
 	m_info.unit = unit;
@@ -136,6 +148,14 @@ bool NavService::Startup()
 	snprintf(message, sizeof(message),
 		"NavService: nav ready: zone %d cells=%d main_cells=%d unit=%.1f crc32=%08x copy_ms=%.1f build_ms=%.1f",
 		m_info.zone, n * n, m_info.mainCells, (double)unit, m_info.crc32, copyMs, buildMs);
+	printf("%s\n", message);
+	WriteNavLog(message);
+
+	// F5-74 D6: reachability summary (largest_cells == main_cells is expected; K17).
+	const int largestCells = m_reach.ComponentCells(m_reach.LargestComponent());
+	snprintf(message, sizeof(message),
+		"NavService: reach ready: components=%d largest_cells=%d build_ms=%.1f",
+		m_reach.ComponentCount(), largestCells, reachMs);
 	printf("%s\n", message);
 	WriteNavLog(message);
 
