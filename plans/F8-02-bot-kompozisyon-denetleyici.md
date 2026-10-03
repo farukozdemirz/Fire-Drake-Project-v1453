@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-02 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F8-01 `KAPANDI` (merge `43c4e02`; yalnızca üslup/`--selftest` kalıbı için). Karakter seti kaynağı `db/002` F1-04 `KAPANDI` |
@@ -230,16 +230,49 @@ git diff --stat gece/2026-10-02-nav...bot/F8-02
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F8-02` — `<kısa-sha> [F8-02] …`
+- Branch / commit'ler: `bot/F8-02` — `<sha> [F8-02] Kompozisyon denetleyicisi (tools/bot-composition-check.py + sample-20.sql, 58 selftest)`
 - Değişen dosyalar ve neden:
-  - `…`
+  - `tools/bot-composition-check.py` (yeni): SQL `@bots` satırlarını metin olarak ayrıştırır, ADR-0002 ad/sınıf kurallarını doğrular, kompozisyon/küme/çift ihtiyaçlarını ve eksik karakter listesini hesaplar; `--selftest` (58 vaka), `--json`, `--strict`, `--target`, `--max-bots`, `--sql`.
+  - `tools/bot-composition-check/sample-20.sql` (yeni): §5.7'deki 22 satır aynen; 20 karakterlik hedef durum fixtürü (yürütülebilir SQL değil).
 - Derleme sonucu (`tools/build.sh Release` son 7 satır):
   ```
-  …
+    BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+    Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh` → `223 tests, 0 failed` (değişmedi). Sunucular kapalıydı (`run-servers.sh status` 3/3 `[DOWN]`), paralel hat olduğu için dokunulmadı.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `SELFTEST PASS n=58` (58 ≥ 58), `FAIL` satırı yok, rc 0.
+  - K2 ✔ §5.6'daki 58 vaka adının tamamı `PASS` olarak tam bir kez; `grep -c '^PASS'` = 58.
+  - K3 ✔ Gerçek `db/002` çıktısı §5.8'in 30 satırıyla birebir (`diff` boş, yalnızca plan bloğundaki 3 boşluk girinti farkı), rc 0; `sample-20.sql` çıktısı §5.9 ile aynı, `grep -c '^MISSING'` = 0.
+  - K4 ✔ `--json` (gerçek ve sample) `python3 -c` doğrulaması geçti.
+  - K5 ✔ rc: varsayılan 0, `--strict` 1, `--strict --target small` 0, `--strict --target min16` 1, `--strict --sql sample-20` 0, `--target bogus` 2, `--max-bots 0` 2, `--sql /yok.sql` 2, `--nonsense` 2; hatalı SQL → yalnızca `ERROR` satırı, rapor yok, rc 2.
+  - K6 ✔ Üç mutasyon `/tmp` kopyasında: (a) C8-A WP 2→1 → rc 1 ve 24 `FAIL` (`comp_c8a_counts`, `set_min16_need`, …); (b) `min(...)` sınırı kaldırılınca `have_surplus_not_negative` (`usable=16 missing=-6`); (c) kullanılmış indeks atlama kaldırılınca `missing_index_skips_used` (`index 1`). Her üçünde rc 1.
+  - K7 ✔ Yalnızca stdlib (`json os re sys tempfile`); `socket/urllib/http/requests/subprocess/sqlite3/pyodbc` yok; `open()` ile yazan tek yol `--selftest` içindeki `write_tmp`; iki dosya ASCII, `\r` 0.
+  - K8 ✔ `git diff --stat gece/2026-10-02-nav...bot/F8-02` yalnızca iki yeni `tools/` dosyası + plan dosyası (commit sonrası).
+  - K9 ✔ `./tools/build.sh Release` hatasız; `./tools/run-tests.sh` `223 tests, 0 failed`.
+  - K10 ✔ Aşağıdaki eşleme tablosu.
+- Plandan sapmalar ve gerekçeleri:
+  - `err_unknown_profile` ve `cli_errors_only_output` vakalarının fixtür satırı, `row()` yardımcısının bilinmeyen profilde sınıf kodu bulamaması nedeniyle elle `("XX", ...)` demetiyle yazıldı; davranış ve beklenen çıktı değişmedi.
+  - `have_surplus_not_negative` testinde kullanılmayan bir ara liste ifadesi temizlendi (üretilen satır kümesi aynı).
+- Açık sorular: yok.
+
+#### K10 — `docs/15` §6a eşlemesi
+
+| `docs/15` §6a ifadesi | Doğrulayan vaka / çıktı |
+|---|---|
+| "Bugün DB'de 12 karakter" | `parse_real_db002_rows` (`SQL files=1 rows=12`), `SUMMARY have=12` |
+| "ulus başına 6 (W-P, W-G, P-HD, P-HB, M-F, M-I)" | `parse_real_db002_have` (`HAVE ... total=6`) |
+| "EVAL-8v8-A için asgari 8 (+1 W-P, +1 M-F) = 16" | `set_min16_need` (`min16` = C8-A), `have12_min16_missing_4` (`SET id=min16 ... total=16 missing=4`), `missing_needed_by` (WP/MF ikinci yuva `needed_by=min16`) |
+| "Kompozisyon çeşitliliği 10 (+1 W-P, +1 M-F daha) = 20" | `set_full20_need` (WP3 MF3, 10/ulus), `have12_full20_missing_8`, `have20_all_ok` |
+| "20 karakter 16'nın üstüne 4 ek karakterdir (ulus başına 3. W-P ve 3. M-F)" | `have16_min16_ok_full20_missing_4` (min16 0, full20 4), eksik listede tam 8 yuva (WP2/WP3/MF2/MF3 × 2 ulus) |
+| "ulus başına 8 / 10" | `SET id=min16 per_nation=8`, `SET id=full20 per_nation=10` |
+| "F7 küçük takım testleri (≤ C5) mevcut 12 karakterle çalışır" | `have12_small_ok` (`SET id=small ... missing=0`), `pair_small_ok` (2v2/5v5 `OK`) |
+| "3. W-P ve 3. M-F aynı sabit karakter kümesinden seçilebilsin" | `missing_class_codes`, `missing_index_skips_used`, `MISSING` satırlarının ad/sınıf kodları |
 
 ---
 

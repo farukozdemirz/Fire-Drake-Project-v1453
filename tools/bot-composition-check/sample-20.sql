@@ -1,0 +1,22 @@
+-- Fixture for tools/bot-composition-check.py: NOT executable SQL.
+-- 20 character rows in the db/002 @bots row format (first six columns only).
+('WP', 'BotWP_K', 'BotAccWPK', 1, 1, 106, 0),
+('WG', 'BotWG_K', 'BotAccWGK', 1, 1, 106, 0),
+('PHD', 'BotPHD_K', 'BotAccPHDK', 1, 4, 112, 0),
+('PHB', 'BotPHB_K', 'BotAccPHBK', 1, 4, 112, 0),
+('MF', 'BotMF_K', 'BotAccMFK', 1, 3, 110, 0),
+('MI', 'BotMI_K', 'BotAccMIK', 1, 3, 110, 0),
+('WP', 'BotWP2_K', 'BotAccWP2K', 1, 1, 106, 0),
+('WP', 'BotWP3_K', 'BotAccWP3K', 1, 1, 106, 0),
+('MF', 'BotMF2_K', 'BotAccMF2K', 1, 3, 110, 0),
+('MF', 'BotMF3_K', 'BotAccMF3K', 1, 3, 110, 0),
+('WP', 'BotWP_E', 'BotAccWPE', 2, 11, 206, 0),
+('WG', 'BotWG_E', 'BotAccWGE', 2, 11, 206, 0),
+('PHD', 'BotPHD_E', 'BotAccPHDE', 2, 12, 212, 0),
+('PHB', 'BotPHB_E', 'BotAccPHBE', 2, 12, 212, 0),
+('MF', 'BotMF_E', 'BotAccMFE', 2, 12, 210, 0),
+('MI', 'BotMI_E', 'BotAccMIE', 2, 12, 210, 0),
+('WP', 'BotWP2_E', 'BotAccWP2E', 2, 11, 206, 0),
+('WP', 'BotWP3_E', 'BotAccWP3E', 2, 11, 206, 0),
+('MF', 'BotMF2_E', 'BotAccMF2E', 2, 12, 210, 0),
+('MF', 'BotMF3_E', 'BotAccMF3E', 2, 12, 210, 0);
