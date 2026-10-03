@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-72 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`), F4-20 (`ScriptRunner`: her adım `BotManager::ExecuteCommand` yolundan), F4-42 (`tools/skill-script-gen.py`), F5-70 (`/bot goto`, merge `99d7170`). **F5-73'e (`NavDrive` Follow kipi; artık `gece/2026-10-02` dalında birleşti, merge `bc3170d`) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-73 yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp`; bu plan `ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py` |
@@ -130,36 +130,51 @@ git grep -n -a -E '"goto"' -- BotCore tools Tests
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-72` — `<kısa-sha> [F5-72] …`
+- Branch / commit'ler: `bot/F5-72` (taban `gece/2026-10-02`) — `81650f2 [F5-72] Betik fiili goto: izinli komut sozlugu 20 -> 21`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/ScriptPlan.h`: `kVerbs[]` 20 → 21 (`"goto"`, `"move"`'dan sonra), sözlük yorumu "20 verbs" → "21 verbs" (Kapsam §3.1).
+  - `Tests/BotCoreTests/ScriptTests.cpp`: `Script_VerbWhitelist` 21 fiile güncellendi (+`IsScriptVerb("GOTO")`); sonuna yeni `Script_GotoStep` (+1 test) eklendi (Kapsam §3.2).
+  - `tools/skill-script-gen.py`: `VERBS` demetine `"goto"`, yorum "21 verbs", selftest'e `check_ok_goto` + `raw_goto_passthrough` (23 → 25) (Kapsam §3.3).
+- Derleme sonucu (`tools/build.sh Release`, son satırlar):
   ```
-  …
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Test çıktıları (başlangıç ve son test sayısı, `Script_*` satırları, `skill-script-gen.py --selftest`, `--check` komutları): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/build.sh Debug` de rc=0 (`GameServer.exe`, `BotCoreTests.exe` üretildi). `touch BotCore/ScriptPlan.h` sonrası iki yapılandırmada yalnızca eski `GameServerDlg.cpp` C4267/C4834 uyarıları (artış yok).
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔, K4 ✔, K5 ✔, K6 ✔. K7/K8/K9 Claude çalışma zamanı (sunucusuz ortamda yapılmadı).
+- Test çıktıları (başlangıç ve son test sayısı, `Script_*` satırları, `skill-script-gen.py --selftest`, `--check` komutları):
+  - Başlangıç: `314 tests, 0 failed`; son: Release `315 tests, 0 failed`, Debug `315 tests, 0 failed` (taban + 1).
+  - `Script_` satırları: `Script_ParseValid`, `Script_VerbWhitelist`, `Script_GotoStep`, `Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers` hepsi `[ OK ]`.
+  - `skill-script-gen.py --selftest`: başlangıç `23 checks, 0 failed` → son `25 checks, 0 failed`.
+  - `--check /tmp/g.txt` (`0 goto …` + `0 list`): `ok: 2 steps, 31 bytes, 2 lines, last offset 0 ms`, rc=0; `--check /tmp/f.txt` (`0 follow X`): `1: bad verb`, rc=1.
+  - Sözlük üç kopyada tutarlı (`git grep -n -a -E '"goto"' -- BotCore tools Tests` → `ScriptPlan.h:64`, `ScriptTests.cpp:48`, `skill-script-gen.py:75`).
+- Plandan sapmalar ve gerekçeleri: `plans/README.md` F5-72 satırındaki durum sözcüğü **güncellenmedi**; `AGENTS.md` §2 `plans/README.md`'yi dokunulmayacaklar listesinde sayıyor ve düzenleme izni kapalı. K4'ün izin verdiği kümeye `plans/README.md` dahil, ancak değişikliği zorunlu kılmıyor; durum sözcüğünü Claude/gece döngüsü günceller.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-72` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F5-72` @ `e22d498` (kod commit'i `81650f2`; taban `169cd9f`; gece modu, `AUTO_LOOP=1`: birleştirmeyi döngü betiği yapar, bu oturum birleştirme/push yapmadı)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `touch BotCore/ScriptPlan.h` sonrası `./tools/build.sh Release` rc=0 (`grep -c warning` = 5: `GameServerDlg.cpp` 1147/1806 C4267, 820 C4834, `UpgradeHandler.cpp` 634/862 C4789; hepsi eski, `BotCore/` ve `Bot\` altında uyarı yok); `Debug` rc=0 (yalnızca `GameServerDlg.cpp` C4267 iki satır) |
+| K2 | ✔ | Release ve Debug: `315 tests, 0 failed` (taban 314 + 1, uygulayıcının ölçümüyle aynı); `Script_ParseValid`, `Script_VerbWhitelist`, `Script_GotoStep`, `Script_OffsetRules`, `Script_LineRules`, `Script_Limits`, `Script_ErrorLineNumbers` hepsi `[ OK ]` (iki yapılandırmada) |
+| K3 | ✔ | `--selftest` -> `selftest: 25 checks, 0 failed`; `--check /tmp/g.txt` -> `ok: 2 steps, 31 bytes, 2 lines, last offset 0 ms` rc=0; `--check /tmp/f.txt` (`0 follow X`) -> `1: bad verb` rc=1 |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-72`: `ScriptPlan.h` (4 satır), `ScriptTests.cpp`, `skill-script-gen.py`, plan dosyası; `plans/README.md` değişmedi (izin verilen küme, zorunlu değil); `ScriptPlan.h` farkı tam bir `-`/`+` çifti x 2 (yorum `:59`, `kVerbs[]` ilk satırı `:64`); `GameServer/ AIServer/ shared/ docs/ *.vcxproj*` farkı yok; `git diff --check` boş (rc=0) |
+| K5 | ✔ | `file`: `ScriptPlan.h` ve `ScriptTests.cpp` "ASCII text, with CRLF line terminators" (tabanda blob LF: `core.autocrlf=true`, diff'te `^M` değişimi yok); `skill-script-gen.py` "ASCII text" (CRLF yok, `.gitattributes` `*.py eol=lf`); `check-perception-contract.py` RESULT: PASS rc=0 |
+| K6 | ✔ | `git grep -n -a '"goto"' -- BotCore tools Tests`: `ScriptPlan.h:64`, `ScriptTests.cpp:48`, `skill-script-gen.py:75`; üç dizi de `"move", "goto", "stop", ...` ile başlar, kalan satırlar aynı; `"pkick"` kopyaları yalnızca bu üç dosya + `BotManager.cpp:657/2221` (dağıtım ve günlük metni); `ScriptRunner.cpp`/`BotManager.cpp` farkı yok |
+| K7 | ✔ | **Çalışma zamanı `[V]`** (Release, `bot/F5-72` ucu; `[BOT] ENABLED=1, NAV=1, TELEMETRY=decisions`; `NavService: nav ready ... crc32=4fd154bc`; `BotWP_K` (1294; 934)'te): `script run f572` -> `ScriptRunner: run f572: loaded (2 step(s), last offset 70000 ms)`, `step 1/2 (line 1, +0 ms, late 0 ms): goto BotWP_K 1274 890`, hemen ardından `cmd goto: BotWP_K planned 4 waypoints, route 57.1 m, expanded 54, 0.63 ms, walking to (1274.0, 890.0) at speed 45`, `arrived at (1274.0, 890.0) after 9 packets`, `step 2/2 (+70000 ms, late 6 ms): list`, `finished f572: completed, 2/2 step(s) in 70007 ms`. `live-183458.jsonl`: `SCRIPT_START`, `SCRIPT_STEP step:1 verb:"goto"`, `SCRIPT_STEP step:2 verb:"list"`, `SCRIPT_END completed`; `FAIRNESS_REJECT` 0 |
+| K8 | ✔ (`ENABLED=0` hariç) | `f572_bad.txt` (`0 gotoo BotWP_K 1 2`) -> `ScriptRunner: run f572_bad: refused (f572_bad.txt:1: bad verb)`, telemetride `SCRIPT_START` `f572_bad` yok (0). `NAV=0` ile yeniden başlatılıp `f572` -> `cmd goto: BotWP_K refused (nav_off)`, `finished f572: completed, 2/2`, çökme yok, `list`: `pos=1294.0,934.0 moving=0` (bot yürümedi). `ENABLED=0` ayrıca koşulmadı: `ScriptRunner` yalnızca `BotManager` etkinken kurulur ve bu planda `GameServer` kaynağı değişmedi (F5-70 K15 ile aynı gerekçe) |
+| K9 | ✔ | `run-servers.sh stop` iki kez nazik kapanış, `status` `0/3 hazır`; `GameServer.ini` yedekten geri alındı (md5 öncesi = sonrası = `791b71379a7173f877b0dcfc04595a66`); `Scripts/f572*.txt` silindi, `BotCommands.*` kalmadı. "AC-NAV-03 kapandı" yazılmadı (kanıt F5-66) |
 
 - Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+  1. Engelleyici bulgu yok. Not: uygulayıcı `plans/README.md` durum sözcüğünü güncellemedi (`AGENTS.md` §2); plana uygun (K4 zorunlu kılmaz), kayıt bu doğrulamada güncellendi.
+  2. Not: `Script_GotoStep` ayrıştırıcı sözleşmesini sınar (D3: argüman denetimi yok, `"0 goto"` kabul); `goto` argümanlarının geçerliliği çalışma zamanında `CommandGoto`'dadır, K7/K8 koşusu bunu kanıtladı.
+  3. Not: `goto` adımı eşzamansızdır (D4). K7'de 57,1 m rota 9 `Move` paketinde bitti, betik 70 sn bekledi; gerçek betiklerde sonraki adım yürüme süresinden sonraya konmalı (Karus doğuş -> arena A ~60 sn, El Morad -> arena A ~152 sn); ADR-0017 Ek F5-72 madde 3'e yazıldı.
+- Düzeltme talimatı: gerekmiyor (`DOĞRULANDI`).

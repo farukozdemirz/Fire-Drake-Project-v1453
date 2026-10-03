@@ -70,9 +70,9 @@ DEFAULT_MARGIN_MS = 1500
 DEFAULT_START_GAP_MS = 1500
 TRAILING_GAP_MS = 500
 
-# The 20 verbs a script may run (BotCore/ScriptPlan.h: IsScriptVerb).
+# The 21 verbs a script may run (BotCore/ScriptPlan.h: IsScriptVerb).
 VERBS = (
-    "move", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
+    "move", "goto", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene",
     "pinvite", "paccept", "pdecline", "pleave", "ppromote", "pkick", "pchat",
     "see", "npcs", "snap", "list",
 )
@@ -547,6 +547,10 @@ def run_selftest():
     check("check_line_too_long", not bad)
     bad, _ = check_bytes(b"0 teleport X\n")
     check("check_bad_verb", not bad)
+    ok, message = check_bytes(b"0 goto BotWP_K 1274 890\n")
+    check("check_ok_goto", ok and message.startswith("ok: 1 steps"))
+    o = offsets(gen("raw 0 goto BotWP_K 1274 890\ncast B 1000 self 1\n", magic))
+    check("raw_goto_passthrough", o[0] == (0, "goto BotWP_K 1274 890"))
 
     # 17. sqlcmd_non_utf8: a fake sqlcmd with a non-UTF-8 byte must not crash.
     if os.name == "posix":
