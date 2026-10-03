@@ -1,215 +1,217 @@
-# F5-62: `/bot goto <bot> <x> <z>`: komutla verilen hedefe düz çizgi yerine navigasyon yolu üzerinden ilerleme (`BotCore/NavDrive.h`, paylaşılan `NavPathfinder`)
+# F5-62: Yol izleme sürücüsü `NavDrive` — `Goto` kipi (`BotCore/NavDrive.h`, saf mantık; `/bot goto` sunucu bağlaması F5-70'te)
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK |
+| Durum | HAZIR |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-62 (taban: gece/2026-10-02)` |
-| Bağımlı olduğu planlar | **F5-59** (`NavService`) ve **F5-61** (kiriş guard'ı `CheckMoveChord`) `KAPANDI` olmalı. Zaten `KAPANDI`: F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-05 (`NavReach` yargısı, bu planda kullanılmaz), F5-51 (arena/doğuş yolu), F5-53 (`NavPathfinder` ölçüm notu), F5-57 (`NavRoutePoint`, `NavRouteProgressM`). Şemsiye: F5-55 (dilim 4). F5-63, F5-64, F5-65 bu planın `NavDrive`'ına dayanır |
-| İlgili gereksinim / kabul | `docs/12` §3-§4.1 (yol bulma/düzleştirme), §13.1 (paket adımı modeli: ~1,5 sn'de bir hedef noktalı `WIZ_MOVE`, ara noktaları sunucu doğrulamaz), §13.4 (doğuş → arena dönüşü), §13.5 (`NavPathfinder` ≈ 4,2 MB); ADR-0006 madde 6 (sahiplik: havuz paylaşımı kararı sunucu entegrasyonunda); AC-NAV-02 (A* p95 ≤ 2 ms), AC-NAV-03; `docs/13` §3 (IOCP thread kuralı) |
-| Tahmini büyüklük | M (12 dosya; 4'ü tek satırlık değişiklik; 2'si yeni; saf mantık + dar sunucu bağlaması) |
-| Hazırlayan / tarih | Claude / 2026-10-03 (taslak) |
+| Bağımlı olduğu planlar | `KAPANDI`: F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-57 (`NavRoutePoint`, `NavRouteProgressM`), F5-59 (`NavService`), F5-61 (`CheckMoveChord`, merge `gece/2026-10-02`), F5-69 (eğim 0,45). F5-70 (sunucu bağlaması), F5-63, F5-64, F5-65 bu planın `NavDrive`'ına dayanır |
+| İlgili gereksinim / kabul | `docs/12` §3-§4.1 (yol bulma/düzleştirme), §13.1 (paket adımı modeli: ~1,5 sn'de bir hedef noktalı `WIZ_MOVE`, ara noktaları sunucu doğrulamaz), §13.4 (doğuş → arena dönüşü); `docs/03` CLI-05/CLI-08; AC-NAV-02 (A* p95 ≤ 2 ms), AC-NAV-03 (kiriş yürünebilirliği; oyunda kanıt F5-66); ADR-0006 Ek F5-62, ADR-0021 madde 1 |
+| Tahmini büyüklük | S (4 dosya: 2 yeni, 2 tek satırlık `.vcxproj`; saf mantık, sunucu ikilisi değişmez) |
+| Hazırlayan / tarih | Claude / 2026-10-03 (gece modu) |
 
 ---
 
-## Neden TASLAK
+## 0. Bu plan neden küçüldü (bölme kaydı)
 
-Bu plan F5-59 (`NavService`) ve F5-61 (`CheckMoveChord`) kodu depoda yokken yazıldı. HAZIR yapma ön koşulları:
+Önceki TASLAK F5-62 12 dosyalıktı (saf mantık + `NavService` + `ActionExecutor` + `BotManager` + `ScriptPlan`). Gece planı kuralı (≤ ~6 dosya, tek yetenek) ve yazım turunda bulunan tasarım düzeltmeleri (§2 "Tasarım kararları") nedeniyle ikiye bölündü:
 
-1. **F5-59 ve F5-61 `KAPANDI`.** F5-59 sözleşmesi varsayıldı: `NavService::Instance()`, `Ready()`, `Grid()` (`const NavGrid *`, hazır değilse `nullptr`), `GetInfo()`, `[BOT] NAV=1`. F5-59 `NavPathfinder` **kurmaz** (kendi kapsam dışı listesi: "F5-62: paylaşım kararı"): bu plan `NavService.h`'ye paylaşılan örnek erişimcisini ekler (§2 karar). F5-61: `BotCore::CheckMoveChord`, `ChordVerdict`, `SubmitMove` guard'ı.
-2. Yazım turunda yeniden doğrulanacak referanslar (`gece/2026-10-02` @ `9fc2dfe` üzerinde okundu; F4-55/F4-60/F5-61 satırları kaydırır): `GameServer/Bot/ActionExecutor.cpp:167-228` (`BeginMove`), `:230-264` (`TickMove`), `:266-284` (`StopMove`), `:286-290` (`AbandonMove`); `GameServer/Bot/BotManager.cpp:626-629` (`move`/`stop` fiil dağıtımı), `:662-668` (bilinmeyen komut metni), `:1062-1124` (`CommandMove`), `:3070-3095` (`TickSessions` hareket dalı, `TickMove` çağrısı); `GameServer/Bot/BotSession.h:73-78` (hareket üyeleri); `BotCore/ScriptPlan.h:59-80` (`IsScriptVerb`, 20 fiil), `Tests/BotCoreTests/ScriptTests.cpp:44-66` (`Script_VerbWhitelist`); `BotCore/NavPath.h:64-81` (`NavPathfinder::Find`), `BotCore/NavSmooth.h:68-91` (`NavSmoothParams/Result/NavSmoothPath`), `BotCore/NavStuck.h` (`NavRoutePoint`, `NavRouteProgressM`, F5-57).
-3. **Karar bekleyen konu (HAZIR öncesi):** `goto` hedefi `Walk` olmayan hücredeyse reddedilir mi, en yakın `Walk` hücreye mi alınır? Bu taslak **reddeder** (`invalid_goal`): "en yakın yürünebilir hücreye al" insanın yapacağı bir seçimdir ama komut sürücüsü (test aracı) için belirsizlik üretir. Karar proje sahibinde (§8).
-
-> **Karar (2026-10-03, ADR-0021, proje sahibi):** `Walk` olmayan hedef **reddedilir** (`invalid_goal`); en yakın yürünebilir hücreye alınmaz. Plandaki "karar bekleyen konu" bu karara göre okunur.
+- **F5-62 (bu plan):** yalnızca `BotCore/NavDrive.h` (rota kurma, yol üzerinde adım üretme, kiriş denetimli kısaltma, yeniden planlama sınırı) + birim testleri. `GameServer/`, `AIServer/`, `shared/` **değişmez**; sunucu ikilisi bayt bayt aynı kalır.
+- **F5-70 (sıradaki plan, bu plandan sonra yazılır):** `NavService::SharedPathfinder()`, `ActionExecutor::BeginGoto/TickPathMove`, `BotSession::m_navDrive`, `/bot goto`, betik fiili `goto`, çalışma zamanı K10-K15 (Claude). Eski taslağın bu bölümleri git geçmişinde durur: `git show f86cca6:plans/F5-62-nav-goto-yol-uzerinden-ilerleme.md` (F5-70 yazılırken oradan alınır; satır numaraları F4-55/F4-60/F5-61 sonrası yeniden doğrulanır).
+- Kuyruk sırası: **F5-62 → F5-70 → F5-63 → F5-64 → F5-65 → F5-68 → F4-61 → F5-66**. F5-63/64/65 taslakları "F5-62" derken bu planın saf mantığını **ve** F5-70'in sunucu bağlamasını kasteder; HAZIR yapılırken bağımlılıkları buna göre güncellenir.
 
 ## 1. Amaç
 
-`[BOT] NAV=1` iken yeni `/bot goto <bot> <x> <z> [speed]` komutu botu hedefe **planlayıcı yolu** üzerinden yürütür: `NavPathfinder::Find` + `NavSmoothPath` yolu, her ~1,5 sn'de bir **yol üzerinde ilerleyen** `WIZ_MOVE` adımlarıyla (ara noktada durma paketi göndermeden) izlenir; her adım F5-61 kiriş guard'ından geçer. Mevcut `/bot move` (düz çizgi `TickMove`/`StepToward`) **aynen kalır**. `NavPathfinder` paylaşım kararı F5-53 ölçüm notuyla verilir ve kayda geçer. `NAV=0` iken `goto` reddedilir (`nav_off`), başka hiçbir davranış değişmez.
+`NavDrive` sınıfı, bir botu bilinen bir hedef noktasına **planlayıcı yolu üzerinden** yürütmek için gereken saf mantığı verir: `NavPathfinder::Find` + `NavSmoothPath` ile rota kurar; her ~1,5 sn'de bir sunucuya gidecek `WIZ_MOVE` adım noktasını **rota üzerinde ilerleyerek** (ara noktada durmadan) üretir; her adım noktası, yürütücünün göndereceği **nicemlenmiş** konum için F5-61 kiriş guard'ından (`CheckMoveChord`) geçirilmiş olarak döner. Bu plan sonunda `NavDrive` gerçek harita üzerinde (Karus ve El Morad doğuşundan arena A'ya, 300 rastgele çift) engelli hücreye değmeden varan adım dizileri üretir; hiçbir sunucu davranışı değişmez (bağlama F5-70).
 
 ## 2. Bağlam (okunması zorunlu)
 
-- `docs/12` §13.1 (paket adımı modeli), §13.4 (doğuş ~52 sn Karus / ~142 sn El Morad, 4,5 m/s), §4.1 (A*; `P-NAV-MAX-NODES` 20 000), `docs/12` §3 düzleştirme (`P-NAV-SMOOTH-LOOKAHEAD` 64). `docs/03` CLI-05/CLI-08 (hız alanı, adım ≤ `MaxStepMeters × 1,10 + 0,15`).
-- Mevcut düz yürüyüş (`ActionExecutor.cpp:230-264` `TickMove`): paket her ≥ `kMovePeriodMs` (1500 ms); `elapsedMs` 3000'e kırpılır; `maxStep = BotCore::MaxStepMeters(s->m_moveSpeed, elapsedMs)` (45 → 6,75 m); `StepToward` düz çizgi; vardığında `speed = 0, echo = 0` (durma paketi), aksi halde `speed = m_moveSpeed, echo = 3`; `SubmitMove` (`:76-163`) paketi guard'dan ve `CUser::HandlePacket()`'ten geçirir. **Bu plan `TickMove`/`StepToward`/`SubmitMove` adım mantığını değiştirmez**; yeni bir kip ekler (`TickPathMove`) ve `TickSessions` hangi kipi çağıracağını `Drive.Active()` ile seçer.
-- `BotCore/NavPath.h:64-81` `NavPathfinder`: **iş parçacığı güvenli değil**, deterministik (aynı örnekte önceki sorgular sonucu etkilemez), `Find(grid, start, goal, NavSearchParams{maxNodes = 20000}, NavPathResult &, const NavCostField * = nullptr)`; durumlar `Found/NoPath/NodeLimit/InvalidStart/InvalidGoal`; ilk çağrıda iç havuzu kurar (`n=513` → 4,02 MiB + `m_heap.reserve(4096)` ≈ 64 KiB; `plans/F5-53-nav-sorgu-butcesi-ve-onbellek.md:151` K8 ölçüm notu).
-- `BotCore/NavSmooth.h:85` `NavSmoothPath(grid, path, params, out)`: `out.waypoints` (`NavCell`, ilk ve son korunur; yol hücre **merkezleri**), `out.length` (m).
-- `BotCore/NavStuck.h` (F5-57): `NavRoutePoint{x,z}`, `NavRouteProgressM(pts, n, x, z)` (polilin üzerine izdüşümün başlangıçtan kümülatif mesafesi) — yol ilerlemesi için kullanılır.
-- Hareket üyeleri: `GameServer/Bot/BotSession.h:73-78` `m_moveActive`, `m_moveTargetX/Z`, `m_moveSpeed`, `m_moveLastSent`, `m_movePackets`; "meşgul" tanımı `m_moveActive`'e bağlıdır (`ActionExecutor.cpp:880, 942, 1640`; `BotManager.cpp:3086` cast iptali): yol izleme **`m_moveActive = true` tutar**, bu yüzden cast-iptal/duruş/`busy` mantığı değişmeden çalışır.
-- Ölü bot dalı: `BotManager.cpp:3070-3085` ölü botta `AbandonMove` çağırır; bu plan `AbandonMove`'a `Drive.Reset()` ekler (tam temizlik F5-65).
-- `BotCore/ScriptPlan.h:59-80` betik fiil beyaz listesi (20 fiil) ve `ScriptTests.cpp` `Script_VerbWhitelist`: F5-66 koşuları `Scripts/*.txt` ile yapılacağından `goto` fiili listeye girer; `ScriptRunner.cpp:214` komutu `ExecuteCommand`'a verir (ek kod gerekmez).
-- `tools/check-perception-contract.py` R2: `GetMap`/`GetUserPtr` kısıtlı sembollerdir; yeni kod yalnızca botun **kendi** `CUser` konumunu ve `NavService` ızgarasını okur (`GetMap` kullanılmaz; hedef doğrulaması F5-59 ızgarasının `Walk`'udur). `BeginGoto` botun kendi hedefinin `IsValidPosition` denetimini `BeginMove`'daki gibi yapmak isterse `GetMap` allowlist'i bozulur: **yapma**, ızgara denetimi yeter.
+Aşağıdaki satırlar `gece/2026-10-02` @ `c96e7d6` üzerinde doğrulandı.
 
-### Tasarım kararı: `NavPathfinder` paylaşımı (F5-55 §4 açık sorusunun yanıtı)
+- `docs/12` §13.1 (paket adımı modeli), §13.4 (doğuş → arena), §13.5 (`NavPathfinder` ≈ 4,02 MiB, iş parçacığı güvenli değil). `docs/03` CLI-05/CLI-08 (adım ≤ `MaxStepMeters × 1,10 + 0,15`).
+- `BotCore/NavPath.h:64-81` `NavPathfinder::Find(grid, start, goal, NavSearchParams, NavPathResult &, const NavCostField * = nullptr)`; durumlar `Found/NoPath/NodeLimit/InvalidStart/InvalidGoal` (`:34-40`); `NavSearchParams::maxNodes = 20000` (`:44-48`); `NavPathResult` (`cells`, `length`, `expanded`; `:50-57`). Aynı örnek ardışık sorgularda deterministiktir. Bu planda `field = nullptr`.
+- `BotCore/NavSmooth.h:84-` `NavSmoothPath(grid, path, params, out)`; `NavSmoothResult{waypoints, length}`; ilk ve son hücre korunur; `NavSmoothParams::maxLookahead = 64`. Düzleştirilmiş segmentler `Walk` süpercover'ında temizdir: 0/33 365 engelli (`docs/12` §13.1 ölçümü `[V]`, `NavSegmentAudit_Planner` testi).
+- `BotCore/NavStuck.h:578-` `NavRoutePoint{x,z}` ve `NavRouteProgressM(pts, n, x, z)` (polilin izdüşümünün başlangıçtan kümülatif mesafesi; n < 2 veya NaN → 0).
+- `BotCore/NavChordGuard.h:21-37` `kChordIgnoreMeters = 0,08`, `ChordVerdict{Ok,Skipped,BlockedCell,OutOfBounds}`; `CheckMoveChord(const NavGrid *, x0, z0, x1, z1)` (`:39-`); `grid == nullptr` → `Skipped`.
+- `BotCore/BotMotion.h:24-27` `MaxStepMeters(speedField, periodMs)` (45 → 1500 ms'de 6,75 m); `:12-15` `kWalkSpeedField = 45`, `kMovePeriodMs = 1500`; `:44-` `StepToward`.
+- **Yürütücü nicemlemesi (gerçek kod, bu planın tasarımını belirler):** `GameServer/Bot/ActionExecutor.cpp:91-96` paket konumu `uint16(w * 10.0f + 0.5f) / 10.0f`; `:124-125` F5-61 guard'ı kirişi **botun gerçek konumundan nicemlenmiş paket konumuna** denetler; `:142` reddedilirse yürüyüş biter. Yani `NavDrive` kirişi nicemlenmemiş uç noktayla "Ok" bulup yürütücüde reddedilmesin diye **nicemlenmiş** uçla denetlemelidir.
+- `Tests/BotCoreTests/NavChordGuardTests.cpp:49-66` `LoadZone71OrSkip` (`build/nav/zone71.navgrid`; `MainComponentCells() == 88508`), `:69-119` `CollectWalk`/`RandomNear`/`PercentileDouble`/`Quantise` yardımcıları (dosya-yerel; bu planın test dosyasına **kopyalanır**), `:256-343` planlayıcı yolu kiriş testi (kalıp), `:346-` perf testi (kalıp). `Tests/BotCoreTests/NavArenaTests.cpp:103-125` dosya-yerel `NearestWalk`; `:340-342` doğuş/arena noktaları: Karus (1385; 1095), El Morad (635; 925), arena A (1274; 890).
+- Ölçüm (geçici deneme, commit edilmez, `[V: WSL g++ -O2, zone 71, maxSlope 0,45]`): `NearestWalk` hücreleri Karus (346, 273), El Morad (158, 231), arena (318, 222), üçü `Walk`; `Find` her ikisinde `Found`, `expanded` 883 (Karus) / 2644 (El Morad), düzleştirilmiş yol 276,0 m (10 nokta) / 701,3 m (11 nokta); ters yön de `Found`. Bu sayılar test bantlarının kaynağıdır (§5 adım 7).
+- `Tests/BotCoreTests/MiniTest.h` (`TEST_CASE`, `CHECK`, `CHECK_EQ`, `REQUIRE`); filtre: `BotCoreTests.exe <ad-parçası>`; liste: `--list` (şu an 276 satır).
+- `tools/check-perception-contract.py`: `BotCore/` altındaki yeni başlık `windows.h`/`stdafx.h`/`GameServer`/`shared` içermemelidir (ADR-0016).
 
-**Karar: tek paylaşılan örnek, `NavService`'te; yalnızca IOCP iş parçacığında kullanılır.**
+### Tasarım kararları (otonom döngüde Claude kararı — gözden geçirilmeli; ADR-0006 Ek F5-62)
 
-| Seçenek | Bellek | Güvenlik | Sonuç |
-|---|---|---|---|
-| Bot başına örnek | 16 bot × 4,02 MiB = **64,3 MiB**, 20 bot ≈ 80 MiB, ilk `Find`'da her bot 4 MiB ayırır (Win32, 2 GB adres alanı) | Güvenli (yarış yok) | Reddedildi (bellek, ilk-sorgu ayırma gecikmesi bot sayısıyla çarpılır) |
-| **Tek paylaşılan örnek (seçildi)** | **4,02 MiB** | Tüm çağıranlar IOCP iş parçacığındadır: `BotManager::Tick()` (`BotManager.h`: "IOCP worker thread only") → `ProcessCommands` → komutlar; `TickSessions` → hareket. Aynı örnek ardışık çağrılır; `NavPathfinder` deterministik ve önceki sorgudan etkilenmez (`NavPath.h` açıklaması) | Seçildi |
-| Sorgu başına geçici örnek | 4 MiB ayır/boşalt | Güvenli | Reddedildi (A* p95 0,5 ms iken ayırma/sıfırlama maliyeti baskın) |
-
-Uygulama: `NavService`'e `BotCore::NavPathfinder & SharedPathfinder()` eklenir (üye `m_pathfinder`; ızgara hazır değilken çağrılmaz). **Thread denetimi:** ilk çağrıda `GetCurrentThreadId()` saklanır; sonraki bir çağrı farklı iş parçacığından gelirse `Bot_*.log`'a **bir kez** `NavService: pathfinder used from thread <n> (first <m>) VIOLATION` yazılır (çalışma zamanı kanıtı: K10). `NavFollower` (F5-63) aynı örneği parametre olarak alır (`NavFollower::Update(grid, pathfinder, ...)`; ADR-0006 madde 6). **Gerekçeli bildirim:** tek-thread varsayımı F5-53 notunun ("tek thread'de seri çağrı") ve `docs/13` §3'ün sonucudur; ileride arka plan iş parçacığı (ADR-0005 v2) eklenirse bu karar yeniden açılır.
+1. **Nicemlenmiş uçla kiriş denetimi `[D]`.** `NavDrive` her adım noktasını yürütücünün nicemlemesiyle (`NavQuantiseM`, `uint16(w*10+0,5)/10`, float) üretir ve kirişi botun **verilen** konumundan o nicemlenmiş noktaya denetler. Böylece `NextStep` "Step" dediği kiriş yürütücüdeki F5-61 guard'ından da geçer.
+2. **Hedef önce nicemlenir.** `BeginGoto` hedefi nicemler ve hedef hücresini **nicemlenmiş** noktadan hesaplar (3,98 m → 4,0 m ile hücre değişebilir); `Walk` değilse `InvalidGoal` (ADR-0021 madde 1: en yakın yürünebilir hücreye alınmaz).
+3. **Rota uçları.** Rota `[bot, c0, c1..c(k-1), ck, hedef]` (`c` = düzleştirilmiş hücre merkezleri; `c0` botun hücresi, `ck` hedef hücresi) biçiminde kurulur: düzleştirme hücre merkezleri arasında doğrulanmıştır, botun tam konumundan merkeze ve merkezden tam hedef noktasına olan parçalar tek hücre içindedir. **Kestirme:** `bot → c1` (ya da `c1` yoksa `bot → hedef`) kirişi `CheckMoveChord` ile `Ok` ise `c0` atılır; aynı şekilde sondan `c(k-1) → hedef` `Ok` ise `ck` atılır. Hücre merkezine geri dönüp sonra yola girmek 2,8 m'ye kadar gereksiz yürüyüştür; kestirme yalnızca **doğrulanmış** kirişle yapılır.
+4. **Kısaltma ve yeniden plan.** Tam adım kirişi engele değerse adım **rotanın sonraki ara noktasına** kısaltılır (`truncated`); o da değerse `Blocked`. `Blocked` alan çağıran `Replan` çağırır; `Replan` **en çok 1 kez** çalışır (`kMaxGotoReplans = 1`), ikincisi `ReplanLimit` döner ve sürücü kapanır. Sonsuz yeniden plan döngüsü yoktur.
+5. **Başlangıç `Walk` değilse planlanmaz (`InvalidStart`).** F5-61 D5 muafiyeti kirişi korur ama `Find` `Walk` olmayan başlangıçtan planlayamaz; en yakın yürünebilir hücreye taşıma bu planın konusu değildir (çağıran reddeder; F5-70'te `invalid_start`).
 
 ## 3. Kapsam
 
 **Yapılacaklar**
 
-1. `BotCore/NavDrive.h` (yeni, saf mantık; yalnızca standart kütüphane + kardeş başlıklar; global/static yok; `NavDrive` bu planda yalnızca **`Goto`** kipini taşır, F5-63 `Follow` ve takılma üyelerini ekler): rota kurma, yol üzerinde adım üretme (`NextStep`), varış, durum eşlemesi.
-2. `NavService.h`: paylaşılan `NavPathfinder` erişimcisi + thread denetimi (F5-59 dosyasına küçük ekleme).
-3. `ActionExecutor`: `BeginGoto`, `TickPathMove` (yeni kip); `BeginMove`/`StopMove`/`AbandonMove`'a **tek satır** `Drive.Reset()`. `TickMove`/`StepToward`/`SubmitMove` **değişmez**.
-4. `BotSession.h`: `BotCore::NavDrive m_navDrive;` üyesi. `BotManager`: `goto` komutu ve `TickSessions` kip seçimi.
-5. `ScriptPlan.h` fiil listesine `goto` (20 → 21) ve `Script_VerbWhitelist` güncellemesi.
-6. Birim testleri `Tests/BotCoreTests/NavDriveTests.cpp`.
-7. Çalışma zamanı doğrulaması (Claude; §6 K10-K15).
+1. `BotCore/NavDrive.h` (yeni; saf mantık; yalnızca standart kütüphane + kardeş başlıklar; global/static yok; saat yok): `NavQuantiseM`, `NavDriveParams`, `NavPlanStatus`, `NavDriveStep`, `NavDrive` (`Reset`, `BeginGoto`, `NextStep`, `Replan`, erişimciler).
+2. `Tests/BotCoreTests/NavDriveTests.cpp` (yeni): §5 adım 6-7'deki 13 `TEST_CASE`.
+3. İki `.vcxproj`'a birer satır.
 
 **Kapsam dışı (yapılmayacak)**
 
-- `/bot follow`, hız kestirimi, yeniden yol hesaplama, takılma tespiti/kurtarma (F5-63). **F5-62'de yol bir kez hesaplanır;** hedef sabit olduğundan yeniden hesaplama yoktur (tek istisna: kiriş engeli, aşağıda).
-- Bütçe zamanlayıcısı, faz kaydırma, yol önbelleği, `NAV_PATH`/`NAV_STUCK`/`NAV_RECOVERY`, `PERF_SAMPLE` nav payı (F5-64): bu planda `goto` komutunda yol **anında** hesaplanır (komut başına bir sorgu; tick'te 16 bot aynı anda `goto` alırsa 16 sorgu ≈ 8 ms: `docs/12` §13.5; çalışma zamanı testleri komutları ≥ 1 sn arayla verir).
-- Ölüm/respawn/despawn/bölge değişimi temizliği (F5-65; yalnızca `AbandonMove`/`StopMove`/`BeginMove` temel temizliği buradadır).
-- Arena modu maliyet alanı (`NavCostLayer::AddForbidOutsideDisc`), tehlike katmanı, `NavReach` yargısı, hedef bırakma kararı: yok. `Find` bu planda `field = nullptr` (yalnızca mesafe) ile çağrılır.
-- `BotCore/NavGrid.h`, `NavPath.h`, `NavSmooth.h`, `NavStuck.h`, `NavSegment.h`, `NavChordGuard.h` **değişmez**.
-- `docs/` (Claude: `docs/12` §13.4, `docs/13` komut tablosu, ADR-0006 Ek F5-62, `docs/STATUS.md`).
+- `GameServer/`, `AIServer/`, `shared/` altında **hiçbir** değişiklik: `NavService`, `ActionExecutor`, `BotSession`, `BotManager`, `ScriptPlan.h`, `ScriptTests.cpp`, `/bot goto`, `SharedPathfinder()` (hepsi F5-70).
+- `Follow` kipi, hız kestirimi, hedef takibi, takılma tespiti/kurtarma (`NavStuckMonitor`, `NavProgressAssessor` bağlaması) → F5-63. `NavDriveStep::routeProgressM`/`distToGoalM` alanları yalnızca F5-63'ün besleyeceği değerlerdir; bu planda tüketen yoktur.
+- Bütçe zamanlayıcı, yol önbelleği, `NAV_*` telemetri, `PERF_SAMPLE` nav payı → F5-64. Durum temizliği nedenleri (`NavResetReason`), konum sıçraması sonlandırması (ADR-0021 madde 3) → F5-65. Bu planda `Reset()` parametresizdir.
+- Arena maliyet alanı (`NavCostLayer`), tehlike katmanı, `NavReach` yargısı, hedef bırakma kararı: yok (`Find` her zaman `field = nullptr`).
+- `BotCore/NavGrid.h`, `NavPath.h`, `NavSmooth.h`, `NavStuck.h`, `NavSegment.h`, `NavChordGuard.h`, `BotMotion.h` **değişmez**.
+- `docs/` (Claude: `docs/12` §13.4/§13.5, ADR-0006 Ek F5-62, `docs/STATUS.md`), `tools/`.
 
 ## 4. Dokunulabilecek dosyalar
 
 | Dosya | İşlem | Not |
 |---|---|---|
-| `BotCore/NavDrive.h` | yeni | ASCII + CRLF; saf mantık |
-| `BotCore/BotCore.vcxproj` | değiştir | tek satır `<ClInclude Include="NavDrive.h" />` |
-| `Tests/BotCoreTests/NavDriveTests.cpp` | yeni | |
-| `Tests/BotCoreTests/BotCoreTests.vcxproj` | değiştir | tek satır `<ClCompile Include="NavDriveTests.cpp" />` |
-| `GameServer/Bot/NavService.h` | değiştir | yalnızca `SharedPathfinder()` + thread denetimi üyeleri (F5-59 `Info`/`Grid` API'si değişmez); `NavService.cpp` yalnızca denetim log satırı gerekirse |
-| `GameServer/Bot/ActionExecutor.h` | değiştir | `BeginGoto`, `TickPathMove` bildirimleri |
-| `GameServer/Bot/ActionExecutor.cpp` | değiştir | yeni iki fonksiyon; `BeginMove`/`StopMove`/`AbandonMove`'a tek satır `Drive.Reset()` |
-| `GameServer/Bot/BotSession.h` | değiştir | yalnızca `BotCore::NavDrive m_navDrive;` (+ `#include "../../BotCore/NavDrive.h"`) |
-| `GameServer/Bot/BotManager.h` | değiştir | `void CommandGoto(const std::string & args);` |
-| `GameServer/Bot/BotManager.cpp` | değiştir | `goto` dağıtımı (`:626` civarı), `CommandGoto` (`CommandMove`'u kalıpla), bilinmeyen komut metnine `goto`, `TickSessions`'ta kip seçimi |
-| `BotCore/ScriptPlan.h` | değiştir | yalnızca `kVerbs` listesine `"goto"` ve yorumda 20 → 21 |
-| `Tests/BotCoreTests/ScriptTests.cpp` | değiştir | yalnızca `Script_VerbWhitelist`: dizi + döngü sınırı 21 |
+| `BotCore/NavDrive.h` | yeni | yalnızca ASCII + CRLF, tab, Allman |
+| `BotCore/BotCore.vcxproj` | değiştir | tek satır `    <ClInclude Include="NavDrive.h" />`, `NavChordGuard.h` satırından (`:80`) sonra; UTF-8 BOM ve CRLF korunur |
+| `Tests/BotCoreTests/NavDriveTests.cpp` | yeni | yalnızca ASCII + CRLF |
+| `Tests/BotCoreTests/BotCoreTests.vcxproj` | değiştir | tek satır `    <ClCompile Include="NavDriveTests.cpp" />`, `NavChordGuardTests.cpp` satırından (`:89`) sonra; BOM/CRLF korunur |
 
-12 dosya (hedef ~10'u aşar: 2 `.vcxproj` ve 2 fiil-listesi dosyası tek satırlıktır; bölünmesi gerekirse `ScriptPlan.h`/`ScriptTests.cpp` ayrı plana alınır). Yeni `.cpp` yok: `proj-GameServer.vcxproj` değişmez. Bu listede olmayan bir dosyaya dokunmak gerekirse **durup** Uygulayıcı Raporu'nda soru olarak yaz.
+Yeni `.cpp` GameServer dosyası yok: `GameServer/proj-GameServer.vcxproj` değişmez. Bu listede olmayan bir dosyaya dokunmak gerekirse **durup** Uygulayıcı Raporu'nda soru olarak yaz.
 
 ## 5. Uygulama adımları
 
-1. `git switch -c bot/F5-62 gece/2026-10-02`; `Durum` → `UYGULANIYOR`. Sunucu `[UP]` ise `./tools/run-servers.sh stop`. F5-59 `NavService.h` ve F5-61 `NavChordGuard.h` imzalarını aç ve doğrula (sapma varsa **dur**). `python3 tools/nav-export.py`.
-2. **`BotCore/NavDrive.h`** (iskelet; sözleşme sabit, gövde uygulayıcıya aittir):
+1. `git switch -c bot/F5-62 gece/2026-10-02`; `Durum` → `UYGULANIYOR`. Sunucu `[UP]` ise `./tools/run-servers.sh stop`. `python3 tools/nav-export.py` (gerçek harita testleri için `build/nav/zone71.navgrid`). §2'deki imzaları (`NavPathfinder::Find`, `NavSmoothPath`, `NavRoutePoint`, `NavRouteProgressM`, `CheckMoveChord`) açıp doğrula; sapma varsa **dur** (`Durum: UYGULANIYOR (BLOKE)`). Başlangıç test sayısı: `./build/bin/x86-Release/Tests/BotCoreTests.exe --list | wc -l` (rapora yaz).
+2. **`BotCore/NavDrive.h`** — sözleşme sabittir, gövde uygulayıcıya aittir:
 
    ```cpp
    #pragma once
-   // Path-following drive for the real move packets (F5-62; docs/12 s13.1, s13.4). Pure logic: standard
-   // library and sibling headers only, no global/static state, no clock (caller-supplied ms stamps).
-   // One drive per bot. F5-62 carries the Goto mode only; F5-63 adds Follow and the stuck members.
+   // Path-following drive for the real move packets (F5-62; docs/12 s13.1, s13.4). Pure logic:
+   // standard library and sibling headers only, no global/static state, no clock. One drive per bot.
+   // F5-62 carries the Goto mode only; F5-63 adds Follow and the stuck members.
    #include "NavChordGuard.h"
    #include "NavPath.h"
    #include "NavSmooth.h"
    #include "NavStuck.h"      // NavRoutePoint, NavRouteProgressM (F5-57)
+   #include <cstdint>
    #include <vector>
    namespace BotCore
    {
+   	constexpr int kMaxGotoReplans = 1;
+   	constexpr float kMinTruncStepM = 0.15f;   // a truncated step must advance at least this far
+
+   	// Mirrors the executor packet quantisation (ActionExecutor.cpp: uint16(w * 10.0f + 0.5f) / 10.0f).
+   	// Precondition 0 <= w <= 6553.5 (callers reject others before quantising).
+   	inline float NavQuantiseM(float w);
+
    	enum class NavDriveMode { Off, Goto };
-   	enum class NavPlanStatus { None, Planned, InvalidStart, InvalidGoal, NoPath, NodeLimit };
+   	enum class NavPlanStatus { None, Planned, InvalidStart, InvalidGoal, NoPath, NodeLimit, ReplanLimit };
+
    	struct NavDriveParams
    	{
    		NavSearchParams search;   // P-NAV-MAX-NODES 20000
    		NavSmoothParams smooth;   // P-NAV-SMOOTH-LOOKAHEAD 64
    	};
+
    	struct NavDriveStep
    	{
    		enum Kind { None, Step, Arrived, Blocked } kind = None;
-   		float x = 0.0f, z = 0.0f;      // packet position (unquantised; the executor quantises)
-   		float routeProgressM = 0.0f;   // for NavProgressAssessor (F5-63)
-   		float distToGoalM = 0.0f;
-   		bool  truncated = false;       // the full step was cut at a waypoint because the chord was blocked
+   		float x = 0.0f, z = 0.0f;      // packet position, already quantised (the executor re-quantises idempotently)
+   		float routeProgressM = 0.0f;   // route progress of (x, z); F5-63 feeds NavProgressAssessor
+   		float distToGoalM = 0.0f;      // Euclid distance from (x, z) to the goal point
+   		bool  truncated = false;       // the full step was cut at a route vertex because its chord was blocked
    	};
+
    	class NavDrive
    	{
    	public:
-   		void Reset();                              // mode Off, route empty (F5-65 extends the reset reasons)
+   		void Reset();                       // mode Off, route empty, counters 0
    		bool Active() const;
    		NavDriveMode Mode() const;
-   		// Plans botPos -> goal with the SHARED pathfinder (caller guarantees IOCP thread) and arms the walk.
-   		// Route = [botPos, centres of the interior smoothed waypoints, exact goal point]. InvalidGoal when the
-   		// goal cell is not Walk / off-grid; InvalidStart when the bot's own cell is not Walk (see F5-61 D5:
-   		// an exempted non-Walk start cell is NOT planned from: report it, the caller refuses).
+
+   		// Plans bot -> goal with the caller's pathfinder (caller guarantees single-thread use) and arms the
+   		// walk. Goal is quantised first (design decision 2); route per design decision 3. On any status
+   		// other than Planned the drive is Reset (inactive). Replans() = 0 after Planned.
    		NavPlanStatus BeginGoto(const NavGrid &, NavPathfinder &, float botX, float botZ,
-   			float goalX, float goalZ, const NavDriveParams &, int64_t nowMs);
-   		// Next move packet: the point `maxStepM` of ROUTE length ahead of the bot's projection, crossing
-   		// waypoints without stopping. Every candidate chord is checked with CheckMoveChord: a blocked chord is
-   		// truncated at the next waypoint; still blocked -> kind Blocked (nothing to send). Arrived when the
-   		// remaining route length <= maxStepM (the packet carries the exact goal point).
+   			float goalX, float goalZ, const NavDriveParams &);
+
+   		// Next move packet from the bot's CURRENT position (rules below). Not Active, non-finite input or
+   		// maxStepM <= 0 -> kind None. The drive does not move the bot: the caller feeds the next position.
    		NavDriveStep NextStep(const NavGrid &, float botX, float botZ, float maxStepM);
+
+   		// After a Blocked step: re-plans from the bot's current position to the SAME (quantised) goal.
+   		// Not Active -> None; Replans() >= kMaxGotoReplans -> Reset + ReplanLimit; otherwise as BeginGoto
+   		// with Replans() incremented on Planned (and Reset on failure).
+   		NavPlanStatus Replan(const NavGrid &, NavPathfinder &, float botX, float botZ, const NavDriveParams &);
+
    		const std::vector<NavRoutePoint> & Route() const;
-   		float RouteLengthM() const;
-   		float GoalX() const; float GoalZ() const;
-   		int   Replans() const;                       // plans since Reset (F5-62: 0 or 1; a Blocked step may replan once)
+   		float RouteLengthM() const;         // polyline length; 0 when inactive
+   		float GoalX() const;                // quantised goal
+   		float GoalZ() const;
+   		int   Replans() const;
+   		int   PlanExpanded() const;         // closed nodes of the last Find (for the F5-70 log line)
+   		int   PlanWaypoints() const;        // smoothed waypoints of the last plan, both ends included
    	};
    }
    ```
 
-   `NextStep` kuralları: (a) bot konumunun rota izdüşümü `p` = `NavRouteProgressM`; (b) aday uç = rotanın `min(p + maxStepM, toplam)` konumundaki nokta; (c) `CheckMoveChord(&grid, botX, botZ, uç)` `Ok` değilse uç, izdüşümden sonraki **ilk ara noktaya** çekilir (`truncated = true`) ve yeniden denetlenir; yine `Ok` değilse `Blocked`; (d) kalan rota uzunluğu ≤ `maxStepM` ise `Arrived` ve uç = tam hedef noktası; (e) `Active() == false` → `None`. Sürücü **bir kez** `Blocked` aldığında çağıran, botun **mevcut konumundan** `BeginGoto` ile yeniden planlar (`Replans() ≤ 1`); ikinci `Blocked` yürüyüşü bitirir (`path_blocked`).
-3. **`BotCore.vcxproj` / `BotCoreTests.vcxproj`** tek satır eklemeleri.
-4. **`GameServer/Bot/NavService.h`**: `BotCore::NavPathfinder & SharedPathfinder();` (+ ilk-çağıran `DWORD` ve ihlal bayrağı). Yalnızca IOCP iş parçacığı sözleşmesi yorumda yazılır. `Grid()`/`Ready()`/`GetInfo()` **değişmez**.
-5. **`ActionExecutor`** (`ActionExecutor.h` bildirim, `.cpp` gövde; `MoveOutcome` yeniden kullanılır; yeni `reason` değerleri sabit metin):
-   - `static MoveOutcome BeginGoto(BotSession * s, float tx, float tz, int16 speedField, std::chrono::steady_clock::time_point now);` `BeginMove`'un doğrulamalarını aynen tekrarlar (`not_in_game`, `dead`, `sitting`, `speed_field`; **`bad_target` yerine** ızgara denetimi) ve ek reddetmeler: `nav_off` (`NavService::Instance().Grid() == nullptr`), `nav_zone` (`GetZoneID() != ZONE_RONARK_LAND`), `invalid_goal`, `invalid_start`, `no_path`, `node_limit`. Başarıda: `m_moveActive = true; m_moveTargetX/Z = hedef; m_moveSpeed = speedField; m_movePackets = 0; m_moveLastSent = now - kMovePeriodMs` (ilk paket aynı tick'te), `m_navDrive` rotası kurulu; sonuç `SENT`. Plan süresini `steady_clock` ile ölç, `Bot_*.log` satırına yaz (K11).
-   - `static MoveOutcome TickPathMove(BotSession * s, now)`: `TickMove` ile **aynı** süre/kırpma kuralları (`elapsed ≥ kMovePeriodMs`; `elapsedMs ≤ 2 × kMovePeriodMs`; `maxStep = MaxStepMeters(m_moveSpeed, elapsedMs)`); `NavDriveStep step = s->m_navDrive.NextStep(grid, x, z, maxStep)`; `Step` → `SubmitMove(..., speed = m_moveSpeed, echo = 3, arrived = false)`; `Arrived` → `SubmitMove(..., speed = 0, echo = 0, arrived = true)` ve `m_navDrive.Reset()`; `Blocked` → bir kez yeniden planla, değilse `m_moveActive = false`, `REFUSED "path_blocked"`; `SubmitMove` `REFUSED`/`FAILED` dönerse `m_navDrive.Reset()`. **Ara noktada durma paketi yoktur:** paket yalnızca varışta `speed = 0` taşır.
-   - `BeginMove`, `StopMove`, `AbandonMove`: ilk geçerli noktada `s->m_navDrive.Reset();` (tek satır; `BeginMove`'da doğrulamalar geçtikten sonra, yeni düz yürüyüş yol yürüyüşünün yerini alır). `TickMove`/`StepToward`/`SubmitMove` **değişmez** (`git diff` kanıtı K6).
-6. **`BotSession.h`**: `BotCore::NavDrive m_navDrive;       // IOCP thread only: path-following state (F5-62)`.
-7. **`BotManager`**: `ExecuteCommand`'a `goto` → `CommandGoto(args)`; `CommandGoto` = `CommandMove` kalıbı (aynı sözdizimi `goto <bot> <x> <z> [speed]`, aynı ayrıştırma ve `unknown or not spawned`/`not in game` log satırları); sonuç satırı: `BotManager: cmd goto: <bot> planned <w> waypoints, route <m> m, expanded <n>, <ms> ms, walking to (<x>, <z>) at speed <s>` veya `... refused (<reason>)`. `TickSessions` hareket dalında (`:3070-3095`): `s->m_navDrive.Active() ? ActionExecutor::TickPathMove(s, now) : ActionExecutor::TickMove(s, now)`; `ARRIVED`/`REFUSED`/`FAILED` log satırları mevcut kalıpla aynı (`arrived at ... after N packets`, `move stopped (<reason>)`). Bilinmeyen komut metnine `goto` ekle.
-8. **`ScriptPlan.h`/`ScriptTests.cpp`**: `"goto"` fiilini ekle; `Script_VerbWhitelist` 21 fiili sınasın (`!IsScriptVerb("goto2")` negatif vakası ekle).
-9. **Testler** (`NavDriveTests.cpp`; `MiniTest.h`; sentetik ızgara `Init` + `Build`; hareket simülasyonu = her adımda bot konumunu paket konumuna taşı, `maxStep = 6,75`; adlar sabit):
-   - `NavDrive_Goto_OpenField`: engelsiz 64×64: tüm adımlar `Step`, sonuncusu `Arrived` ve konum = hedef; paket sayısı = `ceil(uzunluk / 6,75)`; hiçbir adım `maxStep + 1e-3`'ü aşmaz.
-   - `NavDrive_Goto_Detour_AllChordsWalk`: ortada kapılı duvar: rota uzunluğu ≥ düz mesafe; **her** adım kirişi `CheckMoveChord == Ok`; varır.
-   - `NavDrive_Goto_NoStopAtWaypoint`: köşeli rotada (L biçimi) ilk `Arrived`'a kadar her adım `Step` ve (kısaltma yokken) uzunluğu `maxStep`'e eşit (`truncated == false`); köşeden geçen adım durmaz.
-   - `NavDrive_Goto_ChordBlockedTruncates`: tam adım köşeyi kesip duvara değecek şekilde kurulmuş durum: adım ilk ara noktaya kısaltılır (`truncated`), kiriş `Ok`; ara noktada bitince sonraki adım yoldan devam eder.
-   - `NavDrive_Goto_StatusMapping`: `Walk` olmayan hedef → `InvalidGoal`; `Walk` olmayan başlangıç → `InvalidStart`; yalıtılmış cep → `NoPath`; `maxNodes = 8` → `NodeLimit`; hiçbirinde `Active()` olmaz.
-   - `NavDrive_Goto_OffRoute`: yürüyüşün ortasında bot yoldan 2 m yana itilir: sonraki adımlar izdüşümden sürer, geriye atlamaz, varır.
-   - `NavDrive_Reset_Inactive`: `Reset()` sonrası `NextStep` `None`; `Active() == false`; rota boş.
-   - `NavDrive_RealMap_RespawnReturn`: gerçek harita (yoksa `SKIPPED`): Karus (1369,9; 1090,3) ve El Morad (630,0; 920,0) doğuşlarından arena A (1275,0; 890,0) hedefine `BeginGoto` (**doğuş hücresi `Walk` değilse `NearestWalk` ile; rapora yaz**) → `Planned`; simüle yürüyüşte `blocked == 0`, `Arrived` ≤ 1 m; satır `NAVDRIVE respawn karus|elmorad: route_m=<m> packets=<n> eta_s=<route/4,5> blocked=0`.
-   - `NavDrive_RealMap_Random`: 300 `near64` çift: hepsi `Planned` (veya dürüstçe `NoPath` sayılır) ve yürüyüşte `blocked == 0`, `Arrived`; `NAVDRIVE random pairs=<n> planned=<p> blocked=0`.
-   - `NavDrive_Perf` (`#ifndef _DEBUG`): `BeginGoto` (Find + Smooth) `near64` p95 ≤ 2,0 ms (AC-NAV-02 kapısı; PM-M3 ile uyumlu).
-10. Derle/test (§7); `check-perception-contract.py` rc=0. Sunucu çalıştırma uygulayıcıya düşmez (K10-K15 Claude). Uygulayıcı Raporu; `Durum` → `UYGULANDI`.
+   `BeginGoto` kuralları (sırayla): (a) bot veya hedef koordinatı sonlu değil / < 0 / `w * 10 > 65535` ise — bot için `InvalidStart`, hedef için `InvalidGoal`; (b) hedefi `NavQuantiseM` ile nicemle; başlangıç hücresi `CellOf(botX/Z)`, hedef hücresi nicemlenmiş hedeften; `grid.Walk` değilse sırasıyla `InvalidStart` / `InvalidGoal` (ızgara dışı dahil; ADR-0021: en yakın hücreye alma yok); (c) `Find` + `NavSmoothPath`; `Found` dışı durum `NoPath`/`NodeLimit`'e eşlenir; (d) rota: §2 karar 3 (başlangıç ve hedef hücre aynıysa rota `[bot, hedef]`); (e) `PlanExpanded`/`PlanWaypoints` doldurulur.
+
+   `NextStep` kuralları (sırayla): (a) `p = NavRouteProgressM(rota, bot)`, `toplam = RouteLengthM()`; (b) `kalan = toplam − p ≤ maxStepM` ise aday = hedef noktası ve `goal = true`; değilse aday = rotanın `p + maxStepM` konumundaki nokta (çok parçalı polilin üzerinde, ara noktalarda durmadan); aday `NavQuantiseM` ile nicemlenir; (c) `CheckMoveChord(&grid, botX, botZ, adayX, adayZ)` `Ok` ise dön: `Arrived` (goal) ya da `Step`; (d) `Ok` değilse **kısaltma:** `p + kMinTruncStepM` ≤ kümülatif mesafe < (`goal ? toplam : p + maxStepM`) koşulunu sağlayan **ilk ara nokta** (rotanın 1..n−2 indisleri) nicemlenir ve aynı kiriş denetimi yapılır; `Ok` ise `Step` + `truncated = true`; ara nokta yoksa ya da yine `Ok` değilse `Blocked` (`x/z` botun konumu). `Skipped` (ızgara yok) bu planda oluşamaz (`const NavGrid &`).
+
+3. `.vcxproj` iki tek satır (§4).
+4. `NavQuantiseM`, `Route()` vb. küçük yardımcılar `inline`; `NavDrive` sınıfı başlıkta tanımlanır (`.cpp` yok; `BotCore` başlık-yalnızca kalır).
+5. **Test yardımcıları** (`NavDriveTests.cpp`, anonim ad alanı; `NavChordGuardTests.cpp:49-119` ve `NavArenaTests.cpp:103-125`'ten **kopyalanır**, orijinallere dokunulmaz): `LoadZone71OrSkip(grid, tag)` (`NAVDRIVE <tag>: SKIPPED ...` satırı yazar), `CollectWalk`, `RandomNear`, `PercentileDouble`, `NearestWalk`; ek olarak sentetik ızgara üreticileri (aşağıda) ve **yürüyüş simülatörü**: `Walk(drive, grid, startX, startZ, maxStep, ...)` her turda `NextStep` çağırır, `Step`/`Arrived` ise bot konumunu `(x, z)`'ye taşır, `Blocked` ise kaydeder; sonuç yapısı: paket sayısı, `Arrived` mı, `Blocked` sayısı, kısaltılmış adım sayısı, en uzun adım, adım kirişlerinin her biri için **bağımsız örnekleme denetimi** (kiriş boyunca 0,25 m aralıkla noktalar; her noktanın hücresi `grid.Walk`). En çok 2000 tur (sonsuz döngü koruması; aşılırsa `Arrived == false`).
+6. **Sentetik testler** (`n = 64`, `unit = 4,0`, yükseklik 0; kenar hücreleri `Event 0` olmalı: yalnızca kenara değmeyen en büyük `Event 1` bileşeni `Walk` olur, `NavGrid::Build`):
+   - `NavDrive_Quantise`: `NavQuantiseM(0,04) == 0,0`; `(0,05) == 0,1` (yürütücüyle aynı `uint16(w*10+0,5)`); `(123,456) == 123,5`; nicemlenmiş değer üzerinde idempotent; hata ≤ 0,05 + 1e-4.
+   - `NavDrive_Goto_OpenField`: engelsiz iç bölge (1..62), (20,20) merkezinden (200,200)'e; her tur `Step`, sonuncusu `Arrived`; son konum = nicemlenmiş hedef; paket sayısı = `ceil(RouteLengthM() / 6,75)` ± 1; hiçbir adım uzunluğu `6,75 + 0,15 + 1e-3`'ü aşmaz; `Replans() == 0`; hiç `truncated` yok.
+   - `NavDrive_Goto_AlreadyThere`: bot hedef noktasında: ilk `NextStep` `Arrived`, `x/z` = hedef; `Replans() == 0`.
+   - `NavDrive_Goto_Detour_AllChordsWalk`: ortada tek hücre kalınlığında uzun duvar (örn. `x = 31`, `z = 2..45`; uçlarda geçit): rota uzunluğu ≥ düz mesafe; yürüyüş `Arrived`, `Blocked == 0`; her adım kirişi bağımsız örnekleme denetiminden geçer.
+   - `NavDrive_Goto_ChordBlockedTruncates`: aynı duvar, **`maxStepM = 400`** (tek adım tüm rotayı kapsar): ilk `NextStep`'te aday (hedef) duvarı keser → `Step`, `truncated == true`, konum rotanın **ilk ara noktasının nicemlenmişi**, kiriş `Ok`; döngü sürer: tüm adımlar `truncated` ya da son `Arrived`; adım sayısı = ara nokta sayısı + 1; bot varır.
+   - `NavDrive_Goto_StatusMapping`: `Walk` olmayan hedef (duvar hücresi) -> `InvalidGoal`; ızgara dışı ve negatif hedef -> `InvalidGoal`; `Walk` olmayan başlangıç -> `InvalidStart`; `NoPath`: iç bölgeyi ikiye bölen sütunun sağındaki tüm hücrelerin yüksekliği 10 m yapılır (`x >= 32`; sol yarı 0 m; iki yarı da `Walk` kalır, ama 10 m > `0,45 x 4` olduğu için aralarındaki her kenar `EdgeOpen`te kapalıdır) ve sol yarıdan sağ yarıya `BeginGoto` -> `NoPath`; açık ızgarada `search.maxNodes = 8` ile uzak hedef -> `NodeLimit`; her durumda `Active() == false`, `Route()` boş.
+   - `NavDrive_Goto_EndpointsOffCentre`: 300 çift (`Rng(20261003u)`), her iki uç da hücre içinde **rastgele** (`0,1..3,9 m` içeride, nicemlenmiş), 64×64 ızgarada 12 sabit dikdörtgen engel; hücresi `Walk` değilse yeniden çek; `Planned` olanların hepsi `Arrived`, `Blocked == 0`, `Replans() == 0`, bağımsız örnekleme denetimi ihlali 0; `NAVDRIVE offcentre pairs=<n> planned=<p> blocked=0` satırı. `NoPath` olabilir mi: engeller bağlantıyı koparmayacak yerleştirilir (uygulayıcı `Planned == pairs` bekler; değilse rapora yaz).
+   - `NavDrive_Blocked_Replan`: açık ızgarada `BeginGoto` (rota `[bot, hedef]`); ardından `NextStep` **ortasında duvar olan başka bir ızgarayla** (aynı boyut, aynı `Walk` uçları) çağrılır → `Blocked` (ara nokta yok); `Replan` (duvarlı ızgarayla) → `Planned`, `Replans() == 1`, yürüyüş `Arrived`; ikinci bir `Blocked` + `Replan` → `ReplanLimit`, `Active() == false`.
+   - `NavDrive_OffRoute`: yürüyüşün ortasında bot rotadan 2 m yana itilir (yürünebilir hücre): sonraki adımlar izdüşümden sürer, `routeProgressM` geriye atlamaz (`>= önceki − 2,0`), varır.
+   - `NavDrive_Reset_Inactive`: `Reset()` sonrası `NextStep` → `None`; `Active() == false`; `Route()` boş; `RouteLengthM() == 0`; `Replan` → `None`. `maxStepM <= 0` ve NaN konum → `None`.
+7. **Gerçek harita testleri** (`LoadZone71OrSkip`; yoksa `SKIPPED`, `K3` bunu kabul etmez):
+   - `NavDrive_RealMap_RespawnReturn`: `NearestWalk` ile Karus (1385; 1095), El Morad (635; 925) → arena (1274; 890); başlangıç ve hedef **hücre merkezi**; `BeginGoto` `Planned`; yürüyüş (`maxStep 6,75`) `Arrived`, `Blocked == 0`, bağımsız örnekleme ihlali 0; `RouteLengthM()` bantları: Karus **268-284 m**, El Morad **680-722 m** (ölçüm 276,0 / 701,3, §2); paket sayısı ≤ `ceil(L / 6,75) + PlanWaypoints() + 2` ve ≥ `ceil(L / 6,75)` (geçici ölçüm prototipi: ikisinde de tam `ceil`, 41 ve 104 paket, kısaltma 0); **ara noktada durmama kanıtı:** ara noktayı kapsayan **kısaltılmamış** adım sayısı `crossed >= 1` (prototip: Karus 8, El Morad 8; `NavRouteProgressM` ile adımdan önceki/sonraki ilerleme ve `Route()` kümülatif mesafeleriyle hesaplanır); satır: `NAVDRIVE respawn karus|elmorad: route_m=<m> waypoints=<w> expanded=<n> packets=<p> crossed=<c> truncated=<t> eta_s=<L/4,5> blocked=0` (`eta_s` bir tahmindir, ölçülmüş süre değildir).
+   - `NavDrive_RealMap_Random`: 300 `near64` çift (`Rng(20261003u)`; uçlar hücre içinde rastgele, nicemlenmiş, hücresi `Walk` değilse yeniden çekilir): `Planned` ≥ %85 (kalanı yalnızca `NoPath`: ana bileşen içindeki eğim cepleri, F5-69 `reach` 85 508/88 508), `NodeLimit == 0`, `InvalidStart/InvalidGoal == 0`; planlananların tümü `Arrived`; çözülemeyen `Blocked` (Replan sonrası da) **0**; kaç `Blocked` olayı/`Replan` olduğu satırda: `NAVDRIVE random pairs=<n> planned=<p> nopath=<np> blocked_events=<b> replans=<r> unrecoverable=0 truncated=<t>`.
+   - `NavDrive_Perf` (`#ifndef _DEBUG`): `near64` çiftlerinde 2000 `BeginGoto` (tek `NavPathfinder`, ilk çağrı havuz ayırması dışarıda tutulur: önce 1 ısınma çağrısı) p95 ≤ **2,0 ms** (AC-NAV-02); `NextStep` p95 ≤ **0,05 ms**; satır `NAVDRIVE perf: begin_p95_ms=<x> step_p95_ms=<y>`.
+8. Derle/test (§7); `check-perception-contract.py` rc=0. Sunucu çalıştırılmaz. Uygulayıcı Raporu; `Durum` → `UYGULANDI`.
 
 ## 6. Kabul kriterleri
 
-- [ ] K1: `./tools/build.sh Release` ve `Debug` rc=0; değişen dosyalar `touch` edilince yeni uyarı yok (özellikle `BotSession.h` `NavDrive.h`'yi ilk kez dahil ettiği için `ActionExecutor.cpp`, `BotManager.cpp`, `ScenarioRunner.cpp`, `ScriptRunner.cpp`, `Telemetry.cpp` yeniden derlenir)
-- [ ] K2: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; on yeni `NavDrive_*` test adı `[ OK ]` (§5 adım 9) ve güncellenmiş `Script_VerbWhitelist`; mevcut testler değişmeden geçer
-- [ ] K3: gerçek-harita testleri `SKIPPED` **değil**; raporda `NAVDRIVE respawn karus ...`, `NAVDRIVE respawn elmorad ...` ve `NAVDRIVE random ...` satırları (`blocked=0`; her iki ulus `Planned`)
-- [ ] K4: `git diff --stat` yalnızca §4 (12 dosya, 2 yeni) + plan dosyası; `BotCore/NavGrid.h|NavPath.h|NavSmooth.h|NavStuck.h|NavSegment.h|NavChordGuard.h`, `docs/`, `tools/`, `proj-GameServer.vcxproj` farkı **0**; `git diff --check` boş
-- [ ] K5: `NavDrive.h`'de `grep -n -E "windows.h|stdafx|GameServer|shared/|static |new |malloc"` boş; `python3 tools/check-perception-contract.py` rc=0 (R1-R5 PASS; `BotSession.h` yeni üyesi R5'i bozmaz)
-- [ ] K6: `ActionExecutor.cpp`'de `TickMove`, `StepToward` çağrısı ve `SubmitMove` gövdesinin `git diff`'i **boş**; `BeginMove`/`StopMove`/`AbandonMove` farkı yalnızca birer `m_navDrive.Reset();` satırı (kanıt `git diff -U0` çıktısı raporda)
-- [ ] K7: `TickPathMove`'da hiçbir `speed = 0` paketi varış dışında üretilmez (kod incelemesi, `dosya:satır`); `Blocked` yolunda `HandlePacket` çağrısı yok (F5-61 guard'ı `SubmitMove` içindedir)
-- [ ] K8: `[BOT] NAV=0` ve `ENABLED=0` davranışı değişmez: `NAV=0` iken `/bot goto` `refused (nav_off)` yazar ve **başka hiçbir** komutun çıktısı/davranışı farklı değildir (K13)
-- [ ] K9: yeni dosyalar yalnızca ASCII + CRLF (`file` çıktısı); `NavService.h` UTF-8 BOM durumu F5-59'daki gibi korunur (`head -c3 | xxd -p` raporda)
-- [ ] K10 (Claude, çalışma zamanı): `ENABLED=1, NAV=1, TELEMETRY=decisions`; bir Karus botu doğuş noktasından `/bot goto <bot> 1275 890`: `Bot_*.log`'da `cmd goto: ... planned <w> waypoints, route <m> m, expanded <n>, <ms> ms`; bot yürür (`ACTION_SUBMIT` `Move` paketleri, `echo:3`, ara noktada `speed:0` paketi **yok**), varır (`arrived ... after N packets`), `N ≈ ceil(route / 6,75)`; paket sayısı ve süre rapora; `FAIRNESS_REJECT` (`blocked_chord`) **0**; `pathfinder ... VIOLATION` satırı **yok**
-- [ ] K11 (Claude): aynı için El Morad botu doğuş noktasından arena A'ya; iki ulusun yol uzunluğu/süresi (`docs/12` §13.4 beklentisi Karus ~52 sn, El Morad ~142 sn ± %20 **yalnızca bilgi**; kabul ölçütü F5-66'dadır)
-- [ ] K12 (Claude): düz yürüyüş korunur: `/bot move` aynı bot için eskisi gibi çalışır (düz çizgi, engele değmeyen hedef); `/bot move` bir `goto`'nun ortasında verilirse `goto` iptal olur ve düz yürüyüş başlar; `/bot stop` yol yürüyüşünü durdurur ve botun yeniden `goto` ile başlayabildiği görülür
-- [ ] K13 (Claude): `NAV=0`: `/bot goto` `refused (nav_off)`, `/bot move` aynı; `ENABLED=0` iken hiçbir bot satırı yok
-- [ ] K14 (Claude): ulaşılamayan/geçersiz hedef: `Walk` olmayan hedef (`invalid_goal`), ana bileşen dışındaki cep hedefi (`no_path` veya `invalid_goal`), ızgara dışı hedef — bot **yürümez**, `Bot_*.log`'da sebep; çökme yok
-- [ ] K15 (Claude): sunucu `stop` ile kapanır; ilk-`Find` süresi (havuz ayırma dahil) ve sonraki sorgu süreleri rapora (bilgi: `docs/12` §13.5.2 kuralı 9 etiketi `[V: ORT-S, Y1, goto planı]`)
+- [ ] K1: `./tools/build.sh Release` ve `./tools/build.sh Debug` rc=0; yeni derleyici uyarısı yok (`NavDrive.h` ve test dosyası için)
+- [ ] K2: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; on üç yeni `NavDrive_*` test adı `[ OK ]` (§5 adım 6-7: `Quantise`, `Goto_OpenField`, `Goto_AlreadyThere`, `Goto_Detour_AllChordsWalk`, `Goto_ChordBlockedTruncates`, `Goto_StatusMapping`, `Goto_EndpointsOffCentre`, `Blocked_Replan`, `OffRoute`, `Reset_Inactive`, `RealMap_RespawnReturn`, `RealMap_Random`, `Perf` = 13 ad); toplam test sayısı = başlangıç (§5 adım 1) + 13; mevcut testlerin hiçbiri değişmez
+- [ ] K3: gerçek-harita testleri `SKIPPED` **değil**; raporda `NAVDRIVE respawn karus ...`, `NAVDRIVE respawn elmorad ...`, `NAVDRIVE random ...` ve `NAVDRIVE perf ...` satırları (`blocked=0`, `unrecoverable=0`, her iki doğuş `Planned`, `Arrived`; rota uzunlukları §5 adım 7 bantlarında)
+- [ ] K4: `git diff --stat gece/2026-10-02...bot/F5-62` yalnızca §4'teki 4 dosya + bu plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `tools/`, `BotCore/Nav{Grid,Path,Smooth,Stuck,Segment,ChordGuard}.h`, `BotCore/BotMotion.h` farkı **0**; `git diff --check` boş
+- [ ] K5: `grep -n -E "windows.h|stdafx|GameServer|shared/|static |malloc|std::chrono" BotCore/NavDrive.h` boş (`constexpr` ad alanı sabitleri `static` değildir); `python3 tools/check-perception-contract.py` rc=0
+- [ ] K6: `NextStep` `Step`/`Arrived` döndürdüğü her adımda, `NavQuantiseM` uç noktası ve botun verilen konumuyla `CheckMoveChord == Ok` olduğu testte **bağımsız** kanıtlanır: gerçek haritadaki 300 çift + iki doğuş yürüyüşünde adım kirişlerinin `0,25 m` örnekleme denetimi ihlali 0 (`NAVDRIVE ... blocked=0` satırları)
+- [ ] K7: yeni dosyalar yalnızca ASCII + CRLF (`file BotCore/NavDrive.h Tests/BotCoreTests/NavDriveTests.cpp` çıktısı raporda); `BotCore.vcxproj` ve `BotCoreTests.vcxproj` UTF-8 BOM + CRLF korunmuş (`file` çıktısı)
+- [ ] K8: sunucu ikilisi değişmez: `git diff --stat gece/2026-10-02...bot/F5-62 -- GameServer shared AIServer` boş (bot sistemi kapalıyken ve açıkken davranış farkı yok: bu plan sunucu koduna dokunmaz)
+
+Bu planda Claude çalışma zamanı kriteri **yoktur** (sunucu çalıştırılmaz); çalışma zamanı doğrulaması F5-70'tedir.
 
 ## 7. Doğrulama komutları
 
 ```bash
 python3 tools/nav-export.py
 ./tools/build.sh Release && ./tools/build.sh Debug
-./tools/run-tests.sh Release 2>&1 | grep -E "NavDrive_|NAVDRIVE|Script_VerbWhitelist|tests,"
-./tools/run-tests.sh Debug
+./tools/run-tests.sh Release 2>&1 | grep -E "NavDrive_|NAVDRIVE|tests,"
+./tools/run-tests.sh Debug 2>&1 | grep -E "NavDrive_|tests,"
+./build/bin/x86-Release/Tests/BotCoreTests.exe --list | wc -l
 python3 tools/check-perception-contract.py
+grep -n -E "windows.h|stdafx|GameServer|shared/|static |malloc|std::chrono" BotCore/NavDrive.h
+file BotCore/NavDrive.h Tests/BotCoreTests/NavDriveTests.cpp BotCore/BotCore.vcxproj Tests/BotCoreTests/BotCoreTests.vcxproj
 git diff --stat gece/2026-10-02...bot/F5-62
-git diff -U0 gece/2026-10-02...bot/F5-62 -- GameServer/Bot/ActionExecutor.cpp | grep -E "^[-+]" | grep -v "^+++\|^---" | head -80
 git diff --check gece/2026-10-02...bot/F5-62
-# Claude (çalışma zamanı): ./tools/run-servers.sh start ; echo "goto <bot> 1275 890" >> /mnt/c/dev/fdp/server/BotCommands.txt ; grep -a -E "cmd goto|arrived|VIOLATION" /mnt/c/dev/fdp/server/Logs/Bot_*.log ; ./tools/run-servers.sh stop
 ```
 
 ## 8. Kısıtlar ve uyarılar
 
-- `AGENTS.md` §3: CRLF, tab, Allman, yorumlar İngilizce, yeni dosyalar ASCII; konsol spam'i yok (yalnızca `Bot_*.log`); `NAV=0` iken sunucu davranışı değişmez.
-- **Bot avantajı yasağı (`docs/03` §13, `docs/13` §3):** yol, botun kendi konumundan ve herkesin sahip olduğu zone verisinden (F5-59 ızgarası) hesaplanır; hedef komutla verilir (bot hedefin yerini **bulmaz**). Hız: `m_moveSpeed` ≤ sunucu sınırı (CLI-05) ve adım ≤ `MaxStepMeters` (CLI-08) `SubmitMove` guard'ında korunur; yol izleme paketleri **aynı** sıklık ve hızla gider (`kMovePeriodMs`), yani botu hızlandırmaz.
-- Thread: tüm çağrılar IOCP iş parçacığında; paylaşılan `NavPathfinder` başka iş parçacığından çağrılırsa karar geçersizdir (`VIOLATION` satırı = BLOKE).
-- Bu plan `field = nullptr` ile **düz mesafe** planlar: arena modunda yasaklı-disk kuralı yoktur. "Arena sınırı içinde kal" (docs/12 §13.4) bu planda **sağlanmaz**; arenaya varış hedef noktasında durmakla sağlanır. Arena sınırının sunucu bağlaması hiçbir F5-59..F5-66 diliminde yoktur (açık kapsam boşluğu; `F5-bagimlilik-ozeti.md`).
-- **Dürüstlük:** birim testleri rota/adım mantığını ve gerçek haritada kirişlerin `Walk` olduğunu sınar; botun oyunda gerçekten engelsiz yürüdüğü K10-K12 (çalışma zamanı) ve F5-66 ile kanıtlanır. `eta_s` (rota/4,5) bir **tahmindir**, ölçülmüş yürüme süresi değildir. İnsan rotaları ızgara rotasından %8-24 uzundur (`docs/15` T-ENV-ARENA-04).
-- Beklenmedik durumda (F5-59/F5-61 imzası farklı, `NavDrive` `BotSession`'ı dahil edince derleme/uyarı sorunu, ek dosya gerekiyor) **dur** ve `Durum: UYGULANIYOR (BLOKE)` ile raporla.
+- `AGENTS.md` §3: CRLF, tab, Allman, yorumlar İngilizce, yeni dosyalar ASCII; konsol/`printf` yalnızca test çıktısında (`NAVDRIVE ...` satırları, mevcut `NAVCHORD`/`NAVARENA` kalıbı).
+- **Bot avantajı yasağı (`docs/03` §13, `docs/13` §3):** yol, botun kendi konumundan ve herkesin sahip olduğu zone verisinden (F5-59 ızgarası) hesaplanır; hedef komutla verilir. `NavDrive` hız/sıklık belirlemez: adım uzunluğu çağıranın verdiği `maxStepM`'dir (yürütücüde `MaxStepMeters`; CLI-05/CLI-08 `SubmitMove` guard'ında korunur).
+- Thread: `NavPathfinder` iş parçacığı güvenli değildir; `BeginGoto`/`Replan` çağıranın verdiği örneği kullanır. Paylaşılan örnek ve thread denetimi F5-70'tedir; `NavDrive.h` içinde thread/saat/global yoktur.
+- **Dürüstlük:** testler rota/adım mantığını ve gerçek haritada kirişlerin `Walk` olduğunu sınar; botun oyunda engelsiz yürüdüğü F5-70 çalışma zamanı kriterleri ve F5-66 ile kanıtlanır. `eta_s` (`L / 4,5`) tahmindir. Arena sınırı bu planda yoktur (`field = nullptr`, düz mesafe; `docs/reports/plan-bagimlilik-F5-2026-10-03.md` "kapsam boşluğu").
+- Bantlar (`268-284`, `680-722`, `≥ %85`) ölçüme dayanır (§2); gerçek değerler bandın dışındaysa **bandı gevşetme**: rapora yaz ve dur (`BLOKE`); neden çoğunlukla başlangıç hücresi/hedef hücresi seçimindeki farktır.
+- Beklenmedik durumda (imza farkı, `NavSmoothPath`/`Find` davranış değişimi, `Blocked` beklenenden sık, ek dosya gerekiyor) **dur** ve `Durum: UYGULANIYOR (BLOKE)` ile raporla.
 
 ---
 
@@ -219,13 +221,14 @@ git diff --check gece/2026-10-02...bot/F5-62
 
 - Durum: UYGULANDI
 - Branch / commit'ler: `bot/F5-62` — `<kısa-sha> [F5-62] …`
+- Başlangıç / bitiş test sayısı (`--list | wc -l`): …
 - Değişen dosyalar ve neden:
   - `…`
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
   …
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K10-K15 Claude'un çalışma zamanı kriterleri)
+- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
 - Gerçek-harita test satırları (`NAVDRIVE ...`): …
 - Plandan sapmalar ve gerekçeleri: …
 - Açık sorular: …
