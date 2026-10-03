@@ -120,10 +120,13 @@ def parse_args(argv):
             if index + 1 >= len(argv):
                 return None, None, "option %s needs a value" % arg
             raw = argv[index + 1]
-            value = parse_cli_int(raw)
-            if value is None:
-                return None, None, "option %s needs an integer" % arg
-            opts[PARAM_OPTIONS[arg]] = value
+            if arg == "--win-rule":
+                opts[PARAM_OPTIONS[arg]] = raw
+            else:
+                value = parse_cli_int(raw)
+                if value is None:
+                    return None, None, "option %s needs an integer" % arg
+                opts[PARAM_OPTIONS[arg]] = value
             index += 2
         elif arg.startswith("--"):
             return None, None, "unknown argument: %s" % arg
@@ -1347,6 +1350,40 @@ def run_selftest():
             if rc != 0 or out.count("OUTCOME ") != 2:
                 raise AssertionError("directory scan failed: %r" % out)
         case("cli_directory_scan", cli_directory_scan)
+
+        def cli_win_rule_option():
+            records = build_records("cwr", [1, 2], [3, 4],
+                                    deaths=[(2000, 3, 1), (3000, 3, 1)],
+                                    end_t=301000)
+            rc, out, _err = run_records(records, ("--win-rule", "wipe_first"))
+            if rc != 0:
+                raise AssertionError("rc %d" % rc)
+            if "rule=wipe_first" not in out or "end=alive_count" not in out:
+                raise AssertionError("win-rule option not applied: %r" % out)
+        case("cli_win_rule_option", cli_win_rule_option)
+
+        def cli_win_rule_priority():
+            records = build_records("cwrp", [1, 2], [3, 4],
+                                    deaths=[(2000, 3, 1), (3000, 4, 2),
+                                            (4000, 1, 3)],
+                                    end_t=301000, win_rule="killdiff_timed")
+            rc, out, _err = run_records(records, ("--win-rule", "timed_score"))
+            if rc != 0:
+                raise AssertionError("rc %d" % rc)
+            if "result=no_result" not in out:
+                raise AssertionError("CLI rule did not win: %r" % out)
+            if "k_a=2 k_b=1" not in out:
+                raise AssertionError("counts wrong: %r" % out)
+        case("cli_win_rule_priority", cli_win_rule_priority)
+
+        def cli_win_rule_invalid_rc2():
+            records = build_records("cwri", [1, 2], [3, 4], end_t=121000)
+            rc, out, _err = run_records(records, ("--win-rule", "bogus"))
+            if rc != 2:
+                raise AssertionError("rc %d != 2" % rc)
+            if "OUTCOME" in out:
+                raise AssertionError("unexpected OUTCOME: %r" % out)
+        case("cli_win_rule_invalid_rc2", cli_win_rule_invalid_rc2)
 
         def sample_file_expected():
             here = os.path.dirname(os.path.abspath(__file__))
