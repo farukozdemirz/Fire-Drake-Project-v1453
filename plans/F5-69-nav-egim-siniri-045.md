@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANIYOR (BLOKE) |
 | Faz | F5 — Navigasyon (`docs/12` §2/§3; kapı G5) |
 | Branch | `bot/F5-69 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`, `KAPANDI`), F5-59 (`NavService` aynı `NavParams` varsayılanını kullanır, `KAPANDI`) |
@@ -109,7 +109,59 @@ git grep -n -E "0\.625" BotCore Tests
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-(boş)
+### Tur 1
+
+**Durum:** UYGULANIYOR (BLOKE) — plan §3 adım 3'ün "gerçek davranış değişimi (`yol bulunamıyor`, `NodeLimit`, `bağlantı kopması`) varsa durup raporla" koşulu tetiklendi.
+
+**Branch / commit:** `bot/F5-69` (taban `gece/2026-10-02` @ `9053844`); `05e9e45` kod + testler (bu rapor ayrı commit).
+
+**Yapılanlar (plan kapsamı):**
+- `BotCore/NavGrid.h`: `NavParams::maxSlope` `0.625f` -> `0.45f`; yorum P-NAV-MAX-SLOPE `[V]` (T-NAV-02, ADR-0024) olarak güncellendi. Algoritma, `EdgeOpen`, diğer alanlar değişmedi.
+- `Tests/BotCoreTests/NavGridTests.cpp` `Nav_Edge_Slope`: (a) yorum "0.625 default" -> "0.45 default"; (b) `2.4f * x` -> `1.6f * x` (yorum 0.4); (c) köşegen `3.5f`/`3.6f` -> `2.5f`/`2.6f` (yorum limit 2.546 m).
+- `Tests/BotCoreTests/NavSegmentTests.cpp` `NavSegment_Slope`: at-limit `2.5f` -> `1.8f`, üstü `2.51f` -> `1.81f`, köşegen `3.5f`/`3.6f` -> `2.5f`/`2.6f`; yorumlar yeni limitlere göre.
+- `Tests/BotCoreTests/NavGridTests.cpp` sonuna iki yeni test: `NavGrid_DefaultSlope_045`, `NavGrid_RealMap_DefaultSlopeConnectivity`.
+- `tools/nav-measure/nav_measure.cpp`, `tools/nav-segment-check.py`, `tools/nav-regress.py`: eğim sabiti içermiyor (`grep` boş), değişmedi.
+
+**Temel ölçüm (plan varsayımı doğrulandı):**
+- `NavGrid_DefaultSlope_045` `[ OK ]`.
+- `NAVSLOPE real map: main=88508 reach=85508 landmarks=5/5` -> beş sınır noktası da bağlı, `reach` = 85.508 (88.508'in %96,6'sı), K5 bandında (85.000-87.000) ve §3 bandında (%96-%97 ±%1). Plan §2 iddiası tutuyor.
+
+**Derleme çıktısı (son satırlar):**
+- `./tools/build.sh Release` rc=0; değişen dosyalarda yeni uyarı yok (`BotCoreTests.vcxproj -> ...BotCoreTests.exe`).
+- `./tools/build.sh Debug` rc=0; değişen dosyalarda yeni uyarı yok.
+
+**Engelleyici:** `./tools/run-tests.sh Release` taban `274 tests, 0 failed` iken şimdi `276 tests, 8 failed`. Kırılanların tamamı 0,625 varsayılanına bağlı gerçek harita/performans testleri olup içlerinde plan §3'te sayılan gerçek davranış değişimi türleri vardır:
+
+| Test | Kırılan | Tür / kanıt |
+|---|---|---|
+| `NavReach_RealMap` | 15+ | **Bağlantı kopması + yol yok:** bileşen sayısı 143 -> 401, en büyük bileşen 88279 -> 87513, cep hücreleri 229 -> 995; `reach.Connected(s,g)` (218,206)-(221,211) artık **false**; detour çifti (s->g) `REQUIRE(... Planned)` **başarısız** (rota planlanamıyor) |
+| `NavReach_Perf` | 1 | **Kalite kapısı:** `unreachable*100 <= queries*5`; mage kümesinde unreachable 51/1000 > %5 |
+| `NavPath_RealMap_Queries` | 2 | `expanded > 88000` artık geçmiyor; arena A->B `cost` 660.617 -> 670.961 |
+| `NavDanger_RealMap` | 10+ | sabit maliyet/uzunluk/`ForbiddenOnPath` değerleri; `crossField > crossPlain` false |
+| `NavRetreat_RealMap` | 15+ | sabit score/len/candidates (2799 -> 2733, 245 -> 239, 2783 -> 2697); `cell` (320,271) -> (320,270) |
+| `NavStuck_SideStep_RealMap` | 3 | sabit sayaçlar: `sidestep_h` 86017 -> 85208, `sidestep_n` 86968 -> 86512, `clr2_found` 66003 -> 65739 |
+| `NavBudget_Deferred_Chase_Sim` | 3 | **davranış:** `followStaleTicks` 0 -> 87 (B), 0 -> 153 (B2); `bMean <= 1.25*aMean` false |
+| `NavBudget_RealMap_Load` | 1 | **performans bütçesi:** `worst_B_p99` 4.682 > 4.5; `worst_A_p95=3.766`, marj dar |
+
+**Neden bu 8 test "eski sabit" sayılıp güncellenmedi:** Plan §3 adım 3 yalnızca *eski varsayılanı kodlayan sabitlerin* güncellenmesini, gerçek davranış değişiminde durulmasını emrediyor. Yukarıdakiler yalnızca sabit değil; rota planlanabilirliği, bağlantı, takip tazeliği ve tick bütçesi gibi davranışsal/yapısal beklentiler içeriyor. Kapsam planın "S (1 üretim satırı + birkaç test sabiti)" tahmininin çok üstünde (8 test dosyası, onlarca referans + 3 davranış/perf kapısı). Eşik gevşetmek plan §8 ile yasak; değerleri yeniden ölçüp yazmak karar/değerlendirme işidir.
+
+**Sapmalar:**
+- Plan adım 4'teki `python3 tools/nav-export.py` gerekmedi; `build/nav/zone71.navgrid` zaten vardı.
+- Adım 5'teki Debug test koşusu yapılmadı; adım 3'te duruldu (Debug derlemesi rc=0).
+
+**Açık sorular (proje sahibi/Claude kararı):**
+1. 0,625'e bağlı kalan 8 testin sabit/davranış beklentileri 0,45'e göre **yeniden ölçülüp güncellenecek mi** (o zaman değişen değerler ve perf kapıları onaylanmalı), yoksa eğim yalnızca planlayıcı varsayılanı olarak 0,45 tutulup bu testler ayrı bir "0,45 referans güncelleme" dilimine mi bırakılmalı?
+2. `NavBudget_RealMap_Load` `worst_B_p99` 4.682 > 4.5 (bütçe) ve `NavReach_Perf` mage unreachable %5,1: bu üst sınırlar 0,45'in kabul edilebilir sonucu mu, yoksa eğim sınırı/bütçe yeniden mi değerlendirilmeli?
+3. `NavReach` bileşen yapısının 143 -> 401'e çıkması beklenen mi; `reach.Connected(s,g)` gibi yakın-hücre bağlantı beklentileri yeni yapıya göre mi yazılmalı?
+
+**Kriter öz-değerlendirmesi:**
+- K1 ✔ (Release + Debug rc=0, değişen dosyalarda yeni uyarı yok)
+- K2 ✘ (`run-tests.sh` Release: `276 tests, 8 failed`; iki yeni test `[ OK ]`)
+- K3 ✔ (`git diff --stat` yalnızca §4 dosyaları; `BotCore/NavGrid.h` farkı iki anlamlı satır; `GameServer/`, `shared/`, `tools/`, `docs/` farkı 0; `git diff --check` boş)
+- K4 ✔ (`maxSlope = 0.45f`; `git grep -n -E "0\.625" BotCore Tests` tek isabet: `NavStuckTests.cpp:458` hız yorumu, eğim değil)
+- K5 ✔ (`NAVSLOPE real map: main=88508 reach=85508 landmarks=5/5`, ilan edilen bant içinde)
+- K6 ✔ (`nav-regress --skip-timing` taban ile aynı: rc=0, `checks=27 pass=27 fail=0`)
+- K7 (Claude) — bu plan sunucu kodu değiştirmez; doğrulama birim + gerçek harita testleriyle sınırlı, faz kabulü ayrı.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
