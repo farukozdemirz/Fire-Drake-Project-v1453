@@ -867,8 +867,9 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 
 	bool flying = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
 
-	// ADR-0017 Ek F4-29/F4-31: an area skill (MAGIC.Moral 10) and a party-all skill (Moral 6) send target id -1 and the aim
-	// point in sData[0..2]; a Moral 4 (single party member) skill sends the ordinary single-target packet.
+	// ADR-0017 Ek F4-29/F4-31/F4-49: an area-enemy skill (MAGIC.Moral 10), a party-all skill (Moral 6) and an area-friend
+	// skill (Moral 11) send target id -1 and the aim point in sData[0..2]; a Moral 4 (single party member) skill sends the
+	// ordinary single-target packet.
 	bool area = BotCore::SendsAimPoint(m->bMoral);
 	CastTarget sent = target;
 	sent.id = BotCore::CastTargetIdField(area, target.id);
