@@ -6,6 +6,7 @@
 #include "ActionExecutor.h"
 #include "ScenarioRunner.h"
 #include "../../BotCore/BotMotion.h"
+#include "../../BotCore/SpawnGate.h"
 #include "../../shared/Ini.h"
 
 #include <algorithm>
@@ -2964,6 +2965,18 @@ void BotManager::ParseSpawnList(const std::string & list)
 	}
 }
 
+// Plan F4-55: number of sessions currently between GameStart(1) and GameStart(2).
+static int CountInHandshake(const std::vector<BotSession *> & sessions)
+{
+	int count = 0;
+	for (size_t i = 0; i < sessions.size(); i++)
+	{
+		if (sessions[i]->m_phase == BotSession::PHASE_WAIT_LOADED)
+			count++;
+	}
+	return count;
+}
+
 void BotManager::TickSessions()
 {
 	if (m_sessions.empty())
@@ -3008,6 +3021,15 @@ void BotManager::TickSessions()
 
 					if (now - s->m_selectSeenAt >= std::chrono::milliseconds(SELECT_SETTLE_MS))
 					{
+						// Plan F4-55: serialize the login handshake so no two sessions sit
+						// between GameStart(1) and GameStart(2) at once. A closed gate leaves
+						// this session in PHASE_WAIT_SELECT and retries on the next tick.
+						if (!BotCore::HandshakeGateOpen(CountInHandshake(m_sessions)))
+						{
+							m_handshakeWaitTicks++;
+							break;
+						}
+
 						Packet pkt(WIZ_GAMESTART, uint8(1));
 						s->m_pUser->HandlePacket(pkt);
 						s->m_phase = BotSession::PHASE_WAIT_LOADED;
@@ -3362,6 +3384,11 @@ void BotManager::TickSessions()
 		snprintf(message, sizeof(message),
 			"BotManager: spawn complete: %u/%u in game, %u failed",
 			(unsigned)m_spawnOk, (unsigned)m_sessions.size(), (unsigned)m_spawnFailed);
+		WriteBotLog(message);
+
+		snprintf(message, sizeof(message),
+			"BotManager: spawn handshake: serialized, gate waits %u tick(s)",
+			(unsigned)m_handshakeWaitTicks);
 		WriteBotLog(message);
 	}
 
