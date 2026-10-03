@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-39` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-01 (`FDP_PACKET_TRACE`, `PacketTrace.cpp`, `tools/packet-trace-summary.py`) — `KAPANDI`; F1-02 (`tools/trace-session.sh`, `--cli`) — `KAPANDI`; F4-38 — `KAPANDI` (gece dalında) |
@@ -189,13 +189,37 @@ Beklenmeyen/ölçülemeyen (ör. S2'de botun otomatik `REQ_USERIN` üretmemesi) 
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-39` (taban `gece/2026-10-02`); `f6b0882` (kod: `PacketTrace.h/.cpp`, `User.cpp`, `tools/packet-trace-summary.py`) + bu rapor commit'i.
 - Değişen dosyalar ve neden:
+  - `GameServer/PacketTrace.h`: `LogOutgoing` bildirimi (§5.1 madde 2). UTF-8 BOM + CRLF korundu.
+  - `GameServer/PacketTrace.cpp`: `IsTracedOpcode` → `IsTracedIncoming` (7 eski + `WIZ_PARTY`/`WIZ_REGENE`/`WIZ_REQ_USERIN`/`WIZ_REQ_NPCIN`/`WIZ_CHAT`); yeni `IsTracedOutgoing` (`WIZ_DEAD`/`WIZ_REGIONCHANGE`/`WIZ_NPC_REGION`/`WIZ_REGENE`/`WIZ_PARTY`); `KeptPayloadBytes` beyaz liste sansürü; ortak `WriteRecord(sid, name, zone, pkt, outgoing)` (aynı mutex/dosya/saat/`SanitizeName`; gelen 7 sütun değişmez, giden sona `\tout`); `LogIncoming`/`LogOutgoing` ortak yazıcıyı çağırır. Opcode süzgeci kilitten önce.
+  - `GameServer/User.cpp`: yalnızca `Send`/`SendCompressed` kancaları ve dosya-statik `TraceOutgoing`; hepsi `#ifdef FDP_PACKET_TRACE` içinde; bayrak kapalıyken `#else` eski `return` satırını aynen korur.
+  - `tools/packet-trace-summary.py`: `OPCODE_NAMES` genişletildi; `parse_line` 7 sütun `dir=in`, 8. sütun tam `out` ise `dir=out`, aksi `None`; eski bölümler yalnız gelen satırlarla; `write_report` sonuna koşullu `outgoing summary:`; `parse_cli_records` yeni opcode'lar; `first_after_each`/`last_before_each`; `write_cli_sections`'a CLI-14..CLI-20 bölümleri; `--selftest` yeni vakalar. ASCII/LF korundu.
 - Derleme sonucu (`tools/build.sh Release` ve `--packet-trace` son 10 satır):
+  - `Release` (bayraksız): `proj-GameServer.vcxproj -> ...\Server\GameServer.exe`; yeni uyarı yok (yalnız eski `User.cpp(2782/2797) C4834` ve `UpgradeHandler.cpp C4789`, dokunulmayan satırlar).
+  - `Release --packet-trace`: `71 of 14075 functions ... compiled`, `proj-GameServer.vcxproj -> ...\Server\GameServer.exe`; yeni uyarı yok.
+  - İş sonunda `./tools/build.sh Release` ile izleyicisiz derlemeye dönüldü.
+  - `python3 tools/packet-trace-summary.py --selftest` ⇒ son satır `selftest OK`, çıkış 0.
 - Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ (iki derleme hatasız, yeni uyarı yok).
+  - K2 ✔ (selftest `OK`, rc=0; §5.3 madde 7 vakaları eklendi).
+  - K3 ✔: `gece/2026-10-02` sürümü `/tmp/opencode/pts_old.py`'ye alındı; `plans/_logs/trace/` kayıtları için `--cli` olmadan çıktı **birebir aynı** (`party01`, `war-r`, `war-combo`, `pri-cast`, `msg-cast`, `diff -q` eşit). `--cli` çıktısında eski satırlar sırayla korunur; yeni bölümler `Q-18`'den sonra eklenir; `bad_len:` satırı içerik olarak değişmez, yalnız yeni bölümlerden sonra gelir (plan §5.3 madde 6 yeni bölümleri `write_cli_sections` içine koyar, `bad_len` onu çağıranda yazılır).
+  - K4 ✔ (`grep`): `KeptPayloadBytes` tek çağrı, ortak yazıcıda (`PacketTrace.cpp:157`); `WIZ_CHAT`→1, giden `WIZ_PARTY`→1, gelen `PARTY_PERMIT`→2, `PARTY_PROMOTE`/`PARTY_REMOVE`→3; yazılan bayt = `min(kept,64)`.
+  - K5 ✔: gelen `fprintf` biçimi 7 sütunlu eski haliyle aynı; giden satır sonunda tek `\tout`.
+  - K6 ✔: `git diff -- User.cpp` tüm eklemeler `#ifdef FDP_PACKET_TRACE` içinde; kaldırılan satır yok; `#else` eski `return` korur.
+  - K7 ✔: `SendCompressed` gerçek yolda kanca yalnızca `size >= 500` koşulunda; `Send` yalnız `KOSocket::Send` başarılıyken; iki yolda çift kayıt yok (kod okuması).
+  - K8 ✔: `git diff --stat` yalnız §4'teki 4 dosya + plan; `vcxproj`/`trace-session.sh`/`build.sh`/`Bot`/`BotCore`/`docs` farkı boş.
+  - K9 ✔: üç GameServer dosyası UTF-8 BOM + CRLF, `tools/*.py` ASCII; `git diff --check` boş.
+  - K10 ✔: `PacketTrace.cpp`'de `printf(`/`Sleep`/`rand(` yok (yalnız `fprintf`/`snprintf`).
+  - K11: Claude `/plan-dogrula` (DeepSeek yapmaz).
 - Plandan sapmalar ve gerekçeleri:
+  - §5.3 madde 7 CLI-14 selftest beklentisi plan metninde kendi içinde çelişkili: bir yandan `DEAD own count=1`, öbür yandan `t=9000` ikinci **kendi** ölümü ve `unmatched=1`. `unmatched=1` için iki kendi ölümü gerekir; bu yüzden vaka `DEAD own count=2` (t=1000 ve t=9000, ikisi `id=5`), `t=1100` `id=9` sayılmaz, `unmatched=1` olarak yazıldı. Uygulama mantığı planın niyetiyle uyumlu (kendi ölümü sayılır, başkasınınki sayılmaz, eşleşmeyen kendi ölümü `unmatched`).
+  - `write_cli_sections` imzası `(records, sid, out)` oldu ve `sid = rows[0]["sid"]` çağırandan geçildi (plan "hedef `sid` = `rows[0]["sid"]`" dedi; ayıklama `row["sid"]` taşımadığı için parametre gerekti).
+  - `analyze` ve diğer eski bölümler yalnız `dir == "in"` satırlarını işler; giden satırlar `analyze`'a girseydi eski opcode bölümleri değişebilirdi (K3). §5.3 madde 3 gereği süzüldü.
 - Açık sorular:
+  - CLI-14 selftest sayısı (yukarıdaki çelişki) Claude'un onayına: plan metnindeki `count=1` mi yoksa tutarlı `count=2` mi esas alınmalı? Uygulama tutarlı senaryoyu (`count=2`, `unmatched=1`) kodlar.
+  - `bad_len:` satırının yeni bölümlerden **sonra** konumu K3'ün "mevcut satırlar değişmeden durur" maddesine aykırı değil mi (içerik aynı, konum `write_cli_sections` sonrasına kaydı)? Alternatif: yeni bölümleri `bad_len`'den sonra yazmak gerekirse düzeltme turunda yapılır.
 
 ---
 
