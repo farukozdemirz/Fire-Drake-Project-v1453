@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-38` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-37 (ADR-0018 Ek 13, dilim 6f) — `KAPANDI` (merge `dd8262e`); F4-13/F4-15 (`TickUserIn`/`TickNpcIn`: otomatik istemci trafiği kalıbı) — `KAPANDI`; F4-01 (`BotCore/BotMotion.h`, hız/adım kuralı) — `KAPANDI` |
@@ -360,3 +360,31 @@ plans/F4-38-aksiyon-yurutucu-hiz-kontrol-paketi.md — Doğrulama Turu 1 düzelt
 2. `./tools/build.sh Release`, `./tools/build.sh Debug`, `./tools/run-tests.sh Release` ve `Debug` çalıştır: hepsi hatasız, `251 tests, 0 failed`. `BotSession.cpp` için yeni derleyici uyarısı olmamalı.
 3. `git diff gece/2026-10-02...bot/F4-38 -- GameServer/Bot/BotSession.cpp | grep '^-' | grep -v '^---'` çıktısı yalnızca başlatıcı listesinde bilinçli değiştirilen satır(lar)ı göstermeli (`OnPacket()` blokları değişmemeli); `file GameServer/Bot/BotSession.cpp` ASCII + CRLF kalmalı ve `git diff --check` boş olmalı. Sonuçları Uygulayıcı Raporu'na "Tur 2" olarak yaz.
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-38` @ `f856710` (Tur 2 düzeltme commit'i). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği yapar.
+- Tur 1 bulgusu (engelleyici, başlatıcı listesi) giderildi: `GameServer/Bot/BotSession.cpp:23` `m_speedHasLast(false), m_speedChecks(0), m_speedWarps(0),` `m_npcInUnits(0)` satırının hemen altında, `BotSession.h:150-153` bildirim sırasıyla (`m_speedLast` sınıf tipi, varsayılan oluşturulur). Tur 2 commit'i yalnızca bu bir satırı ekler.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `tools/build.sh Release` rc=0; `BotSession.cpp`/`BotSession.h` zaman damgası yenilenip yeniden derlendi (rc=0): dokunulan beş dosya için `warning`/`error` satırı yok |
+| K2 | ✔ | `tools/build.sh Debug` rc=0; aynı dosyalarda `warning`/`error` yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: `251 tests, 0 failed` (249 + 2) |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotMotion.h` boş (Tur 1'den değişmedi) |
+| K5 | ✔ | `WIZ_SPEEDHACK_CHECK` paketi yalnızca `ActionExecutor.cpp:3206`; `WIZ_WARP` kodu yalnızca `BotSession.cpp:410` (`ActionExecutor.cpp:3222` yalnızca yorum); `SpeedHackUser` eşleşmesi `ActionExecutor.cpp:27` plan öncesinden var olan yorum; `m_LastX/Z`, `->Warp(`, `SpeedHackTime` kullanımı yok |
+| K6 | ✔ | `ActionExecutor.cpp` `SpeedCheckDue` + erken dönüş, tek `HandlePacket`, sonuç `m_warpEcho` bit 63'ten (Tur 1'den değişmedi) |
+| K7 | ✔ | `BotSession.cpp` farkında tek `-` satırı başlatıcı listesinin son satırı; `OnPacket()` blokları değişmedi, `WIZ_WARP` bloğu yalnızca ekleme |
+| K8 | ✔ | `BotManager.cpp` farkında `-` satırı yok; `m_speedCheck` okuması `ENABLED` denetiminden sonra |
+| K9 | ✔ | yalnızca §4'teki 8 dosya (+ plan, `plans/README.md`, `docs/STATUS.md`); `*.vcxproj*` farkı boş |
+| K10 | ✔ | sekiz dosya `ASCII text, with CRLF line terminators`; `git diff --check` boş |
+| K11 | ✔ | `printf\|Sleep\|lock_guard\|mutex\|CreateThread\|rand(` `ActionExecutor.h/.cpp`'de boş |
+| K12 | ✔ | önceki 249 test geçiyor; kod farkı F4-01..F4-37 yollarına dokunmuyor |
+| K13 | ✔ (S4 `[D]`) | S1, S2, S3, S5 Tur 1'de çalışma zamanında geçti (yukarıdaki Tur 1 raporu); Tur 2 farkı yalnızca üç üyeyi sıfırlayan başlatıcı satırı olduğundan çalışma zamanı yeniden koşulmadı. S4 isteğe bağlı, `[D]` |
+
+- Bulgular:
+  1. *(not, izleme)* Tur 1 bulgu 2 (yeniden spawn'da tek seferlik `spawn FAILED (select timeout)`) tekrarlanmadı; F4-38 koduyla ilişki kanıtı yok. Yeniden görülürse `docs/KNOWN_ISSUES.md`'ye açılır.
+  2. *(not)* S4 (geri ışınlama) çalışma zamanında sınanmadı; `warped` yolu `[D]` (kod okuması). Birim testle `guard'a uyan yürüyüş eşiğe ulaşamaz` mülkiyeti kanıtlı.
+  3. *(not)* Release'te `GameServer.exe` artımlı derlemesinde daha önce `BotSession.cpp` yeniden derlenmemişti; K1 kanıtı için dosya zaman damgası yenilenip yeniden derlendi (git'te değişiklik yok).
