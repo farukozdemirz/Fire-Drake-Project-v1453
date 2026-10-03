@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-60 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`), F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-11 (`tools/nav-measure*`, `nav-regress*`), F5-50 (`NavSegment`), F5-58 — hepsi `KAPANDI`. Şemsiye: F5-55 (dilim 2). F5-59'dan **bağımsızdır** (sunucusuz) |
@@ -210,20 +210,30 @@ WATER_ROUTE name=elmorad length_m=727.8 cells=161 cells_in_w=0 segments_touching
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-60` @ `<sha>`
-- Kriter sonuçları:
+- Karar: **DOĞRULANDI** (gece modu, `AUTO_LOOP=1`; birleştirmeyi döngü betiği yapar, bu oturumda birleştirme/push yok)
+- İncelenen: `gece/2026-10-02...bot/F5-60` @ `196e060` (`aad29d4` kod + `196e060` rapor; plan dosyası dışında yalnızca 2 dosya)
+- **Karar özeti (K7, §3 mekanik):** `BELİRSİZ`, dayanak **§3 üçüncü satır** (doğrulanmış su zemin gerçeği yok). **"Suya takılmıyor" kabulü verilmez**; `WATER_TRUTH none`. **F5-67 `TASLAK` kalır** (iptal/HAZIR yazılmaz). Karar T-NAV-09 (proje sahibi insan testi, §9) sonucuna bağlıdır; F5-60'ın `DOĞRULANDI` olması T-NAV-09'un yapıldığı anlamına gelmez.
+- Kriter sonuçları (hepsi denetçi tarafından yeniden koşuldu; sunucular `[DOWN]`, `AUTO_LOOP=1`):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/nav-water-audit.py --selftest` → `SELFTEST OK`, rc=0 |
+| K2 | ✔ | `./tools/nav-measure.sh water --n 5000` rc=0; `WATER_GRID/HEIGHT/BASIN_SUMMARY/SOURCE/TRUTH` var; `WATER_PATHS pairs=5000 found=4980 ... non_walk_cells_on_path=0`; iki `WATER_ROUTE` (karus 271,5 m / 61 hücre, elmorad 727,8 m / 161 hücre, ikisinde `cells_in_w=0 segments_touching_w=0`). Çıktı uygulayıcının raporundaki ile **satır satır aynı** (seed sabit) |
+| K3 | ✔ | `grep -E '^WATER_(GRID\|HEIGHT\|BASIN)'` (C++) ile `nav-water-audit.py basins` çıktısı `diff` boş (`BASINS_IDENTICAL`). Python tarafı kendi `walk_mask`/`label_components` kodunu kullanır (`tools/nav-water-audit.py:36-115`), C++'a bağlı değil |
+| K4 | ✔ | `main=88508`, `events1=233647`, 633 cep / 28 501 hücre, cep→Walk 37, `walk_below_m1=3830`, 5 havza / 3 739 hücre (1820/1225/247/228/219) = §2 ön ölçümü ile birebir; sapma yok |
+| K5 | ✔ | `WATER_TRUTH none`, `WATER_SOURCE proxy_basins`; raporda "su engelli/suya takılmıyor" yargısı yok (yalnızca "kabulü verilmedi" olumsuzlaması); adım 5 = "doğrulanamadı", durma noktası yazılı. Bağımsız teyit (`.gtd` gerçekleri): başta `int32=10`; `dtex\*.gtt` adlarının 127 kayıtlık 260 bayt adımlı tablosu (ilk bayt 602 923, son ad 635 683, tablo sonu 635 943); `ka_water.dxt` 8 kez tablo dışında gövdede; `probe-client` çıktısı 118 satır, uygulayıcınınkiyle aynı |
+| K6 | ✔ | `git diff gece/2026-10-02...bot/F5-60 -- nav_measure.cpp \| grep -c "^-[^-]"` = 1 (yalnızca kullanım metni); eklemeler yeni işlevler + `Ctx` alanları + bayrak ayrıştırma + `if (section == "water")` (`nav_measure.cpp:1525`); `grep -n '"water"'` tek eşleşme (`all` listesi değişmedi); `./tools/nav-regress.sh --skip-timing` rc=0, `NAV-REGRESS PASS checks=27 pass=27 fail=0`, çıktısı `regress-before.txt` ile `diff` boş |
+| K7 | ✔ | Üçüncü satır mekanik uygulanmış; F5-67 `TASLAK` kalır (yukarıda) |
+| K8 | ✔ | `git diff --name-only`: `plans/F5-60-...md`, `tools/nav-measure/nav_measure.cpp`, `tools/nav-water-audit.py`; `BotCore/`, `Tests/`, `GameServer/`, `shared/`, `docs/`, `.vcxproj` farkı 0; `git diff --check` boş (rc=0); `nav-water-audit.py` ASCII (`LC_ALL=C grep -P '[^\x00-\x7F]'` boş). Not: bulgu 1 |
+| K9 | ✔ | `./tools/build.sh Release` rc=0 (çıktıda `warning` 0); `./tools/run-tests.sh Release` → `264 tests, 0 failed` |
+| K10 (Claude) | ✔ | `water` yeniden koşuldu, `basins` ile eşleşti (K3); maske olmadığı için eşleme kanıtı uygulanmaz; karar `docs/12` §13.1, `docs/18` Q-26, `docs/15` T-NAV-09 ve `degerlendirme-takip.md`'ye işlendi |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not (kodlama):** `tools/nav-measure/nav_measure.cpp:1279` yorumundaki `∩` (U+2229), taban blob'u **ASCII** olan dosyayı UTF-8'e çevirdi (BOM yok; derleme etkilenmedi). Sonraki dokunuşta `and`/`intersect` ile değiştirilsin; ayrı düzeltme turu açılmadı.
+  2. **Not (örnekleme):** `Water` içindeki çift karışımı `q % 3` ile 64/150/40 (üçte bir), `Smoothing` ile birebir aynı. Plan §5.2'deki "%40/%30/%20/%10 (tüm harita)" tarifi yaklaşıktı; planın "`Smoothing` ile aynı" ifadesi sağlandı, sonuçların yorumunu etkilemez.
+  3. **Not (satır sonu):** `nav-water-audit.py` LF (plan "CRLF" diyordu); `.gitattributes` `*.py text eol=lf` zorunlu kılıyor, uygulayıcının sapma gerekçesi doğru.
+  4. **Not (keşif derinliği):** adım 5 sığ ama §3/§8 "doğrulanamadı"yı geçerli sonuç sayıyor ve zayıf kanıtla maske üretilmemesi doğru. Denetçi gözlemi `[A]`: `.gtd` tablo sonrası gövde yalnızca 44 016 bayt (679 959 − 635 943); 512×512 hücre başına en az 1 bayt gerektiren bir ızgaraya yetmez, yani hücre-başına doku/su indeksi büyük olasılıkla bu dosyada değil. Sonraki keşif (gerekirse) başka istemci dosyalarına bakmalı; kaynak kodu olmadan maliyetlidir.
+  5. **Ölçüm bulgusu (yorum değil, `[V]` sayılar):** bulunan yolların %27,7'si (1 377/4 980) vekil havzalardan en az bir hücreden geçiyor; düzleştirilmiş segmentlerin %9,4'ü (2 605/27 786), paket kirişlerinin %7,7'si (16 033/208 214) temas ediyor; iki doğuş→arena rotası temas etmiyor. Havza hücrelerinin yalnızca %9-34'ü bir olay-0 hücresine komşu (135/1225, 75/219, 53/247, 38/228, 167/1820): **havzalar gerçekten su ise veri onları engellemiyor**, `docs/12`'deki "kıyılar engelli" ifadesi bu havzalar için desteklenmiyor (`[A]`'ya indirildi). Havzaların su olup olmadığı bilinmiyor; ayırt eden tek ölçüm T-NAV-09.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
