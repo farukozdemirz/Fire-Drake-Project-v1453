@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 16) |
 | Branch | `bot/F4-40` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-04 (`db/002_bot_characters.sql`, 12 bot satırı ve `strItem` düzeni) ve F4-27 (`db/003` betik kalıbı: yedek tablo, öz denetim, geri alma) — `KAPANDI`; F4-04 (pot dilimi, `PotKindOf`), F4-36/F4-37 (taş ve scroll tüketimi) — `KAPANDI` |
@@ -174,13 +174,32 @@ file db/004_bot_inventory.sql db/004_bot_inventory_rollback.sql tools/bot-refill
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu: —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-40` (taban `gece/2026-10-02`); `10fe98d` `[F4-40] db/004 envanter doldurma betikleri, bot-refill.sh ve README`; bu rapor + `Durum` commit'i.
+- Değişen dosyalar ve nedenleri:
+  - `db/004_bot_inventory.sql` (yeni): yuva 14..21 stok şablonu, tek seferlik yedek, yazım, satır içi öz denetim (a/b/c), tek sayaç satırı.
+  - `db/004_bot_inventory_rollback.sql` (yeni): yedekten 14..21 baytlarını geri yazar, yedek satırlarını siler, tabloyu korur.
+  - `tools/bot-refill.sh` (yeni): sunucu durumu denetimli ince sarmalayıcı (`apply`/`rollback`, `--dry-run`).
+  - `db/README.md`: yalnızca `004` bölümü eklendi (45 satır, mevcut satırlar değişmedi).
+  - `plans/F4-40-bot-envanter-doldurma.md`: `Durum` + bu rapor.
+- Önkoşul: sunucular kapalı (`tools/run-servers.sh status` → `0/3`, yalnızca ilgisiz pid 4336). Şema ön kontrolü: `INFORMATION_SCHEMA.COLUMNS` `strItem` `binary(584)`; 12 bot satırı `DATALENGTH=584`.
+- SQL denemeleri (sunucular kapalı; yalnızca çıktı satırları rapora yazıldı, satır içeriği okunmadı/basılmadı):
+  - `apply` (varsayılan 100/0/30/50): `BOTSTOCK: rows=12 ok=12 fail=0 changed=5 hp=100 mp=0 life=30 class=50`; tekrar: `changed=0`.
+  - `apply --hp-pots 7 --mp-pots 5 --life-stones 3 --class-stones 11`: `BOTSTOCK: rows=12 ok=12 fail=0 changed=12 hp=7 mp=5 life=3 class=11`; tekrar: `changed=0`.
+  - `rollback`: `BOTSTOCK_ROLLBACK: restored=12`; tekrar: `restored=0`; yedek tablo korunur ve boştur (0 satır); `apply → rollback → apply` dizisi çalışır (yedek yeniden alınır).
+  - Not: İlk `apply` `changed=5`; DB'de önceki doğrulama koşularından taş/pot tüketimi vardı, 7 satır `db/002` ile zaten bayt-eşitti. İkinci çalıştırma `changed=0`.
+  - Betik çalıştırıldıktan sonra (`LIKE 'Bot` yorum düzeltmesi) yeniden `apply`/`rollback` denendi: `changed=5` / `restored=12`.
+- Sarmalayıcı (K6): `apply --dry-run` çıktısı `-v HpPots=100 -v MpPots=0 -v LifeStones=30 -v ClassStones=50` içerir, rc 0; `--hp-pots abc` / `10000` / `-1`, bilinmeyen alt komut ve bilinmeyen bayrak rc 2; `FDP_REFILL_STATUS_CMD="echo [UP] GameServer"` → rc 1 ve SQL çağrılmadı (çıktıda `BOTSTOCK` yok); `[DOWN]` ile geçti; `--help` rc 0.
+- Derleme: `./tools/build.sh Release` rc=0 (yalnızca eski `GameServer/User.cpp` C4834 ×2; bu plan kod değiştirmez); `./tools/run-tests.sh Release` son satırı `251 tests, 0 failed` (taban 251).
+- Kapsam: `git status` yalnızca §4 dosyaları + plan; `GameServer/`, `BotCore/`, `shared/`, `AIServer/`, `docs/`, `db/001*`/`002*`/`003*` farkı 0; `git diff --check` boş.
+- Kodlama: yeni dosyalar `ASCII text`, LF (`file`); `bash -n tools/bot-refill.sh` rc 0; `db/README.md` yalnızca ekleme (45/0); `grep -c "LIKE 'Bot" db/004_bot_inventory.sql` = 0; `tools/bot-refill.sh` indekste `100755` (`chmod +x`).
+- Kriter öz-değerlendirmesi: K1 ✔ (251/0); K2 ✔; K3 ✔ (`changed=5` ilk, `changed=0` ikinci, `LIKE 'Bot` 0, 12 ad); K4 ✔ (7/5/3/11 `fail=0`, tekrar `changed=0`; (b) ekipman/çanta-kalanı denetimi `db/004_bot_inventory.sql:136,213,215-217`); K5 ✔ (`restored=12` sonra `0`, yedek korunur/boş, dizi çalışır); K6 ✔ (a/b/c/d); K7 ✔; K8 Claude'da (çalışma zamanı, **yapılmadı**); K9 ✔.
+- Plandan sapmalar ve gerekçeleri:
+  - §3.1 madde 4: `STUFF(strItem, 113, 64, @block)` bu SQL Server'da binary girdiyle `varchar` döndürüyor ve `binary(584)` sütununa doğrudan atanamıyor (`Implicit conversion from data type varchar to binary is not allowed`). Yazım `CONVERT(binary(584), STUFF(...))` olarak sarıldı (`db/004_bot_inventory.sql:205`, `db/004_bot_inventory_rollback.sql:29`). DB harmanı `SQL_Latin1_General_CP1_CI_AS` (tek bayt) olduğundan dönüşüm bayt-korunumlu; `apply` ikinci çalıştırmasında `changed=0` ve 7 satırın `db/002` ile bayt-eşitliği bunu doğrular. Aksi halde betik derlenmezdi.
+  - `--dry-run` çıktısı `printf '%q'` ile kaçışlı yazılır (görüntü amaçlı); `-S` değeri çift ters bölü olarak görünebilir (komut satırı yine de K6 a) dizelerini içerir).
+- Açık sorular:
+  - K8 (Claude, çalışma zamanı): sunucu açıkken (`[BOT] ENABLED=1`) `apply --hp-pots 7 ...` sonrası `/bot snap` stok ölçümü ve pot tüketiminin kalıcılığı. Sunucular bu çalışma ağacında kapalı bırakıldı; DB son `rollback` ile işe başlamadan önceki durumda.
+  - Not (sapma değil): uygulama sırasında paralel `nav` hattı ayrı çalışma ağacındadır; bu planda sunucu çalıştırılmadı.
 
 ---
 
