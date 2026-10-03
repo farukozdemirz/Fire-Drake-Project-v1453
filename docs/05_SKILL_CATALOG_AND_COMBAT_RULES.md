@@ -270,6 +270,23 @@ Recast: `106525`/`106535`/`106545` en küçük aralık 1092/1096/1100 ms ≥ 500
 
 **Bulgu 3 (Stone of Warrior tüketimi ölçülemedi).** Telemetri taş stokunu vermiyor (`stock_after` yalnızca `UsePotion`'da), bot `snap` yalnızca HP/MP iksiri sayar ve çanta DB'si (USERDATA) okunamaz; beklenen 50 → 47 `[Ö]` (MEC-MAG-23/MEC-MAG-24 `[D]`). Kesin ölçüm için `snap` stok satırının eşya sayacı kazanması gerekir (ayrı iş).
 
+### 9.5 Bot koşusu: Karus priest silaha bağlı usta saldırıları Judgment ve Helis (F4-46, 2026-10-03)
+
+`BotPHD_K` (curse ağacı 62, usta 20; (1274,0, 928,0)) → `BotWP_E` (1274,0, 928,5; 0,5 m) ve `BotWG_E` (1274,3, 928,0; 0,3 m) (zone 71; ikisi de priest sopasının 1,0 m menzili içinde: `Range 0` Type1, `ITEM.Range 10`), `bots/config/skill_priest_k_master.txt` (5 adım), `[BOT] TELEMETRY=decisions`; `tools/skill-check.py --min-n 1`. Betik 5/5 adım zamanında koştu (12 534 ms, en geç gecikme 71 ms) `[V]`. Sonuç: 2 skill, PASS 2, WARN 0, FAIL 0, NO_DATA 0; her skill için başlayan 3 = etkili 3, `missed` 0, `srv_fail` 0, `no_result` 0, `guard_reject` 0 `[V]`.
+
+| Skill | Ad | Başlayan/etkili | MP düşümü (min/med/max, beklenen) | Hüküm | Not |
+|---|---|---|---|---|---|
+| `112802` | Judgment | 3/3 | 200/200/200 (200) | PASS | `Type 1` kesin isabet: `missed` yok `[V]`; `UseItem 379066000` (Scroll) çantada olduğu için `no_item` çıkmadı |
+| `112815` | Helis | 3/3 | 350/350/350 (350) | PASS | `UseItem 0` ⇒ bot ön kontrolü eşya aramadı, sunucu reddetmedi `[V]` |
+
+Recast: en küçük aralık Judgment 1109 ms, Helis 1094 ms (beklenen alt sınır 500 ms) ⇒ recast PASS `[V]`. `BotPHD_K` MP'si koşu başında 4782/6392, betik sonunda 3252 (toplam düşüm 1530 = 3×200 + 3×350 − ~120 cast sırasında yenilenme; azami MP 6392 `[V]`, 1650 maliyet için yeterli).
+
+**Hasar gözlemi `[Ö]`.** Betik öncesi/sonrası `list`: `BotWP_E` 5650 → 4973 (Judgment ×2 + Helis ×1), `BotWG_E` 4699 → 4233 (Judgment ×1 + Helis ×2). Düşüm HP yenilenmesi içerir ve tek tek atış hasarı telemetride yok; hasar miktarı hakkında hüküm verilmez (T-MECH-DMG ayrı iş). İki hedef de hayatta kaldı (plan beklentisi).
+
+**Ölçülemeyenler `[Ö]`.** Stone of Priest tüketimi (beklenen 50 → 44; Helis `UseItem 0` olsa da `ConsumeItem()` taşı düşürmeye çalışır `[D]`) ve Judgment'ın Scroll'u tüketmemesi: telemetri/`snap` eşya sayacı vermiyor (§9.4 Bulgu 3 ile aynı sınır).
+
+**Kurulum notu.** Koşu öncesi `list` ile HP/MP/konum denetlendi, `BotWP_E` HP'si (3053/5650) `pot BotWP_E 389015000 8` ile tazelendi (§9.4 Bulgu 2); çantalar `bot-refill.sh apply --mp-pots 20` ile dolduruldu. Elysian Web `112825` botla atılamaz (`Moral 11` `CastMoralSupported` dışında) ve ölçülmedi.
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
