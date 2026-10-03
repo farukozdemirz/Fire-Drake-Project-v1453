@@ -1,8 +1,10 @@
+> **İPTAL — yerine F5-74.** Bu taslağın tasarım notları tarihseldir; geçerli sözleşme F5-73 (`NavDrive` Follow kipi) ve F5-74 planlarındadır. F5-64/F5-65 taslaklarındaki "F5-63" ifadeleri F5-74'ü anlar.
+
 # F5-63: Hareketli hedef: `/bot follow <bot> <hedef bot>`, hız kestirimi, yeniden yol hesaplama, takılma tespiti ve kurtarma (`NavDrive` Follow kipi)
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK |
+| Durum | İPTAL (2026-10-03, ön-plan: kapsam F5-73 (saf mantık, `KAPANDI`) ve **F5-74** (sunucu bağlaması, `plans/F5-74-nav-follow-sunucu-baglamasi.md`) olarak bölündü; kimlik yeniden kullanılmaz) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-63 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | **F5-62** (`NavDrive`, `/bot goto`, paylaşılan `NavPathfinder`) `KAPANDI` olmalı (dolaylı: F5-59, F5-61). Zaten `KAPANDI`: F5-04 (`NavFollower`/`NavTargetTracker`), F5-52 + F5-56 (hız kestirimi, gözlem zaman damgası sözleşmesi), F5-09 (`NavStuckMonitor` merdiveni), F5-54 (`NavPacketCadenceParams`, `NavGuardBlockDetector`), F5-57 (`NavProgressAssessor` + çağıran sözleşmesi), F4-50 (`UnitView` konum/hız/yaş alanları). Şemsiye: F5-55 (dilim 5). F5-64 ve F5-65 bu planın durum yapısına dayanır |
