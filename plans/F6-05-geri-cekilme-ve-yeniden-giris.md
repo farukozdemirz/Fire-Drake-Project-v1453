@@ -12,6 +12,8 @@
 
 ---
 
+> **Karar (2026-10-03, ADR-0019, proje sahibi):** geri çekilme eşiği **sabit %30** (`threatWeight = 0`), yeniden savaşa dönüş eşiği **%85** (`REENTER = 0,85`). Bu plandaki "proje sahibine sorulacak" / `[A]` ifadeleri bu karara göre okunur; `docs/11` §4.2 formülü ayrı bir kararla sonraya bırakıldı.
+
 ## 1. Amaç
 
 Proje sahibi hedefinin kritik parçası: **HP %30'un altına inen bot güvenle geri çekilir; yeterince toparlanınca savaşa döner; salınım olmaz** (`docs/11` §4.1). Bu plan, `docs/11` §4.2 karar modelini (`retreat_hp`, `ttd`, `support`, `threat`, `last_stand`, `REENTER`) saf mantık olarak yazar; geri çekilme hedefi (güvenli nokta) nav'dan (`NavRetreatPlanner` sonucu `NavView`), eylemler (pot, sprint, restoration, oturma) mevcut aksiyonlardan gelir. Çıktı: istenen durum (`Retreat`/`Recover`/önceki) ve `Intent` parçaları.
