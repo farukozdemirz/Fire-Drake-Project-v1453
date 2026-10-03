@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02-nav) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-54 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-09 (`NavStuckDetector`/`NavStuckMonitor`, `BotCore/NavStuck.h`) — `KAPANDI`. Bu plan ilk yazımda (değerlendirme, 2026-10-02) "yeni dosya" idi; nav döngüsü F5-09'u önce uyguladığından **F5-09'a eklenen küçük bir değişikliğe** uyarlandı (2026-10-02, birleştirme sırasında) |

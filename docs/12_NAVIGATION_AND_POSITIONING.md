@@ -76,6 +76,13 @@ Bellek: 263 169 hücre × birkaç bayt ≈ birkaç MB.
   - `los_grid`: iki nokta arasında ızgara üzerinde engelli hücre var mı (ucuz, kaba).
   - `los_mesh`: N3ShapeMgr alt hücrelerindeki çarpışma üçgenlerine ışın testi + arazi yüksekliği (doğru, pahalı; [`N3BASE/My_3DStruct.h:263-314`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/N3BASE/My_3DStruct.h#L263-L314) `_IntersectTriangle` mevcut ama kullanılmıyor).
 - `P-NAV-LOS-MODE` (varsayılan `advisory`): LoS **aksiyonu engellemez**, yalnızca konum seçimini yönlendirir (ör. priest heal hedefine "görüşü olan" noktayı tercih eder). Gerçek istemcinin engel arkasına skill kullanmaya izin verip vermediği T-NAV-LOS-01 ile ölçülür. İstemci izin vermiyorsa mod `enforce` yapılır ve bot bu durumda aksiyon göndermez (adalet kuralı).
+Uygulama (`BotCore/NavLos.h`, ADR-0006 Eki F5-10, F5-10 planı `[Ö]`/`[A]`; yalnızca `los_grid` + arazi, `los_mesh` yok; bağlama ve T-NAV-LOS-01 ölçümü bu dilimde yok):
+
+- **Hücre kuralı (`NavLosGridClear`):** ışının açık iç kısmını kestiği her ara hücre `Event == 1` olmalı; başlangıç ve bitiş hücreleri muaf; ızgara dışı engelli; köşeye değmek engel değil; hücre sınırına yatan ışın büyük taraftaki hücreye ait. `Walk` değil `Event` kullanılır (göl/eğim cepleri görüşü kapatmaz).
+- **Arazi kuralı (`NavLosTerrainClear`):** göz = zemin + 1,6 m `[A]` her iki uçta; 2 m aralıkla örneklenen zemin ışının 0,25 m `[A]` üstüne çıkarsa engel.
+- **Mod:** `NavLosMode::Advisory` (varsayılan) aksiyonu engellemez; `Enforce` yalnızca görüş açıkken izin verir (`NavLosAllows`). `NavPickLosCell`: hedef halkasındaki bota en yakın görüşlü `Walk` hücre (priest heal / mage cast konumu).
+- **Ölçüm `[V]`:** zone 71'de rastgele `Walk` çiftlerinde görüş açık oranı 20 m'de %89,5, 40 m'de %69,1 (ofset (7,7)), 72 m'de %38,9 (arazi dahil); çağrı ≈ 0,4 µs. Sınırlamalar: engelli hücre sonsuz yüksek, göl kıyıları görüşü kapatır (yanlış negatif), hedef yüksekliği yok.
+
 - Algı: bot, istemciye gelen bilgiyle aynı şekilde 3×3 bölgedeki tüm birimleri görür ([03](03_VERSION_COMPATIBILITY_AND_VERIFIED_MECHANICS.md) §16). İnsan istemcisi birimleri duvar arkasında çiziyorsa bu adaletsiz değildir `[A]`.
 
 ## 6. Hareket uygulaması

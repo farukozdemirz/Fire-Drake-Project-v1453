@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02-nav) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-52 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-04 (`NavTrack.h`: `NavTargetTracker`, `NavFollower`) — `KAPANDI` |
