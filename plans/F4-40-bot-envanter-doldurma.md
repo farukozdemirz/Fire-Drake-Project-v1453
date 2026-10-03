@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 16) |
 | Branch | `bot/F4-40` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-04 (`db/002_bot_characters.sql`, 12 bot satırı ve `strItem` düzeni) ve F4-27 (`db/003` betik kalıbı: yedek tablo, öz denetim, geri alma) — `KAPANDI`; F4-04 (pot dilimi, `PotKindOf`), F4-36/F4-37 (taş ve scroll tüketimi) — `KAPANDI` |
@@ -258,3 +258,27 @@ plans/F4-40-bot-envanter-doldurma.md — Doğrulama Turu 1 düzeltmeleri. Aynı 
    b. Normal dizi: `tools/bot-refill.sh apply` (`rows=12 ok=12 fail=0`), tekrar (`changed=0`), `tools/bot-refill.sh rollback` (`restored=12`), tekrar (`restored=0`, rc=0). Son komut `rollback` olsun (DB ilk durumda kalsın).
 3. `bash -n tools/bot-refill.sh`; `file db/004_bot_inventory_rollback.sql` ASCII + LF kalmalı (`grep -c $'\r'` = 0); `git diff --check` boş. `git diff --stat gece/2026-10-02...bot/F4-40` plan dosyası + §4 dosyaları dışında bir şey göstermemeli. `./tools/build.sh Release` ve `./tools/run-tests.sh Release` (`251 tests, 0 failed`) tekrar çalıştır.
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-40` @ `c4dd60b` (Tur 2 farkı `97d1697..c4dd60b`: yalnızca `db/004_bot_inventory_rollback.sql` + plan/kayıt dosyaları). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği yapar. Sunucular başta kapalıydı (`0/3`; ilgisiz pid 4336 yok sayıldı); çalışma zamanı sınaması için açılıp **kapatıldı**.
+- Kriterler:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `./tools/build.sh Release` rc=0, `warning` satırı 0; `./tools/run-tests.sh Release` son satır `251 tests, 0 failed` (taban 251) |
+| K2 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-40`: `db/004_bot_inventory.sql`, `db/004_bot_inventory_rollback.sql`, `db/README.md`, `tools/bot-refill.sh`, bu plan, ayrıca Claude'un kendi doğrulama commit'lerinden `plans/README.md` ve `docs/STATUS.md`; `GameServer/ BotCore/ shared/ AIServer/ Tests/ db/001..003` farkı 0; `git diff --check` boş |
+| K3 | ✔ | Kendi koşum: `apply` → `BOTSTOCK: rows=12 ok=12 fail=0 changed=5 hp=100 mp=0 life=30 class=50`, tekrar `changed=0`; `grep -c "LIKE 'Bot"` = 0; 12 ad açık listede; satır içeriği basılmıyor (Tur 1'de okunmuştu, Tur 2'de `apply` dosyası değişmedi) |
+| K4 | ✔ | `apply 7/5/3/11` → `rows=12 ok=12 fail=0 changed=12`, tekrar `changed=0`; (b) denetimi `db/004_bot_inventory.sql:136,213,215-217` (Tur 1'de okundu, dosya değişmedi) |
+| K5 | ✔ | `rollback` → `restored=12`, tekrar `restored=0`, rc=0; yedek tablo korunur, 0 satır; `apply → rollback → apply` çalışır. **Tur 1 bulgusu giderildi:** yedek tablo gizlenince (`sp_rename` ile `_X`, sonra adı geri verildi) `rollback` → `BOTSTOCK_ROLLBACK: restored=0`, başka hata satırı yok, **rc=0**; sonra tablo `SELECT COUNT(*)` = 0. Kod: `db/004_bot_inventory_rollback.sql:19-51` varlık denetimi ve UPDATE/DELETE/COMMIT/PRINT aynı batch'te, aradaki `GO` yok; `CONVERT(binary(584), STUFF(...))` `:30`, 12 ad açık liste `:34-36,:44-46` |
+| K6 | ✔ | (a) `apply --dry-run` `-v HpPots=100 -v MpPots=0 -v LifeStones=30 -v ClassStones=50` içerir, rc 0; (b) `--hp-pots abc`, `10000`, `-1`, bilinmeyen alt komut, bilinmeyen bayrak rc 2; (c) `FDP_REFILL_STATUS_CMD="echo [UP] GameServer"` rc 1 ("servers are running, stop them first", `BOTSTOCK` yok), `[DOWN]` ile rc 0; (d) `--help` rc 0 |
+| K7 | ✔ | `file`: iki `.sql` `ASCII text`, `.sh` `Bourne-Again shell script, ASCII text executable`; CR sayısı 0; `bash -n` rc 0; indekste `100755`; `db/README.md` farkı `45/0` |
+| K8 | ✔ | Çalışma zamanı (`GameServer.ini`'ye geçici `[BOT] ENABLED=1`, komutlar `BotCommands.txt` ile; her komuttan sonra dosya tüketildi): `apply 7/5/3/11` (`changed=12`) sonrası (a) `spawn BotMF_K` + `snap` → `stock hp_pot=8 mp_pot=6`; (b) `pot BotMF_K 389015000 1` → `snap` `hp_pot=7 mp_pot=6`, `despawn` (`logout save`), yeniden `spawn`, `snap` → `hp_pot=7 mp_pot=6` (**kalıcı**); (c) `despawn`, sunucular kapatıldı (`0/3`), aynı `apply` → `changed=1` (yalnızca tüketim yaşayan bot), yeniden açılış, `spawn` + `snap` → `hp_pot=8 mp_pot=6`; (d) `despawn all`, sunucular kapatıldı, `GameServer.ini` yedekten geri yüklendi (`cmp` aynı), `BotCommands.txt` kalmadı, `rollback` → `restored=12`, tekrar `restored=0` |
+| K9 | ✔ | Tur 2 raporundaki çıktı satırları ve rc'ler kendi koşumlarımla örtüşüyor (`restored=0` rc=0 yedek-yok yolu, `changed=5`/`0`, `restored=12`/`0`); satır içeriği/hesap bilgisi rapora girmemiş |
+
+- Bulgular:
+  1. *(not, engel değil)* Tur 1 engelleyicisi (yedek tablo yokken `Msg 208` + rc=1) giderildi; tek batch yapısı doğru ve yedek varken davranış değişmedi.
+  2. *(not)* Öz denetim (a) `@block` ile karşılaştırıyor (şablonun bağımsız yeniden hesabı değil); ek koruma `db/002` ile bayt eşitliği (Tur 1 notu), değişiklik gerekmez.
+  3. *(not)* K8 ölçümü: Water of bless adedi `hp_pot` sayacını bir azaltır; `/bot pot ... 389015000` dört `-v` değerinden bağımsız çalışır. `/bot snap` yalnızca pot sayar, taş sayısı DB düzeyindedir (plan kapsamı).
+- DB ve ortam durumu: tüm koşular `rollback` ile bitti (son `restored=12` → `restored=0`, yedek tablo 0 satır; yalnızca betik çıktıları okundu); sunucular kapalı; `GameServer.ini` ve `BotCommands.txt` ilk duruma döndürüldü. Yazım yalnızca 12 bot satırına ve betikler üzerinden yapıldı (bot çıkış kaydı çalışma zamanı sınamasında `BotMF_K` satırına kendi yazdı; `rollback` yedekten 14..21 yuvalarını yeniden getirdi).
