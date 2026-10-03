@@ -32,8 +32,8 @@ struct AttackOutcome
 
 // Caller-supplied view of the cast target (ADR-0017 Ek F4-03). Temporary, like AttackTarget: the /bot cast test
 // driver fills it from the target bot's session (or from the caster itself for "self"). For an area skill
-// (MAGIC.Moral 10) 'x/y/z' is the aim point (the target bot's position or the caster's own for "self") and the
-// packet's target id is -1 (ADR-0017 Ek F4-29).
+// (MAGIC.Moral 10) or party-all (Moral 6) 'x/y/z' is the aim point (the target bot's position or the caster's own
+// for "self") and the packet's target id is -1 (ADR-0017 Ek F4-29/F4-31).
 struct CastTarget
 {
 	int16 id;      // target's id (WIZ_MAGIC_PROCESS 'target')
@@ -208,7 +208,9 @@ public:
 	// supported, ADR-0017 Ek F4-26; single Type4 (buff/debuff; Moral 1, 2, 7; ADR-0017 Ek F4-28) is supported;
 	// area Moral 10 (non-flying; aim point = the target's position, within MAGIC.Range of the caster, CLI-07) is
 	// supported, and flying area skills (Fire/Ice/Thunder burst: Moral 10 + Type3 FlyingEffect, run as
-	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30),
+	// CASTING -> FLYING -> EFFECTING with target id -1) are supported too, ADR-0017 Ek F4-29/F4-30;
+	// party-targeted skills (Moral 4 single party member or self; Moral 6 whole party with target id -1 and an aim
+	// point; MAGIC.HP >= 10000 "sacrifice" skills stay unsupported; ADR-0017 Ek F4-31) are supported),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
 	// "bad_target" (moral does not match the target kind).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
@@ -229,6 +231,9 @@ public:
 	// flying area: FLYING and EFFECTING carry the same target id -1 and aim point; MP is charged at FLYING and again at
 	// EFFECTING (2 x Msp, docs/03 MEC-MAG-12/-17); "victims" counts the per-victim EFFECTING packets of the EFFECTING
 	// step only.
+	// party-all (Moral 6): like area (target id -1, aim point, "victims" = per-member EFFECTING packets of the EFFECTING
+	// step, docs/03 MEC-MAG-18); an empty party still gives "effected" for a heal (the caster is always healed); a group
+	// buff on members that already hold the BuffType gives "no_result"; Moral 4: like single Type4 (MEC-MAG-15).
 	static CastOutcome TickCast(BotSession * s, const CastTarget & target,
 		std::chrono::steady_clock::time_point now);
 

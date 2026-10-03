@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-31` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-28 (Type4 tek tipli: `Moral` 1/2/7, MEC-MAG-15) — `KAPANDI`; F4-29 (alan: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI`; F4-30 (`CastMoralSupported(moral)` tek parametre) — `KAPANDI` (merge `c88dd95`); F4-08 (party kurulumu: `/bot pinvite`, `/bot paccept`) — `KAPANDI` (yalnızca çalışma zamanı sınaması için) |
@@ -244,16 +244,71 @@ git diff --check gece/2026-10-02...bot/F4-31
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-31` (taban `gece/2026-10-02` @ `0e22858`); `126e86e` `[F4-31] Party hedefli skill: Moral 4/6 destegi ve Sacrifice kapisi`
+- Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: `kMoralPartyAll` / `IsPartyAllMoral` / `SendsAimPoint` eklendi; `CastMoralSupported` kümesine `Moral 4` eklendi ve son koşul `SendsAimPoint`'e bağlandı; `kSacrificeHpCost` / `CastHpCostSupported` eklendi; `CastTargetIdField`/`CastCoordField` yorumları party-all'ı anar (değerler değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastMoral_Supported` güncellendi (4 ve 6 `true`; `IsAreaMoral(6) == false`); yeni `Combat_PartyCast_Guard` eklendi → toplam 108 test.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` destek koşuluna `!BotCore::CastHpCostSupported(m->sHP)` eklendi; `TickCast` `bool area = BotCore::SendsAimPoint(m->bMoral);` (tek satır + yorum). `SubmitCast`/`CancelCast`/`RejectCast` değişmedi.
+  - `GameServer/Bot/ActionExecutor.h`: `CastTarget`/`BeginCast`/`TickCast` yorumları party hedefli skill'leri kapsar (kod değişikliği yok).
+- Derleme sonucu (`tools/build.sh Release`, değişen dört dosya `touch` edilip yeniden derlendi; son satırlar):
+  - `proj-AIServer.vcxproj -> ...\AIServer.exe`
+  - `BotCoreTests.vcxproj -> ...\BotCoreTests.exe`
+  - `proj-GameServer.vcxproj -> ...\GameServer.exe` (rc=0, değişen dosyalarda uyarı/hata 0; Release toplam `warning C` 0, `error C` 0)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dört dosyada uyarı 0 (touch + yeniden derleme).
+  - K2 ✔ Debug rc=0, değişen dosyalarda uyarı 0.
+  - K3 ✔ Release ve Debug `108 tests, 0 failed`; `Combat_CastMoral_Supported` ve `Combat_PartyCast_Guard` `[ OK ]`.
+  - K4 ✔ `grep` yasaklı sembol boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; eklenen satırlarda `std::min`/`std::max` yok.
+  - K5 ✔ `CastHpCostSupported` mevcut ve `!BotCore::CastHpCostSupported(m->sHP)` biçiminde; `CastMoralSupported(m->bMoral)`; `bool area = BotCore::SendsAimPoint(m->bMoral)`; `IsAreaMoral` ActionExecutor.cpp'de yok; `(m->bFlyingEffect != 0 && !flyingCast)` yerinde.
+  - K6 ✔ `git diff --stat` yalnızca §4'teki 4 dosya; ActionExecutor.cpp yalnızca iki planlı hunk; `SubmitCast`/`CancelCast`/`RejectCast` gövdesinde hunk yok; yasaklı dosyalar ve proje dosyaları değişmedi.
+  - K7 ✔ `git diff | grep '^+' | grep 'Emit('` boş; yeni ini/komut/thread/telemetri türü yok.
+  - K8 ✔ `file` dört dosya `ASCII text, with CRLF`; `git diff --check` boş.
+  - K9 ✔ Guard çağrı sayıları: `CheckMoveStep=2, CheckAttack=1, CheckCastStart=1, CheckCastEffect=1, CheckCastFly=1, CheckCastLand=1, CheckCastCancel=1, CheckPotion=1`; önceki 107 test (güncellenen biri dahil) geçiyor.
+  - K10 ✔ `python3 tools/check-perception-contract.py` `RESULT: PASS` (R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0); denetlenen dosya sayısı değişmedi.
+  - K11 (Claude, `/plan-dogrula` çalışma zamanı): uygulayıcı kapsamı dışında; statik kanıt yukarıda.
+- Plandan sapmalar: Yok. Planın §5.2b başlangıç guard'ı örneğinde anılmayan `standing`/`needsStanding` alanları testte açıkça atandı (`standing=true`, `needsStanding=false`) ki `CheckCastStart` sırası range→standing→mana olsun; sonuç değişmez.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-—
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-31` @ `6e287e8` (kod `126e86e`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0, `error C` 0; tek iki uyarı eski `UpgradeHandler.cpp` C4789 (`BifrostPieceProcess`/`SpecialItemExchange`; bu plan dokunmadı); değişen dört dosyada uyarı yok |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, `error C` 0, değişen dosyalarda uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` ikisinde `108 tests, 0 failed`; `[ OK ] Combat_CastMoral_Supported`, `[ OK ] Combat_PartyCast_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; eklenen satırlarda `#include`, `std::min`/`std::max`, `Emit(` 0 |
+| K5 | ✔ | `ActionExecutor.cpp:738` `!BotCore::CastHpCostSupported(m->sHP)` (tek eşleşme), `:737` `CastMoralSupported(m->bMoral)` (tek), `:817` `bool area = BotCore::SendsAimPoint(m->bMoral)`; `IsAreaMoral` bu dosyada yok; `:735` `(m->bFlyingEffect != 0 && !flyingCast)` yerinde |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-31`: yalnızca §4'teki 4 dosya + plan dosyası; `ActionExecutor.cpp` iki hunk (`BeginCast` destek koşulu `:733-738`, `TickCast` `area` satırı ve yorumu `:812-817`); `SubmitCast`/`CancelCast`/`RejectCast` hunk'ı yok; vcxproj, `BotSession.*`, `BotManager.cpp`, `Telemetry.*`, `docs/`, `tools/` farkı yok |
+| K7 | ✔ | eklenen satırlarda `Emit(` yok; yeni ini anahtarı/komut/thread/olay türü yok; `ENABLED=0` ve `TELEMETRY=summary` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: dört dosya ASCII + CRLF (taban ile aynı); `git diff --check` boş |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; 108 testin tamamı geçiyor (önceki 107 dahil) |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS` (`files scanned: 19`, değişmedi) |
+| K11 | ✔ | S1–S7 çalışma zamanında geçti (aşağıda; S1'de `victims` 3, plandaki ≥ 4 değil: bulgu 1; S7'de Group heal `112570` `srv_fail`, plandaki `unsupported_skill` değil: bulgu 2) |
+
+**Çalışma zamanı** (Release, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-032934.jsonl`, `Logs/Bot_3_10_2026.log`; ini yedekten geri yüklendi (taban ile aynı), `BotCommands.txt` silindi, sunucular durduruldu, `GameServer.log` bu oturumda değişmedi):
+
+- **S1 ✔** Party: `BotPHB_K` + `BotWP_K` + `BotWG_K` + `BotMF_K` (`snap`: `members 3`). `BotWP_E` ile `BotWP_K`'ya saldırtıldı (HP 5288/6610). `cast BotPHB_K 112557 self 1`: `CastStart` `ACTION_SUBMIT` **`"target":-1`** → `casting` `op 1`; `CastEffect` `"target":-1` → `effected`, `op 3`, `code 0`, **`victims 3`**; log `cast finished (effected) after 1 cycle(s), 1 ok, 2 packet(s) sent`; **`BotWP_K` HP 5288 → 6248 (+960)**; MP 4132 → 3212 (−960 + ~40 yenileme); `snap BotPHB_K events`: kurban kimlikli `op=3 skill=112557 target=2987/2986/2984` + hedef `-1`'li son `op=3` (d0=1274, d2=890) + `op=1`. **Yarıçap kanıtı:** `BotMF_K` çağırandan 35 m (< 56) ama hedef noktasından (priest) 35 m > `Radius 30` olduğu için sayılmadı (bulgu 1). Ek: `cast BotPHB_K 112557 BotMF_K 1` (hedef noktası = `BotMF_K` konumu, z=925) ⇒ `victims 2` (`BotMF_K` + çağıran; olaylar `d2=925`), yani hedef noktası paketten okunuyor.
+- **S2 ✔** Party'siz taze oturum, `cast BotPHB_K 112557 self 1`: `"target":-1`, `effected`, `code 0`, **`victims 1`** (aynı noktadaki party dışı `BotWG_K` sayılmadı), MP 6392 → 5432 (−960); `112560`: `effected`, MP 5432 → 3592 (−1920 + ~80 yenileme).
+- **S3 ✔** Taze oturum, party (priest + `BotWP_K` + `BotWG_K`): `cast BotPHB_K 112656 self 1`: `casting` → **`effected`, `code 600`, `victims 3`**, MP 3372 → 2882 (−570 + yenileme); `snap BotWP_K`: `buff skill=112656 type=1 remain=588s`; MaxHP üçünde de +1200 (3491 → 4691, 5650 → 6850). **Hemen yeniden** `cast BotPHB_K 112656 self 1`: `CastEffect` `ok:false`, **`reason:"no_result"`**, `op -1`, `victims 0`; log `cast stopped (no_result)`; **MP 2922 → 2392 (−570 yine düştü, yenileme dahil −530)**: MEC-MAG-18 tahmini aynen çıktı.
+- **S4 ✔** Party (priest + `BotWP_K`): `cast BotPHB_K 112642 BotWP_K 1`: `CastStart` **`"target":2986`** (≠ −1) → `casting`; `CastEffect` `"target":2986` → `effected`, `code 600`, `victims` alanı yok; MP 3872 → 3672 (−240 + ~40 yenileme); `snap BotWP_K`: `buff skill=112642 type=1 remain=594s`. Aynı `BuffType` hedefteyken `cast BotPHB_K 112615 BotWP_K 1`: `ok:false`, **`srv_fail`**, `op 4`, `code -100`, MP 3712 → 3752 (yalnızca yenileme). Kendine `cast BotPHB_K 112624 self 1`: `"target":2984` (priest kimliği), `effected`, `code 600`; `snap`: `buff skill=112624 type=1`.
+- **S5 ✔** Party yok (taze oturum): `cast BotPHB_K 112615 BotWP_K 1` ⇒ `srv_fail` (`op 4`, `code -100`); `cast BotPHB_K 112615 BotWP_E 1` (düşman) ⇒ `srv_fail`; MP yalnızca yenilendi (2412 → 2492); `cast BotPHB_K 112615 self 1` ⇒ `effected`, `code 600` (party gerekmedi), MP 2492 → 2502 (`Msp 30`, `MAGIC` tablosundan: −30 + ~40 yenileme).
+- **S6 ✔** (a) `BotPHD_K` (buff ağacı 0, KI-016): `cast BotPHD_K 112615 self 1` ⇒ bot kabul etti, `CastStart` `ACTION_RESULT` `ok:false`, `srv_fail`, `op 4`, `code -100`, MP 6392 → 6392; `cast BotPHD_K 112557 self 1` ⇒ `effected`, `victims 1`, MP −920 (+ yenileme). (b) `BotPHD_K` 72 m uzağa taşındı: `cast BotPHB_K 112560 BotPHD_K 1` ⇒ **paket gitmeden** `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range`, `value 72.00`, `limit 56.00`, log `cast stopped (out_of_range)`. (c) CASTING'te `cast ... off` (since_casting 1094 ms): `112557` ⇒ `CastCancel` **`"target":-1`**, `cancelled`, `op 4`, `code -100`, MP 3752 → 3792 (yalnızca yenileme); `112642 BotWP_K` ⇒ `CastCancel` **`"target":2986`**, `cancelled`, MP değişmedi.
+- **S7 ✔** Sacrifice `cast BotWG_K 106660 BotWP_K 1` ⇒ `refused (unsupported_skill)`, jsonl'de `106660`/`106650` için `ACTION_SUBMIT` 0, `BotWG_K` HP 5650/5650 değişmedi (`MAGIC` tablosu: `106660` `Moral 4`, `HP 10001`, `Msp 180`). `unsupported_skill`: Bless of God `112671`, Cure curse `112525`, Counter Curse `112676` (`BotPHB_K`), descent `106650` (`BotWG_K`), summon friend `110004`, Escape `110035` (`BotMF_K`). `112575` ⇒ `quest_locked`; `112570` ⇒ bot kabul etti, sunucu `srv_fail` (bulgu 2). Gerilemesiz: `cast BotPHB_K 112603 self 1` (Moral 2) `effected` `code 600`; F4-29 Inferno `110545` `BotMF_K` → `BotWP_E`: `target -1`, `effected`, `victims 1`, MP −200; Moral 7 `110518`: `CastEffect` `"target":2989` (kurban kimliği), `victims` yok; F4-30 `110533`: `CastFly` + `CastEffect` `target -1`, `victims 1`, MP 5881 → 5621 (2 × 150 − yenileme). `TELEMETRY=summary`: grup heal `effected`, jsonl'de `ACTION_` satırı 0, `PERF_SAMPLE` `tick_p95_us` 82–96 (spawn penceresinde 1350, önceki planlarla aynı); `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya kaldı), `Bot_*.log`'a satır ve yeni jsonl yok; sunucu 3/3 UP, `GameServer.log`'a yeni hata yok.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **S1 beklentisi düzeltildi:** plan `victims ≥ 4` (priest + üç üye) diyordu; ölçülen 3. `BotMF_K` doğuş noktasında priest'ten 35 m uzakta (z=925) olduğundan `Radius 30` dışında kaldı. Bu beklenen sunucu kuralıdır ve yarıçap kuralını kanıtlar (`MagicProcess.cpp:113-141`); `BotMF_K` hedef alınınca (`cast BotPHB_K 112557 BotMF_K 1`) `victims 2` ve olaylarda `d2=925`.
+  2. *(not)* **Group heal `112570` (Moral 6, `SkillLevel 70`, ağaç 60) `unsupported_skill` değil `srv_fail`:** `Moral 6` + `{3, 0}` + `UseItem 0` artık desteklenir (plan §2 "erişilemez" demişti); bot kabul eder, sunucu `IsAvailable()` seviye/ağaç denetimiyle CASTING'te reddeder, MP düşmez (KI-016 ile aynı sınıf). Plan §7 S7'deki beklenti bu skill için yanlıştı; kod doğru.
+  3. *(not)* **Kurulum notları (plan §7):** (a) `110004`/`110035` `BotPHB_K` ile `bad_skill` (sınıf uyuşmazlığı); `BotMF_K` ile `unsupported_skill` görüldü. (b) `Greatness 112656` `Range 101`, `112671` `Range 45` (plan §2 menzil notu yalnızca 56'yı anar; guard `MAGIC.Range`'i kullanır). (c) Brave `Msp 30`, Strong `60` (plan "15–690" aralığında). (d) Sunucu açılışında `GameServer.ini`'ye `[BOT]` anahtarlarının tamamını yazıyor (çalışma zamanı ini'si yedekten geri yüklendi). (e) MP/HP botlar arasında DB'de kalıcı (despawn sonrası `BotPHB_K` MP ≈ 3000'den başlar); `Msp` toplamları ~5-6 MP/sn yenilemeyle okunur.
+  4. *(not)* **Sonuç sözleşmesi doğrulandı, `docs/03` MEC-MAG-18 `[D]` → `[V]`:** `Moral` 4 (hedef kimliği, MP yalnızca başarıda, aynı `BuffType` ⇒ CASTING'te `srv_fail`, party dışı/düşman hedef ⇒ `srv_fail`, kendine party'siz `effected`), `Moral` 6 grup heal (`-1` + hedef noktası, `victims` = çağıran + yarıçap/menzil içi party üyesi, MP bir kez, party'siz `victims 1`), `Moral` 6 grup buff (`code` = süre, tümünde varsa `no_result` ve MP düşer), Sacrifice kapısı çalışma zamanında ölçüldü.
+  5. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; tek sapma notu (`standing`/`needsStanding` açık atama) yerinde ve zararsız.
+  6. Sınanmayanlar (plan kapsamı dışı/bilinen sınır): gerçek istemcinin grup skill paketi biçimi (CLI-07 `[Ö]`), güvenli bölgede grup heal `srv_fail` (botlar güvenli bölgede değildi), El Morad karşılıkları (`2xxxxx`; aynı kod yolu), Group heal'in çağırandan > 56 m üyeyi atlaması (üye taşınmadı; çağırandan mesafe kuralı `UserRegionCheck` + `:1337-1339`, kod okumasıyla `[D]`).
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
