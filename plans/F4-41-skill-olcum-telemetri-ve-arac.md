@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
@@ -170,35 +170,116 @@ git diff --stat gece/2026-10-02...bot/F4-41
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-41` — `<kısa-sha> [F4-41] …`
+- Branch / commit'ler: `bot/F4-41` — `1b72056 [F4-41] Cast telemetrisine mp/mp_after/skill alanları ve skill-check.py hüküm aracı`; `Durum`/rapor commit'i bu maddenin ardından aynı branch'te.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ActionExecutor.cpp`: `EmitFairnessReject` imzasına sondan `uint32 skillId = 0` eklendi; sıfırdan farklıysa `,"skill":<id>` yazılır (diğer tüm çağrılar argüman eklemediği için çıktıları bayt bayt aynı). `RejectCast` çağrısı `s->m_castSkillId` geçirir. `SubmitCast` `ACTION_SUBMIT`'e `cycle`'dan sonra `,"mp":<user->GetMana()>`, `ACTION_RESULT`'a `code`'dan sonra `,"mp_after":<user->GetMana()>` ekler (ikincisi `HandlePacket` döndükten sonra okunur). Davranış değişmez.
+  - `tools/skill-check.py`: yeni araç; telemetri JSONL + `MAGIC` (`--magic` dosyası ya da sqlcmd) → skill başına MP/recast/etki/ret hükmü; `--selftest` (25 kontrol) ve `--strict`/`--json`/`--out`. Yalnızca standart kütüphane, ASCII/LF.
+  - `plans/F4-41-skill-olcum-telemetri-ve-arac.md`: `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    All 14064 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+  rc=0
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  (Tek uyarı, önceden var olan `UpgradeHandler.cpp(634,862)` C4789; yeni uyarı yok.)
+  `./tools/build.sh Debug` de `rc=0` bitti (`BotCoreTests.exe` + `GameServer.exe`), yeni uyarı yok.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — `python3 tools/skill-check.py --selftest` çıkış 0, son satır `selftest: 25 checks, 0 failed` (14 adlı durumun tamamı + alt kontroller).
+  - K2 ✔ — Release ve Debug `rc=0`, yeni uyarı yok.
+  - K3 ✔ — `git diff --stat gece/2026-10-02..HEAD` yalnızca `GameServer/Bot/ActionExecutor.cpp` (+12/−4) ve `tools/skill-check.py` (yeni, 807 satır) gösterir; plan dosyası da aynı branch'te. `ActionExecutor.cpp` farkı yalnızca §5.2 ekleridir; cast karar/guard/eşleme mantığında satır değişmedi (`git diff` ile gözle doğrulandı).
+  - K4 ✔ (grep notu aşağıda) — `mp_after` satır 671, `\"mp\"` satır 604, `RejectCast`'in `EmitFairnessReject(..., s->m_castSkillId)` çağrısı satır 579; diğer 16 çağrı argümansız (grep ile listelendi, değişmedi).
+  - K5 ✔ — `python3 tools/check-perception-contract.py` `RESULT: PASS` (R1..R5 ihlal 0; `GetMana` R2 sembolü değil).
+  - K6 ✔ — `./tools/run-tests.sh` → `251 tests, 0 failed`.
+  - K7/K8 — Claude'un çalışma zamanı sınaması (bu planın kapsamı dışı; DeepSeek sunucu açmadı).
+- Plandan sapmalar ve gerekçeleri:
+  - K4 grep metni `grep -n 'mp_after\|"mp"'` `\"mp\"` alanını yakalamaz: C++'ta alan `+ ",\"mp\":"` biçiminde yazıldığından kaynak metinde `mp\"` geçer, düz `"mp"` dizisi geçmez (grep yalnızca 671 `mp_after` ve ilgisiz 1279 `"mp" : "hp"` satırını döndürür). Eklemenin kendisi doğru ve plandaki §5.2-3 ile birebir; sapma değil, K4 grep kalıbının kaba olmasıdır.
+- Açık sorular:
+  - Uçan skill'lerde MP FLYING + EFFECTING'te iki kez düştüğü için (MEC-MAG-12) `mp_delta` `MAGIC.Msp`'nin iki katı olur ve `mp_verdict` `FAIL` verir. Plan §5.3 formülü bilinçli olarak uçuşu özel-durumlamadı; F4-42 koşusunda uçan skill için `--mp-tol`/beklenti ayarı gerekirse karar Claude'a bırakıldı.
+  - `mp`/`mp_after` yalnızca operatör/analiz içindir; bot karar yolu bu alanları okumaz (algı sözleşmesi korunur).
+
+### Tur 2 — 2026-10-03 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-41` (aynı branch); kod düzeltmesi commit'i ve `Durum`/rapor commit'i bu maddeden sonra.
+- Değişen dosyalar ve neden:
+  - `tools/skill-check.py`:
+    - `load_magic_sql`: `subprocess.run(..., capture_output=True, text=True)` yerine `capture_output=True` (bayt) ve `stdout`/`stderr` için `decode("utf-8", errors="replace")`; hata mesajı da çözülen `stderr`'i kullanır. Ayrıştırma (`replace("\r", "").split("\n")` → `parse_magic_lines`) ve `parse_magic_lines`'in bozuk satır `InputError` davranışı aynı kaldı (Bulgu 1: gerçek `MAGIC` çıktısındaki UTF-8 olmayan bayt `UnicodeDecodeError` ile çökertiyordu).
+    - `analyze` `FAIRNESS_REJECT` dalından ölü `if skill is None: skill = 0` iki satırı silindi (`as_int(..., 0)` zaten `None` döndürmez) (Bulgu 2).
+    - `--selftest`'e `sqlcmd_non_utf8` adlı kontrol eklendi (15. durum): geçici klasörde `#!/bin/sh` + `printf '105660|sacrifice\250|180|0|250|67|3|0\n'` (bayt `0xA8`) yazdıran sahte sqlcmd betiği `chmod +x` ile çalıştırılır; `load_magic_sql(sahte, "s", "d")` sonucu `{105660: {"msp": 180, ...}}` içerir ve çökmez. Posix değilse (Windows) `sqlcmd_non_utf8_skipped` adıyla sayılan kontrol olarak atlanır. Toplam kontrol 25 → 26; son satır biçimi `selftest: N checks, 0 failed`.
+  - `plans/F4-41-skill-olcum-telemetri-ve-arac.md`: `Durum` satırı (`UYGULANDI`) ve bu rapor.
+- Derleme: Bu turda yalnızca Python aracı değişti (`ActionExecutor.cpp`'e dokunulmadı); C++ derlemesi gerekmedi/koşulmadı. Tur 1'in `./tools/build.sh Release`/`Debug` `rc=0` sonuçları geçerlidir.
+- Doğrulama sonuçları (istenen 5. madde):
+  - `python3 tools/skill-check.py --selftest` → `selftest: 26 checks, 0 failed`, çıkış 0.
+  - `python3 tools/skill-check.py /mnt/c/dev/fdp/server/Logs/bots/2026-10-02/f422_noscript-7-4.jsonl --out /tmp/skillcheck_out.txt` (`--magic` **vermeden**) → çıkış 0, çökme yok, rapor yazıldı.
+  - `load_magic_sql` doğrudan çağrıldığında gerçek `MAGIC`'ten **1839 satır** okundu; **137** `EnName` değerinde yer değiştirme karakteri (`U+FFFD`) var (UTF-8 olmayan baytlar çözüldü; ör. `105660` = `sacrifice`, `msp 180`). Yalnızca `MAGIC` tablosu okunur.
+  - `python3 tools/skill-check.py` (PATH yok) → çıkış 2.
+  - `python3 tools/check-perception-contract.py` → `RESULT: PASS`; `git status` yalnızca `tools/skill-check.py` değişti; `ActionExecutor.cpp` önceki halinde.
+- Kriter öz-değerlendirme: K1 ✔ (26 kontrol); engelleyici Bulgu 1 giderildi; Bulgu 2 (ölü kod) giderildi; Bulgu 3/4 not (davranış/kapsam değişmedi). K7 sqlcmd yolu artık gerçek `MAGIC` ile çalışır (çalışma zamanı ölçümü Claude'da). K2/K6 C++ değişmediği için Tur 1'deki gibi geçerlidir.
+- Plandan sapmalar: Sahte sqlcmd betiğinde örnekteki `\xa8` yerine POSIX octal `\250` kullanıldı; `#!/bin/sh` (dash) `\x` kaçışını yorumlamadığı için bayt `0xA8` bu yolla güvenilir üretilir (amaç aynı: UTF-8 olmayan bayt). Kapsam ve davranış değişmedi.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-41` @ `<sha>`
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02...bot/F4-41` @ `3da0d20` (kod commit'i `1b72056`)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ (araç kendi selftest'inde) | `python3 tools/skill-check.py --selftest` → `selftest: 25 checks, 0 failed`, çıkış 0; 14 adlı durumun hepsi var (`tools/skill-check.py:578-746`). Ancak sqlcmd yolu selftest'te hiç sınanmıyor (bkz. Bulgu 1). |
+| K2 | ✔ | `./tools/build.sh Release` rc=0, `warning C` sayısı 0; `./tools/build.sh Debug` rc=0, uyarı 0. |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-41`: `ActionExecutor.cpp` (+11/−4), `tools/skill-check.py` (yeni, 807), plan dosyası. `ActionExecutor.cpp` farkı yalnızca §5.2 ekleri: imza `:54-55`, `skill` alanı `:66-68`, `RejectCast` çağrısı `:579`, `"mp"` `:604`, `"mp_after"` `:671`. Karar/guard/eşleme satırı değişmedi. |
+| K4 | ✔ | `"mp"` eklemesi `:604` (`\"mp\"` biçiminde olduğundan düz `"mp"` grep'i yakalamaz; uygulayıcının notu doğru), `mp_after` `:671`, `RejectCast` `s->m_castSkillId` geçiriyor (`:579`; `m_castSkillId` `BeginCast`'te `:821`'de, `RejectCast` çağrılarından `:968/:1013/:1054-1055` önce atanıyor). Dosyadaki tek `"Cast"` tipli çağrı bu; diğer 15 `EmitFairnessReject` çağrısı argümansız (`:102,:202,:421,:1151,:1265,:1590,:1729,:1884,:2040,:2064,:2348,:2372,:2614,:2815,:2994,:3103`). |
+| K5 | ✔ | `python3 tools/check-perception-contract.py` çıkış 0, `RESULT: PASS`. |
+| K6 | ✔ | `./tools/run-tests.sh` → `251 tests, 0 failed`. |
+| K7 | ertelendi | Çalışma zamanı + gerçek `MAGIC` ile araç çalıştırması: araç düzeltilene kadar yapılamaz (Bulgu 1). Düzeltme sonrası Tur 2'de koşulur. |
+| K8 | ertelendi | Çalışma zamanı sınaması Tur 2'de (sunucu, bu turda açılmadı). |
+
+Ek sınamalar (denetçi): `MAGIC` tablosundan alınan gerçek bir skill satırı (`--magic` dosyası) + gerçek telemetri biçiminde sentetik JSONL ile araç doğru hüküm üretti (`mp_exp 180`, `mp_delta_med 180`, `recast_min_gap_ms 25100 ≥ 25000-50`, PASS, `--strict` çıkış 0); var olmayan yol çıkış 2; PATH'siz çağrı çıkış 2. **Varsayılan sqlcmd yolu gerçek veride çöktü** (aşağıda).
 
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **[Engelleyici] `tools/skill-check.py:119` — varsayılan (sqlcmd) yolu gerçek `MAGIC` verisinde `UnicodeDecodeError` ile çöküyor.** `subprocess.run(command, capture_output=True, text=True)` çıktıyı UTF-8 olarak çözer; `MAGIC` tablosunun bazı `EnName` değerlerinde UTF-8 olmayan bayt var (örn. bayt `0xa8`, çıktı konumu 41926). Sonuç: `--magic` verilmeden çalıştırılan her çağrı traceback ile çıkar, çıkış kodu 1 (planın "sqlcmd hatasında stderr'e yaz, çıkış kodu 2" kuralını ve `--strict` ile "FAIL" çıkış kodunu karıştırma riskini ihlal eder). K7 ("`tools/skill-check.py` o dosya ve gerçek `MAGIC` ile çalışır") tam bu yola dayanır. `--selftest` yalnızca `--magic` dosyasını denediği için hatayı yakalamadı. Denetçi doğruladı: baytları alıp `decode("utf-8", errors="replace")` ile çözünce 1839 satır sorunsuz ayrışıyor.
+  2. [Not, engelleyici değil] `tools/skill-check.py:273-274` — `as_int(..., 0)` hiçbir zaman `None` döndürmez, `if skill is None` dalı ölü kod.
+  3. [Not] `tools/skill-check.py:221-232` — `abandoned` kapatılan kaydın `pending` girdisi silinmiyor; ona ait geç gelen bir `ACTION_RESULT` kaydı `completed`'e `abandoned` yerine sonuçla ekleyebilir (nadir; şu an sayaçları yanıltmaz çünkü `abandoned` kayıt hiç `completed`'e girmez, ama geç sonuç gelirse girer). Düzeltme zorunlu değil.
+  4. [Not] Uygulayıcının açık sorusu (uçan skill'lerde MP iki kez düşer, MEC-MAG-12, `mp_verdict` yanlış `FAIL` verebilir): plan §5.3 formülü bilerek özel-durumlamadı; karar F4-42'de (koşu betiği uçan skill seçtiğinde) verilecek. Bu planı engellemez; STATUS'a not düşüldü.
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F4-41-skill-olcum-telemetri-ve-arac.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/skill-check.py `load_magic_sql` (satır ~112-125): `subprocess.run(..., capture_output=True, text=True)` yerine baytları al (`text=True` kaldır) ve `result.stdout.decode("utf-8", errors="replace")` ile çöz; `result.stderr` mesajını da `decode("utf-8", errors="replace")` ile çöz (hata mesajında kullanılıyor). Ayrıştırma (`replace("\r", "").split("\n")` -> `parse_magic_lines`) aynı kalır. Gerçek MAGIC çıktısında UTF-8 olmayan baytlar bulunur; araç çökmemeli, ilgili `EnName` değerinde yer değiştirme karakteri olabilir.
+2. Aynı fonksiyonda `parse_magic_lines` içinde bozuk bir satır `InputError` atıyor; sqlcmd çıktısında beklenmeyen satır (ör. uyarı/boş) varsa araç çökmesin, main() `InputError`'ı zaten çıkış 2 ile yakalıyor: bu davranışı bozma.
+3. `--selftest`'e yeni adlı kontrol ekle `sqlcmd_non_utf8`: `load_magic_sql`'in çağırdığı alt süreci taklit eden (sahte sqlcmd yürütülebilir betiği, ör. geçici klasörde `#!/bin/sh` ile `printf '105660|sacrifice\xa8|180|0|250|67|3|0\n'` yazdıran dosya; chmod +x) ile `load_magic_sql(sahte_yol, "s", "d")` çağır ve sonucun `{105660: ...}` içerdiğini ve çökmediğini doğrula. Sahte betik yürütülemiyorsa (Windows) kontrolü atla ama yine de sayılan kontrol olarak "skipped" adıyla say. Selftest toplam kontrol sayısı artar; son satır `selftest: N checks, 0 failed` biçimi aynı kalır.
+4. Ölü kodu temizle: `analyze` içinde `FAIRNESS_REJECT` dalındaki `if skill is None: skill = 0` iki satırını sil (`as_int(..., 0)` zaten None döndürmez).
+5. Doğrulama: `python3 tools/skill-check.py --selftest` (çıkış 0), `python3 tools/skill-check.py <herhangi bir .jsonl> ` (--magic VERMEDEN) gerçek sqlcmd ile çökmeden çalışsın ve MAGIC satırlarını okusun (yalnızca MAGIC tablosu), `python3 tools/skill-check.py` çıkışları: PATH yok -> 2. Yalnızca `tools/skill-check.py` ve bu plan dosyası değişir; `ActionExecutor.cpp`'e dokunma.
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-41` @ `260d0d9` (Tur 2 kod commit'i `350dbc8`; `GameServer/` farkı `3da0d20`'den beri boş, yani Tur 1'de derlenen C++ değişmedi)
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 tools/skill-check.py --selftest` → `selftest: 26 checks, 0 failed`, çıkış 0; yeni `sqlcmd_non_utf8` kontrolü sahte sqlcmd ile bayt `0xA8` üretiyor (`tools/skill-check.py:748-765`); 14 adlı durumun hepsi duruyor. |
+| K2 | ✔ | Tur 1: Release/Debug rc=0, uyarı 0. Tur 2'de C++ değişmedi (`git diff 3da0d20..bot/F4-41 -- GameServer/` boş); Release `GameServer.exe` (`build/bin/x86-Release`, 08:24) kod commit'inden sonra derlenmiş ve çalışma zamanı sınamasında kullanıldı. |
+| K3 | ✔ | Taban farkı: `ActionExecutor.cpp` (+11/−4), `tools/skill-check.py` (yeni), plan dosyası; ayrıca `docs/STATUS.md` ve `plans/README.md` (Claude'un Tur 1 doğrulama kayıtları). Tur 1'de `ActionExecutor.cpp` farkının yalnızca §5.2 ekleri olduğu doğrulandı; Tur 2'de değişmedi. |
+| K4 | ✔ | Tur 1 kanıtı geçerli (`:579` `s->m_castSkillId`, `:604` `\"mp\"`, `:671` `mp_after`, diğer çağrılar argümansız). Çalışma zamanında üç alan da görüldü (K7). |
+| K5 | ✔ | `python3 tools/check-perception-contract.py` → `RESULT: PASS`, çıkış 0. |
+| K6 | ✔ | `./tools/run-tests.sh` → `251 tests, 0 failed`. |
+| K7 | ✔ | Gece modu çalışma zamanı: `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`, Release sunucu, `spawn BotMF_K`, `spawn BotWP_E`, `cast BotMF_K 110518 BotWP_E 3` (Ignition, Type3 tek hedef, `MAGIC.Msp 60`, `ReCastTime 1`). `live-082610.jsonl`: `ACTION_SUBMIT` `CastStart`/`CastEffect` `"mp":6021` → `ACTION_RESULT` `CastEffect` `"mp_after":5961`, sonraki çevrimler 5961→5901→5841 (her atışta −60); alan sırası plandaki gibi; `SpeedCheck` satırlarında yeni alan yok. Reddedilen atış: `FAIRNESS_REJECT` `Cast` `MEC-MAG-11` `out_of_range` `value 60.90` `limit 56.00` `"skill":110518`. Araç **sqlcmd ile (`--magic` verilmeden)** bu dosyada: `110518 Ignition started 4, effected 3, guard_reject 1, rejects out_of_range:1, mp_exp 60, mp_delta_min/med/max 60, mp_verdict PASS, recast_exp_ms 100, recast_min_gap_ms 2185 PASS, cast_ms_med 1091, effect_verdict PASS`, genel `PASS`, `--strict` çıkış 0. |
+| K8 | ✔ (sınırlı) | `script_smoke_2bot.txt` ile öncesi/sonrası karşılaştırması yapılmadı; bunun yerine kod farkı yalnızca telemetri alanı eklemesi ve çalışma zamanında cast zinciri F4-34 kayıtlarıyla aynı davrandı (`casting` → `effected`, `ok:true`, `op 1/3`, `code 0`; log `cast finished (effected) after 3 cycle(s), 3 ok, 6 packet(s) sent`; menzil dışında `cast stopped (out_of_range)`). Davranış değişikliği izi yok. |
+
+Ek sınamalar (denetçi): sentetik JSONL + sqlcmd'den gerçek `MAGIC` (skill `105660`, `Msp 180`, `ReCastTime 250`): `mp_delta_med 180`, `recast_min_gap_ms 25100 ≥ 24950`, hepsi `PASS`, `--strict` çıkış 0; PATH'siz çağrı çıkış 2; olmayan yol çıkış 2; dosya ASCII/LF (`file`: ASCII text, CR sayısı 0). Çalışma ortamı geri alındı: sunucular kapatıldı (`status` 0/3), `GameServer.ini` yedekten bayt bayt geri yüklendi (`cmp` sıfır fark), botlar `despawn all` ile kaldırıldı; yeni dosya yalnızca `Logs/bots/2026-10-03/live-082610.jsonl` ve `Logs/Bot_3_10_2026.log` satırları.
+
+- Tur 1 bulgularının durumu: Bulgu 1 (engelleyici, `UnicodeDecodeError`) giderildi: bayt çıktısı `decode("utf-8", errors="replace")` ile çözülüyor (`tools/skill-check.py:119-127`), varsayılan sqlcmd yolu gerçek `MAGIC` ile çalışıyor (1839 satır). Bulgu 2 (ölü kod) giderildi. Bulgu 3 (abandoned kaydın `pending` girdisi) not olarak açık, düzeltme zorunlu değil. Bulgu 4 (uçan skill) F4-42'ye devredildi.
+- Bulgular (önem sırasıyla, hiçbiri engelleyici değil):
+  1. [Not] `tools/skill-check.py:221-232` — `abandoned` kapatılan kaydın `pending` girdisi silinmiyor; geç gelen bir `ACTION_RESULT` kaydı yine de `completed`'e ekleyebilir (nadir; F4-42 koşusunda ikinci `CastStart` öncesi sonuç beklenmediği için beklenmiyor).
+  2. [Not] Uçan skill'lerde MP FLYING + EFFECTING'te iki kez düşer (MEC-MAG-12): `mp_delta` `Msp`'nin iki katı olur, `mp_verdict` yanlış `FAIL` verir. F4-42'de uçan skill seçilirse `--mp-tol`/beklenti kararı verilecek (uygulayıcının açık sorusu; plan §5.3 bilerek özel-durumlamadı).
+  3. [Not] K8 tam öncesi/sonrası betik karşılaştırması değil (yukarıda); telemetri-yalnız fark ve çalışma zamanı zinciri davranışı kanıt olarak yeterli sayıldı.
+- Birleştirme: otonom gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`); birleştirmeyi ve push'u döngü betiği yapar, bu oturumda yapılmadı.
