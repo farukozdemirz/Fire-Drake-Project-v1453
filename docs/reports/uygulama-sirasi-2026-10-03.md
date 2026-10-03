@@ -21,7 +21,7 @@
 | 6 | F5-63 | Hareketli hedef: kestirim, yeniden yol, takılmadan kurtulma | TASLAK | F5-62 |
 | 7 | F5-64 | Sorgu bütçesi adil dağıtımı, ertelenen sorgu, NAV telemetrisi, `PERF_SAMPLE` nav payı | TASLAK | F5-62, F5-63 |
 | 8 | F5-65 | Ölüm, respawn, despawn, bölge değişiminde nav durumu temizliği | TASLAK | F5-62 |
-| 9 | **F5-68** | *(yazılacak)* F6'nın ihtiyaç duyduğu ama hiçbir F5 diliminde sunucuya açılmayan sorgular: `directClear`, `NavRetreatPlanner`, `NavReachJudge` iletimi | **plan dosyası yok** | F5-62..F5-65 |
+| 9 | **F5-68** | F6'nın ihtiyaç duyduğu ama hiçbir F5 diliminde sunucuya açılmayan sorgular: `directClear`, `NavRetreatPlanner`, `NavReachJudge` iletimi, arena sınırı katmanı | TASLAK (iskelet; F5-62..F5-65 kodu gelince detaylanır) | F5-62..F5-65 |
 | 10 | **F4-61** | *(yazılacak)* Gözlenen durum: görünürlük kaybı, yeniden giriş, `uncertain` işareti, ±2 sn ölçüm | **plan dosyası yok** (kaynak taslak: `docs/reports/taslaklar/`) | F4-60 |
 | 11 | F5-66 | Oyun içi çalışma zamanı doğrulama: engelli rota, iki ulus doğuş → arena, takip/takılma, 16 bot nav payı ve `BotManager::Tick`, ertelenen sorgu | TASLAK | F5-59..F5-65, F5-68, F4-55 |
 | — | F5-67 | Su katmanı düzeltmesi | TASLAK, **koşullu** (yalnız F5-60 sonucu `GEREKLİ` ise) | F5-60 |
