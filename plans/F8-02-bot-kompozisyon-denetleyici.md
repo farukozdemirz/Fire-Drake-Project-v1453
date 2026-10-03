@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-02 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F8-01 `KAPANDI` (merge `43c4e02`; yalnızca üslup/`--selftest` kalıbı için). Karakter seti kaynağı `db/002` F1-04 `KAPANDI` |
@@ -278,20 +278,47 @@ git diff --stat gece/2026-10-02-nav...bot/F8-02
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F8-02` @ `<sha>`
-- Kriter sonuçları:
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02-nav...bot/F8-02` @ `cbb84fe` (2 commit: `6b2ea79`, `cbb84fe`; paralel hat `nav`, gece modu, sunuculara dokunulmadı, `AUTO_LOOP=1`)
+- Kriter sonuçları (10 kriterden 10'u kodla karşılandı; karar, §8'deki Python 3.8 kuralının ihlali ve bir rapor iddiasının yeniden üretilememesi nedeniyle):
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/bot-composition-check.py --selftest` rc 0, son satır `SELFTEST PASS n=58`, `^FAIL` 0, `^PASS` 58 |
+| K2 | ✔ | 58 vaka adının tamamı (§5.6 tablosundan elle çıkarıldı) `^PASS <ad>$` olarak tam 1 kez; fazladan/eksik ad yok. Not: §7 "K2 komutu"nun `have_` regex'i `have12_*`, `have16_*`, `have20_*` (5 vaka) adlarını yakalamaz (plan kusuru, uygulama değil); komut 53 ad sayar, kalan 5 ayrıca elle doğrulandı (hepsi 1) |
+| K3 | ✔ | gerçek `db/002`: çıktı §5.8'in 30 satırıyla `diff` boş, rc 0; `sample-20.sql`: çıktı §5.9 ile aynı, `grep -c '^MISSING'` 0, rc 0 |
+| K4 | ✔ | `--json` `python3 -c` doğrulaması (gerçek: `full20_missing==8`, `len(missing)==8`, `have.K.WP==1`, `pairs[4].id=='EVAL-8v8-A'`, `errors==[]`; sample: `full20_missing==0`, `missing==[]`) geçti |
+| K5 | ✔ | rc: varsayılan 0, `--strict` 1, `--strict --target small` 0, `--strict --target min16` 1, `--strict --sql sample-20.sql` 0, `--target bogus` 2, `--max-bots 0` 2, `--sql /yok.sql` 2, `--nonsense` 2 (ayrıca `--sql` / `--max-bots` / `--target` değersiz ve `--max-bots abc` → 2). Profil `XX`'li geçici SQL → tek satır `ERROR /tmp/bad.sql:3: unknown profile 'XX'`, rc 2, `SQL`/`HAVE`/`SUMMARY` yok. `--selftest --target bogus` yalnızca selftest koşar (rc 0) |
+| K6 | ✔ | `/tmp` altında geçici ağaçta bağımsız mutasyon betiğiyle (kopyalar kendi kendini temizler): (a) `tools/bot-composition-check.py:49` C8-A `"WP": 2`→`1`: rc 1, **10** FAIL (`comp_sizes`, `comp_c8a_counts`, `doc09_table_matches_builtin`, `set_min16_need`, `have12_min16_missing_4`, `missing_real_db002_8_lines`, `missing_needed_by`, `pair_8v8_a_short_4`, ...); (b) `:305` `min(have, need)` → `have`: rc 1, `have_surplus_not_negative` FAIL (`usable=16 missing=-6`) + 4 vaka daha; (b2) `:360-361` `max(0, ...)` kaldırıldı: rc 1 (yalnızca `cli_real_expected_output`, `sample_file_expected`); (c) `:329` `if candidate not in used_idx:` → `if True:`: rc 1, `missing_index_skips_used` FAIL (`index 1`) + 3 vaka daha |
+| K7 | ✔ | içe aktarmalar `json os re sys tempfile` (`:28-32`); yasaklı modül yok; `open()` yazan yalnızca `:698`, `:701` (`write_tmp`, `--selftest` içi), `:168`/`:901`/`:925` okuma; `LC_ALL=C grep -nP '[^\x00-\x7F]'` iki dosyada boş; `\r` 0/0; `file`: ASCII; `.py` `eol: lf` |
+| K8 | ✔ | `git diff --stat gece/2026-10-02-nav...bot/F8-02`: yalnızca `plans/F8-02-...md`, `tools/bot-composition-check.py` (1235 satır), `tools/bot-composition-check/sample-20.sql` (22 satır, §5.7 bloğuyla satır satır aynı). Plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişmiş |
+| K9 | ✔ | `./tools/build.sh Release` rc 0 (7 hedef bağlandı, `warning` satırı 0); `./tools/run-tests.sh` `223 tests, 0 failed` (Debug plan istemiyor) |
+| K10 | ✔ | Uygulayıcı Raporu'ndaki eşleme tablosu `docs/15` §6a satır 272-280 ile (12 bugünkü, 16 asgari +1 W-P +1 M-F, 20 çeşitlilik, "16'nın üstüne 4", ulus başına 8/10) ve ADR-0002 Eki F8-02 madde 2/3 ile uyumlu; atıf yapılan vakalar çıktıda PASS |
 
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **Python 3.8 kuralı ihlali, `--selftest` Python ≤ 3.8'de düşer** (`tools/bot-composition-check.py:106-107`; plan §4 ve §8: "Python 3.8 uyumlu", §5.3: "çalışma dizininden bağımsız"). `tool_dir()` her çağrıda `os.path.abspath(__file__)` hesaplar; Python ≤ 3.8'de betik `python3 tools/bot-composition-check.py` ile (göreli yol) çalıştırılınca `__file__` göreli kalır (3.9'da mutlak oldu), `cli_default_path_independent_of_cwd` (`:1174-1185`) `os.chdir(tmp)` yaptıktan sonra `default_sql_path()` yanlış dizine çözülür. Yerelde yalnızca Python 3.12.3 var; davranış `__file__`'ı göreli verip `exec` ederek taklit edildi: `SELFTEST FAIL failed=1 of 58`, `FAIL cli_default_path_independent_of_cwd: rc 2`. CLI modu `chdir` yapmadığı için etkilenmez; yalnızca selftest (K1) etkilenir. Düzeltme tek satırlık: dizini içe aktarma anında sabitle.
+  2. **Rapor iddiası yeniden üretilemedi** (Uygulayıcı Raporu K6): "(a) ... 24 `FAIL`" yazıyor; aynı mutasyon (`:49` `"WP": 2`→`1`) bağımsız çalıştırmada **10** FAIL verdi (rc 1, kriter ≥ 3 olduğundan K6 yine ✔). Sayı ya başka bir mutasyondan ya da yanlış okumadan gelmiş olabilir; dürüstlük kuralı gereği rapordaki sayı ölçülen değerle düzeltilmeli.
+  3. Not (engel değil): K6(b2) (`:360-361` çiftlerde `max(0, ...)` kaldırılması) yalnızca `cli_real_expected_output` ve `sample_file_expected` tarafından yakalanır; ayrı bir vaka yok. Plan böyle bir vaka istemediği için eklenmesi istenmiyor.
+  4. Not (engel değil): `--max-bots` değeri `int()` ile okunduğundan `1_6`, ` 5`, `+5` kabul edilir (`:119-123`); planın "tamsayı ≥ 1" tanımıyla çelişmez, düzeltme istenmiyor.
+  5. Not (planlayıcı tarafı): §7 "K2 komutu"ndaki `^(parse|err|comp|doc09|set|have|missing|pair|cli|sample)_` regex'i `have12_*`/`have16_*`/`have20_*` adlarını kaçırır; yeni plan yazılırken `have[0-9_]` kullanılmalı.
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F8-02-bot-kompozisyon-denetleyici.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/bot-composition-check.py: tool_dir() (satır ~106) her çağrıda os.path.abspath(__file__) hesaplıyor; Python <= 3.8'de göreli __file__ + os.chdir() sonrası yanlış dizine çözülüyor (cli_default_path_independent_of_cwd bu yüzden düşer). Düzeltme: sabitleri tanımladığın yerde (PROFILES/NATIONS satırlarının yanında, import'lardan sonra) modül düzeyinde TOOL_DIR = os.path.dirname(os.path.abspath(__file__)) tanımla ve tool_dir() yalnızca "return TOOL_DIR" döndürsün. Dosyada abspath(__file__) başka hiçbir yerde kalmasın (grep -n "abspath(__file__)" tek satır vermeli). Başka hiçbir davranışı, vaka adını, çıktıyı değiştirme; selftest sayısı 58 kalır.
+2. Python 3.8 davranışını taklit ederek doğrula (Python 3.12 yerelde tek yorumlayıcı) ve çıktıyı rapora yapıştır: __file__'ı göreli yapıp exec et, run_selftest() çağır; örnek:
+   python3 - <<'EOF'
+   import types, io, contextlib
+   src = open("tools/bot-composition-check.py", encoding="utf-8").read()
+   m = types.ModuleType("emul"); m.__dict__["__file__"] = "tools/bot-composition-check.py"; m.__dict__["__name__"] = "emul"
+   exec(compile(src, "tools/bot-composition-check.py", "exec"), m.__dict__)
+   buf = io.StringIO()
+   with contextlib.redirect_stdout(buf): rc = m.run_selftest()
+   print(rc, buf.getvalue().splitlines()[-1])
+   EOF
+   Beklenen: "0 SELFTEST PASS n=58". Düzeltmeden önce aynı komut "1 SELFTEST FAIL failed=1 of 58" verir; ikisini de raporla.
+3. Tur 1 raporundaki K6(a) cümlesini düzelt: "24 FAIL" yerine mutasyonu (tools/bot-composition-check.py satır 49, C8-A "WP": 2 -> 1; /tmp altındaki kopyada) yeniden çalıştırıp ölçtüğün gerçek FAIL sayısını yaz (denetçi 10 ölçtü; farklı çıkarsa nedenini de yaz). Mutasyonu yalnızca /tmp altındaki kopyada yap; depodaki dosyayı bozma.
+4. python3 tools/bot-composition-check.py --selftest | tail -1 (SELFTEST PASS n=58), gerçek db/002 ve sample-20.sql çıktılarının planla hâlâ aynı olduğunu (diff boş) ve ./tools/run-tests.sh | tail -1 (223 tests, 0 failed) raporuna yaz. Dosyalar ASCII/LF kalsın (LC_ALL=C grep -nP '[^\x00-\x7F]' ve grep -c $'\r' boş/0). Commit: [F8-02] Tur 2: ...; planın Durum'unu UYGULANDI yap.
 ```
