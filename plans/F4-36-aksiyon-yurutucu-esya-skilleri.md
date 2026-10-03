@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-36` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-35 (`BeginCast` Type8 bloğu ve destek koşulu) — `KAPANDI` (merge `9239997`); F4-27 (`quest_locked` kuralı) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-26 (`{3, 4}` çifti), F4-25 (uçan Type3), F4-29 (alan) — `KAPANDI` |
@@ -249,13 +249,32 @@ git diff --check gece/2026-10-02...bot/F4-36
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-36` (taban `gece/2026-10-02` @ `8b31e52`); `09449aa` — "[F4-36] Eşya tüketen sınıf skill'leri: CastItemSkillSupported + no_item ön kontrolü"
+- Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: §5.1 bloğu `CastWarpNeedsOtherTarget`'tan sonra, `CastTargetIdField` öncesine eklendi (sabitler `kClassStoneBase`/`kClassStoneStep`/`kClassWarriorId`/`kClassPriestId`, `CastItemSkillSupported`, `CastConsumeItem`). Yalnızca ekleme (33 satır), BOM/CRLF korundu.
+  - `Tests/BotCoreTests/CombatTests.cpp`: dosya sonuna `Combat_ItemSkill_Guard` (46 satır). Mevcut testler değişmedi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` destek koşulundaki `|| m->iUseItem != 0` yerine `|| !BotCore::CastItemSkillSupported(m->bType[0], m->sSkill, m->iUseItem)` (satır 771); `quest_locked` bloğundan sonra `no_item` ön kontrolü (satır 792-802). İki hunk, ikisi de `BeginCast` içinde.
+  - `GameServer/Bot/ActionExecutor.h`: `CastOutcome::reason` listesine `"no_item"`; `BeginCast` yorumuna eşyalı sınıf skill'leri ve `no_item` açıklaması. Yalnızca yorum.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
+  - `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`
+  - `BotCoreTests.vcxproj -> ...\x86-Release\Tests\BotCoreTests.exe`
+  - Debug de hatasız (`BotCoreTests.vcxproj -> ...\x86-Debug\Tests\BotCoreTests.exe`). Değişen dört dosyada yeni uyarı yok (iki C4789 `UpgradeHandler.cpp`'de, önceden var).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; değişen dosyalarda uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `tools/run-tests.sh Release` ve `Debug`: `248 tests, 0 failed`; `Combat_CastTypes_Supported`, `Combat_WarpCast_Guard`, `Combat_ItemSkill_Guard` üçü de `[ OK ]`. **Not:** plan 113 test bekliyordu; gerçek toplam **248** (bu çalışma ağacında nav/F8 planlarının testleri de mevcut; F4-36 öncesi 247 → sonrası 248, +1). Sayı plan metnindeki 112→113 tabanına göre değil, güncel ağaca göre doğru.
+  - K4 ✔ `grep` K4 desenleri eşleşme vermedi; `std::min`/`std::max` yok; `BotCombat.h` diff'inde silinen satır yok.
+  - K5 ✔ `m->iUseItem != 0` tam iki satır (737 diriltme, 794 `no_item`); `CastItemSkillSupported` tek satır (771, destek koşulu içinde); `CastConsumeItem` tek satır (796); `"no_item"` tek satır (799); `no_item` başında `!resurrection &&`; blok `quest_locked`'ten sonra `bool self = ...`'dan önce; diğer koşul terimleri yerinde; `m_Magictype8Array` 1.
+  - K6 ✔ `ActionExecutor.cpp` diff'i yalnızca `BeginCast` içinde iki hunk; `git diff --stat` yalnızca §4'teki 4 dosya + plan; proje dosyaları/`BotSession`/`BotManager`/`Telemetry`/`tools` değişmedi.
+  - K7 ✔ yeni ini/komut/thread/telemetri yok; diff'te `Emit(` eklenmedi.
+  - K8 ✔ dört dosya CRLF + ASCII (`file` durumu aynı); `git diff --check` boş.
+  - K9 ✔ guard grep'leri beklenen sayılarda; 112 önceki testin tamamı geçiyor.
+  - K10 ✔ `check-perception-contract.py` `RESULT: PASS` (`files scanned: 31`, R1/R4/R5 = 0), `--selftest` `selftest OK`.
+  - K11 (çalışma zamanı) Claude'a bırakıldı.
+- Plandan sapmalar ve gerekçeleri:
+  - Test sayısı plandaki "112 → 113" değil, güncel ağaçta "247 → 248". Bunun nedeni tabanın (veya bu çalışma ağacının) nav/F8 testlerini de içermesidir; F4-36 kendi testinde +1 ekler. Yeni test adı ve içeriği plan §5.2 ile birebir.
+- Açık sorular: yok.
 
 ---
 
