@@ -116,13 +116,15 @@ def load_magic_sql(sqlcmd, server, db):
         "-Q", "SET NOCOUNT ON; " + MAGIC_QUERY,
     ]
     try:
-        result = subprocess.run(command, capture_output=True, text=True)
+        result = subprocess.run(command, capture_output=True)
     except OSError as exc:
         raise InputError("cannot run sqlcmd: %s" % exc)
+    stdout = result.stdout.decode("utf-8", errors="replace")
+    stderr = result.stderr.decode("utf-8", errors="replace")
     if result.returncode != 0:
         raise InputError("sqlcmd failed (exit %d):\n%s"
-                         % (result.returncode, result.stderr.strip()))
-    return parse_magic_lines(result.stdout.replace("\r", "").split("\n"))
+                         % (result.returncode, stderr.strip()))
+    return parse_magic_lines(stdout.replace("\r", "").split("\n"))
 
 
 def collect_paths(paths):
@@ -270,8 +272,6 @@ def analyze(paths, magic, mp_tol, ms_tol, min_n):
                         continue
                     reason = rec.get("reason")
                     skill = as_int(rec.get("skill"), 0)
-                    if skill is None:
-                        skill = 0
                     bump(stat_for(skill)["rejects"], reason)
                     record = open_by_bot.get(bot)
                     if record is not None:
@@ -744,6 +744,25 @@ def run_selftest():
         report = run_case(records, magic)
         parsed = json.loads(render_json(report))
         check("json_out", "skills" in parsed and len(parsed["skills"]) == 1)
+
+        # 15. sqlcmd_non_utf8: a fake sqlcmd with a non-UTF-8 byte must not crash.
+        if os.name == "posix":
+            fake_sqlcmd = os.path.join(tmp, "fake_sqlcmd.sh")
+            write_text(fake_sqlcmd,
+                       "#!/bin/sh\n"
+                       "printf '105660|sacrifice\\250|180|0|250|67|3|0\\n'\n")
+            os.chmod(fake_sqlcmd, 0o755)
+            try:
+                sql_magic = load_magic_sql(fake_sqlcmd, "s", "d")
+            except InputError:
+                sql_magic = None
+            if sql_magic is None:
+                check("sqlcmd_non_utf8_failed", False)
+            else:
+                row_ok = sql_magic.get(105660, {}).get("msp") == 180
+                check("sqlcmd_non_utf8", row_ok)
+        else:
+            check("sqlcmd_non_utf8_skipped", True)
 
     if failures:
         for name in failures:
