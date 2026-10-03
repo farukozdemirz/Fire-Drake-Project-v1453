@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-74 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: **F5-73** (`NavDrive` Follow kipi, saf mantık; merge `bc3170d`), **F5-70** (`/bot goto`, `SharedPathfinder()`, `BotSession::m_navDrive`; merge `99d7170`), F5-59 (`NavService`), F5-61 (kiriş guard'ı), F5-71 (bileşen farkındalıklı takipçi), F4-12/F4-50 (`ObsTable` gözlem tablosu, `UnitObs.lastMoveMs/lastSpeed`). **F5-72'den bağımsız** (F5-72 `KAPANDI`/birleşti, `3bf2ad2`; yalnızca `BotCore/ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py`; bu plan yalnızca `GameServer/Bot/` altındaki yedi dosya) |
@@ -224,36 +224,84 @@ grep -n "TickFollow(" GameServer/Bot/*.cpp
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-74` — `<kısa-sha> [F5-74] …`
+- Branch / commit'ler: `bot/F5-74` (taban `gece/2026-10-02` @ `270d1f3`)
+  - `1df2c52` `[F5-74] NavService: NavReach bilesenleri ve ceza katmani`
+  - `85f7dff` `[F5-74] BotSession: m_followTargetSid uyesi`
+  - `b7c3249` `[F5-74] ActionExecutor: BeginFollow/TickFollow ve kip denetimi`
+  - `9b8f928` `[F5-74] BotManager: /bot follow komutu, takip tick'i ve gunluk satirlari`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/NavService.h/.cpp`: `#include NavReach.h`/`NavDanger.h`; `Reach()` (hazır değilken `nullptr`) ve `ScratchLayer()`; `m_reach`/`m_scratch` üyeleri. `Startup()` `m_grid.Build()` + `MainComponentCells() > 0` denetiminden sonra, `m_ready.store(true)` öncesinde `m_reach.Build(m_grid)` ölçülüp (`no_reach` başarısızlığı korunur), mevcut "nav ready" satırı **aynen** bırakılıp ardından `NavService: reach ready: components=%d largest_cells=%d build_ms=%.1f` yazıldı (D6).
+  - `GameServer/Bot/BotSession.h`: yalnızca `int m_followTargetSid = -1;` (D7); yapıcı/`ResetForRespawn` değişmedi.
+  - `GameServer/Bot/ActionExecutor.h`: `FollowObservation`, `FollowOutcome`, `BeginFollow`/`TickFollow` bildirimleri; `MoveOutcome::reason` yorumuna F5-74 metinleri; `TickMove` yorumu.
+  - `GameServer/Bot/ActionExecutor.cpp`: `TickMove` kip denetimi (`Active()` → `Mode()==Goto`, ardından `Mode()==Follow` → `out`), `TickPathMove` koruması (`Mode()!=Goto`); yeni `FollowEndReason` yardımcısı; `BeginFollow` (tüm denetimler `m_navDrive`'a dokunmadan önce) ve `TickFollow` (D2/D3/D3a/D4/D5; 9 argümanlı `TickFollow` aşırı yüklemesi, `reach`'siz yol çağrılmaz).
+  - `GameServer/Bot/BotManager.h/.cpp`: `CommandFollow` bildirimi; `follow` dağıtımı, bilinmeyen komut metni; `FollowStatusName/FollowReasonName/FollowStuckKindName/FollowActionName` ve `ReadFollowObservation` (D1, tek kayıt `m_obsLock` altında); `CommandFollow` (`CommandGoto` kalıbı; hedef kimliği **yalnızca** `t->m_selfSid`); `TickFollowSession` (D8 günlük satırları); `TickSessions` hareket dalında `Mode()==Follow` iken `TickFollowSession`, aksi halde mevcut `TickMove` yolu.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Test sayısı (başlangıç / sonra): …
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K11-K17 Claude'un çalışma zamanı kriterleri)
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `Debug` de rc=0. Değişen dosyalar `touch` edilip yeniden derlendiğinde **yeni uyarı yok** (kalan uyarılar yalnızca eski `GameServerDlg.cpp` C4834/C4267).
+- Test sayısı (başlangıç / sonra): **315 / 315** (`./tools/run-tests.sh Release` ve `Debug`, ikisi de `0 failed`). Plan test eklemez; sayı değişmedi.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release/Debug rc=0; `touch` sonrası değişen dosyalarda yeni uyarı 0.
+  - K2 ✔ iki yapılandırmada `315 tests, 0 failed` (başlangıç 315).
+  - K3 ✔ `git diff --stat gece/2026-10-02...bot/F5-74 -- GameServer/` yalnızca 7 dosya; `BotCore/`, `Tests/`, `tools/`, `docs/`, `shared/`, `AIServer/`, `*.vcxproj*`, `BotSession.cpp` farkı 0. (Tek sapma: `plans/README.md` durum sözcüğü AGENTS.md §2.2 gereği dokunulmadı, bkz. açık sorular.)
+  - K4 ✔ `ActionExecutor.cpp` farkı yalnızca `TickMove`/`TickPathMove` kip satırları + yeni `BeginFollow`/`TickFollow`/`FollowEndReason`; `SubmitMove`, `ValidateWalkStart`, `BeginMove`, `StopMove`, `BeginGoto`, `NeedsReplan` gövdeleri değişmedi (`git diff -U0`).
+  - K5 ✔ kod incelemesi: (a) `NextFollowStep` paket kapısı açıkken tick başına en çok bir kez; (b) her adım `SubmitMove` sonucu tam bir `OnPacketSent`/`OnPacketRejected` (hold/bitiş durma paketleri hariç — plan istisnası); (c) `ObserveTarget` yalnızca `found && posState != POS_LOST`; (d) yalnızca 9 argümanlı `TickFollow(... &ScratchLayer(), *Reach())` çağrılıyor (`ActionExecutor.cpp:647`); (e) `Arrived` paketi `speed 0`, `SubmitMove`'a `arrived=false`; (f) ara adımlarda `speed = s->m_moveSpeed`.
+  - K6 ✔ `python3 tools/check-perception-contract.py` rc=0 (R1-R5 0 ihlal); yeni satırlarda yasaklı simge yok; `->m_pUser` yalnızca `s->m_pUser` (hedef oturum için `t->m_pUser` yok).
+  - K7 ✔ mevcut "nav ready" metni ve `Grid()/Ready()/GetInfo()/Startup()/Shutdown()/SharedPathfinder()` imzaları değişmedi; `m_reach.Build` `m_ready.store(true)`'dan önce (`NavService.cpp:129` Build, `:145` store); `Reach()` hazır değilken `nullptr`.
+  - K8 ✔ kod incelemesi: yeni kod yalnızca `follow` komutu ve `Mode()==Follow` iken çalışır; `Startup()` `NAV=0` iken `Build` çağırmaz (erken dönüş korundu).
+  - K9 ✔ `BeginFollow` tüm denetimleri (`ValidateWalkStart`, `nav_off`, `nav_zone`, `bad_target`, `target_not_visible`) `s->m_navDrive.BeginFollow`/üye yazımlarından **önce** yapar (`ActionExecutor.cpp:531-571`); reddedilen `follow` sürmekte olan `goto`/`move`'u bozmaz.
+  - K10 ✔ yedi dosya `ASCII text, with CRLF line terminators`, BOM yok; `git diff --check` rc=0.
+  - K11–K17: **Claude'un çalışma zamanı kriterleri**; sunucu açılmadı (aşağıda).
+- Plandan sapmalar ve gerekçeleri:
+  - §2'deki satır numaraları `3bf2ad2`'de birkaç satır kaydı; planın "asıl kural işlev adıdır" notu gereği işlev adlarıyla eşleştirildi, davranışsal sapma yok (ör. `TickMove` kip satırı `:320`, `TickPathMove` koruması `:449`).
+  - `plans/README.md` F5-74 satırının durum sözcüğü güncellenmedi: AGENTS.md §2.2 (`plans/README.md` dokunulmaz) ve düzenleme izni reddi. Döngü/Claude günceller.
+- Açık sorular:
+  - K11–K17 (çalışma zamanı) yapılmadı; sunucu `ENABLED=1, NAV=1, TELEMETRY=decisions` ile Claude tarafından koşulacak. Özellikle K17'de `largest_cells == 88508` beklenir; F5-71 uyarınca eğim cebi (KI-024) Follow'da kurtarılmıyor.
+  - `plans/README.md` durum sözcüğünü kimin güncelleyeceği (döngü betiği mi).
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-74` @ `<sha>`
+- Karar: **DOĞRULANDI**
+- İncelenen: `gece/2026-10-02...bot/F5-74` @ `0fbf022` (kod değişikliği son olarak `9b8f928`; sonrasında yalnızca rapor ve beceri dosyası commit'leri). Gece/otonom mod (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push yapılmadı. Derleme, birim testi ve çalışma zamanı koşusu aynı turda **ön planda** yapıldı (önceki iki tur arka plan işine bırakıldığı için kaybolmuştu).
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `build.sh Release` ve `Debug` rc=0. Altı dosya (`NavService.h/.cpp`, `BotSession.h`, `ActionExecutor.h/.cpp`, `BotManager.cpp`) `touch` edilip Release yeniden derlendi (`ActionExecutor.cpp`, `BotManager.cpp`, `NavService.cpp` derlendi çıktıda): `GameServer/Bot/` altında uyarı **0**; kalanlar eski `GameServerDlg.cpp` `:820/:1147/:1806` (C4834/C4267) ve `UpgradeHandler.cpp` `:634/:862` (C4789) |
+| K2 | ✔ | `run-tests.sh Release` → `315 tests, 0 failed`; `Debug` → `315 tests, 0 failed` (başlangıç 315, rapordaki sayı doğru) |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-74`: yedi `GameServer/Bot/` dosyası + plan dosyası + `.claude/skills/plan-dogrula/SKILL.md` (+1 satır; döngünün kurtarma commit'i `0fbf022`, içerik `gece/2026-10-02`'deki `9463c60` ile aynı: `git diff gece/2026-10-02 bot/F5-74 -- .claude` boş, birleştirmede çakışma yok). `BotCore/`, `Tests/`, `tools/`, `docs/`, `shared/`, `AIServer/`, `*.vcxproj*`, `BotSession.cpp` farkı **0**; `plans/README.md` dokunulmadı |
+| K4 | ✔ | `git diff -U0 ... -- ActionExecutor.cpp`: yalnızca `@@ -320` (`TickMove` `Mode()==Goto`), `@@ +323,5` (`Mode()==Follow` → `out`), `@@ -444 +449` (`TickPathMove` koruması), `@@ +526,212` (`FollowEndReason`, `BeginFollow`, `TickFollow`); `SubmitMove`, `ValidateWalkStart`, `BeginMove`, `StopMove`, `BeginGoto`, `NeedsReplan` gövdeleri değişmedi |
+| K5 | ✔ | (a) `NextFollowStep` yalnızca `ActionExecutor.cpp:693`, paket kapısından (`elapsed < kMovePeriodMs → return`) sonra, tick başına bir kez; (b) `SENT` → `OnPacketSent :714`, guard reddi → `OnPacketRejected :722`, diğer ret/başarısızlık → `Reset` + `ended`; hold/bitiş durma paketleri `OnPacket*` çağırmaz; (c) `ObserveTarget :641` yalnızca `obs.found && posState != POS_LOST` (`BeginFollow :589` aynı koşul); (d) `grep -n "TickFollow("`: `ActionExecutor.cpp:647` dokuz argümanlı (`... &ScratchLayer(), *Reach()`), `BotManager.cpp:1380` yürütücü sarmalayıcısı; `reach`'siz aşırı yükleme çağrılmıyor; (e) `Arrived` → `SubmitMove(..., 0, 0, false, ...)`; çalışma zamanında varış sonrası `speed 0 echo 0` paketleri gözlendi; (f) ara adımlarda `speed = s->m_moveSpeed` (telemetri: hız 45/20/10 komut hızıyla aynı) |
+| K6 | ✔ | `check-perception-contract.py` rc=0, `RESULT: PASS` (R1 0, R2 0/28, R3 0/18, R4 0, R5 0); yeni satırlarda yasaklı simge yok, yeni `m_pUser` okumaları yalnızca `s->m_pUser` (`ActionExecutor.cpp:554`, `:613`), `t->m_pUser` yok (hedef kimliği `t->m_selfSid`) |
+| K7 | ✔ | "nav ready" metni değişmedi (günlükte `main_cells=88508 ... crc32=4fd154bc`); imzalar değişmedi; `m_reach.Build` `NavService.cpp:129`, `m_ready.store(true)` `:145`; `Reach()` `Ready() ? &m_reach : nullptr` (`NavService.h:52`); `fail("no_reach")` `:134` |
+| K8 | ✔ | Kod: yeni kod yalnızca `follow` komutu / `Mode()==Follow` ile çalışır; `TickMove` değişikliği `Goto` davranışını korur (`Mode()==Goto`), `Off` kipi eski düz yürüyüşe düşer. **Çalışma zamanı:** `NAV=0` ile yeniden başlatıldı: açılışta yeni `NavService` satırı yok (`Build` çağrılmadı), `follow` ve `goto` → `refused (nav_off)` |
+| K9 | ✔ | `BeginFollow`: `ValidateWalkStart :551`, `nav_off`, `nav_zone`, `bad_target`, `target_not_visible` hepsi `m_navDrive.BeginFollow :587` ve üye yazımlarından önce. **Çalışma zamanı:** `goto BotWP_K ...` sürerken `follow BotWP_K BotWP_K` → `refused (bad_target)`, `goto` `arrived ... after 10 packets` ile bitti |
+| K10 | ✔ | `file`: yedi dosya `ASCII text, with CRLF line terminators` (BOM yok); `git diff --check` rc=0 |
+| K11 | ✔ | `ENABLED=1, NAV=1, TELEMETRY=decisions`; `BotWP_K` takipçi, `BotMF_K` hedef (60-90 sn'de bir `goto`, dokuz hedef; 276 m rotalar dahil); 20:02:14'ten itibaren **10 dk** `follow BotWP_K BotMF_K`. Mesafe serisi (`ACTION_SUBMIT` x/z, takipçi paketi anında hedefin son paket konumuna; **bilgi**): takip başlangıcından itibaren n=256, p50 4,9 m, p95 28,7 m, maks 28,9 m (başlangıç aralığı 28 m: hedef aynı hızla uzaklaşıyor, takipçi hedef durana dek kapatamıyor); yakınsamadan sonra (+120 sn) n=213, **p50 4,5 m, p95 10,8 m, maks 11,2 m** (beklenti ≈ 16 m `[A]`). `follow: stuck` **0**, `plan failed` **0**, `no packet for >= 5000 ms` **0**, `FAIRNESS_REJECT` **0** (`blocked_chord`/`step_too_long` dahil), `VIOLATION` **0** (jsonl ve Bot günlüğü), çökme yok, üç sunucu koşu boyunca UP. `PERF_SAMPLE` (227 örnek): `tick_p95_us` en çok 402, `skipped_ticks` 0 |
+| K12 | ✔ | Takipçi hedeften yavaş (`follow ... 20`, 2 m/s; hedef 4,5 m/s uzaklaştı): takipçi 66 m yürüdü, `follow: target out of sight, holding` (+ bir `speed 0 echo 0` durma paketi), 9,0 sn sonra `follow ended (target_lost) after 25 packets, plans 60, stuck episodes 0` + bitiş durma paketi; sonra paket yok (bot durdu). Hedef görüşte değilken `follow` → `refused (target_not_visible)`; hedef yaklaştırılınca yeni `follow` kabul edildi. Not: planın "`/bot stop` + uzak `goto`" tarifi takipçinin `stop`'u takibi bitireceğinden uygulanamazdı; hedefi görüşten çıkarmak için yavaş takipçi kullanıldı (hold 6 sn + abandon 15 sn, F5-73 parametreleriyle uyumlu) |
+| K13 | ✔ | Takip sürerken `move BotWP_K 1300 880` takibi bitirdi (düz yürüyüş `arrived ... after 16 packets`); `stop BotWP_K` → `cmd stop: BotWP_K stopped at (1308.8, 944.4)`, telemetri: `speed 0 echo 0` paketi, ardından 3 sn'de takip paketi yok, yeni `follow` sonra normal başladı; takip sürerken `goto BotWP_K 1274 890` takibi bitirdi (paketler `speed 10` → `speed 45` rota adımları, `arrived at (1274.0, 890.0) after 10 packets`) |
+| K14 | ✔ (kısmen çalışma zamanı) | `bad_target` (kendini takip, çalışma zamanı), `target_not_visible` (iki kez, çalışma zamanı), `nav_off` (`NAV=0`, çalışma zamanı); bilinmeyen hedef → `unknown or not spawned bot`. Sürmekte olan `goto` bozulmadı (K9). `dead` ve `nav_zone` çalışma zamanında denenmedi (ölü bot / ana dünya dışı zone kurulmadı): kod `ValidateWalkStart` (F5-70 ile aynı) ve `BeginGoto` ile aynı `GetZoneID()` denetimi, yalnızca statik |
+| K15 | — (gözlenmedi) | ~14 dk takipte (K11 + K12/K13 koşuları) **hiç takılma epizodu oluşmadı** (`follow: stuck` 0; `follow ended` satırı `stuck episodes 0`). Gerçek engel noktası kurulmadı; kurtarma merdiveninin sunucuda tetiklenip tetiklenmediği ve sonucu **bilinmiyor**. Mantık yalnızca F5-73 birim testleriyle `[V]`; gerçek sunucu kanıtı F5-66 (T-NAV-04, AC-NAV-01) işidir. Plan "sonuç dürüstçe raporlanır" dediği için engel sayılmadı |
+| K16 | ✔ | `run-servers.sh stop` → üç sunucu `[DOWN]` (ilgisiz `GameServer.exe pid=4336` dokunulmadı); `GameServer.ini` md5 koşu öncesiyle aynı (`f34ecc80...`; `NAV=0` denemesi yedekten geri alındı); `BotCommands.txt`: koşu başında önceki turdan kalma 7 satırlık `goto BotMF_K ...` dosyası vardı (kopya `/tmp/BotCommands.f574.stale`), tüketilmesin diye koşu öncesi silindi ve **geri konmadı**; şimdi dosya yok. "T-NAV-04/T-NAV-06 kapandı" yazılmadı |
+| K17 | ✔ (plan beklentisi eski) | `NavService: nav ready: ... main_cells=88508 ... build_ms=7.1` **değişmedi**; ardından `NavService: reach ready: components=401 largest_cells=87513 build_ms=5.8-6.0` (`build_ms` bilgi). Plan `largest_cells=88508` bekliyordu; bu beklenti F5-69 (eğim sınırı 0,45) öncesine aittir: EdgeOpen en büyük bileşen 88279 → **87513**, cep hücreleri 995 (`NavReachTests.cpp:757` `CHECK_EQ(..., 87513)`, `plans/F5-69-*.md`). `main_cells` (88508) farklı bir bağlantı tanımıdır; `largest_cells == main_cells` değişmez bir kural değil. Uygulama hatası yok |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **K15 gözlenmedi (`docs/12` §10):** takılma merdiveninin gerçek sunucuda sıklığı/sonucu ölçülmedi; F5-66 (T-NAV-04) kanıtıdır. Bu doğrulama T-NAV-04/T-NAV-06/AC-NAV-01'i kapatmaz.
+  2. **K17 plan beklentisi eskimiş:** `largest_cells` 87513'tür (F5-69 sonrası EdgeOpen bileşeni); kod doğru. Kayıt düzeltmesi ADR-0006 Ek F5-74'te.
+  3. `FollowOutcome.guardRejected`/`offRouteSkip` doldurulur ama `TickFollowSession` günlüğe yazmaz (plan D8'in listesinde yok); bu koşuda guard reddi 0 olduğundan sıklık bilinmiyor. `NAV_PATH`/`NAV_STUCK` telemetrisi F5-64'te; şimdilik engel değil.
+  4. Başlangıçta takipçi–hedef aralığı büyüktür (aynı hızla uzaklaşan hedef kapatılamaz): bilgi; F6 karar katmanı "hedefin hızı ≥ bot hızı" durumunu ele almalıdır.
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
 
-```
-…
-```
+### Doğrulama turu notu (otonom döngü kurtarması, 2026-10-03, Claude)
+
+- Kod/plan düzeltmesi **gerekmiyor**. `/plan-dogrula` iter26 ve iter27 yalnızca usule takıldı: çalışma zamanı betiği (~2,5 dk) `run_in_background` ile başlatıldı, `claude -p` oturumu "bitince okuyacağım" diyerek karar yazmadan bitti (arka plan bildirimi başsız oturumu geri çağırmaz). Doğrulama raporu boş kaldı.
+- Neden tekrarladı: `plan-dogrula` SKILL.md'deki düzeltme (madde 10, `9463c60`) yalnızca `gece/2026-10-02`'deydi; doğrulama bu dalda (`bot/F5-74`) koştuğu için eski beceri yüklendi. Düzeltme dosyası bu dala da alındı (aynı içerik; birleştirmede çakışma çıkmaz).
+- Sonraki `/plan-dogrula` turu için: derleme, birim testi ve çalışma zamanı koşusunu (K11-K17) **ön planda** çalıştır (`timeout` ≤ 600000 ms; gerekirse betiği ardışık ön plan çağrılarına böl, `sleep` ile sorgula) ve kararı aynı turda Doğrulama Raporu'na yaz. Sunucu yalnızca bir kez açılır, iş bitince `tools/run-servers.sh stop`.

@@ -5,6 +5,8 @@
 #include <string>
 #include "../../BotCore/NavGrid.h"
 #include "../../BotCore/NavPath.h"
+#include "../../BotCore/NavReach.h"
+#include "../../BotCore/NavDanger.h"
 
 // Owns the navigation grid of zone 71 (F5-59; docs/12 s2). Built once at start-up from the SMD data the
 // server already loaded, never rebuilt, never written afterwards: Grid() is safe to read from any thread
@@ -45,6 +47,14 @@ public:
 	// Only call while Ready() is true. The ~4 MiB search pool is allocated by the first Find().
 	BotCore::NavPathfinder & SharedPathfinder();
 
+	// Edge-connected components of the Walk cells (F5-74, D6). Built once by Startup() right after the
+	// grid, read-only afterwards: safe from any thread while Ready() is true. Nullptr until ready.
+	const BotCore::NavReach * Reach() const { return Ready() ? &m_reach : nullptr; }
+
+	// One cost layer for the follow stuck-ladder penalty field (F5-74, D6). IOCP thread only (the same
+	// rule as SharedPathfinder()); its content is rebuilt per use and never carried between calls.
+	BotCore::NavCostLayer & ScratchLayer() { return m_scratch; }
+
 private:
 	NavService() : m_enabled(false), m_ready(false) {}
 	bool m_enabled;
@@ -52,6 +62,8 @@ private:
 	BotCore::NavGrid m_grid;
 	Info m_info;
 	BotCore::NavPathfinder m_pathfinder;       // F5-70: one A* pool shared by every bot (IOCP thread only)
+	BotCore::NavReach m_reach;                 // F5-74: components of the Walk cells, built once (read-only)
+	BotCore::NavCostLayer m_scratch;           // F5-74: follow penalty field, IOCP thread only, rebuilt per use
 	std::atomic<uint32_t> m_pfThread{ 0 };     // thread id of the first SharedPathfinder() caller, 0 = none yet
 	std::atomic<bool> m_pfViolation{ false };  // the VIOLATION line was written
 };

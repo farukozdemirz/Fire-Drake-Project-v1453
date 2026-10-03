@@ -76,6 +76,7 @@ private:
 	void CommandMatch(const std::string & args);
 	void CommandMove(const std::string & args);
 	void CommandGoto(const std::string & args);
+	void CommandFollow(const std::string & args);
 	void CommandStop(const std::string & args);
 	void CommandAttack(const std::string & args);
 	void CommandCast(const std::string & args);
