@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-38` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-37 (ADR-0018 Ek 13, dilim 6f) — `KAPANDI` (merge `dd8262e`); F4-13/F4-15 (`TickUserIn`/`TickNpcIn`: otomatik istemci trafiği kalıbı) — `KAPANDI`; F4-01 (`BotCore/BotMotion.h`, hız/adım kuralı) — `KAPANDI` |
@@ -271,16 +271,28 @@ Beklenmeyen `no_result`/`warped` bu planın hatası değil, **sonuç olarak rapo
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-38` — `<kısa-sha> [F4-38] …`
+- Branch / commit'ler: `bot/F4-38` — `7fc3d0b [F4-38] Hiz kontrol paketi: periyodik WIZ_SPEEDHACK_CHECK (CLI-12)`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotMotion.h` — saf mantık eklendi: `kSpeedCheckPeriodMs`, `SpeedCheckDue`, `SpeedCheckClockSeconds`, `SpeedCheckWarpDistance` (`CheckMoveStep`'ten sonra, `namespace` içinde; yeni `#include` yok).
+  - `Tests/BotCoreTests/MotionTests.cpp` — iki `TEST_CASE`: `Motion_SpeedCheckSchedule`, `Motion_SpeedCheckWarpDistance` (plan §5.2; mülkiyet denetimi guard adım payı `× 1,10 + 0,15` ile; 249 → 251).
+  - `GameServer/Bot/ActionExecutor.h` — `SpeedCheckOutcome` yapısı + `TickSpeedCheck` bildirimi.
+  - `GameServer/Bot/ActionExecutor.cpp` — `TickSpeedCheck` (`TickNpcIn`'den sonra, `TickUserIn` kalıbı): vade gelince `WIZ_SPEEDHACK_CHECK` (`u8 0` + `f32` saat), `HandlePacket`, `WIZ_WARP` yankısından `passed`/`warped`, telemetri `ACTION_SUBMIT`/`ACTION_RESULT` (`"type":"SpeedCheck"`).
+  - `GameServer/Bot/BotSession.h` — `m_speedHasLast`/`m_speedLast`/`m_speedChecks`/`m_speedWarps` + `std::atomic<uint64> m_warpEcho`.
+  - `GameServer/Bot/BotSession.cpp` — başlatıcı listesine `m_warpEcho(0)`, `ResetForRespawn()`'a dört sıfırlama, `OnPacket()`'e `WIZ_WARP` bloğu (yalnızca ekleme; tek silinen satır başlatıcı listesindeki virgüllü satır).
+  - `GameServer/Bot/BotManager.h` — `bool m_speedCheck` + başlatıcı `m_speedCheck(true)`.
+  - `GameServer/Bot/BotManager.cpp` — `Startup()`'ta `[BOT] SPEEDHACK_CHECK` okuması (`ENABLED` denetiminden sonra), `Tick()` canlı bot dalında `TickNpcIn`'den sonra çağrı (yalnızca `FAILED` `warped` için günlük satırı).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+  Kodun üretilmesi tamamlandı
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  (`Debug` de rc=0; dokunulan sekiz dosyada uyarı/hata yok; görülen uyarılar yalnızca önceden var olan `GameServerDlg.cpp` C4834/C4267.)
+- Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔ (251 tests, 0 failed; iki yeni ad; Debug da 251/0), K4 ✔, K5 ✔ (aşağıdaki sapmaya bakınız), K6 ✔, K7 ✔ (tek `-` satırı başlatıcı listesinde), K8 ✔ (`BotManager.cpp` `-` satırı yok), K9 ✔ (yalnızca 8 dosya; `*.vcxproj*` farkı yok), K10 ✔ (hepsi ASCII + CRLF; `git diff --check` boş), K11 ✔, K12 ✔ (`TickUserIn\|TickNpcIn` = 2, `CheckMoveStep` = 2), K13 Claude'da (çalışma zamanı, plan §7).
+- Plandan sapmalar ve gerekçeleri:
+  1. K5'in `grep "SpeedHackTime\|SpeedHackUser\|...\|m_LastX\|m_LastZ\|->Warp("` komutu boş değil; tek eşleşme `ActionExecutor.cpp:27`, **plan öncesinden var olan** bir yardımcı fonksiyon yorumudur (`CUser::SpeedHackUser()` adını anar). Bu planla eklenen kodda kullanım yoktur; yorum, sunucu sınır eşlemesini belgeleyen mevcut satırdır ve planın "dokunulmayacak mevcut kod değişmez" çizgisine uymak için değiştirilmedi. K5'in amacı (botun `SpeedHackTime`/`Warp`/`m_LastX` kullanmaması) karşılanmıştır. **Karar Claude'a bırakılır.**
+- Açık sorular: yok.
+
 
 ---
 
