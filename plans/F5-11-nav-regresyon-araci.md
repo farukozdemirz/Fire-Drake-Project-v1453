@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F5-11 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F5-01..F5-10 ve F5-50..F5-58 `KAPANDI` (hepsi `gece/2026-10-02-nav` içinde; `tools/nav-measure/nav_measure.cpp` bölümleri `smoothing`, `synthetic`, `velocity`, `velocity-robust`, `arena`, `budget`, `budget-scheduled`, `stuck`, `progress` hazır) |
@@ -326,4 +326,34 @@ git diff --stat gece/2026-10-02-nav...bot/F5-11
 
 ## Doğrulama Raporu (Claude doldurur)
 
-—
+### Tur 1 — 2026-10-03
+
+- **Karar: DOĞRULANDI**
+- İncelenen commit: `4183e8e` (`bot/F5-11`, taban `gece/2026-10-02-nav`; paralel hat `nav`, `AUTO_LOOP=1`, sunuculara dokunulmadı, birleştirmeyi döngü betiği yapar). Commit'ler `dbf5cc2` (üç araç dosyası), `1679cd6`, `4183e8e` (plan/rapor); mesajlar `[F5-11] ...` biçiminde.
+- Kapsam: `git diff --stat gece/2026-10-02-nav...bot/F5-11` = `tools/nav-regress.py` (+1164), `tools/nav-regress.sh` (+19), `tools/nav-regress/good.txt` (+60) ve kendi planı (yalnızca `Durum` satırı ve Uygulayıcı Raporu). `BotCore/`, `Tests/`, `GameServer/`, `shared/`, `AIServer/`, `docs/`, `tools/nav-measure*`, `tools/nav-segment-check.py` farkı 0. `git diff --check` boş; üç dosya ASCII, LF (CR 0), mod `100644`; `build/` commit'e girmemiş; çalışma ağacı temiz.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 `build.sh Release` rc=0, yeni uyarı yok | ✔ | `./tools/build.sh Release` `build rc=0`, çıktıda `warning` 0; `./tools/run-tests.sh` `223 tests, 0 failed` (plan derlenen dosyaya dokunmaz) |
+| K2 `--selftest` çıkış 0, `selftest PASS`, ≥ 22 vaka | ✔ | Kendi koşum: rc=0, `selftest: 27 cases, 27 ok`, `selftest PASS`; her `MUTATIONS` kimliği `ok`, `stuck.default.control` → `WARN`, GRID silme → `missing line`, boş girdi, `ERROR` yolu |
+| K3 `--list` 35 satır, kaynak dolu | ✔ | rc=0, `wc -l` = 35; kimlik kümesi plan §5.3 tablosuyla `diff` boş (35 = 35); her satırda 4. sütun dolu |
+| K4 gerçek koşu rc=0, `NAV-REGRESS PASS`, `fail=0`, ≤ 120 sn | ✔ | `time bash tools/nav-regress.sh --save /tmp/v-a.txt`: rc=0, 8,06 sn, `NAV-REGRESS PASS checks=31 pass=31 fail=0 warn=0 info=4 unknown_lines=0`; çıktı uygulayıcının raporuyla aynı denetim/değerler (yalnızca zamanlama sayıları farklı) |
+| K5 D satırları iki koşuda aynı | ✔ | `diff <(grep -vE '^(BUDGET\|ARENA)' a) <(... b)` boş; `ARENA` `status`/`expanded` (ms hariç) aynı |
+| K6 `--from-file` aynı sayılar; boş → 1, `ERROR` → 2 | ✔ | `--from-file /tmp/v-a.txt`: `checks=31 pass=31 fail=0 attempts=1`; boş dosya rc=1 (27 FAIL); `ERROR cannot load foo` rc=2; olmayan dosya rc=2 |
+| K7 `--skip-timing` | ✔ | rc=0, 2,5 sn (tam koşu 8 sn); dört Z/sched denetimi ve `budget.unscheduled`/`sched.A.info` `INFO skipped (--skip-timing)`; `checks=27 pass=27` |
+| K8 kapsam/biçim | ✔ | yukarıdaki kapsam satırı |
+| K9 (Claude) kasıtlı ihlal enjeksiyonu | ✔ | Geçici kopyada (`NAV_SRC_ROOT`, depoya yazılmadı): (a) `NavLineClear` her çifte `true` → `smoothing.smooth_bad` (3444), `chord_bad` (35305), `lineclear.false_positive` (283780), `synthetic.single_block`/`random_clutter`, `examples.unexpected` `FAIL`, rc=1; (b) `NavStuck.h` algılayıcı penceresi ×2 → `stuck.true_positive detected_after_ms=6400 (expected 3100..3300)` `FAIL` ve `stuck.default.control` `WARN`, rc=1; (c) A* girişine yapay gecikme → `sched.B.tick_p95 1.636 (<= 1.5) EXCEEDED by 0.136 (attempts 2/2)`, `sched.B.longest_wait`, `sched.B.served` `FAIL`, rc=1: yeniden deneme yolu çalışıyor; (d) elle bozulmuş `--from-file` (`raw_bad=4`, `query_p95=3.5`) → ilgili iki `FAIL`, rc=1 |
+| K10 (Claude) eşik kaynakları | ✔ | `velocity.robust.*`: F5-56 §5.3 (0,20/0,30/0; ≤ 1/0,20/0,60; 0,10; 0,10); arena 2000/6000: F5-51 K5; 1,5 ms / 1 sn: `docs/12` §13.5 ve AC-NAV-07; `query_p95 <= 2.0`: AC-NAV-02/MET-PERF-03; 3100..3300: `docs/12` §13.3 ("≥ 3,1 sn") ve F5-57; sabit vektörler: F5-58 §5.3; 88508: F5-01. `[A]` etiketli üç eşik (`smoothing.coverage`, `stuck.cadence_3200.false` MET-NAV-01 600 sn şartı, `velocity.jitter` `max_rel_err`) `--list`te ve raporda `[A]` işaretli |
+
+Ek denetimler: `tools/nav-regress/good.txt` gerçekten `tools/nav-measure.sh all --n 2000 --seed 20261002` çıktısı (D satırları ve `ARENA` `status`/`expanded` yeniden üretimle birebir aynı, 60 satır, `ERROR` yok). Uygulayıcı Raporu'ndaki sayılar (31 denetim, 27 selftest vakası, 8 sn / 2,7 sn, derleme rc=0) doğru; K4 çıktısı yeniden üretildi.
+
+**Bulgular (hiçbiri engel değil; önem sırasıyla):**
+
+1. (düşük) `tools/nav-regress.py:630-635` `oracle.straight_examples`: `EXAMPLE straight step` satırları var ama `VECTOR_RE` hiçbirini ayrıştıramazsa (biçim kayması) `check([])` boş döner ve denetim `PASS 0 straight examples BLOCKED by oracle` verir (boş girdiyle denendi). Sessiz bozulma yolu; `vectors` boşken `FAIL` verilmeli.
+2. (düşük) Kısmi satır kaybı yakalanmıyor: `tools/nav-regress.py:519-532` (`stuck.cadence_3200.false`, plan "6 satır"), `:559-574` (`progress.assessor.false`, 3 model) ve `:443-459` (`budget.near64`, 2 satır) yalnızca "hiç yok" durumunda `FAIL` veriyor; 6 satırdan yalnız 1'i kalınca `PASS 1 model/feed lines` çıkıyor (denendi). Plan §5.3 yalnızca "satır boşsa" demiştir, bu yüzden ihlal sayılmadı; beklenen satır sayısı (6/3/2) denetlenirse sessiz düşme yakalanır.
+3. (düşük) `tools/nav-regress.py:337-354` `_robust`: `err_p95` ve `zero_pct` ihlallerinde `FAIL` satırı "ne kadar aştı" yazmıyor (`err_p95=0.11 (<= 0.10) err_p95 EXCEEDED`; `err_max` için miktar var); plan §5.6 "hangi eşik, gözlenen, ne kadar aştı zorunlu" der. Koşul zinciri (`:348`) ayrıca gereğinden karmaşık.
+4. (not) `tools/nav-regress.py:835-843` `Measure.build`: `--skip-timing`/yeniden deneme yolu `nav-measure.sh __build__` ile derler; bu `nav_measure`'ın bilinmeyen bölüm adında yalnızca ızgarayı yükleyip 0 dönmesine dayanır (`nav_measure.cpp:1101-1120`). Çalışıyor (uygulayıcı sapma olarak bildirdi, onaylanıyor) ama kırılgan: `nav_measure` bilinmeyen bölümde hata verecek hale gelirse `--skip-timing` ortam hatasıyla (2) düşer.
+5. (not, araç dışı) `nav_measure.cpp:889-893` `STUCK` bölümü `noProgressMs = 3200`'ü kendi içinde sabitliyor, `NavPacketCadenceParams()` kullanmıyor; bu yüzden başlıktaki `NavStuck.h:484` değeri değişse `stuck.*` denetimleri bunu görmez (denendi: 3200 → 5000 yakalanmadı; algılayıcı mantığı bozulunca yakalanıyor). Plan `nav_measure.cpp`'yi değiştirmeyi yasakladığı için bu planın kusuru değil; ayrı bir ölçüm planı konusu (`KI-016`).
+6. (not) Z denetimleri ilk denemede geçse de satırda `(attempt 1/1)` yazıyor (plan yalnızca yeniden deneme geçişinde not ister) ve `float` için 1e-9 hoşgörü uygulanmıyor (ölçüm 4 hane yazdığından pratikte etkisiz).
+
+Kayıtlar: `plans/README.md`, `docs/STATUS.md`, `docs/KNOWN_ISSUES.md` (`KI-016`) güncellendi. Birleştirme/push yapılmadı (`AUTO_LOOP=1`; döngü betiği `gece/2026-10-02-nav`'a birleştirir).
