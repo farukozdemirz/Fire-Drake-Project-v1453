@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
@@ -257,3 +257,29 @@ plans/F4-41-skill-olcum-telemetri-ve-arac.md — Doğrulama Turu 1 düzeltmeleri
 4. Ölü kodu temizle: `analyze` içinde `FAIRNESS_REJECT` dalındaki `if skill is None: skill = 0` iki satırını sil (`as_int(..., 0)` zaten None döndürmez).
 5. Doğrulama: `python3 tools/skill-check.py --selftest` (çıkış 0), `python3 tools/skill-check.py <herhangi bir .jsonl> ` (--magic VERMEDEN) gerçek sqlcmd ile çökmeden çalışsın ve MAGIC satırlarını okusun (yalnızca MAGIC tablosu), `python3 tools/skill-check.py` çıkışları: PATH yok -> 2. Yalnızca `tools/skill-check.py` ve bu plan dosyası değişir; `ActionExecutor.cpp`'e dokunma.
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-41` @ `260d0d9` (Tur 2 kod commit'i `350dbc8`; `GameServer/` farkı `3da0d20`'den beri boş, yani Tur 1'de derlenen C++ değişmedi)
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 tools/skill-check.py --selftest` → `selftest: 26 checks, 0 failed`, çıkış 0; yeni `sqlcmd_non_utf8` kontrolü sahte sqlcmd ile bayt `0xA8` üretiyor (`tools/skill-check.py:748-765`); 14 adlı durumun hepsi duruyor. |
+| K2 | ✔ | Tur 1: Release/Debug rc=0, uyarı 0. Tur 2'de C++ değişmedi (`git diff 3da0d20..bot/F4-41 -- GameServer/` boş); Release `GameServer.exe` (`build/bin/x86-Release`, 08:24) kod commit'inden sonra derlenmiş ve çalışma zamanı sınamasında kullanıldı. |
+| K3 | ✔ | Taban farkı: `ActionExecutor.cpp` (+11/−4), `tools/skill-check.py` (yeni), plan dosyası; ayrıca `docs/STATUS.md` ve `plans/README.md` (Claude'un Tur 1 doğrulama kayıtları). Tur 1'de `ActionExecutor.cpp` farkının yalnızca §5.2 ekleri olduğu doğrulandı; Tur 2'de değişmedi. |
+| K4 | ✔ | Tur 1 kanıtı geçerli (`:579` `s->m_castSkillId`, `:604` `\"mp\"`, `:671` `mp_after`, diğer çağrılar argümansız). Çalışma zamanında üç alan da görüldü (K7). |
+| K5 | ✔ | `python3 tools/check-perception-contract.py` → `RESULT: PASS`, çıkış 0. |
+| K6 | ✔ | `./tools/run-tests.sh` → `251 tests, 0 failed`. |
+| K7 | ✔ | Gece modu çalışma zamanı: `[BOT] ENABLED=1, MAX_BOTS=16, TELEMETRY=decisions`, Release sunucu, `spawn BotMF_K`, `spawn BotWP_E`, `cast BotMF_K 110518 BotWP_E 3` (Ignition, Type3 tek hedef, `MAGIC.Msp 60`, `ReCastTime 1`). `live-082610.jsonl`: `ACTION_SUBMIT` `CastStart`/`CastEffect` `"mp":6021` → `ACTION_RESULT` `CastEffect` `"mp_after":5961`, sonraki çevrimler 5961→5901→5841 (her atışta −60); alan sırası plandaki gibi; `SpeedCheck` satırlarında yeni alan yok. Reddedilen atış: `FAIRNESS_REJECT` `Cast` `MEC-MAG-11` `out_of_range` `value 60.90` `limit 56.00` `"skill":110518`. Araç **sqlcmd ile (`--magic` verilmeden)** bu dosyada: `110518 Ignition started 4, effected 3, guard_reject 1, rejects out_of_range:1, mp_exp 60, mp_delta_min/med/max 60, mp_verdict PASS, recast_exp_ms 100, recast_min_gap_ms 2185 PASS, cast_ms_med 1091, effect_verdict PASS`, genel `PASS`, `--strict` çıkış 0. |
+| K8 | ✔ (sınırlı) | `script_smoke_2bot.txt` ile öncesi/sonrası karşılaştırması yapılmadı; bunun yerine kod farkı yalnızca telemetri alanı eklemesi ve çalışma zamanında cast zinciri F4-34 kayıtlarıyla aynı davrandı (`casting` → `effected`, `ok:true`, `op 1/3`, `code 0`; log `cast finished (effected) after 3 cycle(s), 3 ok, 6 packet(s) sent`; menzil dışında `cast stopped (out_of_range)`). Davranış değişikliği izi yok. |
+
+Ek sınamalar (denetçi): sentetik JSONL + sqlcmd'den gerçek `MAGIC` (skill `105660`, `Msp 180`, `ReCastTime 250`): `mp_delta_med 180`, `recast_min_gap_ms 25100 ≥ 24950`, hepsi `PASS`, `--strict` çıkış 0; PATH'siz çağrı çıkış 2; olmayan yol çıkış 2; dosya ASCII/LF (`file`: ASCII text, CR sayısı 0). Çalışma ortamı geri alındı: sunucular kapatıldı (`status` 0/3), `GameServer.ini` yedekten bayt bayt geri yüklendi (`cmp` sıfır fark), botlar `despawn all` ile kaldırıldı; yeni dosya yalnızca `Logs/bots/2026-10-03/live-082610.jsonl` ve `Logs/Bot_3_10_2026.log` satırları.
+
+- Tur 1 bulgularının durumu: Bulgu 1 (engelleyici, `UnicodeDecodeError`) giderildi: bayt çıktısı `decode("utf-8", errors="replace")` ile çözülüyor (`tools/skill-check.py:119-127`), varsayılan sqlcmd yolu gerçek `MAGIC` ile çalışıyor (1839 satır). Bulgu 2 (ölü kod) giderildi. Bulgu 3 (abandoned kaydın `pending` girdisi) not olarak açık, düzeltme zorunlu değil. Bulgu 4 (uçan skill) F4-42'ye devredildi.
+- Bulgular (önem sırasıyla, hiçbiri engelleyici değil):
+  1. [Not] `tools/skill-check.py:221-232` — `abandoned` kapatılan kaydın `pending` girdisi silinmiyor; geç gelen bir `ACTION_RESULT` kaydı yine de `completed`'e ekleyebilir (nadir; F4-42 koşusunda ikinci `CastStart` öncesi sonuç beklenmediği için beklenmiyor).
+  2. [Not] Uçan skill'lerde MP FLYING + EFFECTING'te iki kez düşer (MEC-MAG-12): `mp_delta` `Msp`'nin iki katı olur, `mp_verdict` yanlış `FAIL` verir. F4-42'de uçan skill seçilirse `--mp-tol`/beklenti kararı verilecek (uygulayıcının açık sorusu; plan §5.3 bilerek özel-durumlamadı).
+  3. [Not] K8 tam öncesi/sonrası betik karşılaştırması değil (yukarıda); telemetri-yalnız fark ve çalışma zamanı zinciri davranışı kanıt olarak yeterli sayıldı.
+- Birleştirme: otonom gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`); birleştirmeyi ve push'u döngü betiği yapar, bu oturumda yapılmadı.
