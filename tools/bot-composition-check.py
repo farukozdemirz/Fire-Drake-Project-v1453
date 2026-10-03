@@ -31,6 +31,8 @@ import re
 import sys
 import tempfile
 
+TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
+
 PROFILES = ("WP", "WG", "PHD", "PHB", "MF", "MI")
 NATIONS = (("K", 1), ("E", 2))
 MAX_ID_SIZE = 20
@@ -104,7 +106,7 @@ USAGE = (
 
 
 def tool_dir():
-    return os.path.dirname(os.path.abspath(__file__))
+    return TOOL_DIR
 
 
 def default_sql_path():

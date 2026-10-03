@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-02 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F8-01 `KAPANDI` (merge `43c4e02`; yalnızca üslup/`--selftest` kalıbı için). Karakter seti kaynağı `db/002` F1-04 `KAPANDI` |
@@ -251,7 +251,7 @@ git diff --stat gece/2026-10-02-nav...bot/F8-02
   - K3 ✔ Gerçek `db/002` çıktısı §5.8'in 30 satırıyla birebir (`diff` boş, yalnızca plan bloğundaki 3 boşluk girinti farkı), rc 0; `sample-20.sql` çıktısı §5.9 ile aynı, `grep -c '^MISSING'` = 0.
   - K4 ✔ `--json` (gerçek ve sample) `python3 -c` doğrulaması geçti.
   - K5 ✔ rc: varsayılan 0, `--strict` 1, `--strict --target small` 0, `--strict --target min16` 1, `--strict --sql sample-20` 0, `--target bogus` 2, `--max-bots 0` 2, `--sql /yok.sql` 2, `--nonsense` 2; hatalı SQL → yalnızca `ERROR` satırı, rapor yok, rc 2.
-  - K6 ✔ Üç mutasyon `/tmp` kopyasında: (a) C8-A WP 2→1 → rc 1 ve 24 `FAIL` (`comp_c8a_counts`, `set_min16_need`, …); (b) `min(...)` sınırı kaldırılınca `have_surplus_not_negative` (`usable=16 missing=-6`); (c) kullanılmış indeks atlama kaldırılınca `missing_index_skips_used` (`index 1`). Her üçünde rc 1.
+  - K6 ✔ Üç mutasyon `/tmp` kopyasında: (a) C8-A WP 2→1 → rc 1 ve **10** `FAIL` (bkz. Tur 2 düzeltmesi; Tur 1'de yanlışlıkla "24" yazılmıştı) (`comp_sizes`, `comp_c8a_counts`, `doc09_table_matches_builtin`, `set_min16_need`, `have12_min16_missing_4`, `missing_real_db002_8_lines`, `missing_needed_by`, `pair_8v8_a_short_4`, `cli_real_expected_output`, `sample_file_expected`); (b) `min(...)` sınırı kaldırılınca `have_surplus_not_negative` (`usable=16 missing=-6`); (c) kullanılmış indeks atlama kaldırılınca `missing_index_skips_used` (`index 1`). Her üçünde rc 1.
   - K7 ✔ Yalnızca stdlib (`json os re sys tempfile`); `socket/urllib/http/requests/subprocess/sqlite3/pyodbc` yok; `open()` ile yazan tek yol `--selftest` içindeki `write_tmp`; iki dosya ASCII, `\r` 0.
   - K8 ✔ `git diff --stat gece/2026-10-02-nav...bot/F8-02` yalnızca iki yeni `tools/` dosyası + plan dosyası (commit sonrası).
   - K9 ✔ `./tools/build.sh Release` hatasız; `./tools/run-tests.sh` `223 tests, 0 failed`.
@@ -273,6 +273,74 @@ git diff --stat gece/2026-10-02-nav...bot/F8-02
 | "ulus başına 8 / 10" | `SET id=min16 per_nation=8`, `SET id=full20 per_nation=10` |
 | "F7 küçük takım testleri (≤ C5) mevcut 12 karakterle çalışır" | `have12_small_ok` (`SET id=small ... missing=0`), `pair_small_ok` (2v2/5v5 `OK`) |
 | "3. W-P ve 3. M-F aynı sabit karakter kümesinden seçilebilsin" | `missing_class_codes`, `missing_index_skips_used`, `MISSING` satırlarının ad/sınıf kodları |
+
+### Tur 2 — 2026-10-03
+
+Doğrulama Turu 1'in düzeltme talimatı uygulandı; yalnızca istenen maddeler yapıldı.
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F8-02` — Tur 2 commit'i `[F8-02] Tur 2: tool_dir() içe aktarma anında sabitlenir (Python 3.8 uyumu)` (bu raporla aynı commit).
+- Değişen dosyalar ve neden:
+  - `tools/bot-composition-check.py`: içe aktarmalardan hemen sonra, `PROFILES`/`NATIONS` sabitlerinin yanına modül düzeyinde `TOOL_DIR = os.path.dirname(os.path.abspath(__file__))` eklendi; `tool_dir()` gövdesi `return TOOL_DIR` oldu. Böylece dizin içe aktarma anında sabitlenir; Python ≤ 3.8'de göreli `__file__` + `os.chdir()` sonrası yanlış çözülme ortadan kalkar. Davranış, vaka adları ve çıktılar değişmedi.
+  - `plans/F8-02-bot-kompozisyon-denetleyici.md`: `Durum`, Tur 1 K6(a) sayısı düzeltmesi ve bu Tur 2 raporu.
+- Madde 1 — Python 3.8 uyumu:
+  - `grep -n "abspath(__file__)" tools/bot-composition-check.py` tek satır verir:
+    ```
+    34:TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
+    ```
+  - Selftest sayısı 58 kaldı; başka vaka adı/çıktı/davranış değişmedi.
+- Madde 2 — Python 3.8 davranış taklidi (`__file__` göreli + `exec` + `run_selftest()`):
+  - Düzeltmeden önce (talimattaki komut, `bot/F8-02` @ `cbb84fe` üzerinde):
+    ```
+    1 SELFTEST FAIL failed=1 of 58
+    ```
+    (düşen vaka: `cli_default_path_independent_of_cwd`, `rc 2` — denetçi bulgusuyla aynı.)
+  - Düzeltmeden sonra:
+    ```
+    0 SELFTEST PASS n=58
+    ```
+    Beklenen ile birebir uyumlu.
+- Madde 3 — K6(a) gerçek FAIL sayısı: mutasyon `/tmp` altındaki kopyada yeniden çalıştırıldı (`tools/bot-composition-check.py` satır 49, C8-A `"WP": 2` → `1`; ağaç `tools/bot-composition-check.py`, `tools/bot-composition-check/sample-20.sql`, `db/002_bot_characters.sql`, `docs/09_...md` kopyalanarak kuruldu, koşu sonrası silindi; depodaki dosyaya dokunulmadı). Ölçüm, **denetçinin 10 sayısıyla birebir aynı**:
+  ```
+  rc = 1 | FAIL count = 10 | SELFTEST FAIL failed=10 of 58
+    FAIL comp_sizes: [7, 8, 8, 8, 2, 3, 4, 5]
+    FAIL comp_c8a_counts: {'WP': 1, 'WG': 1, 'PHD': 1, 'PHB': 1, 'MF': 2, 'MI': 1}
+    FAIL doc09_table_matches_builtin: C8-A {'WP': 2, ...} != {'WP': 1, ...}
+    FAIL set_min16_need: per_nation
+    FAIL have12_min16_missing_4: min16
+    FAIL missing_real_db002_8_lines: expected line missing: 'MISSING nation=K profile=WP index=2 ...'
+    FAIL missing_needed_by: {2: 'full20', 3: 'full20'}
+    FAIL pair_8v8_a_short_4: online 14
+    FAIL cli_real_expected_output: real output mismatch:
+    FAIL sample_file_expected: sample output mismatch:
+  ```
+  Tur 1 raporundaki "24 FAIL" ifadesi hatalıydı; yukarıdaki "10 FAIL" ile değiştirildi (rapor K6(a) maddesi düzeltildi). Fark nedeni: Tur 1'de sayım yanlıştı, ölçüm bu turda teyit edildi.
+- Madde 4 — Doğrulama komutları:
+  - `python3 tools/bot-composition-check.py --selftest | tail -1`:
+    ```
+    SELFTEST PASS n=58
+    ```
+  - Gerçek `db/002` çıktısı plan §5.8 bloğuyla birebir (`diff` boş, rc 0):
+    ```
+    real vs plan §5.8 diff empty: True
+    ```
+  - `sample-20.sql` çıktısı plan §5.9 ile aynı; `MISSING` satırı yok, `COMP` satırları §5.8 ile aynı, yedi `PAIR` hepsi `OK`, son satır `SUMMARY have=20 ... errors=0`:
+    ```
+    sample rc = 0 | MISSING lines = 0
+    SUMMARY have=20 small_missing=0 min16_missing=0 full20_missing=0 pairs_ok=7 pairs_not_ok=0 errors=0
+    ```
+  - `./tools/run-tests.sh | tail -1`:
+    ```
+    223 tests, 0 failed
+    ```
+  - ASCII/LF (iki dosyada `[^\x00-\x7F]` yok, `\r` 0):
+    ```
+    LC_ALL=C grep -nP '[^\x00-\x7F]' ... → eşleşme yok (rc 1)
+    grep -c $'\r' tools/bot-composition-check.py  → 0
+    grep -c $'\r' tools/bot-composition-check/sample-20.sql → 0
+    ```
+- Plandan sapmalar: yok (yalnızca istenen dört madde).
+- Açık sorular: yok.
 
 ---
 
