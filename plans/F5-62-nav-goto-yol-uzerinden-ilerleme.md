@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-62 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-57 (`NavRoutePoint`, `NavRouteProgressM`), F5-59 (`NavService`), F5-61 (`CheckMoveChord`, merge `gece/2026-10-02`), F5-69 (eğim 0,45). F5-70 (sunucu bağlaması), F5-63, F5-64, F5-65 bu planın `NavDrive`'ına dayanır |
@@ -296,23 +296,30 @@ git diff --check gece/2026-10-02...bot/F5-62
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-62` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F5-62` @ `aac9f50` (3 commit: `b98452c` kod + test, `de53f91` Claude BLOKE cevabı, `aac9f50` Tur 2 test düzeltmesi). Gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirme ve push yapılmadı, birleştirmeyi döngü betiği yapar. Çalışma ağacı temizdi; sunucular kapalıydı (`run-servers.sh status`: 0/3), sunucu açılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `build.sh Release` ve `Debug` rc=0. `NavDrive.h` ve `NavDriveTests.cpp` `touch` ile zorla yeniden derlendi: günlükte `NavDriveTests.cpp` satırı var, `warning` satırı 0 (iki yapılandırma) |
+| K2 | ✔ | `run-tests.sh Release` ve `Debug`: `289 tests, 0 failed`; 13 `NavDrive_*` adının tamamı `[ OK ]` (Quantise, Goto_OpenField, Goto_AlreadyThere, Goto_Detour_AllChordsWalk, Goto_ChordBlockedTruncates, Goto_StatusMapping, Goto_EndpointsOffCentre, Blocked_Replan, OffRoute, Reset_Inactive, RealMap_RespawnReturn, RealMap_Random, Perf); `--list \| wc -l` = 289 = 276 + 13; mevcut test dosyaları diff'te yok |
+| K3 | ✔ | Gerçek harita testleri `SKIPPED` değil (`build/nav/zone71.navgrid` mevcut). Doğrulayıcının kendi koşusu: `NAVDRIVE respawn karus: route_m=276.0 ... packets=41 crossed=8 truncated=0 blocked=0`; `respawn elmorad: route_m=701.3 ... packets=104 crossed=9 truncated=0 blocked=0` (bantlar 268-284 / 680-722 içinde, testte `CHECK`, `NavDriveTests.cpp:675-677`); `random pairs=300 planned=295 nopath=2 nodelimit=3 blocked_events=1 replans=1 unrecoverable=0 truncated=0` (295 ≥ %85, `nopath + nodelimit = 5 = pairs − planned`, `NavDriveTests.cpp:774-779`); `perf: begin_p95_ms=0.7776 step_p95_ms=0.0006` (eşik 2,0 / 0,05) |
+| K4 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-62`: `BotCore/NavDrive.h`, `BotCore.vcxproj` (+1), `BotCoreTests.vcxproj` (+1), `NavDriveTests.cpp`, plan dosyası ve `plans/README.md` (yalnızca kendi satırının durum sözcüğü). `GameServer shared AIServer docs tools BotCore/Nav{Grid,Path,Smooth,Stuck,Segment,ChordGuard}.h BotCore/BotMotion.h` farkı boş; `git diff --check` rc=0 |
+| K5 | ✔ | `grep -n -E "windows.h\|stdafx\|GameServer\|shared/\|static \|malloc\|std::chrono" BotCore/NavDrive.h` boş (rc=1); `check-perception-contract.py` rc=0 |
+| K6 | ✔ | `ChordSampleClean` (`NavDriveTests.cpp:170-185`) `CheckMoveChord`'tan bağımsız: 0,25 m aralıkla her noktanın hücresi `grid.Walk`; `Walk` simülatörü her `Step`/`Arrived` için çağırır (`:237`). 300 off-centre çift + 2 doğuş + 295 rastgele çift: `sampleViolations == 0` (`CHECK_EQ`), kayıt satırlarında `blocked=0` / `unrecoverable=0` |
+| K7 | ✔ | `file`: `NavDrive.h` ve `NavDriveTests.cpp` "ASCII text, with CRLF line terminators"; iki `.vcxproj` "UTF-8 (with BOM) text, with CRLF line terminators"; `.vcxproj` diff'leri tek satırlık ekleme |
+| K8 | ✔ | `git diff --stat ... -- GameServer shared AIServer` boş; sunucu kodu değişmedi |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not (F5-70 için):** `NextStep` adım adayını rota üzerinde `p + maxStepM`'de alır (`BotCore/NavDrive.h:99`), kirişi ise botun gerçek konumundan çizer (`:104`). Bot rotadan yana `d` m itilmişse Öklid adım uzunluğu `√(maxStepM² + d²)` olur; 6,75 m adımda `d` ≈ 3,4 m'yi aşarsa CLI-05/CLI-08 sınırını (`maxStep × 1,10 + 0,15` = 7,575) aşar ve `SubmitMove` guard'ı reddeder. Bu planın testi yalnızca 2 m itmeyi sınar (`NavDrive_OffRoute`, 7,04 m, sınır içinde); sunucu bağlamasında (F5-70) ya da takılma kurtarmada (F5-63) büyük sapma `Replan`'a düşmeli ya da adım uzunluğu kırpılmalı. Şu an hata değil (sürücü sunucuya bağlı değil).
+  2. **Not:** `NavDrive_RealMap_Random` beklentisi `NodeLimit == 0` yerine "`nopath + nodelimit == pairs − planned`" oldu; BLOKE cevabı (a) ile Claude kararı (plan sonundaki bölüm), eşik gevşetilmedi (`planned ≥ %85`, ölçüm %98,3). Uygulayıcı Tur 2'de talimatı aynen uyguladı (diff +3/−4, yalnızca test dosyası); `BotCore/NavDrive.h` Tur 2'de değişmedi.
+  3. **Not:** Uygulayıcı Raporu Tur 1 sapma 2 ("`NavQuantiseM` içinde ön koşul denetimi") belirsiz yazılmış; kodda `NavQuantiseM` denetimsiz (`:22-25`), denetim `BeginGoto`/`PlanGoto`'daki `ValidCoord`'ta (`:186-189`, `:194-197`) ve plan sözleşmesiyle uyumlu. İşlevsel sorun yok.
+  4. **Not (taşma):** `NavQuantiseM` adaya yalnızca rota noktalarından (zaten `ValidCoord` geçmiş uçlar ve ızgara hücre merkezleri) uygulanıyor; aralık dışı taşma yolu yok.
+  5. Rapor dürüstlüğü: Tur 1/Tur 2 raporundaki test sayıları, rota uzunlukları, paket sayıları ve `NAVDRIVE` satırları doğrulayıcının koşusuyla uyuşuyor (yalnızca `perf` p95 süreleri koşudan koşuya değişir: 0,8242 → 0,7776 ms).
+- Düzeltme talimatı: yok (karar `DOĞRULANDI`).
 
 ---
 
