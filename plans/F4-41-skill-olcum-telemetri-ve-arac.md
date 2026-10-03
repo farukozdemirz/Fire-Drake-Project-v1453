@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu") |
 | Branch | `bot/F4-41` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-03/F4-24..F4-37 (cast dilimleri, `SubmitCast`) — `KAPANDI`; F4-21 (`tools/bot-telemetry-report.py` kalıbı) — `KAPANDI`; F4-40 (envanter doldurma, koşu öncesi stok) — `KAPANDI` (merge `7cfef9c`) |
@@ -170,16 +170,33 @@ git diff --stat gece/2026-10-02...bot/F4-41
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-41` — `<kısa-sha> [F4-41] …`
+- Branch / commit'ler: `bot/F4-41` — `1b72056 [F4-41] Cast telemetrisine mp/mp_after/skill alanları ve skill-check.py hüküm aracı`; `Durum`/rapor commit'i bu maddenin ardından aynı branch'te.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `GameServer/Bot/ActionExecutor.cpp`: `EmitFairnessReject` imzasına sondan `uint32 skillId = 0` eklendi; sıfırdan farklıysa `,"skill":<id>` yazılır (diğer tüm çağrılar argüman eklemediği için çıktıları bayt bayt aynı). `RejectCast` çağrısı `s->m_castSkillId` geçirir. `SubmitCast` `ACTION_SUBMIT`'e `cycle`'dan sonra `,"mp":<user->GetMana()>`, `ACTION_RESULT`'a `code`'dan sonra `,"mp_after":<user->GetMana()>` ekler (ikincisi `HandlePacket` döndükten sonra okunur). Davranış değişmez.
+  - `tools/skill-check.py`: yeni araç; telemetri JSONL + `MAGIC` (`--magic` dosyası ya da sqlcmd) → skill başına MP/recast/etki/ret hükmü; `--selftest` (25 kontrol) ve `--strict`/`--json`/`--out`. Yalnızca standart kütüphane, ASCII/LF.
+  - `plans/F4-41-skill-olcum-telemetri-ve-arac.md`: `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    All 14064 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\Users\frkoz\OneDrive\Desktop\Fire-Drake-Project-v1453\build\bin\x86-Release\Server\GameServer.exe
+  rc=0
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  (Tek uyarı, önceden var olan `UpgradeHandler.cpp(634,862)` C4789; yeni uyarı yok.)
+  `./tools/build.sh Debug` de `rc=0` bitti (`BotCoreTests.exe` + `GameServer.exe`), yeni uyarı yok.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — `python3 tools/skill-check.py --selftest` çıkış 0, son satır `selftest: 25 checks, 0 failed` (14 adlı durumun tamamı + alt kontroller).
+  - K2 ✔ — Release ve Debug `rc=0`, yeni uyarı yok.
+  - K3 ✔ — `git diff --stat gece/2026-10-02..HEAD` yalnızca `GameServer/Bot/ActionExecutor.cpp` (+12/−4) ve `tools/skill-check.py` (yeni, 807 satır) gösterir; plan dosyası da aynı branch'te. `ActionExecutor.cpp` farkı yalnızca §5.2 ekleridir; cast karar/guard/eşleme mantığında satır değişmedi (`git diff` ile gözle doğrulandı).
+  - K4 ✔ (grep notu aşağıda) — `mp_after` satır 671, `\"mp\"` satır 604, `RejectCast`'in `EmitFairnessReject(..., s->m_castSkillId)` çağrısı satır 579; diğer 16 çağrı argümansız (grep ile listelendi, değişmedi).
+  - K5 ✔ — `python3 tools/check-perception-contract.py` `RESULT: PASS` (R1..R5 ihlal 0; `GetMana` R2 sembolü değil).
+  - K6 ✔ — `./tools/run-tests.sh` → `251 tests, 0 failed`.
+  - K7/K8 — Claude'un çalışma zamanı sınaması (bu planın kapsamı dışı; DeepSeek sunucu açmadı).
+- Plandan sapmalar ve gerekçeleri:
+  - K4 grep metni `grep -n 'mp_after\|"mp"'` `\"mp\"` alanını yakalamaz: C++'ta alan `+ ",\"mp\":"` biçiminde yazıldığından kaynak metinde `mp\"` geçer, düz `"mp"` dizisi geçmez (grep yalnızca 671 `mp_after` ve ilgisiz 1279 `"mp" : "hp"` satırını döndürür). Eklemenin kendisi doğru ve plandaki §5.2-3 ile birebir; sapma değil, K4 grep kalıbının kaba olmasıdır.
+- Açık sorular:
+  - Uçan skill'lerde MP FLYING + EFFECTING'te iki kez düştüğü için (MEC-MAG-12) `mp_delta` `MAGIC.Msp`'nin iki katı olur ve `mp_verdict` `FAIL` verir. Plan §5.3 formülü bilinçli olarak uçuşu özel-durumlamadı; F4-42 koşusunda uçan skill için `--mp-tol`/beklenti ayarı gerekirse karar Claude'a bırakıldı.
+  - `mp`/`mp_after` yalnızca operatör/analiz içindir; bot karar yolu bu alanları okumaz (algı sözleşmesi korunur).
 
 ---
 
