@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-30` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-25 (uçan Type3: CASTING → FLYING → EFFECTING, `CastManaNeed`, `CheckCastFly/Land`) — `KAPANDI`; F4-26 (`{3, 4}` çifti) — `KAPANDI`; F4-29 (alan skill: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI` (merge `78ae6b7`) |
@@ -239,20 +239,41 @@ git diff --check gece/2026-10-02...bot/F4-30
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-30` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-30` @ `497d59d` (kod `9d0c86b`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0; yeniden derlenenler `ActionExecutor.cpp`, `CombatTests.cpp`; tek uyarı eski `UpgradeHandler.cpp` C4789 (bu plan dokunmadı) |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, uyarı yok |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` ikisinde `107 tests, 0 failed`; `[ OK ] Combat_CastMoral_Supported`, `[ OK ] Combat_FlyingArea_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; eklenen kod satırlarında `std::min/std::max/Emit(` 0; include değişmedi |
+| K5 | ✔ | `grep CastMoralSupported` (CHECK_EQ hariç) yalnızca tanım `BotCombat.h:343` ve çağrı `ActionExecutor.cpp:737` `CastMoralSupported(m->bMoral)`; `grep -rnE "CastMoralSupported\([^)]*,[^)]*\)"` boş (plandaki geniş regex test satırlarını da yakalar: uygulayıcının sapma notu doğru); `(m->bFlyingEffect != 0 && !flyingCast)` yerinde (`:735`) |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-30`: yalnızca §4'teki 4 dosya + plan dosyası; `ActionExecutor.cpp` tek hunk (`:737`), `TickCast`/`SubmitCast` hunk'ı yok; `BotSession.*`, `BotManager.cpp`, `Telemetry.*`, vcxproj farkı yok |
+| K7 | ✔ | eklenen kod satırlarında `Emit(` yok; yeni ini anahtarı/komut/thread/olay türü yok; `ENABLED=0` çalışma zamanında sınandı |
+| K8 | ✔ | `file`: dört dosya ASCII + CRLF; `git diff --check` boş (`CHECK_OK`) |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; 107 testin tamamı geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS` (R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0) |
+| K11 | ✔ | S1–S6 çalışma zamanında geçti (aşağıda; S1'de `victims` 2, plandaki ≥ 3 değil: bulgu 2) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+**Çalışma zamanı** (Release, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-030643.jsonl`, `Logs/Bot_3_10_2026.log`; ini yedekten geri yüklendi, sunucular durduruldu):
 
-```
-…
-```
+- **S1 ✔** Fire burst `110533` BotMF_K → BotWG_E (hedef noktası = kurbanın konumu, BotPHD_E aynı noktada): `CastStart` `ACTION_SUBMIT` `"target":-1`, `casting` `op 1`; `CastFly` `"target":-1`, `since_casting_ms 1650`, `flying` `op 2`; `CastEffect` `"target":-1`, `since_flying_ms 1099`, `effected`, `op 3`, `code 0`, **`victims 2`**; log `cast finished (effected) after 1 cycle(s), 1 ok, 3 packet(s) sent`; **MP 6021 → 5871 (FLYING sonrası) → 5721 (EFFECTING sonrası) = −150 − 150**; iki kurbanın HP'si düştü (2891/5650, 2096/3491 öncesi 3134/5650, 2370/3491); `snap BotMF_K events`: kurban kimlikli iki `op=3 skill=110533 target=2986/2987`, hedef `-1`'li son `op=3`, `op=2` ve `op=1` olayları (üçünde `d0=1274 d2=925` hedef noktası).
+- **S2 ✔** Boş alan (`self`, düşman yok): üç pakette `"target":-1`, `effected`, `code 0`, **`victims 0`**; MP 5691 → 5541 (FLYING sonrası −150, EFFECTING sonrası −150; boş alanda MP yine düşer). İki döngülü `cast BotMF_K 110533 self 2`: ikinci `CastStart` ilk `CastEffect`'ten 1,1 sn sonra (tip kapısı), iki döngü `effected`, `victims 1` (BotPHD_E; BotWG_E 110 m uzakta, yarıçap dışı).
+- **S3 ✔** Ice burst `110633` `{3, 4}` BotMI_K: `casting` → `flying` → `effected`, **`code 15`** (Type4 süresi), `victims 2`; MP 5861 → 5751 → 5601 (−260, ~8 sn'lik sunucu MP yenilemesi dahil); `snap BotWG_E`/`BotPHD_E` `buff skill=110633 type=6 debuff remain=10s/9s`. BotMF_K aynı skill'i (buz ağacı 52 ≥ 33) attı: `code 15`, `victims 2`.
+- **S4 ✔** hedef 110 m uzakta: `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range` `value 110.00`, `limit 90.00`; `ACTION_SUBMIT` yok; log `cast stopped (out_of_range)`; MP değişmedi.
+- **S5 ✔** (a) CASTING'te (1102 ms) `cast off`: `CastCancel` `"target":-1`, `cause:"cmd"`, `cancelled`, `op 4`, `code -100`; MP 5901 → 5901. (b) FLYING aşamasında `cast off`: `CastStart` + `CastFly` gitti, EFFECTING gitmedi, log `cast stopped after 2 packet(s) sent`; **MP 6021 → 5871 (FLYING'in 150'si geri gelmedi)**, kurban HP'si değişmedi (2716). (c) Thunder burst `110733` (yıldırım ağacı 0, KI-016): `CastStart` `ACTION_RESULT` `ok:false`, `reason:"srv_fail"`, `op 4`, `code -100`; `CastFly` yok (seri CASTING'te bitti), MP değişmedi (yalnızca yenileme), hedef HP değişmedi.
+- **S6 ✔** Inferno `110545`: **iki** paket (`casting`, `effected`), `victims 2`, MP 5991 → 5821 (−200 + yenileme, bir kez). Fire ball `110515`: üç paket, `victims` alanı yok. Ice arrow `110615` (BotMI_K): üç paket, `code 12`, `victims` yok. Ignition `110518`: `CastEffect` `"target":2985` (kurban kimliği), `effected`, `victims` yok. Reddedilenler (`refused unsupported_skill`): uçan Type4 `110674`, `110825`; Sleep Carpet `112751` ve Discountis `112772` BotPHD_K ile `unsupported_skill` (BotMF_K ile `bad_skill`: sınıfın skill'i değil, plan senaryosunun kurulum hatası, bulgu 3). `TELEMETRY=summary`: Fire burst `self` `cast finished (effected) ... 3 packet(s)`, JSONL'de `ACTION_*` 0 (yalnızca `PERF_SAMPLE`); `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya kaldı), `Bot_*.log`'a satır ve yeni JSONL yok; `PERF_SAMPLE` `tick_p50_us` 4–6, `tick_p95_us` 98–106; `GameServer.log`'da yeni hata yok.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **Sonuç sözleşmesi doğrulandı, `docs/03` MEC-MAG-17 `[D]` → `[V]`:** uçan alan akışı (üç paket, hedef `-1`, MP FLYING + EFFECTING = 2 × `Msp`, `victims` yalnızca EFFECTING, `{3, 4}` `code` = Type4 süresi, ağaç yetersizliği CASTING'te `srv_fail` ve MP kaybı yok, FLYING sonrası iptalde `Msp` geri gelmez) çalışma zamanında ölçüldü. Ağaç yetersizliği yanıtında `code` `-100` görüldü (F4-29'daki Quake EFFECTING'te `-103` idi; kod CASTING/EFFECTING'e göre değişiyor, bot yalnızca `srv_fail` yazar).
+  2. *(not)* S1'de `victims` 3 değil 2: `BotWP_E` DB'den ölü (`hp 0/5650`) geldi, `regene` onu El Morad doğuş noktasına (685, 920) taşıdı (~590 m, çağırandan uzak), bu yüzden S1/S3/S5 BotWG_E + BotPHD_E ile yapıldı. `victims` kuralı (yalnızca yarıçap içindeki kurban kimlikli paketler) 2 kurbanla da sınandı; üçüncü kurban ek bilgi taşımaz. Plan S1'in "≥ 3" beklentisi bu test ortamı için ≥ 2 olarak okundu.
+  3. *(not)* Plan §7 S6'daki Sleep Carpet `112751`/Discountis `112772` BotMF_K ile değil BotPHD_K ile denenmelidir (`bad_skill` sınıf uyuşmazlığı); BotPHD_K ile `unsupported_skill` görüldü. Kod doğru.
+  4. *(not)* MP düşüşü ~5–6 MP/sn sunucu yenilemesiyle karışır; tam −300 yalnızca MP'si dolu başlayan S1'de görüldü (6021 → 5721). S3'te −260 yenileme payıdır.
+  5. *(not)* Operasyonel: bot despawn'da son konumunu saklar ve `regene` ölü botu doğuş noktasına taşır; çalışma zamanı sınamasından önce `list` ile konum/HP denetimi gerekir (F4-29 bulgu 3 ile aynı).
+  6. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; iki sapma notu da yerinde.
+  7. Sınanmayanlar (plan kapsamı dışı/bilinen sınır): uçuş süresinin mesafe bağımlılığı `[A]`, gerçek istemcinin CASTING'te hedef noktası göndermesi (CLI-07 `[Ö]`), `{3, 4}` uçan alanda kurbanda direnç/engelli son paket `MAGIC_FAIL`, El Morad burst karşılıkları (`2xxxxx`; aynı kod yolu), güvenli bölge `srv_fail`.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
