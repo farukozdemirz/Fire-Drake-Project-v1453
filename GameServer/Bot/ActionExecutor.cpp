@@ -1,12 +1,14 @@
 #include "stdafx.h"
 #include "ActionExecutor.h"
 #include "BotSession.h"
+#include "NavService.h"
 #include "Telemetry.h"
 #include "../Map.h"
 #include "../GameServerDlg.h"
 #include "../MagicInstance.h"
 #include "../../BotCore/BotMotion.h"
 #include "../../BotCore/BotCombat.h"
+#include "../../BotCore/NavChordGuard.h"
 
 #include <cmath>
 #include <cstring>
@@ -52,7 +54,7 @@ static std::string FormatFixed(double value, int precision)
 // CLI-01/CLI-11 the attack interval / action rate.
 static void EmitFairnessReject(BotSession * s, CUser * user, uint32 decisionId,
 	const char * type, const char * rule, const char * reason, float value, float limit,
-	uint32 skillId = 0)
+	uint32 skillId = 0, const char * extraFields = nullptr)
 {
 	if (!Telemetry::Instance().IsEnabled(TEL_DECISIONS))
 		return;
@@ -66,6 +68,11 @@ static void EmitFairnessReject(BotSession * s, CUser * user, uint32 decisionId,
 	// F4-41: only the cast reject path passes a skill id (0 elsewhere keeps the output unchanged).
 	if (skillId != 0)
 		fields += ",\"skill\":" + std::to_string(skillId);
+
+	// F5-61: the blocked_chord path passes the raw cell / verdict JSON tail (nullptr elsewhere
+	// keeps every existing call's output byte-for-byte identical).
+	if (extraFields != nullptr && extraFields[0] != '\0')
+		fields += extraFields;
 
 	Telemetry::Instance().Emit(TEL_DECISIONS, "FAIRNESS_REJECT", user->GetSocketID(),
 		s->m_charName.c_str(), fields, false);
@@ -106,6 +113,30 @@ static MoveOutcome SubmitMove(BotSession * s, CUser * user, float nx, float nz,
 		s->m_moveActive = false;
 		out.kind = MoveOutcome::REFUSED;
 		out.reason = reason;
+		return out;
+	}
+
+	// F5-61 (CLI-08 blocked_chord): the chord (current position -> packet position) must only touch Walk
+	// cells. Skipped (NAV off / not zone 71) leaves behaviour unchanged. The packet is never handed to
+	// HandlePacket() when the chord is rejected.
+	const BotCore::NavGrid * navGrid = user->GetZoneID() == ZONE_RONARK_LAND
+		? NavService::Instance().Grid() : nullptr;
+	const BotCore::ChordResult chord = BotCore::CheckMoveChord(navGrid,
+		user->GetX(), user->GetZ(), packetX, packetZ);
+	if (chord.verdict == BotCore::ChordVerdict::BlockedCell || chord.verdict == BotCore::ChordVerdict::OutOfBounds)
+	{
+		const char * chordVerdict = chord.verdict == BotCore::ChordVerdict::BlockedCell
+			? "BlockedCell" : "OutOfBounds";
+		const std::string extra = ",\"cell_x\":" + std::to_string(chord.cellX)
+			+ ",\"cell_z\":" + std::to_string(chord.cellZ)
+			+ ",\"verdict\":\"" + chordVerdict + "\"";
+		uint32 chordDecisionId = NextDecisionId(s);
+		EmitFairnessReject(s, user, chordDecisionId, "Move", "CLI-08", "blocked_chord",
+			stepMeters, 0.0f, 0, extra.c_str());
+
+		s->m_moveActive = false;
+		out.kind = MoveOutcome::REFUSED;
+		out.reason = "blocked_chord";
 		return out;
 	}
 

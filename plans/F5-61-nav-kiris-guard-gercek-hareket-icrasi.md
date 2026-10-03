@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-61 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI` (hepsi `gece/2026-10-02`'ye birleşti): **F5-59** (`NavService`: `Instance()`, `Ready()`, `Grid()`), F5-50 (`NavCheckStep`), F5-58 (kalıcı duvar regresyonu), F4-01 (`SubmitMove`, `CheckMoveStep`), F4-55 (giriş el sıkışması; çalışma zamanı K9-K11 bot girişi buna dayanır). Şemsiye: F5-55 (dilim 3). F5-62 bu planın guard'ına dayanır |

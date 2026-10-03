@@ -77,6 +77,7 @@
     <ClInclude Include="NavPath.h" />
     <ClInclude Include="NavSmooth.h" />
     <ClInclude Include="NavSegment.h" />
+    <ClInclude Include="NavChordGuard.h" />
     <ClInclude Include="NavTrack.h" />
     <ClInclude Include="NavReach.h" />
     <ClInclude Include="NavRetreat.h" />
