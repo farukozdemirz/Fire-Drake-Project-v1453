@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
@@ -406,3 +406,29 @@ plans/F8-01-bot-sonuc-degerlendirici.md — Doğrulama Turu 1 düzeltmeleri. Ayn
 3. Doğrula ve raporla: `python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl --win-rule timed_score` çıktısı (dört maç da kuralı komut satırından almalı: `rule=timed_score`; beklenen: `SMP-win` ve `SMP-draw` `no_result`, `SMP-wipe` `invalid` `TRUNCATED` (7100 ms'de biten günlük, 300 sn'lik pencere dolmadan), `SMP-noeng` `invalid` `NO_ENGAGE`; `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2`), `--selftest | tail -1` (`SELFTEST PASS n=70`), K2'nin 23 adlı `grep -c` döngüsü, K7'nin `grep` komutları (ASCII, CR=0, yalnızca stdlib). Başka dosyaya ve başka mantığa dokunma; `.gitattributes` dahil (KI-017 ayrı).
 ```
 
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `6a49224` (Tur 2 kod commit'i `7c245e0`, rapor commit'i `6a49224`; paralel hat `nav`, gece modu; sunuculara dokunulmadı, birleştirme/push yapılmadı: döngü betiği yapar)
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| Tur 1 düzeltme 1 (`--win-rule` ham dizge) | ✔ | `git diff 64dfd01 7c245e0 -- tools/bot-outcome-eval.py`: yalnızca `parse_args` içinde `arg == "--win-rule"` dalı (`opts[...] = raw`), diğer beş seçenek `parse_cli_int`'te. `--win-rule wipe_first` rc=0 ve `rule=wipe_first`; `--win-rule bogus` → `error: invalid --win-rule: bogus`, rc=2, stdout'ta `OUTCOME` yok; `--win-rule` (değersiz) → `option --win-rule needs a value`, rc=2 |
+| Tur 1 düzeltme 2 (3 yeni vaka) | ✔ | `cli_win_rule_option`, `cli_win_rule_priority`, `cli_win_rule_invalid_rc2`: her biri `PASS`, her biri bir kez; mevcut vaka adları değişmedi |
+| Tur 1 düzeltme 3 (çıktılar) | ✔ | `sample.jsonl --win-rule timed_score` kendi koşumumda: dört maç `rule=timed_score`; `SMP-win`/`SMP-draw` `no_result`, `SMP-wipe` `invalid TRUNCATED`, `SMP-noeng` `invalid NO_ENGAGE`; `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2` (beklenenle birebir) |
+| K1 | ✔ | `--selftest` rc=0; `SELFTEST PASS n=70`; `grep -c '^FAIL '` = 0 |
+| K2 | ✔ | 23 adlı `grep -c "^PASS <ad>$"` döngüsü (+ 3 yeni ad): hepsi `1` |
+| K3 | ✔ | sample çıktısı plandaki 5 satırla birebir aynı, rc=0 |
+| K4 | ✔ | `--win-margin 3`: `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0` |
+| K5 | ✔ | `--win-margin 9` rc=2; `/nonexistent` rc=2; `--strict` rc=1; strict'siz rc=0; `--json` assert geçti |
+| K6 | ✔ (Tur 1) | Tur 2 yalnızca `parse_args` ve selftest vakalarını değiştirdi; `judge_killdiff` ve `eval_wipe` değişmedi, Tur 1 mutasyon kanıtı geçerli |
+| K7 | ✔ | içe aktarımlar `json/os/sys/tempfile` (`:28-31`); `open(` yalnızca `:175` (okuma), `:711` (`write_records`), `:1264` (selftest); ASCII (`grep -P` boş); CR sayısı 0 (iki dosya); shebang `:1` |
+| K8 | ✔ | `tools/` altında yalnızca iki dosya + plan; `GameServer/ BotCore/ Tests/ shared/ AIServer/ .gitattributes` diff'i boş. (Branch farkındaki `docs/` ve `plans/README.md` değişiklikleri Claude'un doğrulama kayıtlarıdır, uygulayıcı commit'lerinde yok) |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning`/`error C` sayısı 0; `./tools/run-tests.sh`: `223 tests, 0 failed` |
+| K10 | ✔ | Eşleme tablosu Tur 1'deki gibi, vaka adlarının tümü `PASS` |
+
+- Bulgular:
+  1. Not (engel değil): `cli_win_rule_option` vakasında aynı `bot` (3) iki kez `DEATH` alıyor ve ikisi de kill sayılıyor (`k_a=2`). Gerçek logda ölü birimin ikinci `DEATH`'i `RESPAWN` olmadan gelmez; ADR/Ek F8-01 bu durumu tanımlamıyor, bu yüzden araç davranışı değiştirilmedi. Veri anomalisi için kural sonraki dilimde (sunucu emisyonu planında) ADR Ek'e eklenebilir.
+  2. Not: `parse_cli_int` alt çizgili değeri (`1_0`) kabul eder (Tur 1 notu 2, önemsiz).
+  3. Not: `.jsonl` satır sonu riski KI-017'de kayıtlı (küçük bakım planı); bu planı engellemez.
