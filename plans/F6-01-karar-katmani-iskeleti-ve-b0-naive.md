@@ -12,6 +12,8 @@
 
 ---
 
+> **Karar (2026-10-03, ADR-0020, proje sahibi):** "anlamlı yener" eşiği = EVAL-1v1'de `B0-NAIVE`'e karşı **40 maçta en az %65** galibiyet (beraberlik yarım). `B0-NAIVE` tanımı (en yakın düşmana yürür, temel saldırı, HP < %30'da HP pot, kaçmaz/geri çekilmez) bu planda `[A]` olarak yazılır ve plan incelemesinde onaylanır; plandaki tanımsızlık notları bu karara göre okunur.
+
 ## 1. Amaç
 
 F4 aksiyonları (`ActionExecutor`) ve F5 navigasyonu birbirine bir **karar katmanı** olmadan bağlanamaz. Bu plan, kararın saf mantık (BotCore, sunucusuz, belirlenimli) iskeletini kurar: gözlem (`DecisionInput`) → niyet (`Intent`) sözleşmesi, `docs/13` §6 ortak durum makinesi (geçiş tablosu, minimum durum süresi, salınım sayacı), `docs/13` §9 parametre kayıt defteri (aralık dışı reddi), seed'li RNG kullanımı ve `B0-NAIVE` baseline politikası. Sonraki F6 planları (hedef seçimi, yaklaşma/saldırı, pot, geri çekilme, rol modülleri) bu sözleşmeyi **doldurur**; hiçbiri `Intent`/`DecisionInput` şeklini değiştirmez.

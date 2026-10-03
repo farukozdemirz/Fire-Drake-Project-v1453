@@ -12,6 +12,8 @@
 
 ---
 
+> **Karar (2026-10-03, ADR-0020, proje sahibi):** EVAL-1v1 kabul eşiği: L0 politikası `B0-NAIVE`'e karşı **40 maçta en az %65** (beraberlik yarım galibiyet). Plandaki eşik/"anlamlı" belirsizlikleri bu karara göre okunur; `ScenarioReset` (F8-05) bağımlılığı sürer.
+
 ## 1. Amaç
 
 `docs/10`'un asıl iddiasını gerçekleştirmek: solo bot **her eşleşmeyi kazanmaya çalışmaz; kazanma olasılığı ile riski tartar**. Bu plan (a) eşleşme önsel tablosu ve `p_win`/EV formülünü, (b) `ROAM -> EVALUATE -> ENGAGE/AVOID -> DUEL -> CHASE/DISENGAGE` akışını ortak FSM'in alt durumları olarak, (c) arena içinde dolaşma rotasını, takip sınırını ve sayısal dezavantajdan kopmayı, (d) priest'e özgü solo kapılarını, (e) `B0-NAIVE`'e karşı EVAL-1v1 koşusunu kurar. F6-06'da "hedef görünürse saldır" olan basit kapı bu planla EV kararına dönüşür.

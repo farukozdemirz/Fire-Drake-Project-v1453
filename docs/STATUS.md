@@ -272,7 +272,7 @@ K-1..K-10, 2026-10-01 (`docs/18` §1, `docs/adr/`). Önerilenden farklı seçile
 - K-5: tüketilmeyen potlar olduğu gibi kalır.
 - K-6: yalnızca arena A.
 - K-9: botlar sıralama/ödül/duyurulara tamamen dahil.
-- **2026-10-03 (proje sahibi, soru-cevap oturumu):** Q-29 (ADR-0019): geri çekilme eşiği **sabit %30**, yeniden savaşa dönüş eşiği **%85**; `docs/11` §4.2 formülü ölçümlerden sonra ayrı karar.
+- **2026-10-03 (proje sahibi, soru-cevap oturumu):** Q-29 (ADR-0019): geri çekilme eşiği **sabit %30**, yeniden savaşa dönüş eşiği **%85**; `docs/11` §4.2 formülü ölçümlerden sonra ayrı karar. Q-30 (ADR-0020): "anlamlı yener" = EVAL-1v1'de `B0-NAIVE`'e karşı **40 maçta en az %65** (beraberlik yarım); `B0-NAIVE` tanımı F6-01'de `[A]`.
 - K-10: PR #10 alınmaz.
 
 - ADR-0005 (bot tick'i IOCP thread'inde, `BOT_TICK` olayı), 2026-10-02, gece modu: **otonom döngüde Claude kararı — gözden geçirilmeli** (`docs/adr/ADR-0005-bot-tick-thread-modeli.md`; öneri `docs/13` §3.1 aynen).
