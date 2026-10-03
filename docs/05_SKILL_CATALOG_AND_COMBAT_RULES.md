@@ -209,6 +209,22 @@ Bulgular (her biri bir sonraki planın girdisidir):
 4. **Hedef canı:** `112548` 2. turu `srv_fail`; tam canlı hedefe heal'in sunucuda reddedildiği düşünülüyor `[Ö]` (heal örneklerinden önce hedefin yaralanması gerekir).
 5. **112656 Greatness** sonuç paketi alınmadı `[V]`; nedeni araştırılmadı `[Ö]`.
 
+### 9.2 Bot koşusu: düzeltilmiş betikle yeniden koşu (F4-43, 2026-10-03)
+
+Aynı dört bot (`BotPHD_K`, `BotPHB_K`, `BotWP_K`, `BotWG_K`; hepsi ≤ 16 m içinde doğdu), `bots/config/skill_priest_k.txt` v2 (31 adım, party `paccept` aralığı 1500 ms), `[BOT] TELEMETRY=decisions`; `tools/skill-check.py --min-n 1` (`--mp-regen` varsayılan 60, `Msp/2` tavanı). Betik 31/31 adım zamanında koştu (en geç gecikme 109 ms) `[V]`. Sonuç: 15 skill, PASS 13, WARN 2, FAIL 0, NO_DATA 0; hepsinde başlayan = etkili `[V]`. Örnek sayısı skill başına 1-3'tür; sonuçlar **ilk ölçüm**dür.
+
+F4-42 bulgularının (§9.1) durumu:
+
+| Bulgu | Durum | Kanıt |
+|---|---|---|
+| 1 MP yenilenmesi | Giderildi: araç en büyük düşüm + sınırlı yenilenme payıyla hüküm verir | `mp_verdict` FAIL 0; `112527`, `112535`, `112536`, `112560`, `112645` (F4-42'de sahte FAIL) PASS/WARN; `112645` düşüm 20-60 (WARN, taban 30) |
+| 2 Party | Giderildi `[V]` | `PartyAccept` 3 × `joined`, `accept_wait` 0 (`kPartyAcceptMinMs = 1000`, aralık 1500 ms) |
+| 3 Bot konumu | Bu koşuda sorun yok `[V]` | botlar zone 71 (1270-1276, 928-944) çevresinde, ≤ 16 m; `move` gerekmedi (önceki koşuda DB'deki son konum uzaktı; betik konumlandırmaz, operatör kontrol eder) |
+| 4 `112548` 2. tur `srv_fail` | Nedeni `[D]`, giderildi `[V]` | `112548` 30 sn HoT (`TimeDamage 2500`): hedefte etkin restorasyon varken `CheckType3Prerequisites` (`MagicInstance.cpp:515-522`) sonraki atışı reddeder; "tam canlı hedef" değil. Hedef başına tek atışla 3/3 etkili, `mp_delta_max` 625 |
+| 5 `112656` `no_result` | Nedeni `[D]`, giderildi `[V]` | grup yolu Type4'te hedefte aynı `BuffType` varsa üyeyi sessizce atlar (`MagicInstance.cpp:1770-1782`, MEC-MAG-18); `BotPHB_K`'da BuffType 1 boşken `112656` etkili (`mp_delta` 570 = `Msp`) |
+
+Kalan WARN: `112645` (Msp 60; düşümler 20/60/60) ve `112657` (Msp 360; tek örnek 320): ikisi de yenilenme payı sınırında tek örnek sapmasıdır, MP düşümü hatası belirtisi yok `[Ö]`. Not: BuffType 1 üçlüsü (`112654`, `112657`, `112656`) aynı hedefe art arda atılamaz; ölçüm betiği hedefleri bu yüzden dağıtır (`112657` için yalnızca bir örnek).
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |

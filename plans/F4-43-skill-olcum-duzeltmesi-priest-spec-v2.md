@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 19) |
 | Branch | `bot/F4-43` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-42 (`tools/skill-script-gen.py`, `bots/config/skill_priest_k.{spec,txt}`) — `KAPANDI` (merge `28cc1d6`); F4-41 (`tools/skill-check.py`) — `KAPANDI` |
@@ -200,35 +200,64 @@ git diff --stat gece/2026-10-02...bot/F4-43
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-43` — `<kısa-sha> [F4-43] …`
+- Branch / commit'ler: `bot/F4-43` (taban `gece/2026-10-02`) — `8fd65a8 [F4-43] skill-check MP hükmü yenilenmeye dayanıklı + priest spec v2`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `tools/skill-check.py`: `judge_mp` "en büyük düşüm + sınırlı yenilenme payı" kuralına çevrildi; `DEFAULT_MP_REGEN = 60`; `analyze`/`build_report` sona varsayılanlı `mp_regen` parametresi; `--mp-regen` argparse (negatifse `parser.error`); USAGE/docstring satırı; selftest `run_case(mp_regen=...)` + 6 yeni kontrol (bellek içi MAGIC 110601/110602/110603, Msp 80/160/625).
+  - `bots/config/skill_priest_k.spec`: §5.3 içeriği aynen (party aralığı 1500 ms; `112548` hedef başına tek atış ×3; BuffType 1 üçlüsü `112654`×2 hedef + `112657`→`BotPHD_K`; `112656` self en sonda).
+  - `bots/config/skill_priest_k.txt`: `skill-script-gen.py` ile gerçek `MAGIC`'ten yeniden üretildi (31 adım, `t0=9000`).
+  - `plans/F4-43-...md`: yalnızca `Durum` ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release`, rc=0; son satırlar):
   ```
-  …
+  BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> ...\libs\Lua.lib
+  shared.vcxproj -> ...\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh`: `251 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `selftest: 32 checks, 0 failed` (rc=0); `grep -c 'mp_regen_pass\|...\|mp_regen_zero_strict' tools/skill-check.py` = 6; `mp_ok`/`mp_off_fail`/`mp_off_warn`/`mp_no_data` korundu.
+  - K2 ✔ fixture (`Msp 625`, tek düşüm `585`, `--min-n 1`): yeni sürüm boş → `WARN`, `--mp-regen 0` → `FAIL`, `--mp-regen 80` → `WARN`; **eski** sürüm (`git show gece/2026-10-02:tools/skill-check.py`) varsayılanda `FAIL` (kanıtlandı).
+  - K3 ✔ `git diff gece/2026-10-02...bot/F4-43 -- tools/skill-check.py` yalnızca docstring/USAGE, `DEFAULT_MP_REGEN`, `analyze`/`build_report` imzaları, `judge_mp`, selftest, argparse/main hunk'ları (11 hunk; `recast_verdict`/`effect_verdict`/sütun/JSON değişmedi).
+  - K4 ✔ `--out /tmp/skill_priest_k.txt` (gerçek MAGIC) rc=0, `diff` boş (`DIFF_EMPTY`).
+  - K5 ✔ `--check` → `ok: 31 steps, 1147 bytes, 33 lines, last offset 121000 ms`; PHD cast 11, PHB cast 11, party 6, pot 2, `112703` 0; `paccept` ofsetleri 1500/4500/7500 (her biri kendi `pinvite`+1500); `112548` 3 satır (`BotWP_K`, `BotWG_K`, `self`); `112656` (satır 23) `112657` (satır 21, hedef `BotPHD_K`) sonrasında.
+  - K6 ✔ `selftest: 23 checks, 0 failed` (araç değişmedi).
+  - K7 ✔ `build.sh Release` rc=0 hatasız; `run-tests.sh` `251 tests, 0 failed`.
+  - K8 ✔ `git diff --stat gece/2026-10-02...bot/F4-43`: yalnızca `tools/skill-check.py`, `bots/config/skill_priest_k.spec`, `bots/config/skill_priest_k.txt`, plan dosyası.
+  - K9 — Claude'un çalışma zamanı turu (sunucu açma/koşu); bu turda yapılmadı.
+- Plandan sapmalar ve gerekçeleri: yok. Spec §5.3 aynen yazıldı; üretici seçenekleri/varsayılanları değiştirilmedi; betik 31 adım (sınırlar içinde).
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-43` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-43` @ `a89ba48` (kod/spec commit'i `8fd65a8`; `a89ba48` yalnızca Uygulayıcı Raporu). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı, döngü betiği yapar.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `python3 tools/skill-check.py --selftest` → `selftest: 32 checks, 0 failed`, rc=0; `grep -c` 6 yeni ad = 6; `mp_ok`/`mp_off_fail`/`mp_off_warn`/`mp_no_data` kodda birer kez |
+| K2 | ✔ | §7 fixture (Msp 625, düşüm 585, `--min-n 1`): varsayılan `WARN`, `--mp-regen 0` `FAIL`, `--mp-regen 80` `WARN`; eski sürüm (`git show gece/2026-10-02:tools/skill-check.py`) aynı fixture'da `FAIL`. Ek: `--mp-regen -1` → rc=2, `--mp-regen must not be negative` |
+| K3 | ✔ | `git diff gece/2026-10-02...bot/F4-43 -- tools/skill-check.py` okundu: yalnızca docstring/USAGE, `DEFAULT_MP_REGEN`, `analyze`/`build_report` imzaları (sona varsayılanlı parametre), `judge_mp` (`skill-check.py:405-415`), selftest (`run_case`, 6 yeni kontrol), argparse/`main`; `judge_recast`/`judge_effect`, sütunlar, JSON anahtarları değişmedi |
+| K4 | ✔ | `skill-script-gen.py bots/config/skill_priest_k.spec --out /tmp/skill_priest_k.txt` rc=0, `diff` boş |
+| K5 | ✔ | `--check` → `ok: 31 steps, 1147 bytes, 33 lines, last offset 121000 ms`, rc=0; `cast BotPHD_K` 11, `cast BotPHB_K` 11, `pinvite`/`paccept` 6, `pot` 2, `112703` 0; `paccept` ofsetleri 1500/4500/7500 (her biri `pinvite` + 1500); `112548` satır 25-27 (`BotWP_K`, `BotWG_K`, `self`); `112657` (satır 21, hedef `BotPHD_K`) `112656`'dan (satır 23) önce |
+| K6 | ✔ | `skill-script-gen.py --selftest` → `selftest: 23 checks, 0 failed` |
+| K7 | ✔ | `./tools/build.sh Release` rc=0, çıktıda `warning`/`error` 0; `./tools/run-tests.sh` → `251 tests, 0 failed` |
+| K8 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-43`: yalnızca `tools/skill-check.py`, `bots/config/skill_priest_k.spec`, `bots/config/skill_priest_k.txt`, plan dosyası |
+| K9 | ✔ | Çalışma zamanı (aşağıda): party 3/3 girdi (`accept_wait` 0), `112548` 3/3 `effected`, `112656` `effected`, `mp_verdict FAIL` 0 |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+- Biçim: üç dosya ASCII, LF (`file`, `grep -c $'\r'` = 0); C++/`.vcxproj`/docs/ADR değişmedi; `skill-script-gen.py` değişmedi.
 
-```
-…
-```
+**K9 çalışma zamanı ayrıntısı.** Stok önceki koşudan duruyordu (`bot-refill` atlandı). `GameServer.ini`'ye geçici `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`, Release sunucu (`build/bin/x86-Release/Server`), 4 bot (`BotPHD_K`, `BotPHB_K`, `BotWP_K`, `BotWG_K`) 4 sn arayla spawn; `list`: dördü zone 71'de (1270-1276, 928-944), birbirine ≤ 16 m (56 m içinde; `move` gerekmedi). `Bot_3_10_2026.log`: `loaded (31 step(s), last offset 121000 ms)`, `finished skill_priest_k: completed, 31/31 step(s) in 121095 ms (max late 109 ms)`. `live-090405.jsonl` üstünde `tools/skill-check.py --min-n 1`: 15 skill, PASS 13, WARN 2, FAIL 0, NO_DATA 0 (önceki koşu: PASS 11, WARN 2, FAIL 1, NO_DATA 1 aynı araçla). `PartyInvite` 3 (`created` 1, `sent` 2), `PartyAccept` 3 (`joined`), `accept_wait` 0. Kalan WARN'lar: `112645` (Msp 60, düşümler 20/60/60: en küçük 20 < taban 30) ve `112657` (Msp 360, tek örnek 320 < 350 bandı; taban 300 içinde). İkisi de yenilenme payı sınırı içinde kalan tek örnek sapmasıdır, bulgu değil `[Ö]`. Sunucular `stop` ile kapatıldı, botlar önce `despawn all`, `GameServer.ini` yedekten geri yüklendi (`GameServer.ini.bak-before-bot-test-20261002` ile bayt bayt aynı), `Scripts/skill_priest_k.txt` kopyası silindi. Sonuçlar `docs/05` §9.1'e işlendi.
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `tools/skill-check.py:405-415` `judge_mp`: `Msp` küçükken (ör. 60) `Msp/2` tavanı payı 30'a indirir; `112645`'in tek 20'lik düşümü WARN verdi. Yenilenme gözlemi +20/+40 olduğundan 60 MP'lik skill'de 40'lık yenilenme taban 30'u aşar. Hüküm WARN'dır (FAIL değil) ve `--mp-regen` ile ayarlanır; not olarak bırakıldı.
+  2. `112657` ve `112820` gibi tek örnekli skill'lerde kanıt zayıf (`--min-n 1` gerekir); spec her skill için ≥ 2 örnek vermiyor (BuffType 1 kısıtı nedeniyle bilinçli). Sonraki dilimlerde ayrı oturumla tamamlanabilir.
+  3. Üslup: `judge_mp` satır içi yorumu kod satırının yanında (`# regeneration cannot refund ...`); çevredeki kodla uyumlu, engel değil.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
