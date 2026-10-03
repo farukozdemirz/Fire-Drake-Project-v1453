@@ -58,6 +58,8 @@ def parse_log(path, name=None, sid=None):
             x, z, y, speed, echo = struct.unpack("<HHHhB", bytes.fromhex(payload))
         except (struct.error, ValueError):
             continue
+        if y > 32767:        # the height field is unsigned on the wire; negative heights (water basins) wrap around
+            y -= 65536
         rows.append({"t": t, "sid": psid, "name": pname, "x": x / 10.0, "z": z / 10.0, "y": y / 10.0, "speed": speed})
     return rows
 
@@ -161,8 +163,11 @@ def selftest():
         nonlocal ok
         if not c:
             print("FAIL:", m); ok = False
-    chk(len(rows) == 18, "packet count %d" % len(rows))
+    chk(len(rows) == 18, "packet count %d" % len(rows))  # before the negative-height packet is appended
     chk(abs(rows[1]["x"] - rows[0]["x"] - 6.75) < 0.11, "metre conversion")
+    neg = struct.pack("<HHHhB", 10000, 10000, (-74) & 0xFFFF, 0, 0).hex()
+    open(p, "a").write("99000\t7\tTestChar\t71\t06\t9\t" + neg + "\n")
+    chk(abs(parse_log(p, name="TestChar")[-1]["y"] + 7.4) < 0.01, "negative height decoding")
     chk(list_characters(p).get(("7", "TestChar")) == 19 or True, "list")
     lg = legs(rows, 5)
     chk(len(lg) == 2, "legs %s" % lg)

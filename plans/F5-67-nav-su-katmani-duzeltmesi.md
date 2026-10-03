@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK |
+| Durum | İPTAL (2026-10-03: T-NAV-09 sonucu: istemci suya girip çıkıyor, suda hız düşmüyor, çukurlar `Walk` ile uyumlu; ayrı su katmanı gerekmez) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-67 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | **F5-60** `KAPANDI` ve sonucu **`GEREKLİ`** olmalı (rapor + bu planın §2'sini dolduracak veri); F5-59 (`NavService`, ızgara kaynağı) `KAPANDI`; F5-61 (kiriş guard'ı) ile sıra: bu plan `water` işaretini kiriş denetimine de taşır (F5-61 önce veya birlikte). Şemsiye: F5-55 (dilim 9, koşullu) |
