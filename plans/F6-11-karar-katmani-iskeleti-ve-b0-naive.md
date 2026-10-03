@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | İPTAL (F6-01'in kopyası; hat `f6`'da F6-01 olarak yapılıyor, 2026-10-03) |
 | Faz | F6 — Sınıf davranışları, hayatta kalma ve solo (`docs/17` §2; kapılar G6a/G6b/G6c, §5) |
 | Branch | `bot/F6-11 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | Hepsi `KAPANDI`: F3-05 (`BotCore` + `Tests/BotCoreTests` çatısı, `Rng`); F4-03/F4-04/F4-05/F4-24 (`BotCore/BotCombat.h` guard fonksiyonları); F4-16/F4-17/F4-18 (`PerceptionSnapshot`, `SelfState`, `TeamView`); F4-50/F4-51/F4-52 (`UnitView` meta, `HpTable`, `SkillEventRing`); F4-53 (`SkillMeta`, `ObservedStatusTable`, `HealObsRing`, merge `0001d04`). F5 gerekmez (saf mantık). **F5-74'ten bağımsız** (F5-74 yalnızca `GameServer/Bot/` altındaki yedi dosyayı değiştirir; bu plan yalnızca `BotCore/`, `Tests/BotCoreTests/` ve iki `.vcxproj` satırı) |
@@ -312,3 +312,7 @@ grep -n "CheckCastStart\|CastWaitMs" BotCore/SkillReady.h
 
 - Bulgular (önem sırasıyla):
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
+
+## İptal notu (2026-10-03, Claude)
+
+Bu plan F6-01 taslağının ön-plan düzeneği tarafından (yeni dosya kuralı yüzünden) F6-11 kimliğiyle yeniden yazılmış hâlidir. Aynı gün proje sahibi F6-01..F6-05'i ikinci hat `f6`'ya verdi (`gece/2026-10-03-f6`, `docs/STATUS.md`); F6-01 orada yazıldı, uygulandı ve doğrulanıyor. İki hattın aynı dosyaları (`BotCore/Brain.h`, `BrainParams.h`, `SkillReady.h`, `PolicyNaive.h`) yazmaması için F6-11 **uygulanmadı** ve iptal edildi; kimlik yeniden kullanılmaz (`docs/21`). F6-11'in daha ayrıntılı ek bölümleri (varsa) F6-01 doğrulama turlarında alınır.
