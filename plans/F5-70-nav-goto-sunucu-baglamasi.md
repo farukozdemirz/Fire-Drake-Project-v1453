@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-70 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-59 (`NavService`, `NAV=1`), F5-61 (kiriş guard'ı `CheckMoveChord`, `SubmitMove` içinde), F5-62 (`BotCore/NavDrive.h`, `Goto` kipi saf mantık; merge `8522239`), F5-69 (eğim 0,45). **F5-71'e bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz (F5-71: `BotCore/NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`; bu plan: yalnızca `GameServer/Bot/` altındaki yedi dosya). Not: `BotSession.h` `NavDrive.h`'yi, o da `NavStuck.h` → `NavTrack.h`'yi dahil eder; F5-71 `gece/2026-10-02`'ye birleşti (`1bfb885`, `KAPANDI`): `NavTrack.h`'ye `NavNoReach`, `NavFollower::UpdateReachable`/`UpdateImpl` şablonları ve `UpdateImpl`'e yönlenen `inline Update` eklendi; bu plan o başlığı değiştirmez, yalnızca GameServer birimlerine dahil edilmesi yeni olur (K1). F5-63 (`Follow`), F5-64, F5-65 bu planın `m_navDrive`/`SharedPathfinder` üzerine kurulur |
@@ -302,20 +302,35 @@ file GameServer/Bot/NavService.h GameServer/Bot/NavService.cpp GameServer/Bot/Ac
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F5-70` @ `<sha>`
+- Karar: **DOĞRULANDI**
+- İncelenen: `gece/2026-10-02...bot/F5-70` @ `3dbe3af` (2 commit: `0f5c948` kod, `3dbe3af` rapor). Gece modu (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`): birleştirmeyi/push'u döngü betiği yapar, bu oturumda yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `BotSession.h` ve `NavService.h` `touch` edilip `./tools/build.sh Release` ve `Debug` rc=0. Release günlüğünde uyarılar yalnızca değişmeyen dosyalarda: `GameServerDlg.cpp` C4834:820, C4267:1147/1806 ve bağlayıcı aşamasında `UpgradeHandler.cpp` C4789 (:634, :862; bu planın dosyaları değil); Debug yalnızca C4267:1147/1806. `ActionExecutor.cpp`, `BotManager.cpp`, `BotSession.cpp`, `NavService.cpp` ve iki başlık için yeni uyarı/hata 0, `min`/`max` makro çakışması yok |
+| K2 | ✔ | Kendi koşumda `run-tests.sh Release` ve `Debug`: `293 tests, 0 failed`; `BotCoreTests.exe --list \| wc -l` = 293 (taban ile aynı) |
+| K3 | ✔ | `git diff --stat gece/2026-10-02...bot/F5-70`: 8 dosya = §4'teki 7 `GameServer/Bot/` dosyası + plan dosyası (`plans/README.md` bu dalda değişmedi); `BotCore/`, `Tests/`, `tools/`, `docs/`, `shared/`, `AIServer/`, `*.vcxproj*`, `BotSession.cpp` farkı yok; `git diff --check` boş (rc=0); commit mesajları `[F5-70] ...`; `build/` commit edilmemiş |
+| K4 | ✔ | `git diff` okundu: `ValidateWalkStart` yalnızca `BeginMove`'un eski `not_in_game`/`dead`/`sitting`/`speed_field` bloğunun taşınmasıdır (aynı metinler, aynı `EmitFairnessReject` argümanları, `return out` -> `return false`); `BeginMove`'da yardımcı çağrısı + `ActionExecutor.cpp:296` `m_navDrive.Reset();` (`bad_target` bloğundan sonra, `m_moveActive = true` öncesi); `TickMove`'da tek kip satırı (`:320-321`); `StopMove` `:359`, `AbandonMove` `:374-378` birer `Reset`; yeni `PlanReason`, `NeedsReplan`, `BeginGoto`, `TickPathMove`. `SubmitMove` gövdesi, `StepToward` çağrısı ve `TickMove` süre/adım mantığı farkı 0 |
+| K5 | ✔ | `TickPathMove`: `speed` yalnızca `arrived ? 0 : s->m_moveSpeed` (`ActionExecutor.cpp:513`); `Blocked`/`fail`/`None` yollarında `SubmitMove` ve `HandlePacket` çağrılmaz; yeni satırlarda `GetMap\|GetUserPtr\|GetRegion\|m_arNpcArray` yok (`git diff -U0 ... \| grep` boş). **Çalışma zamanı da doğruladı (K11)**: ara noktada `speed:0` paketi yok |
+| K6 | ✔ | `python3 tools/check-perception-contract.py`: `RESULT: PASS` (rc=0) |
+| K7 | ✔ | `NavService.h` `Grid()/Ready()/GetInfo()` ve `NavService.cpp` `Startup()/Shutdown()` farkı yok; `.cpp` farkı yalnızca `SharedPathfinder()` (`NavService.cpp:41-58` (yorum + gövde `:44-58`)); `BeginGoto` `Grid() == nullptr` ise `nav_off` ile `ActionExecutor.cpp:396-401`'de döner, `SharedPathfinder()` `:412`'de çağrılır, yani `NAV=0`'da hiç çağrılmaz. **Çalışma zamanı da doğruladı (K15)** |
+| K8 | ✔ | `BotManager.cpp` farkı: `goto` dağıtımı (`:629-630`), bilinmeyen komut metni (`:670`), `CommandGoto` (`:1129-1206`, gövde `:1131`); `CommandMove`, `CommandStop`, `TickSessions` farkı yok |
+| K9 | ✔ | `file`: yedi dosya `ASCII text, with CRLF line terminators`; BOM yok (`head -c3` = `237072` / `23696e`); LF-only satır 0 |
+| K10 | ✔ | `BeginGoto` yerel `plan` nesnesine planlar (`ActionExecutor.cpp:411-413`); `s->m_navDrive = plan` ve yürüyüş üyeleri yalnızca `Planned` ise yazılır (`:421-427`); `ValidateWalkStart`, `nav_off` (`:396-401`), `nav_zone` (`:403-408`) ret yolları `BotSession` üyesi yazmaz (yalnızca telemetri `EmitFairnessReject`). **Çalışma zamanı da doğruladı (K14)** |
+| K11 | ✔ | **Çalışma zamanı `[V]`** (Release, `bot/F5-70` ucundan; `[BOT] ENABLED=1, NAV=1, TELEMETRY=decisions`; `NavService: nav ready ... crc32=4fd154bc`). Botlar kayıtlı konumdan (1274; 934) doğdu (doğuş noktasında değil); `BotWP_K` önce `goto 1385 1095` ile Karus doğuş noktasına yürütüldü, sonra `goto 1274 890`. Doğuş -> arena A: `planned 10 waypoints, route 275.0 m, expanded 883, 0.24 ms`; `arrived at (1274.0, 890.0) after 40 packets` (`ceil(275,0 / 6,75)` = 41, ±2 içinde); 40 `Move` paketi 59,9 sn'de (telemetri `t`). Doğuş noktasına ilk yürüyüş: `route 223.1 m, expanded 625, 0.91 ms` (**ilk `Find`, havuz ayırma dahil**), `arrived ... after 33 packets` (34 beklenir). Telemetri: ara noktada `speed:0` paketi **yok** (her yürüyüşte tam bir `speed:0`, varışta); `FAIRNESS_REJECT` **0**; `VIOLATION` satırı **yok** (`grep -c` = 0). Planlama süreleri 0,24-1,18 ms (bilgi, `[V: Y1]`) |
+| K12 | ✔ | **Çalışma zamanı `[V]`** (yalnızca bilgi): `BotWG_E` (El Morad) önce (635; 925)'e (`route 720.7 m, expanded 4232, 1.18 ms`, `arrived after 105 packets`), sonra arena A'ya: `planned 11 waypoints, route 700.2 m, expanded 2644, 0.73 ms`, `arrived at (1274.0, 890.0) after 102 packets` (104 beklenir, ±2 içinde), 4,5 m/s'de ~152 sn (101 paket aralığı × 1,5 sn; Karus ölçüsü 59,9 sn). Karus 275,0 m / ~60 sn, El Morad 700,2 m / ~152 sn (`docs/12` §13.4'teki ~52/~142 sn eğim 0,625 dönemine aittir). Kabul ölçütü F5-66'dadır; `FAIRNESS_REJECT` 0, `VIOLATION` 0 |
+| K13 | ✔ | **Çalışma zamanı `[V]`:** NAV=1'de `move BotWP_K 1294 890` -> `arrived ... after 3 packets` (eskisi gibi düz); `goto 1385 1095` ortasında (6 sn sonra) `move BotWP_K 1294 890` -> goto iptal, düz yürüyüş `arrived at (1294.0, 890.0) after 4 packets` (bot rotada kalmadı: `list` konumu 1290,2; 895,2 `moving=1`); `goto` ortasında `stop BotWP_K` -> `cmd stop: BotWP_K stopped at (1278.0, 911.6)` (durma paketi reddedilmedi, `FAIRNESS_REJECT` 0), ardından aynı bot `goto 1274 890` -> `planned 3 waypoints, route 29.5 m` ile yeniden `goto` aldı |
+| K14 | ✔ | **Çalışma zamanı `[V]`:** `goto BotWP_K 1270 934` (bilinen engelli hücre merkezi) -> `refused (invalid_goal)`; `70000 70000` ve `-5 10` -> `refused (invalid_goal)`; üç ret de sürmekte olan `goto 1274 890` yürüyüşü sırasında verildi ve yürüyüş **sürdü** (`list`: `moving=1`, sonra `arrived at (1274.0, 890.0) after 40 packets`) -> D4 doğrulandı. Eğimle kopmuş üç cep hedefi (Claude'un `tools/nav-segment-check.py` bileşen kuralı + 0,45 eğim yaklaşımıyla seçtiği (1326; 1378), (1914; 1038), (1370; 1002)) -> üçü `refused (node_limit) [not planned: search budget exhausted, reachability unknown]`; ret satırlarında bot yürümedi; çökme yok |
+| K15 | ✔ | **Çalışma zamanı `[V]`:** sunucu `NAV=0, ENABLED=1` ile yeniden başlatıldı: `goto BotWP_K 1274 890` -> `refused (nav_off)`; `move BotWP_K 1294 934` -> `arrived at (1294.0, 934.0) after 8 packets`; günlükte `NavService` satırı yok, `FAIRNESS_REJECT` 0. `ENABLED=0` yolu ayrıca koşulmadı (yeni kod yalnızca `/bot goto` komutu ve `m_navDrive.Active()` üzerinden çalışır; `Active()` `false` iken `TickMove` değişmez: kod incelemesi) |
+| K16 | ✔ | `run-servers.sh stop` iki kez de nazik kapanış, `status` `0/3 hazır`; `GameServer.ini` yedekten geri alındı (md5 öncesi = sonrası = `791b71379a7173f877b0dcfc04595a66`), `BotCommands.*` kalmadı. "AC-NAV-03 kapandı" **yazılmadı** (kanıt F5-66). `Replan`/`off_route` yolunun çalışma zamanı kanıtı yok (sunucuda botu rotadan iten komut yok; plan bunu beyan etmişti): birim kanıtı F5-62, yürütücü tarafı kod incelemesi |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Kod kalitesi / kurallar: `m_navDrive` yalnızca IOCP iş parçacığında (`BotManager::Tick` -> `ProcessCommands`/`TickSessions`); `OnPacket()` ona dokunmaz; `SharedPathfinder()` ilk-çağıran denetimi çalışma zamanında sıfır `VIOLATION` verdi. Tek `NavPathfinder` (4 MiB) tüm botlarca paylaşılır; `NAV=0`/`ENABLED=0` iken yeni kod çalışmaz. Bot avantajı yok: yol botun kendi `CUser` konumundan ve herkesin sahip olduğu ızgaradan; hız `m_moveSpeed` (CLI-05), adım `MaxStepMeters` (CLI-08) ve F5-61 kiriş guard'ı `SubmitMove`'ta aynen işler. `ValidateWalkStart` taşıması salt mekanik. Yeni kodda debug `printf` yok (`SharedPathfinder` içindeki tek `printf` planın öngördüğü nadir `VIOLATION` satırı).
+- Uygulayıcının tek sapması (`TickPathMove` ilk `NextStep`'te `kind == None` -> `path_blocked`, `ActionExecutor.cpp:477-486`) gerekçeli ve kabul edildi: sözleşme `None`'u dışlıyor, ama `NeedsReplan` `None` için `false` döndüğünden bu dal olmasaydı `SubmitMove` (0, 0) hedefine paket yollardı.
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. **Not:** `TickPathMove` `user == nullptr || !isInGame()` durumunda sessizce `NOTHING` döner (`m_moveActive` kapatılır): `TickMove`'un aynı davranışıyla uyumlu; ayrı günlük satırı yok. Yargı gerektirmeyen bilgi.
+  2. **Not (kapsam, F5-63/F5-65):** `goto` hedefi/başlangıç hücresi `Walk` değilse ret; yürüme sırasında konum sıçraması (ışınlanma) veya bölge değişimi temizliği F5-65'tedir. Rotadan sapma tek `Replan` ile ele alınır; takılma tespiti F5-63.
+  3. **Not (ölçüm):** `node_limit` ret yolu 20 000 düğümlük aramayı tüketir; çalışma zamanında üç cep hedefinin planlama süresi ayrıca ölçülmedi (günlük satırı süreyi yalnızca başarılı planda yazar). Sorgu bütçesi F5-64'tür.
+- Düzeltme talimatı: gerekmiyor.
