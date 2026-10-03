@@ -732,6 +732,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 
 	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
 	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
+		|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
 		|| !BotCore::CastMoralSupported(m->bMoral)

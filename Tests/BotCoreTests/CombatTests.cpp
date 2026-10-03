@@ -1021,11 +1021,14 @@ TEST_CASE("Combat_CastTypes_Supported")
 	CHECK_EQ(BotCore::CastTypesSupported(1, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(3, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
 
 	CHECK_EQ(BotCore::CastTypesSupported(0, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(2, 0), false);
-	CHECK_EQ(BotCore::CastTypesSupported(5, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(6, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(7, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
 	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
@@ -1040,7 +1043,11 @@ TEST_CASE("Combat_CastTypes_Supported")
 	CHECK_EQ(BotCore::CastTypesSupported(4, 2), false);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 3), false);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 5), false);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 9), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 5), false);
 	CHECK_EQ(BotCore::CastTypesSupported(0, 4), false);
 }
 
@@ -1303,7 +1310,7 @@ TEST_CASE("Combat_PartyCast_Guard")
 
 	CHECK_EQ(BotCore::CastTypesSupported(3, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
-	CHECK_EQ(BotCore::CastTypesSupported(5, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), true);
 	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
 
 	CHECK_EQ((int)BotCore::CastTargetIdField(BotCore::SendsAimPoint(6), 2990), -1);
@@ -1350,5 +1357,75 @@ TEST_CASE("Combat_PartyCast_Guard")
 	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_RECAST);
 
 	c.sinceSkillLastMs = 5400;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+}
+
+TEST_CASE("Combat_CureCast_Guard")
+{
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 2), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 1), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 4), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 6), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 7), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 25), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 0), false);
+
+	CHECK_EQ(BotCore::CastTypeMoralSupported(3, 6), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(3, 10), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(4, 4), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(1, 7), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(3, 25), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(4, 0), true);
+
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0) && BotCore::CastTypeMoralSupported(5, 2)
+		&& BotCore::CastMoralSupported(2), true);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 6), false);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(5, 25), false);
+	CHECK_EQ(BotCore::CastMoralSupported(25), false);
+
+	CHECK_EQ(BotCore::SendsAimPoint(2), false);
+	CHECK_EQ((int)BotCore::CastTargetIdField(BotCore::SendsAimPoint(2), 2990), 2990);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(2), true, 80.9f), 0);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(2), false, 80.9f), 80);
+
+	CHECK_EQ(BotCore::IsGatedType(5), true);
+
+	uint32_t since = 0;
+	BotCore::TypeStamp st[2] = { { 5, true, 600 }, { 0, false, 0 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(st, 2, since), 1);
+	CHECK_EQ((int)since, 600);
+
+	CHECK_EQ((int)BotCore::CastRecastMs(15), 1500);
+
+	BotCore::CastStartCheck c = {};
+	c.distanceM = 0.0f;
+	c.skillRange = 56;
+	c.msp = 60;
+	c.reCastMs = BotCore::CastRecastMs(15);
+	c.typeGated = true;
+	c.mana = 60;
+	c.standing = true;
+	c.needsStanding = false;
+	c.actionsInWindow = 0;
+
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	c.mana = 59;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
+
+	c.mana = 60;
+	c.distanceM = 55.9f;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	c.distanceM = 56.0f;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+
+	c.distanceM = 0.0f;
+	c.hasSkillLast = true;
+	c.sinceSkillLastMs = 1499;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_RECAST);
+
+	c.sinceSkillLastMs = 1500;
 	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
 }

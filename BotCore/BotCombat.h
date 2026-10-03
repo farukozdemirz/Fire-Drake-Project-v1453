@@ -316,14 +316,23 @@ namespace BotCore
 
 	// --- dual-typed cast (ADR-0017 Ek F4-26) and single Type4 cast (ADR-0017 Ek F4-28) ---
 
-	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15): a single type 1, 3 or 4, or the pair
-	// Type3 + Type4 (the server runs Type3 first and Type4 second on the same target). Every other pair stays unsupported.
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19): a single type 1, 3, 4 or 5 (5 =
+	// cure, see CastTypeMoralSupported), or the pair Type3 + Type4 (the server runs Type3 first and Type4 second on the
+	// same target). Every other pair stays unsupported.
 	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
 	{
 		if (type1 == 0)
-			return type0 == 1 || type0 == 3 || type0 == 4;
+			return type0 == 1 || type0 == 3 || type0 == 4 || type0 == 5;
 
 		return type0 == 3 && type1 == 4;
+	}
+
+	// Type5 (cure, resurrection) is opened only for MAGIC.Moral 2 (friend-with-me, single target: Cure curse, Cure disease;
+	// F4-32). The party-all cure (Bless of God, Moral 6) and the resurrections (Moral 25, MAGIC.UseItem) stay closed.
+	// Every other type passes through; its Moral is checked by CastMoralSupported.
+	inline bool CastTypeMoralSupported(uint8_t type0, uint8_t moral)
+	{
+		return type0 != 5 || moral == 2;
 	}
 
 	// --- area cast (ADR-0017 Ek F4-29, docs/03 MEC-MAG-16, CLI-07) ---
