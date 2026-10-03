@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-31` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-28 (Type4 tek tipli: `Moral` 1/2/7, MEC-MAG-15) — `KAPANDI`; F4-29 (alan: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI`; F4-30 (`CastMoralSupported(moral)` tek parametre) — `KAPANDI` (merge `c88dd95`); F4-08 (party kurulumu: `/bot pinvite`, `/bot paccept`) — `KAPANDI` (yalnızca çalışma zamanı sınaması için) |
@@ -244,13 +244,31 @@ git diff --check gece/2026-10-02...bot/F4-31
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-31` (taban `gece/2026-10-02` @ `0e22858`); `126e86e` `[F4-31] Party hedefli skill: Moral 4/6 destegi ve Sacrifice kapisi`
+- Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: `kMoralPartyAll` / `IsPartyAllMoral` / `SendsAimPoint` eklendi; `CastMoralSupported` kümesine `Moral 4` eklendi ve son koşul `SendsAimPoint`'e bağlandı; `kSacrificeHpCost` / `CastHpCostSupported` eklendi; `CastTargetIdField`/`CastCoordField` yorumları party-all'ı anar (değerler değişmedi).
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastMoral_Supported` güncellendi (4 ve 6 `true`; `IsAreaMoral(6) == false`); yeni `Combat_PartyCast_Guard` eklendi → toplam 108 test.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` destek koşuluna `!BotCore::CastHpCostSupported(m->sHP)` eklendi; `TickCast` `bool area = BotCore::SendsAimPoint(m->bMoral);` (tek satır + yorum). `SubmitCast`/`CancelCast`/`RejectCast` değişmedi.
+  - `GameServer/Bot/ActionExecutor.h`: `CastTarget`/`BeginCast`/`TickCast` yorumları party hedefli skill'leri kapsar (kod değişikliği yok).
+- Derleme sonucu (`tools/build.sh Release`, değişen dört dosya `touch` edilip yeniden derlendi; son satırlar):
+  - `proj-AIServer.vcxproj -> ...\AIServer.exe`
+  - `BotCoreTests.vcxproj -> ...\BotCoreTests.exe`
+  - `proj-GameServer.vcxproj -> ...\GameServer.exe` (rc=0, değişen dosyalarda uyarı/hata 0; Release toplam `warning C` 0, `error C` 0)
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0, değişen dört dosyada uyarı 0 (touch + yeniden derleme).
+  - K2 ✔ Debug rc=0, değişen dosyalarda uyarı 0.
+  - K3 ✔ Release ve Debug `108 tests, 0 failed`; `Combat_CastMoral_Supported` ve `Combat_PartyCast_Guard` `[ OK ]`.
+  - K4 ✔ `grep` yasaklı sembol boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; eklenen satırlarda `std::min`/`std::max` yok.
+  - K5 ✔ `CastHpCostSupported` mevcut ve `!BotCore::CastHpCostSupported(m->sHP)` biçiminde; `CastMoralSupported(m->bMoral)`; `bool area = BotCore::SendsAimPoint(m->bMoral)`; `IsAreaMoral` ActionExecutor.cpp'de yok; `(m->bFlyingEffect != 0 && !flyingCast)` yerinde.
+  - K6 ✔ `git diff --stat` yalnızca §4'teki 4 dosya; ActionExecutor.cpp yalnızca iki planlı hunk; `SubmitCast`/`CancelCast`/`RejectCast` gövdesinde hunk yok; yasaklı dosyalar ve proje dosyaları değişmedi.
+  - K7 ✔ `git diff | grep '^+' | grep 'Emit('` boş; yeni ini/komut/thread/telemetri türü yok.
+  - K8 ✔ `file` dört dosya `ASCII text, with CRLF`; `git diff --check` boş.
+  - K9 ✔ Guard çağrı sayıları: `CheckMoveStep=2, CheckAttack=1, CheckCastStart=1, CheckCastEffect=1, CheckCastFly=1, CheckCastLand=1, CheckCastCancel=1, CheckPotion=1`; önceki 107 test (güncellenen biri dahil) geçiyor.
+  - K10 ✔ `python3 tools/check-perception-contract.py` `RESULT: PASS` (R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0); denetlenen dosya sayısı değişmedi.
+  - K11 (Claude, `/plan-dogrula` çalışma zamanı): uygulayıcı kapsamı dışında; statik kanıt yukarıda.
+- Plandan sapmalar: Yok. Planın §5.2b başlangıç guard'ı örneğinde anılmayan `standing`/`needsStanding` alanları testte açıkça atandı (`standing=true`, `needsStanding=false`) ki `CheckCastStart` sırası range→standing→mana olsun; sonuç değişmez.
+- Açık sorular: Yok.
 
 ---
 
