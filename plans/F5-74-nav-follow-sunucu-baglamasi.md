@@ -284,3 +284,9 @@ grep -n "TickFollow(" GameServer/Bot/*.cpp
 ```
 …
 ```
+
+### Doğrulama turu notu (otonom döngü kurtarması, 2026-10-03, Claude)
+
+- Kod/plan düzeltmesi **gerekmiyor**. `/plan-dogrula` iter26 ve iter27 yalnızca usule takıldı: çalışma zamanı betiği (~2,5 dk) `run_in_background` ile başlatıldı, `claude -p` oturumu "bitince okuyacağım" diyerek karar yazmadan bitti (arka plan bildirimi başsız oturumu geri çağırmaz). Doğrulama raporu boş kaldı.
+- Neden tekrarladı: `plan-dogrula` SKILL.md'deki düzeltme (madde 10, `9463c60`) yalnızca `gece/2026-10-02`'deydi; doğrulama bu dalda (`bot/F5-74`) koştuğu için eski beceri yüklendi. Düzeltme dosyası bu dala da alındı (aynı içerik; birleştirmede çakışma çıkmaz).
+- Sonraki `/plan-dogrula` turu için: derleme, birim testi ve çalışma zamanı koşusunu (K11-K17) **ön planda** çalıştır (`timeout` ≤ 600000 ms; gerekirse betiği ardışık ön plan çağrılarına böl, `sleep` ile sorgula) ve kararı aynı turda Doğrulama Raporu'na yaz. Sunucu yalnızca bir kez açılır, iş bitince `tools/run-servers.sh stop`.
