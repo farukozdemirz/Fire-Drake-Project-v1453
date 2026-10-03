@@ -3,9 +3,12 @@
 
 Each log line is tab separated:
     t_ms<TAB>sid<TAB>name<TAB>zone<TAB>opcode_hex<TAB>len<TAB>payload_hex
+Outgoing (server -> player) lines append an eighth column "out":
+    t_ms<TAB>sid<TAB>name<TAB>zone<TAB>opcode_hex<TAB>len<TAB>payload_hex<TAB>out
 
 Usage:
     python3 tools/packet-trace-summary.py <log> [--sid N] [--name X]
+    python3 tools/packet-trace-summary.py <log> --cli [--sid N] [--name X]
     python3 tools/packet-trace-summary.py --selftest
 """
 
@@ -20,11 +23,27 @@ OPCODE_NAMES = {
     0x06: "WIZ_MOVE",
     0x08: "WIZ_ATTACK",
     0x09: "WIZ_ROTATE",
+    0x10: "WIZ_CHAT",
+    0x11: "WIZ_DEAD",
+    0x12: "WIZ_REGENE",
+    0x15: "WIZ_REGIONCHANGE",
+    0x16: "WIZ_REQ_USERIN",
+    0x1C: "WIZ_NPC_REGION",
+    0x1D: "WIZ_REQ_NPCIN",
     0x22: "WIZ_TARGET_HP",
     0x29: "WIZ_STATE_CHANGE",
+    0x2F: "WIZ_PARTY",
     0x31: "WIZ_MAGIC_PROCESS",
     0x41: "WIZ_SPEEDHACK_CHECK",
 }
+
+# Party sub-opcodes shared with GameServer (shared/packets.h).
+PARTY_CREATE = 0x01
+PARTY_PERMIT = 0x02
+PARTY_INSERT = 0x03
+PARTY_REMOVE = 0x04
+PARTY_DELETE = 0x05
+PARTY_PROMOTE = 0x1C
 
 USAGE = (
     "Usage:\n"
@@ -40,10 +59,14 @@ def opcode_name(opcode):
 def parse_line(line):
     """Parses one log line; returns a dict or None when the line is invalid."""
     parts = line.rstrip("\r\n").split("\t")
-    if len(parts) != 7:
+    if len(parts) == 7:
+        direction = "in"
+    elif len(parts) == 8 and parts[7] == "out":
+        direction = "out"
+    else:
         return None
 
-    t_ms, sid, name, zone, opcode_hex, length, payload = parts
+    t_ms, sid, name, zone, opcode_hex, length, payload = parts[:7]
     try:
         record = {
             "t": int(t_ms),
@@ -53,6 +76,7 @@ def parse_line(line):
             "opcode": int(opcode_hex, 16),
             "len": int(length),
             "payload": b"" if payload == "-" else bytes.fromhex(payload),
+            "dir": direction,
         }
     except ValueError:
         return None
@@ -67,11 +91,17 @@ def intervals(times):
 
 
 def analyze(rows):
-    """Returns (times per opcode, magic sub-opcode counts, move packets per second)."""
+    """Returns (times per opcode, magic sub-opcode counts, move packets per second).
+
+    Only incoming records are analysed; the outgoing direction has its own
+    summary and its own per-opcode sections.
+    """
     per_opcode = {}
     magic_sub = {}
     per_second = {}
     for row in rows:
+        if row.get("dir", "in") != "in":
+            continue
         opcode = row["opcode"]
         per_opcode.setdefault(opcode, []).append(row["t"])
         if opcode == 0x31 and row["payload"]:
@@ -125,6 +155,16 @@ def write_report(rows, out):
         )
     else:
         out.write(" (none)\n")
+
+    outgoing = {}
+    for row in rows:
+        if row.get("dir", "in") == "out":
+            opcode = row["opcode"]
+            outgoing[opcode] = outgoing.get(opcode, 0) + 1
+    if outgoing:
+        out.write("outgoing summary:\n")
+        for opcode in sorted(outgoing):
+            out.write("  %s (%02x): count=%d\n" % (opcode_name(opcode), opcode, outgoing[opcode]))
 
 
 def summarize_file(path, sid_filter, name_filter, out):
@@ -256,6 +296,7 @@ def parse_cli_records(rows):
     for row in rows:
         opcode = row["opcode"]
         payload = row["payload"]
+        direction = row.get("dir", "in")
 
         if opcode == 0x08:
             if len(payload) != 8:
@@ -263,8 +304,8 @@ def parse_cli_records(rows):
                 continue
             attack_type, result, tid, delaytime, distance = struct.unpack("<BBhhh", payload)
             records.append({
-                "t": row["t"], "op": opcode, "type": attack_type, "result": result,
-                "tid": tid, "delaytime": delaytime, "distance": distance,
+                "t": row["t"], "op": opcode, "dir": direction, "type": attack_type,
+                "result": result, "tid": tid, "delaytime": delaytime, "distance": distance,
             })
         elif opcode == 0x31:
             # The real client sends 21 bytes (6 data values); the server reads
@@ -277,8 +318,8 @@ def parse_cli_records(rows):
             data = struct.unpack("<%dh" % data_count, payload[9:9 + 2 * data_count])
             data = data + (0,) * (7 - data_count)
             records.append({
-                "t": row["t"], "op": opcode, "magic_op": magic_op, "skill": skill,
-                "caster": caster, "target": target, "data": data,
+                "t": row["t"], "op": opcode, "dir": direction, "magic_op": magic_op,
+                "skill": skill, "caster": caster, "target": target, "data": data,
             })
         elif opcode == 0x06:
             if len(payload) != 9:
@@ -286,17 +327,75 @@ def parse_cli_records(rows):
                 continue
             x, z, y, speed, echo = struct.unpack("<HHHhB", payload)
             records.append({
-                "t": row["t"], "op": opcode, "x": x / 10.0, "z": z / 10.0,
-                "y": y / 10.0, "speed": speed, "echo": echo,
+                "t": row["t"], "op": opcode, "dir": direction, "x": x / 10.0,
+                "z": z / 10.0, "y": y / 10.0, "speed": speed, "echo": echo,
             })
         elif opcode == 0x22:
             if len(payload) != 3:
                 bad_len += 1
                 continue
             uid, echo = struct.unpack("<HB", payload)
-            records.append({"t": row["t"], "op": opcode, "uid": uid, "echo": echo})
+            records.append({"t": row["t"], "op": opcode, "dir": direction, "uid": uid, "echo": echo})
         elif opcode == 0x41:
-            records.append({"t": row["t"], "op": opcode})
+            records.append({"t": row["t"], "op": opcode, "dir": direction})
+        elif opcode == 0x12:
+            if direction == "in":
+                if len(payload) < 1:
+                    bad_len += 1
+                    continue
+                records.append({
+                    "t": row["t"], "op": opcode, "dir": direction, "type": payload[0],
+                })
+            else:
+                records.append({"t": row["t"], "op": opcode, "dir": direction})
+        elif opcode == 0x11:
+            if direction == "out":
+                if len(payload) < 2:
+                    bad_len += 1
+                    continue
+                (target_id,) = struct.unpack("<H", payload[:2])
+                records.append({
+                    "t": row["t"], "op": opcode, "dir": direction, "id": target_id,
+                })
+            else:
+                records.append({"t": row["t"], "op": opcode, "dir": direction})
+        elif opcode in (0x15, 0x1C, 0x16, 0x1D):
+            if len(payload) < 2:
+                bad_len += 1
+                continue
+            (count,) = struct.unpack("<H", payload[:2])
+            records.append({
+                "t": row["t"], "op": opcode, "dir": direction, "count": count,
+            })
+        elif opcode == 0x2F:
+            if len(payload) < 1:
+                bad_len += 1
+                continue
+            sub = payload[0]
+            record = {"t": row["t"], "op": opcode, "dir": direction, "sub": sub}
+            if direction == "in" and sub == PARTY_PERMIT:
+                if len(payload) < 2:
+                    bad_len += 1
+                    continue
+                record["accept"] = payload[1]
+            elif direction == "in" and sub in (PARTY_PROMOTE, PARTY_REMOVE):
+                if len(payload) < 3:
+                    bad_len += 1
+                    continue
+                (target_id,) = struct.unpack("<H", payload[1:3])
+                record["target"] = target_id
+            records.append(record)
+        elif opcode == 0x10:
+            if direction == "in":
+                if len(payload) < 1:
+                    bad_len += 1
+                    continue
+                records.append({
+                    "t": row["t"], "op": opcode, "dir": direction,
+                    "type": payload[0], "len": row["len"],
+                })
+            else:
+                records.append({"t": row["t"], "op": opcode, "dir": direction})
 
     return records, bad_len
 
@@ -308,7 +407,42 @@ def first_after(sorted_times, t):
     return None
 
 
-def write_cli_sections(records, out):
+def first_after_each(a_times, b_times):
+    """For each a in the sorted a_times, the first b with a < b < next_a.
+
+    Requires both lists sorted. a values without a matching b before the next a
+    are skipped; the caller reads unmatched = len(a_times) - len(result).
+    """
+    result = []
+    b_sorted = sorted(b_times)
+    a_sorted = sorted(a_times)
+    for index, a in enumerate(a_sorted):
+        upper = a_sorted[index + 1] if index + 1 < len(a_sorted) else None
+        position = bisect.bisect_right(b_sorted, a)
+        if position < len(b_sorted):
+            candidate = b_sorted[position]
+            if upper is None or candidate < upper:
+                result.append(candidate - a)
+    return result
+
+
+def last_before_each(b_times, a_times):
+    """For each b in the sorted b_times, the last a with a <= b.
+
+    Requires both lists sorted. b values with no earlier a are skipped; the
+    caller reads unmatched = len(b_times) - len(result).
+    """
+    result = []
+    a_sorted = sorted(a_times)
+    b_sorted = sorted(b_times)
+    for b in b_sorted:
+        position = bisect.bisect_right(a_sorted, b)
+        if position > 0:
+            result.append(b - a_sorted[position - 1])
+    return result
+
+
+def write_cli_sections(records, sid, out):
     attacks = sorted([row for row in records if row["op"] == 0x08], key=lambda row: row["t"])
     magic = sorted([row for row in records if row["op"] == 0x31], key=lambda row: row["t"])
     moves = sorted([row for row in records if row["op"] == 0x06], key=lambda row: row["t"])
@@ -457,6 +591,100 @@ def write_cli_sections(records, out):
     out.write("TARGETHP count=%d interval_ms %s\n" % (
         len(targethp), format_stats_short(intervals([row["t"] for row in targethp]))))
 
+    dead_out = sorted([row for row in records if row["op"] == 0x11 and row["dir"] == "out"
+                       and row["id"] == sid], key=lambda row: row["t"])
+    regene_in = sorted([row for row in records if row["op"] == 0x12 and row["dir"] == "in"],
+                       key=lambda row: row["t"])
+
+    out.write("== CLI-14 yeniden dogus (WIZ_DEAD -> WIZ_REGENE) ==\n")
+    out.write("DEAD own count=%d\n" % len(dead_out))
+    out.write("REGENE in count=%d\n" % len(regene_in))
+    out.write("REGENE type top5: %s\n" % top5([row["type"] for row in regene_in]))
+    dead_times = [row["t"] for row in dead_out]
+    regene_times = [row["t"] for row in regene_in]
+    regene_gaps = first_after_each(dead_times, regene_times)
+    out.write("DEAD->REGENE gap_ms %s\n" % format_stats_short(regene_gaps))
+    out.write("DEAD->REGENE unmatched=%d\n" % (len(dead_times) - len(regene_gaps)))
+
+    party_in = sorted([row for row in records if row["op"] == 0x2F and row["dir"] == "in"],
+                      key=lambda row: row["t"])
+    party_out = sorted([row for row in records if row["op"] == 0x2F and row["dir"] == "out"],
+                       key=lambda row: row["t"])
+    party_ci_times = [row["t"] for row in party_in
+                      if row["sub"] in (PARTY_CREATE, PARTY_INSERT)]
+    permit_out_times = [row["t"] for row in party_out if row["sub"] == PARTY_PERMIT]
+    permit_accept_times = [row["t"] for row in party_in
+                           if row["sub"] == PARTY_PERMIT and row.get("accept") == 1]
+    permit_decline_times = [row["t"] for row in party_in
+                            if row["sub"] == PARTY_PERMIT and row.get("accept") == 0]
+    manage_in_times = [row["t"] for row in party_in
+                       if row["sub"] == PARTY_PROMOTE
+                       or (row["sub"] == PARTY_REMOVE and row.get("target") != sid)]
+    self_remove = sum(1 for row in party_in
+                      if row["sub"] == PARTY_REMOVE and row.get("target") == sid)
+    other_remove = sum(1 for row in party_in
+                       if row["sub"] == PARTY_REMOVE and row.get("target") != sid)
+    delete_count = sum(1 for row in party_in if row["sub"] == PARTY_DELETE)
+    promote_count = sum(1 for row in party_in if row["sub"] == PARTY_PROMOTE)
+    insert_out_times = [row["t"] for row in party_out if row["sub"] == PARTY_INSERT]
+    leave_in_times = [row["t"] for row in party_in
+                      if (row["sub"] == PARTY_REMOVE and row.get("target") == sid)
+                      or row["sub"] == PARTY_DELETE]
+
+    out.write("== CLI-15/16/17 party (WIZ_PARTY) ==\n")
+    out.write("PARTY in count=%d out count=%d\n" % (len(party_in), len(party_out)))
+    out.write("PARTY in sub top5: %s\n" % top5([row["sub"] for row in party_in]))
+    out.write("PARTY create/insert interval_ms %s\n" % format_stats_short(intervals(party_ci_times)))
+    out.write("PARTY permit-in->accept gap_ms %s\n" % format_stats_short(
+        last_before_each(permit_accept_times, permit_out_times)))
+    out.write("PARTY permit-in->decline gap_ms %s\n" % format_stats_short(
+        last_before_each(permit_decline_times, permit_out_times)))
+    out.write("PARTY manage interval_ms %s\n" % format_stats_short(intervals(manage_in_times)))
+    out.write("PARTY leave kind: self_remove=%d other_remove=%d delete=%d promote=%d\n" % (
+        self_remove, other_remove, delete_count, promote_count))
+    out.write("PARTY insert-out->leave gap_ms %s\n" % format_stats_short(
+        last_before_each(leave_in_times, insert_out_times)))
+
+    chat_in = sorted([row for row in records if row["op"] == 0x10 and row["dir"] == "in"],
+                     key=lambda row: row["t"])
+
+    out.write("== CLI-18 chat (WIZ_CHAT) ==\n")
+    out.write("CHAT count=%d\n" % len(chat_in))
+    out.write("CHAT interval_ms %s\n" % format_stats_short(intervals([row["t"] for row in chat_in])))
+    out.write("CHAT type top5: %s\n" % top5([row["type"] for row in chat_in]))
+    out.write("CHAT len top5: %s\n" % top5([row["len"] for row in chat_in]))
+
+    def region_section(title, region_op, request_op, region_label, request_label):
+        regions = sorted([row for row in records
+                          if row["op"] == region_op and row["dir"] == "out"],
+                         key=lambda row: row["t"])
+        requests = sorted([row for row in records
+                           if row["op"] == request_op and row["dir"] == "in"],
+                          key=lambda row: row["t"])
+        region_times = [row["t"] for row in regions]
+        request_times = [row["t"] for row in requests]
+        gaps = last_before_each(request_times, region_times)
+        out.write("== %s ==\n" % title)
+        out.write("%s out count=%d\n" % (region_label, len(regions)))
+        out.write("%s ids top5: %s\n" % (region_label, top5([row["count"] for row in regions])))
+        out.write("%s in count=%d\n" % (request_label, len(requests)))
+        out.write("%s interval_ms %s\n" % (
+            request_label, format_stats_short(intervals(request_times))))
+        out.write("%s ids per request top5: %s\n" % (
+            request_label, top5([row["count"] for row in requests])))
+        if requests:
+            out.write("%s ids max=%d\n" % (request_label, max(row["count"] for row in requests)))
+        else:
+            out.write("%s ids max=n/a\n" % request_label)
+        out.write("%s->%s gap_ms %s\n" % (
+            region_label, request_label, format_stats_short(gaps)))
+        out.write("%s unmatched=%d\n" % (request_label, len(request_times) - len(gaps)))
+
+    region_section("CLI-19 bolge degisimi kullanici (WIZ_REGIONCHANGE -> WIZ_REQ_USERIN)",
+                   0x15, 0x16, "REGIONCHANGE", "REQ_USERIN")
+    region_section("CLI-20 bolge degisimi npc (WIZ_NPC_REGION -> WIZ_REQ_NPCIN)",
+                   0x1C, 0x1D, "NPC_REGION", "REQ_NPCIN")
+
 
 def write_cli_output(rows, skipped, out):
     """Writes the CLI report for the already-selected target rows."""
@@ -470,7 +698,7 @@ def write_cli_output(rows, skipped, out):
     out.write("cli_target: sid=%d name=%s records=%d\n" % (sid, target_name(rows), len(rows)))
     out.write("skipped_lines: %d\n" % skipped)
     records, bad_len = parse_cli_records(rows)
-    write_cli_sections(records, out)
+    write_cli_sections(records, sid, out)
     out.write("bad_len: %d\n" % bad_len)
     return 0
 
@@ -518,6 +746,16 @@ def run_selftest():
 
     def cli_line(t, opcode, payload):
         return "%d\t5\tSelfTest\t71\t%02x\t%d\t%s" % (t, opcode, len(payload), payload.hex())
+
+    def run_cli(new_line_list):
+        new_rows = []
+        for new_line in new_line_list:
+            new_row = parse_line(new_line)
+            assert new_row is not None, new_line
+            new_rows.append(new_row)
+        new_buffer = io.StringIO()
+        write_cli_output(new_rows, 0, new_buffer)
+        return new_buffer.getvalue()
 
     attack_payload = struct.pack("<BBhhh", 0, 1, 0x0102, 1010, 50)
     cast_payload = struct.pack("<BIhh7h", 1, 101, 1, 2, 0, 0, 0, 0, 0, 0, 0)
@@ -598,6 +836,99 @@ def run_selftest():
         "CANCEL gap_ms (CASTING -> opcode 6): n=1 p5=500 p50=500 p95=500 min=500 max=500"
         in cancel_text
     ), cancel_text
+
+    # Direction parsing and outgoing lines.
+    assert parse_line("0\t5\tSelfTest\t71\t11\t02\t0500")["dir"] == "in"
+    assert parse_line("0\t5\tSelfTest\t71\t11\t02\t0500\tout")["dir"] == "out"
+    assert parse_line("0\t5\tSelfTest\t71\t11\t02\t0500\txyz") is None
+    assert parse_line("0\t5\tSelfTest\t71\t11\t02") is None
+    assert parse_line("0\t5\tSelfTest\t71\t11\t02\t0500\tout\textra") is None
+
+    # The old 7-opcode report must not mention the new outgoing summary.
+    old_buffer = io.StringIO()
+    write_report(rows, old_buffer)
+    assert "outgoing summary:" not in old_buffer.getvalue(), old_buffer.getvalue()
+
+    def out_line(t, opcode, payload):
+        return "%d\t5\tSelfTest\t71\t%02x\t%d\t%s\tout" % (
+            t, opcode, len(payload), payload.hex())
+
+    outgoing_buffer = io.StringIO()
+    write_report([parse_line(out_line(100, 0x15, b"\x03\x00"))], outgoing_buffer)
+    outgoing_text = outgoing_buffer.getvalue()
+    assert "outgoing summary:" in outgoing_text, outgoing_text
+    assert "WIZ_REGIONCHANGE (15): count=1" in outgoing_text, outgoing_text
+
+    # CLI-14: own death -> regene, an unmatched second death.
+    cli14_lines = [
+        out_line(1000, 0x11, struct.pack("<H", 5)),
+        out_line(1100, 0x11, struct.pack("<H", 9)),
+        cli_line(4200, 0x12, b"\x01"),
+        out_line(9000, 0x11, struct.pack("<H", 5)),
+    ]
+    cli14_text = run_cli(cli14_lines)
+    assert "DEAD own count=2" in cli14_text, cli14_text
+    assert "REGENE in count=1" in cli14_text, cli14_text
+    assert "DEAD->REGENE gap_ms n=1 p5=3200 p50=3200 p95=3200 min=3200 max=3200" in cli14_text, cli14_text
+    assert "DEAD->REGENE unmatched=1" in cli14_text, cli14_text
+
+    # CLI-15/16/17 party timings and leave kinds.
+    cli15_lines = [
+        cli_line(0, 0x2F, b"\x01"),
+        cli_line(1500, 0x2F, b"\x03"),
+        out_line(2000, 0x2F, b"\x02"),
+        cli_line(3400, 0x2F, b"\x02\x01"),
+        out_line(5000, 0x2F, b"\x02"),
+        cli_line(6300, 0x2F, b"\x02\x00"),
+        cli_line(7000, 0x2F, b"\x04\x05\x00"),
+        cli_line(8000, 0x2F, b"\x04\x09\x00"),
+        cli_line(9000, 0x2F, b"\x02"),
+    ]
+    cli15_text = run_cli(cli15_lines)
+    assert "PARTY create/insert interval_ms n=1 p5=1500 p50=1500 p95=1500 min=1500 max=1500" in cli15_text, cli15_text
+    assert "PARTY permit-in->accept gap_ms n=1 p5=1400 p50=1400 p95=1400 min=1400 max=1400" in cli15_text, cli15_text
+    assert "PARTY permit-in->decline gap_ms n=1 p5=1300 p50=1300 p95=1300 min=1300 max=1300" in cli15_text, cli15_text
+    assert "PARTY leave kind: self_remove=1 other_remove=1 delete=0 promote=0" in cli15_text, cli15_text
+    assert "bad_len: 1" in cli15_text, cli15_text
+
+    # CLI-18 chat: interval, types and real payload lengths.
+    cli18_rows = []
+    for line in (
+        "0\t5\tSelfTest\t71\t10\t12\t01",
+        "4100\t5\tSelfTest\t71\t10\t12\t01",
+        "8300\t5\tSelfTest\t71\t10\t30\t01",
+    ):
+        row = parse_line(line)
+        assert row is not None, line
+        cli18_rows.append(row)
+    cli18_buffer = io.StringIO()
+    write_cli_output(cli18_rows, 0, cli18_buffer)
+    cli18_text = cli18_buffer.getvalue()
+    assert "CHAT count=3" in cli18_text, cli18_text
+    assert "CHAT interval_ms n=2 p5=4100 p50=4100 p95=4200 min=4100 max=4200" in cli18_text, cli18_text
+    assert "CHAT len top5: 12:2, 30:1" in cli18_text, cli18_text
+
+    # CLI-19: one region notification, two user-in requests.
+    cli19_lines = [
+        out_line(100, 0x15, struct.pack("<H", 3)),
+        cli_line(450, 0x16, b"\x02\x00\x01\x00\x02\x00"),
+        cli_line(1500, 0x16, b"\x02\x00\x01\x00\x02\x00"),
+    ]
+    cli19_text = run_cli(cli19_lines)
+    assert "REQ_USERIN in count=2" in cli19_text, cli19_text
+    assert "REQ_USERIN interval_ms n=1 p5=1050 p50=1050 p95=1050 min=1050 max=1050" in cli19_text, cli19_text
+    assert "REQ_USERIN ids max=2" in cli19_text, cli19_text
+    assert "REGIONCHANGE->REQ_USERIN gap_ms n=2 p5=350 p50=350 p95=1400 min=350 max=1400" in cli19_text, cli19_text
+
+    # CLI-20: NPC region request equivalent.
+    cli20_lines = [
+        out_line(100, 0x1C, struct.pack("<H", 4)),
+        cli_line(600, 0x1D, b"\x01\x00\x09\x00"),
+    ]
+    cli20_text = run_cli(cli20_lines)
+    assert "NPC_REGION out count=1" in cli20_text, cli20_text
+    assert "REQ_NPCIN in count=1" in cli20_text, cli20_text
+    assert "NPC_REGION->REQ_NPCIN gap_ms n=1 p5=500 p50=500 p95=500 min=500 max=500" in cli20_text, cli20_text
 
     print("selftest OK")
     return 0

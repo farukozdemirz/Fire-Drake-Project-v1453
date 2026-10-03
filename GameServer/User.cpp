@@ -16,15 +16,35 @@ CUser::CUser(uint16 socketID, SocketMgr *mgr) : KOSocket(socketID, mgr, -1, 1638
 {
 }
 
+#ifdef FDP_PACKET_TRACE
+// Mirrors the incoming packet trace for packets the server sends to an in-game
+// player (or bot). Only observes; never changes the packet or the return value.
+static void TraceOutgoing(CUser * pUser, Packet * pkt)
+{
+	if (pUser->isInGame())
+		PacketTrace::LogOutgoing(pUser->GetSocketID(), pUser->GetName().c_str(), pUser->GetZoneID(), *pkt);
+}
+#endif
+
 bool CUser::Send(Packet * pkt)
 {
 	if (m_botSink != nullptr)
 	{
+#ifdef FDP_PACKET_TRACE
+		TraceOutgoing(this, pkt);
+#endif
 		m_botSink->OnPacket(*pkt);
 		return true;
 	}
 
+#ifdef FDP_PACKET_TRACE
+	bool ok = KOSocket::Send(pkt);
+	if (ok)
+		TraceOutgoing(this, pkt);
+	return ok;
+#else
 	return KOSocket::Send(pkt);
+#endif
 }
 
 bool CUser::SendCompressed(Packet * pkt)
@@ -32,11 +52,25 @@ bool CUser::SendCompressed(Packet * pkt)
 	// Bots receive the uncompressed packet.
 	if (m_botSink != nullptr)
 	{
+#ifdef FDP_PACKET_TRACE
+		TraceOutgoing(this, pkt);
+#endif
 		m_botSink->OnPacket(*pkt);
 		return true;
 	}
 
+#ifdef FDP_PACKET_TRACE
+	// KOSocket::SendCompressed lowers packets under 500 bytes to the virtual
+	// Send(), which is CUser::Send and already traces them; trace here only for
+	// the compressed path so each packet yields exactly one record.
+	size_t size = pkt->size();
+	bool ok = KOSocket::SendCompressed(pkt);
+	if (ok && size >= 500)
+		TraceOutgoing(this, pkt);
+	return ok;
+#else
 	return KOSocket::SendCompressed(pkt);
+#endif
 }
 
 /**

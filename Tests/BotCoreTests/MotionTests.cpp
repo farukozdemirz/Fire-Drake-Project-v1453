@@ -65,3 +65,38 @@ TEST_CASE("Motion_Guard_StopPacket")
 	CHECK_EQ(int(BotCore::CheckMoveStep(0, 45, 67, 4.0f, 1500)), int(BotCore::MOVE_OK));
 	CHECK_EQ(int(BotCore::CheckMoveStep(0, 45, 67, 30.0f, 1500)), int(BotCore::MOVE_REJECT_STEP_TOO_LONG));
 }
+
+TEST_CASE("Motion_SpeedCheckSchedule")
+{
+	CHECK_EQ((uint32_t)BotCore::kSpeedCheckPeriodMs, 10000u);
+
+	CHECK(!BotCore::SpeedCheckDue(false, 0, 9999));
+	CHECK(BotCore::SpeedCheckDue(false, 0, 10000));
+
+	// Once the first check went out only the time since the last one matters.
+	CHECK(!BotCore::SpeedCheckDue(true, 9999, 50000));
+	CHECK(BotCore::SpeedCheckDue(true, 10000, 0));
+
+	CHECK(std::fabs(BotCore::SpeedCheckClockSeconds(12345) - 12.345f) < 1e-3f);
+	CHECK_EQ(BotCore::SpeedCheckClockSeconds(0), 0.0f);
+}
+
+TEST_CASE("Motion_SpeedCheckWarpDistance")
+{
+	CHECK(std::fabs(BotCore::SpeedCheckWarpDistance(67) - 87.7496f) < 1e-3f);
+	CHECK(std::fabs(BotCore::SpeedCheckWarpDistance(45) - 74.1620f) < 1e-3f);
+	CHECK(std::fabs(BotCore::SpeedCheckWarpDistance(90) - 100.0f) < 1e-3f);
+	CHECK(BotCore::SpeedCheckWarpDistance(90) > BotCore::SpeedCheckWarpDistance(67));
+	CHECK(BotCore::SpeedCheckWarpDistance(67) > BotCore::SpeedCheckWarpDistance(45));
+
+	// A walk that passes the fairness guard cannot reach the warp threshold between two checks: the largest step the
+	// guard allows (CheckMoveStep's 1.10x + 0.15 m slack, BotMotion.h) over the longest tick (TICK_MS <= 1000, so at
+	// most kSpeedCheckPeriodMs + 1000 ms) stays below the server's warp distance. The limit 90 pair (rogue/captain) is
+	// deliberately absent: no such bot profile exists (docs/01 section 2).
+	CHECK(BotCore::MaxStepMeters(BotCore::kSprintSpeedField, BotCore::kSpeedCheckPeriodMs + 1000) * 1.10f + 0.15f
+		< BotCore::SpeedCheckWarpDistance(BotCore::kSprintSpeedField));
+	CHECK(BotCore::MaxStepMeters(BotCore::kWalkSpeedField, BotCore::kSpeedCheckPeriodMs + 1000) * 1.10f + 0.15f
+		< BotCore::SpeedCheckWarpDistance(BotCore::kSprintSpeedField));
+	CHECK(BotCore::MaxStepMeters(BotCore::kWalkSpeedField, BotCore::kSpeedCheckPeriodMs + 1000) * 1.10f + 0.15f
+		< BotCore::SpeedCheckWarpDistance(BotCore::kWalkSpeedField));
+}

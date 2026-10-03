@@ -48,7 +48,7 @@ struct CastOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "flying", "effected", "missed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "bad_target",
+	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "no_item", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
 	                       // "stopping", "cancelled", "dropped", "idle"
 	                       // single Type4 (ADR-0017 Ek F4-28): "effected" carries the duration in the echo code, a redundant
@@ -167,6 +167,17 @@ struct NpcInOutcome
 	int received;          // NPCs the reply carried; valid only when kind == SENT
 };
 
+// Result of ActionExecutor::TickSpeedCheck (ADR-0017 Ek F4-38).
+struct SpeedCheckOutcome
+{
+	enum Kind { NOTHING, SENT, FAILED };
+	Kind kind;
+	const char * reason;   // constant text, never freed. SENT: "passed" (no WIZ_WARP came back). FAILED: "warped" (the server sent
+	                       // the bot back: WIZ_WARP echo). NOTHING: "ok" (not due, not in game, dead).
+	float warpX;           // valid only when kind == FAILED: the position the WIZ_WARP carried (metres)
+	float warpZ;
+};
+
 // Turns Move/Stop intents into real WIZ_MOVE packets and runs them through CUser::HandlePacket()
 // (ADR-0017). IOCP thread only. No logging, no locking, no console output.
 class ActionExecutor
@@ -219,11 +230,21 @@ public:
 	// ADR-0017 Ek F4-33); a resurrection reports "effected" when the server broadcasts it, which does not prove the
 	// target is alive (docs/03 MEC-MAG-20));
 	// summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend; the target must be a party member other than the
-	// caster, the server teleports it to the caster; Gate, Escape, Blink, descent and other warp types stay unsupported;
+	// caster, the server teleports it to the caster; Escape, Blink, Wild advent and the other warp types stay unsupported;
 	// ADR-0017 Ek F4-34); a summon reports "effected" when the server broadcasts it, which does not prove the target
-	// moved (docs/03 MEC-MAG-21)),
+	// moved (docs/03 MEC-MAG-21);
+	// Gate (Type8, Moral 1, MAGIC_TYPE8.WarpType 1: the caster is warped to its resurrection/start point; self cast only)
+	// and descent (Type8, Moral 4, WarpType 25: the caster is warped to a party member within MAGIC_TYPE8.Radius metres;
+	// the target must be a party member other than the caster; ADR-0017 Ek F4-35); a Gate or a descent reports "effected"
+	// when the server broadcasts it, which does not prove the caster moved (docs/03 MEC-MAG-22); class skills with
+	// MAGIC.UseItem (Type1/3/4, MAGIC.Skill != 0: Impact scrolls, Absolute power, Judgment; ADR-0017 Ek F4-36) are
+	// supported when the other rules pass; item-effect magics (MAGIC.Skill == 0) stay unsupported; the melee pairs
+	// Type1 + Type3 and Type1 + Type4 (Scream, Shock Stun, Exceed Break, leg cutting; ADR-0017 Ek F4-37) are supported,
+	// every other type pair stays unsupported),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
-	// "bad_target" (moral does not match the target kind; corpse-friend and summon need a named target).
+	// "no_item" (the skill's MAGIC.UseItem, or for MAGIC.BeforeAction 1..4 the class stone 379058000 + n * 1000, is not
+	// in the caster's own bag or not usable by its class/level; ADR-0017 Ek F4-36, docs/03 MEC-MAG-23),
+	// "bad_target" (moral does not match the target kind; corpse-friend, summon and descent need a named target).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 
@@ -234,6 +255,8 @@ public:
 	// dropped. FAILED: handler produced no result / dead caster / unknown skill, series dropped.
 	// dual-typed: the EFFECTING echo comes from the Type4 part (code = duration), "missed" is never reported,
 	// no echo = "no_result".
+	// Type1 + Type3 / Type1 + Type4 (ADR-0017 Ek F4-37, docs/03 MEC-MAG-24): the server broadcasts twice (the Type1 hit, then the Type3 / Type4 part);
+	// the LAST packet is the echo: {1, 4} reports the Type4 duration in "code" (never "missed"), {1, 3} keeps the Type1 code (0 = "effected", -104 = "missed").
 	// single Type4: the EFFECTING echo carries the duration in "code" (never "missed"); a buff whose BuffType is already
 	// on the target fails with "srv_fail" (docs/03 MEC-MAG-15); out-of-range or dead target gives "no_result".
 	// area: the EFFECTING echo is the last packet the server sent (Type3: target -1 broadcast, code 0; {3, 4}/{4, 0}:
@@ -366,4 +389,11 @@ public:
 	// passed (the ids stay pending). Result only from the reply the server published (m_npcInEcho). Not counted in the
 	// CLI-11 window (automatic client traffic).
 	static NpcInOutcome TickNpcIn(BotSession * s, std::chrono::steady_clock::time_point now);
+
+	// Called once per Tick() for every in-game, living session. Sends one WIZ_SPEEDHACK_CHECK (u8 0, f32 client clock)
+	// through CUser::HandlePacket() when BotCore::SpeedCheckDue says so (CLI-12: every 10 s in game, the first one 10 s
+	// after entering the game). Result only from the WIZ_WARP the server published during the call (m_warpEcho): none ->
+	// SENT "passed", one -> FAILED "warped". Not counted in the CLI-11 window (automatic client traffic); no guard rule can
+	// reject it, a tick that is not due returns NOTHING without an event.
+	static SpeedCheckOutcome TickSpeedCheck(BotSession * s, std::chrono::steady_clock::time_point now);
 };

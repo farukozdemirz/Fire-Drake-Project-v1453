@@ -314,15 +314,19 @@ namespace BotCore
 		return CAST_OK;
 	}
 
-	// --- dual-typed cast (ADR-0017 Ek F4-26) and single Type4 cast (ADR-0017 Ek F4-28) ---
+	// --- dual-typed cast (ADR-0017 Ek F4-26), single Type4 cast (Ek F4-28) and Type1 pairs (Ek F4-37) ---
 
-	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19): a single type 1, 3, 4 or 5 (5 =
-	// cure, see CastTypeMoralSupported), or the pair Type3 + Type4 (the server runs Type3 first and Type4 second on the
-	// same target). Every other pair stays unsupported.
+	// MAGIC.Type1/Type2 pairs the bot casts (docs/03 MEC-MAG-13, MEC-MAG-15, MEC-MAG-19, MEC-MAG-24): a single type 1, 3, 4
+	// or 5 (5 = cure, see CastTypeMoralSupported), the pair Type3 + Type4 (the server runs Type3 first and Type4 second on
+	// the same target), or a melee pair Type1 + Type3 / Type1 + Type4 (warrior Scream, Shock Stun, Exceed Break, leg
+	// cutting; the server runs the Type1 hit first, then the Type3 / Type4 part). Every other pair stays unsupported.
 	inline bool CastTypesSupported(uint8_t type0, uint8_t type1)
 	{
 		if (type1 == 0)
 			return type0 == 1 || type0 == 3 || type0 == 4 || type0 == 5;
+
+		if (type0 == 1)
+			return type1 == 3 || type1 == 4;
 
 		return type0 == 3 && type1 == 4;
 	}
@@ -422,6 +426,67 @@ namespace BotCore
 	{
 		return type0 == 8 && type1 == 0 && moral == kMoralPartyMember
 			&& useItem == 0 && warpType == kType8WarpSummon;
+	}
+
+	// --- warp casts: Gate and descent (ADR-0017 Ek F4-35, docs/03 MEC-MAG-22) ---
+
+	// MAGIC.Type1 = 8, MAGIC_TYPE8.WarpType 1 with MAGIC.Moral 1 (MORAL_SELF) = Gate (110015/210015): the caster is warped to
+	// its resurrection/start point. WarpType 25 with Moral 4 (MORAL_PARTY) = descent (106650/206650): the caster is warped to
+	// a party member within MAGIC_TYPE8.Radius metres, so a descent needs a named target other than the caster. The other
+	// warp types (1 with Moral 6 = Escape, 12 = summon (F4-34), 13 cross-zone summon, 20 Blink, 21 monster summon,
+	// 25 with Moral 7 = Wild advent) stay closed here.
+	constexpr uint8_t kMoralSelf = 1;
+	constexpr uint8_t kType8WarpGate = 1;
+	constexpr uint8_t kType8WarpDescent = 25;
+
+	// The warps the bot casts: Type8 alone, no item; Gate = Moral 1 + WarpType 1, descent = Moral 4 + WarpType 25. The caller
+	// still rejects flying effects and "sacrifice" HP costs.
+	inline bool CastWarpSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t warpType)
+	{
+		if (type0 != 8 || type1 != 0 || useItem != 0)
+			return false;
+
+		return (warpType == kType8WarpGate && moral == kMoralSelf)
+			|| (warpType == kType8WarpDescent && moral == kMoralPartyMember);
+	}
+
+	// A descent warps the caster to ANOTHER party member; naming itself would waste the MP. Gate is a self cast.
+	inline bool CastWarpNeedsOtherTarget(uint8_t warpType)
+	{
+		return warpType == kType8WarpDescent;
+	}
+
+	// --- item-requiring class skills (ADR-0017 Ek F4-36, docs/03 MEC-MAG-23) ---
+
+	// MagicInstance.h CLASS_STONE_BASE_ID: with MAGIC.BeforeAction 1..4 (ClassWarrior..ClassPriest, User.h) the server takes
+	// ONE class stone 379058000 + BeforeAction * 1000 (379059000 Warrior, 379061000 Mage, 379062000 Priest) and treats
+	// MAGIC.UseItem as a required, not consumed item; otherwise it takes MAGIC.UseItem (a few scrolls are never taken:
+	// MagicInstance::ConsumeItem).
+	constexpr uint32_t kClassStoneBase = 379058000;
+	constexpr uint32_t kClassStoneStep = 1000;
+	constexpr uint32_t kClassWarriorId = 1;
+	constexpr uint32_t kClassPriestId = 4;
+
+	// A skill with MAGIC.UseItem != 0 is opened for the bot when it is a CLASS skill (MAGIC.Skill != 0) of Type1, 3 or 4;
+	// the type/Moral/flying shape is still judged by the other Cast*Supported functions. Item-effect magics (Skill == 0:
+	// potions, scrolls, food) go through the potion path, Type5 + item (resurrection, F4-33) has its own path and
+	// Type2/6/8 + item stay closed. A skill without an item always passes (this function judges the item only).
+	inline bool CastItemSkillSupported(uint8_t type0, uint16_t skill, uint32_t useItem)
+	{
+		if (useItem == 0)
+			return true;
+
+		return skill != 0 && (type0 == 1 || type0 == 3 || type0 == 4);
+	}
+
+	// The item the server takes for a cast (MagicInstance.cpp:252-255): the class stone for BeforeAction 1..4, else
+	// MAGIC.UseItem. The server checks BOTH MAGIC.UseItem and this item (CanUseItem) when UseItem != 0.
+	inline uint32_t CastConsumeItem(uint32_t beforeAction, uint32_t useItem)
+	{
+		if (beforeAction >= kClassWarriorId && beforeAction <= kClassPriestId)
+			return kClassStoneBase + beforeAction * kClassStoneStep;
+
+		return useItem;
 	}
 
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.

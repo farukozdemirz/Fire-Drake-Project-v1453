@@ -743,25 +743,32 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 			&& BotCore::CastHpCostSupported(m->sHP);
 	}
 
-	// ADR-0017 Ek F4-34: a summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend) is a supported skill although
-	// MAGIC.Type1 = 8 is not in CastTypesSupported. Static game data only: the caller's class/level/quest checks above and
-	// below still apply; the target must be a party member (server rule, answered on the wire as srv_fail).
+	// ADR-0017 Ek F4-34/F4-35: a Type8 skill is supported only as a summon (Moral 4, MAGIC_TYPE8.WarpType 12: summon friend),
+	// a Gate (Moral 1, WarpType 1) or a descent (Moral 4, WarpType 25), although MAGIC.Type1 = 8 is not in CastTypesSupported.
+	// Static game data only: the caller's class/level/quest checks above and below still apply; a summon and a descent
+	// need a party member (server rule, answered on the wire as srv_fail).
 	bool summon = false;
+	bool warp = false;
+	bool warpOther = false;
 	if (m->bType[0] == 8)
 	{
 		_MAGIC_TYPE8 * t8 = g_pMain->m_Magictype8Array.GetData(skillId);
-		summon = t8 != nullptr
-			&& BotCore::CastSummonSupported(m->bType[0], m->bType[1], m->bMoral, m->iUseItem, t8->bWarpType)
+		bool plain = t8 != nullptr
 			&& m->bFlyingEffect == 0
 			&& BotCore::CastHpCostSupported(m->sHP);
+		summon = plain
+			&& BotCore::CastSummonSupported(m->bType[0], m->bType[1], m->bMoral, m->iUseItem, t8->bWarpType);
+		warp = plain
+			&& BotCore::CastWarpSupported(m->bType[0], m->bType[1], m->bMoral, m->iUseItem, t8->bWarpType);
+		warpOther = warp && BotCore::CastWarpNeedsOtherTarget(t8->bWarpType);
 	}
 
 	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
-	if (!resurrection && !summon
+	if (!resurrection && !summon && !warp
 		&& (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 			|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
 			|| (m->bFlyingEffect != 0 && !flyingCast)
-			|| m->iUseItem != 0
+			|| !BotCore::CastItemSkillSupported(m->bType[0], m->sSkill, m->iUseItem)
 			|| !BotCore::CastMoralSupported(m->bMoral)
 			|| !BotCore::CastHpCostSupported(m->sHP)))
 	{
@@ -780,9 +787,22 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 		return out;
 	}
 
+	// ADR-0017 Ek F4-36 (docs/03 MEC-MAG-23, U8/U9): a skill with MAGIC.UseItem needs that item AND, for BeforeAction 1..4,
+	// the class stone in the caster's own bag (the server asks for both: MagicInstance.cpp:246-260). The bot reads only its
+	// own CUser (CanUseItem checks class, level range and existence), so no foreign state is touched; the server still
+	// decides (a missing item would end as srv_fail with a wasted CASTING packet).
+	if (!resurrection && m->iUseItem != 0
+		&& (!user->CanUseItem(m->iUseItem)
+			|| !user->CanUseItem(BotCore::CastConsumeItem(m->nBeforeAction, m->iUseItem))))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "no_item";
+		return out;
+	}
+
 	bool self = targetName.empty();
 	bool wantedSelf = (m->bMoral == MORAL_SELF);
-	bool wantedTarget = BotCore::CastNeedsOtherTarget(m->bMoral) || summon;
+	bool wantedTarget = BotCore::CastNeedsOtherTarget(m->bMoral) || summon || warpOther;
 	if ((wantedSelf && !self) || (wantedTarget && self))
 	{
 		out.kind = CastOutcome::REFUSED;
@@ -3145,5 +3165,95 @@ NpcInOutcome ActionExecutor::TickNpcIn(BotSession * s, std::chrono::steady_clock
 	}
 	out.requested = n;
 	out.received = received;
+	return out;
+}
+
+// --- speed check slice (ADR-0017 Ek F4-38) ---
+
+SpeedCheckOutcome ActionExecutor::TickSpeedCheck(BotSession * s, std::chrono::steady_clock::time_point now)
+{
+	SpeedCheckOutcome out;
+	out.kind = SpeedCheckOutcome::NOTHING;
+	out.reason = "ok";
+	out.warpX = 0;
+	out.warpZ = 0;
+
+	CUser * user = s != nullptr ? s->m_pUser : nullptr;
+	if (user == nullptr || !user->isInGame() || user->isDead())
+		return out;
+
+	uint32 sinceInGameMs = (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_inGameSince).count();
+	uint32 sinceLastMs = s->m_speedHasLast ? (uint32)std::chrono::duration_cast<std::chrono::milliseconds>(
+		now - s->m_speedLast).count() : 0;
+
+	if (!BotCore::SpeedCheckDue(s->m_speedHasLast, sinceLastMs, sinceInGameMs))
+		return out;
+
+	uint32 decisionId = NextDecisionId(s);
+	float clock = BotCore::SpeedCheckClockSeconds(sinceInGameMs);
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"SpeedCheck\""
+			+ ",\"clock\":" + FormatFixed(clock, 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_SUBMIT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	// Client format: u8 flag 0 + f32 client clock (docs/03 CLI-12 [V]).
+	Packet pkt(WIZ_SPEEDHACK_CHECK);
+	pkt << uint8(0) << clock;
+
+	s->m_warpEcho = 0;
+
+	std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+	user->HandlePacket(pkt);
+	std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	long long latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+
+	// The packet went out, so the timing/counters move regardless of the server's answer. Not counted in the CLI-11
+	// window: this is automatic client traffic, not a player action.
+	s->m_speedHasLast = true;
+	s->m_speedLast = now;
+	s->m_speedChecks++;
+
+	// The server answers with a WIZ_WARP only when it sends the bot back (CharacterMovementHandler.cpp:642-644).
+	uint64 e = s->m_warpEcho.load();
+	bool warped = (e & (1ull << 63)) != 0;
+	float warpX = warped ? (float)(((e >> 16) & 0xFFFF) / 10.0) : 0.0f;
+	float warpZ = warped ? (float)((e & 0xFFFF) / 10.0) : 0.0f;
+	if (warped)
+		s->m_speedWarps++;
+
+	const char * reason = warped ? "warped" : "passed";
+
+	if (Telemetry::Instance().IsEnabled(TEL_DECISIONS))
+	{
+		std::string fields = "\"decision_id\":" + std::to_string(decisionId)
+			+ ",\"type\":\"SpeedCheck\""
+			+ ",\"ok\":" + (warped ? "false" : "true")
+			+ ",\"reason\":\"" + reason + "\""
+			+ ",\"latency_us\":" + std::to_string(latencyUs);
+		if (warped)
+			fields += ",\"warp_x\":" + FormatFixed(warpX, 1)
+				+ ",\"warp_z\":" + FormatFixed(warpZ, 1);
+		Telemetry::Instance().Emit(TEL_DECISIONS, "ACTION_RESULT", user->GetSocketID(),
+			s->m_charName.c_str(), fields, false);
+	}
+
+	if (warped)
+	{
+		out.kind = SpeedCheckOutcome::FAILED;
+		out.reason = reason;
+		out.warpX = warpX;
+		out.warpZ = warpZ;
+	}
+	else
+	{
+		out.kind = SpeedCheckOutcome::SENT;
+		out.reason = reason;
+	}
 	return out;
 }

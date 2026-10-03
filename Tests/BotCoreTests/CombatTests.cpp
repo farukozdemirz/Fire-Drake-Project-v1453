@@ -1030,8 +1030,9 @@ TEST_CASE("Combat_CastTypes_Supported")
 	CHECK_EQ(BotCore::CastTypesSupported(7, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
 	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
-	CHECK_EQ(BotCore::CastTypesSupported(1, 3), false);
-	CHECK_EQ(BotCore::CastTypesSupported(1, 4), false);
+	// F4-37: melee pairs are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
 	CHECK_EQ(BotCore::CastTypesSupported(1, 9), false);
 	CHECK_EQ(BotCore::CastTypesSupported(2, 3), false);
 	CHECK_EQ(BotCore::CastTypesSupported(2, 4), false);
@@ -1549,4 +1550,221 @@ TEST_CASE("Combat_SummonCast_Guard")
 
 	c.sinceSkillLastMs = 100;
 	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+}
+
+TEST_CASE("Combat_WarpCast_Guard")
+{
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 0, 1), true);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 25), true);
+	CHECK_EQ(BotCore::CastWarpSupported(5, 0, 1, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(3, 0, 1, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 4, 1, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 379006000, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 379006000, 25), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 2, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 6, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 1), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 0, 25), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 7, 0, 25), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 0, 20), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 20), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 12), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 0, 12), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 13), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 4, 0, 21), false);
+	CHECK_EQ(BotCore::CastWarpSupported(8, 0, 1, 0, 0), false);
+
+	CHECK_EQ(BotCore::CastSummonSupported(8, 0, 4, 0, 12), true);
+	CHECK_EQ(BotCore::CastSummonSupported(8, 0, 4, 0, 25), false);
+	CHECK_EQ(BotCore::CastSummonSupported(8, 0, 1, 0, 1), false);
+
+	CHECK_EQ(BotCore::CastWarpNeedsOtherTarget(25), true);
+	CHECK_EQ(BotCore::CastWarpNeedsOtherTarget(1), false);
+	CHECK_EQ(BotCore::CastWarpNeedsOtherTarget(12), false);
+	CHECK_EQ(BotCore::CastWarpNeedsOtherTarget(20), false);
+	CHECK_EQ(BotCore::CastWarpNeedsOtherTarget(0), false);
+
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
+	CHECK_EQ(BotCore::CastMoralSupported(1), true);
+	CHECK_EQ(BotCore::CastMoralSupported(4), true);
+	CHECK_EQ(BotCore::CastNeedsOtherTarget(1), false);
+	CHECK_EQ(BotCore::CastNeedsOtherTarget(4), false);
+	CHECK_EQ(BotCore::IsGatedType(8), false);
+
+	CHECK_EQ(BotCore::SendsAimPoint(1), false);
+	CHECK_EQ(BotCore::SendsAimPoint(4), false);
+	CHECK_EQ((int)BotCore::CastTargetIdField(BotCore::SendsAimPoint(1), 2986), 2986);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(1), true, 123.4f), 0);
+	CHECK_EQ((int)BotCore::CastCoordField(BotCore::SendsAimPoint(4), false, 123.4f), 123);
+
+	CHECK_EQ((int)BotCore::CastRecastMs(100), 10000);
+	CHECK_EQ((int)BotCore::CastRecastMs(91), 9100);
+
+	BotCore::CastStartCheck c = {};
+	c.distanceM = 0.0f;
+	c.skillRange = 56;
+	c.msp = 30;
+	c.reCastMs = BotCore::CastRecastMs(100);
+	c.typeGated = false;
+	c.mana = 30;
+	c.standing = true;
+	c.needsStanding = false;
+	c.actionsInWindow = 0;
+
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	c.mana = 29;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_NO_MANA);
+
+	c.mana = 30;
+	c.hasSkillLast = true;
+	c.sinceSkillLastMs = 9999;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_REJECT_RECAST);
+
+	c.sinceSkillLastMs = 10000;
+	CHECK_EQ((int)BotCore::CheckCastStart(c), (int)BotCore::CAST_OK);
+
+	BotCore::CastStartCheck d = {};
+	d.distanceM = 20.0f;
+	d.skillRange = 225;
+	d.msp = 50;
+	d.reCastMs = BotCore::CastRecastMs(91);
+	d.typeGated = false;
+	d.mana = 50;
+	d.standing = true;
+	d.needsStanding = false;
+	d.actionsInWindow = 0;
+
+	CHECK_EQ((int)BotCore::CheckCastStart(d), (int)BotCore::CAST_OK);
+
+	d.distanceM = 224.0f;
+	CHECK_EQ((int)BotCore::CheckCastStart(d), (int)BotCore::CAST_OK);
+
+	d.distanceM = 225.0f;
+	CHECK_EQ((int)BotCore::CheckCastStart(d), (int)BotCore::CAST_REJECT_OUT_OF_RANGE);
+
+	d.distanceM = 20.0f;
+	d.mana = 49;
+	CHECK_EQ((int)BotCore::CheckCastStart(d), (int)BotCore::CAST_REJECT_NO_MANA);
+}
+
+TEST_CASE("Combat_ItemSkill_Guard")
+{
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1105, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 0, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(8, 1100, 0), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(0, 0, 0), true);
+
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1105, 379070000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 1106, 379070000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 1108, 379065000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1128, 379066000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379063000), true);
+
+	CHECK_EQ(BotCore::CastItemSkillSupported(5, 1127, 379006000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(8, 1100, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(2, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(6, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(0, 1105, 379070000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 0, 389001000), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(3, 0, 310310010), false);
+	CHECK_EQ(BotCore::CastItemSkillSupported(4, 0, 379070000), false);
+
+	// F4-37: melee pairs are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
+	CHECK_EQ(BotCore::CastMoralSupported(11), false);
+	CHECK_EQ(BotCore::CastMoralSupported(7), true);
+	CHECK_EQ(BotCore::CastMoralSupported(10), true);
+	CHECK_EQ(BotCore::CastMoralSupported(6), true);
+
+	CHECK_EQ((int)BotCore::CastConsumeItem(3, 379065000), 379061000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(4, 379066000), 379062000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 379063000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(2, 379000000), 379060000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 379070000), 379070000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(5, 379070000), 379070000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 0), 0);
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 0), 379059000);
+	CHECK_EQ((int)BotCore::kClassStoneBase, 379058000);
+	CHECK_EQ((int)BotCore::kClassStoneStep, 1000);
+	CHECK_EQ((int)BotCore::kClassWarriorId, 1);
+	CHECK_EQ((int)BotCore::kClassPriestId, 4);
+}
+
+TEST_CASE("Combat_Type1Pair_Guard")
+{
+	// F4-37: the melee pairs Type1 + Type3 and Type1 + Type4 are supported
+	CHECK_EQ(BotCore::CastTypesSupported(1, 3), true);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 4), true);
+
+	// single types and the old pair are unchanged
+	CHECK_EQ(BotCore::CastTypesSupported(1, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 0), true);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 4), true);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(6, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(7, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 0), false);
+	CHECK_EQ(BotCore::CastTypesSupported(9, 0), false);
+
+	// every other pair stays closed
+	CHECK_EQ(BotCore::CastTypesSupported(1, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 2), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 5), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 6), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 7), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 8), false);
+	CHECK_EQ(BotCore::CastTypesSupported(1, 9), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(2, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 2), false);
+	CHECK_EQ(BotCore::CastTypesSupported(3, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 1), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(4, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(5, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 3), false);
+	CHECK_EQ(BotCore::CastTypesSupported(0, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(6, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(8, 4), false);
+	CHECK_EQ(BotCore::CastTypesSupported(9, 4), false);
+
+	// the item gate is unchanged and works together with the melee pairs
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379063000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1068, 379059000), true);
+	CHECK_EQ(BotCore::CastItemSkillSupported(1, 1065, 0), true);
+
+	// the consumed item: Scream takes the class stone, Shock Stun / Exceed Break take UseItem, leg cutting takes none
+	CHECK_EQ((int)BotCore::CastConsumeItem(1, 379063000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 379059000), 379059000);
+	CHECK_EQ((int)BotCore::CastConsumeItem(0, 0), 0);
+
+	// both types of a melee pair take part in the type gate
+	uint32_t since = 999;
+	BotCore::TypeStamp s13[2] = { { 1, true, 900 }, { 3, true, 400 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(s13, 2, since), 1);
+	CHECK_EQ((int)since, 400);
+
+	BotCore::TypeStamp s14[2] = { { 1, false, 0 }, { 4, true, 1500 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(s14, 2, since), 1);
+	CHECK_EQ((int)since, 1500);
+
+	BotCore::TypeStamp none[2] = { { 1, false, 0 }, { 3, false, 0 } };
+	CHECK_EQ((int)BotCore::MinGatedSince(none, 2, since), 0);
+	CHECK_EQ((int)since, 0);
+
+	// the other rules the melee pairs rely on
+	CHECK_EQ(BotCore::CastMoralSupported(7), true);
+	CHECK_EQ(BotCore::CastTypeMoralSupported(1, 7), true);
+	CHECK_EQ(BotCore::CastHpCostSupported(0), true);
+	CHECK_EQ(BotCore::IsGatedType(1), true);
 }
