@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 24) |
 | Branch | `bot/F4-48` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-47 (`tools/skill-check.py` uçan Type3 MP beklentisi `2 × Msp`, selftest 48) — `KAPANDI` (merge `2135a0c`); F4-42 (`tools/skill-script-gen.py`), F4-25/F4-30 (uçan ve uçan alan cast), F4-29 (alan cast), F4-26 (çift tipli `{3, 4}`), F4-27 (quest kilitleri), F4-40 (envanter doldurma) — `KAPANDI`; F4-45/F4-46 (`bots/config/skill_*.spec` üslup örneği) — `KAPANDI` |
@@ -226,19 +226,45 @@ git diff --stat gece/2026-10-02...bot/F4-48
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-48` — `<kısa-sha> [F4-48] …`
+- Branch / commit'ler: `bot/F4-48` — `994d148 [F4-48] Karus mage tek hedefli/uçan/alan skill betikleri`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır) ve `./tools/run-tests.sh` son satırı:
+  - `bots/config/skill_mage_k_single.spec` + `.txt` (yeni): §5.1 tek hedefli, uçmayan/uçan, tek/çift tipli 8 cast.
+  - `bots/config/skill_mage_k_area.spec` + `.txt` (yeni): §5.2 hafif alan 4 cast.
+  - `bots/config/skill_mage_k_area_heavy.spec` + `.txt` (yeni): §5.3 Supernova + meteor Fall 2 cast.
+  - `plans/F4-48-…md`: `Durum` satırı `UYGULANIYOR` + bu Uygulayıcı Raporu.
+  - Üretilmiş `.txt` dosyaları `tools/skill-script-gen.py` ile spec'lerden üretildi, elle düzenlenmedi.
+- Derleme sonucu (`tools/build.sh Release` son satırlar) ve `./tools/run-tests.sh` son satırı:
   ```
-  …
+  BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+  shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  251 tests, 0 failed
   ```
-- Kabul kriterleri öz-değerlendirme (K1–K8; K9/K10 Claude'un işi): K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+- Kabul kriterleri öz-değerlendirme (K1–K8; K9/K10 Claude'un işi):
+  - K1 ✔: üç spec için `--out /tmp/<ad>.txt` çıkış 0 ve `diff` boş (üçü de EMPTY).
+  - K2 ✔: `--check` üçü için sırasıyla `ok: 9 steps, 402 bytes, 11 lines, last offset 71420 ms`, `ok: 5 steps, 256 bytes, 7 lines, last offset 42260 ms`, `ok: 3 steps, 192 bytes, 5 lines, last offset 37100 ms`.
+  - K3 ✔: `cast BotMF_K` = 8/4/2, `cast` toplamı aynı, `list` = 1, yasak verb = 0, ilk ofset = 0; hedef alanı yalnızca `BotWP_E`/`BotWG_E` (awk süzgeci boş çıktı).
+  - K4 ✔: kimlikler ve sıra planla birebir (`110503 110539 110551 110570 110651 110515 110527 110615` / `110533 110633 110545 110645` / `110560 110571`); yasak kimlikler 0/0/0.
+  - K5 ✔: ofset farkları `2720 5800 6800 22800 6800 10100 10100 6300` / `4940 3220 16800 17300` / `16800 20300`.
+  - K6 ✔: `skill-script-gen.py --selftest` 23/0, `skill-check.py --selftest` 48/0; iki araç değişmedi.
+  - K7 ✔: `build.sh Release` hatasız (yeni uyarı yok), `run-tests.sh` `251 tests, 0 failed`.
+  - K8 ✔: `git diff --stat gece/2026-10-02...bot/F4-48` yalnızca §4'teki 6 veri dosyası + plan dosyası; `tools`/`BotCore`/`GameServer`/`shared`/`AIServer`/`Tests`/`docs`/`db` yok.
+- Plandan sapmalar ve gerekçeleri: Yok. §5'teki spec'ler aynen yazıldı; `--margin-ms`/`--start-gap-ms` değiştirilmedi; üretilen çıktılar plan bekleyişiyle birebir.
+- Açık sorular: Yok.
 - `git diff --stat gece/2026-10-02...bot/F4-48` (gerçek çıktı):
   ```
-  …
+   bots/config/skill_mage_k_area.spec                     | 13 +++++++++++++
+   bots/config/skill_mage_k_area.txt                      |  7 +++++++
+   bots/config/skill_mage_k_area_heavy.spec               |  8 ++++++++
+   bots/config/skill_mage_k_area_heavy.txt                |  5 +++++
+   bots/config/skill_mage_k_single.spec                   | 18 ++++++++++++++++++
+   bots/config/skill_mage_k_single.txt                    | 11 +++++++++++
+   .../F4-48-skill-betik-mage-karus-tek-hedef-ve-alan.md  |  2 +-
+   7 files changed, 63 insertions(+), 1 deletion(-)
   ```
 
 ---
