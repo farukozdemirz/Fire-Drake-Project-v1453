@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-59 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F5-01 (`NavGrid`, `KAPANDI`). Şemsiye: F5-55 (dilim 1). Başka plana bağımlı değil; F5-61..F5-66 bu planın `NavService`'ine dayanır |

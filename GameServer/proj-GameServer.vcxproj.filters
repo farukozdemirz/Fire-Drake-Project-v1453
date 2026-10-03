@@ -99,6 +99,9 @@
     <ClCompile Include="Bot\ScriptRunner.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Bot\NavService.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="FriendHandler.cpp">
       <Filter>Source Files\Handlers</Filter>
     </ClCompile>
@@ -231,6 +234,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Bot\ScriptRunner.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Bot\NavService.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Region.h">
