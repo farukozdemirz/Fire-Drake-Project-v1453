@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-34` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-33 (diriltme istisnası kalıbı: `BeginCast` ayrı istisna + `wantedTarget`) — `KAPANDI` (merge `184beba`); F4-31 (`Moral` 4 party hedefli, MEC-MAG-18) — `KAPANDI`; F4-08 (party kurulumu `/bot pinvite`, `/bot paccept`; yalnızca çalışma zamanı sınaması için) — `KAPANDI` |
@@ -224,7 +224,33 @@ git diff --check gece/2026-10-02...bot/F4-34
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-_Henüz uygulanmadı._
+### Tur 1
+
+- **Durum:** UYGULANDI (tüm uygulama adımları yapıldı; derleme ve birim testleri geçti). Planda istenen çalışma zamanı doğrulaması (S1–S7) Claude'a aittir; bu turda yapılmadı.
+- **Branch:** `bot/F4-34` (taban: `gece/2026-10-02` @ `0b77e34`). Commit'ler: `[F4-34] ...` (kod) ve `[F4-34] Uygulandı ...` (Durum + rapor) — commit hash'leri commit sonrası `git log`'ta görülür.
+- **Değişen dosyalar ve nedenleri:**
+  - `BotCore/BotCombat.h`: `kMoralPartyMember` (4) ve `kType8WarpSummon` (12) sabitleri ve `CastSummonSupported(type0, type1, moral, useItem, warpType)` eklendi (plan §5.1). Yalnızca ekleme (+17 satır); mevcut fonksiyonlar değişmedi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` içine summon istisnası (`m->bType[0] == 8` için `m_Magictype8Array` okuması + `CastSummonSupported` + `bFlyingEffect == 0` + `CastHpCostSupported`) ve `if (!resurrection && !summon` değişikliği; `wantedTarget = ... || summon` (plan §5.3 a/b). İki hunk, ikisi de `BeginCast` içinde.
+  - `GameServer/Bot/ActionExecutor.h`: yalnızca `BeginCast` yorumu (destek listesine summon, `bad_target` açıklaması; plan §5.3 d).
+  - `Tests/BotCoreTests/CombatTests.cpp`: yeni `Combat_SummonCast_Guard` (110 → 111; plan §5.2).
+- **Derleme çıktısının son satırları:**
+  - `./tools/build.sh Release`: `All 14057 functions were compiled... proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe` — hata yok; yalnızca mevcut `UpgradeHandler.cpp` C4789 uyarıları.
+  - `./tools/build.sh Debug`: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`, `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe` — hata yok.
+- **Testler:** `./tools/run-tests.sh Release` ve `Debug`: `111 tests, 0 failed`; `Combat_CastTypes_Supported`, `Combat_ResurrectionCast_Guard`, `Combat_SummonCast_Guard` `[ OK ]`.
+- **Kriter öz-değerlendirmesi:**
+  - K1 ✔ (Release hatasız; değişen dört dosyada yeni uyarı yok), K2 ✔ (Debug hatasız).
+  - K3 ✔ (`111 tests, 0 failed` Release + Debug; üç test adı `[ OK ]`).
+  - K4 ✔ (BotCore saflık grep'i boş; `git diff ... | grep '^+' | grep std::min/std::max` boş; `grep '^-'` boş = yalnızca ekleme).
+  - K5 ✔ (`CastSummonSupported`/`m_Magictype8Array` tam iki satır; `CastNeedsOtherTarget` tek satır ve `|| summon`; `if (!resurrection && !summon`; `m->iUseItem != 0` sayısı 2).
+  - K6 ✔ (ActionExecutor.cpp iki hunk, ikisi de `BeginCast` içinde; `git diff --stat` yalnızca dört dosyayı gösterir; korunan dosyaların diff'i boş; proje dosyaları değişmedi).
+  - K7 ✔ (diff'te yeni `Emit(` yok; yeni ini anahtarı/komut/thread/telemetri türü/alanı yok).
+  - K8 ✔ (dört dosya `file` çıktısı: ASCII + CRLF; `git diff --check` boş).
+  - K9 ✔ (CheckMoveStep 2, CheckAttack/CheckCastStart/CheckCastEffect/CheckCastFly/CheckCastLand/CheckCastCancel/CheckPotion ≥ 1; önceki 110 test geçiyor).
+  - K10 ✔ (`python3 tools/check-perception-contract.py`: `files scanned: 19`, R1 0/0, R2 0/28, R4 0/0, R5 0/0, `RESULT: PASS`; araç/istisna listeleri değişmedi).
+  - K11 — Claude'a ait (çalışma zamanı S1–S7); bu turda yapılmadı.
+- **Plandan sapmalar:** Yok. Plan §5.1/§5.2/§5.3 metinleri birebir uygulandı (yorum metinleri dahil). `docs/`, `plans/README.md`, ADR dosyaları değiştirilmedi.
+- **Açık sorular:** Yok.
+
 
 ---
 
