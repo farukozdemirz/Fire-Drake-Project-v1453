@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-33` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-32 (Type5 yolu, `BeginCast` destek koşulu, MEC-MAG-19) — `KAPANDI` (merge `8590e33`); F4-07 (`Regene`, ölüm izleme `m_deadSeen`) — `KAPANDI` |
@@ -244,13 +244,22 @@ git diff --check gece/2026-10-02...bot/F4-33
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI (statik kriterler); K11 çalışma zamanı Claude'a bağlı.
+- Branch / commit'ler: `bot/F4-33` (taban `gece/2026-10-02` @ `1d9e80f`); kod commit `31b4dd6` ("[F4-33] Diriltme dilimi: Moral 25 Type5 destegi ve hedef kurali"); plan durum/rapor commit'i bu satırla birlikte.
+- Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: `CastHpCostSupported` ile `CastTargetIdField` arasına `kMoralCorpseFriend`/`kType5Resurrection`/`kResurrectionStoneItem` sabitleri, `CastResurrectionSupported` ve `CastNeedsOtherTarget` eklendi (yalnızca ekleme, 24 satır).
+  - `Tests/BotCoreTests/CombatTests.cpp`: dosyanın sonuna `Combat_ResurrectionCast_Guard` eklendi (109 → 110); mevcut testler değişmedi.
+  - `GameServer/Bot/ActionExecutor.cpp`: yalnızca `BeginCast`; diriltme bayrağı (`m_Magictype5Array` okuması) ve `resurrection` istisnası destek koşuluna eklendi, `wantedTarget` satırı `BotCore::CastNeedsOtherTarget` oldu. İki hunk, ikisi de `BeginCast` içinde.
+  - `GameServer/Bot/ActionExecutor.h`: yalnızca `BeginCast` yorumu (diriltme desteği + `bad_target` açıklaması).
+- Derleme sonucu: `./tools/build.sh Release` ve `./tools/build.sh Debug` hatasız (`PIPESTATUS=0`); son satırlar `proj-GameServer.vcxproj -> ...\Server\GameServer.exe` ve `BotCoreTests.vcxproj -> ...\Tests\BotCoreTests.exe`. Tam yeniden derlemede yalnızca önceden var olan `UpgradeHandler.cpp` C4789 uyarıları görüldü; dört değişen dosyada uyarı yok.
+- Kabul kriterleri öz-değerlendirme (K11 hariç, Claude'a bağlı):
+  - K1 ✔ Release rc=0; K2 ✔ Debug rc=0; K3 ✔ `110 tests, 0 failed` (Release+Debug), `Combat_CastTypes_Supported`/`Combat_CureCast_Guard`/`Combat_ResurrectionCast_Guard` `[ OK ]`.
+  - K4 ✔ `grep` eşleşmesiz; `BotCombat.h` yalnızca ekleme (silinen satır yok), `std::min/max` yok.
+  - K5 ✔ üç satır (`CastResurrectionSupported` :741, `m_Magictype5Array` :739, `CastNeedsOtherTarget` :772), mevcut `if` koşulları yerinde, `m->iUseItem != 0` iki kez.
+  - K6 ✔ `--stat` yalnızca dört dosya; `ActionExecutor.cpp` iki hunk, ikisi de `BeginCast`; yasaklı dosyalar (vcxproj, `BotSession.*`, `BotManager.cpp`, `Telemetry.*`, `tools/`) değişmedi.
+  - K7 ✔ yeni `Emit(` yok; K8 ✔ `file` dört dosyada da "ASCII text, with CRLF line terminators", `git diff --check` boş; K9 ✔ sekiz guard grep'i eşikleri karşılıyor, 109 eski test geçiyor; K10 ✔ `RESULT: PASS`.
+- Plandan sapmalar ve gerekçeleri: `ActionExecutor.h` yorumunda F4-32'nin "the party-all cure and resurrections stay unsupported" ifadesi "the party-all cure stays unsupported" yapıldı (diriltme artık destekli; aksi hâlde yorum planla çelişirdi). Davranış değişikliği yok.
+- Açık sorular: Yok. K11 (S1–S7 çalışma zamanı) Claude'un `/plan-dogrula` adımında yapılır; çalışma zamanı ölçümü botların Stone of Life taşlarını tüketir (plana göre `db/002` ile geri alınabilir).
 
 ---
 
