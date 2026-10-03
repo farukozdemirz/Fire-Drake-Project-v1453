@@ -2448,3 +2448,432 @@ TEST_CASE("Perception_SkillRing_Copy")
 	CHECK_EQ(source.Count(), 0);
 	CHECK_EQ(copy.Count(), 2);
 }
+
+namespace
+{
+	// All data[] zero except data[1] (d1) and data[3] (d3), which Type4 carries.
+	BotCore::SkillEvent MakeEvent(uint8_t op, uint32_t skillId, int16_t caster, int16_t target,
+		uint64_t tMs, int16_t d1 = 0, int16_t d3 = 0)
+	{
+		BotCore::SkillEvent ev;
+		memset(&ev, 0, sizeof(ev));
+		ev.op = op;
+		ev.skillId = skillId;
+		ev.caster = caster;
+		ev.target = target;
+		ev.tMs = tMs;
+		ev.data[1] = d1;
+		ev.data[3] = d3;
+		return ev;
+	}
+
+	// Zeroed meta; the caller fills the type-specific fields.
+	BotCore::SkillMeta MakeMeta(uint32_t skillId, uint8_t type1, uint8_t type2)
+	{
+		BotCore::SkillMeta m;
+		memset(&m, 0, sizeof(m));
+		m.skillId = skillId;
+		m.type1 = type1;
+		m.type2 = type2;
+		return m;
+	}
+}
+
+TEST_CASE("Perception_SkillMeta_Classify")
+{
+	// Malice-like: Type4 debuff.
+	BotCore::SkillMeta malice = MakeMeta(112703, 4, 0);
+	malice.buffType = 2;
+	malice.isBuff = false;
+	CHECK(BotCore::SkillSendsType4(malice));
+	CHECK(!BotCore::SkillSendsType3(malice));
+
+	// Great healing-like: instant Type3 heal.
+	BotCore::SkillMeta great = MakeMeta(112527, 3, 0);
+	great.directType = 1;
+	great.firstDamage = 960;
+	bool hot = true;
+	CHECK(BotCore::SkillSendsType3(great));
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(great, hot), 960u);
+	CHECK(!hot);
+
+	// Superior restore-like: HoT only.
+	BotCore::SkillMeta hotOnly = MakeMeta(112548, 3, 0);
+	hotOnly.directType = 1;
+	hotOnly.firstDamage = 0;
+	hotOnly.timeDamage = 2500;
+	hotOnly.type3DurationSec = 30;
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(hotOnly, hot), 2500u);
+	CHECK(hot);
+
+	// HoT with an initial tick.
+	BotCore::SkillMeta hotInit = MakeMeta(1, 3, 0);
+	hotInit.directType = 1;
+	hotInit.firstDamage = 100;
+	hotInit.timeDamage = 200;
+	hotInit.type3DurationSec = 10;
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(hotInit, hot), 300u);
+	CHECK(hot);
+
+	// Damage spell: not a heal.
+	BotCore::SkillMeta damage = MakeMeta(110503, 3, 0);
+	damage.directType = 1;
+	damage.firstDamage = -300;
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(damage, hot), 0u);
+	CHECK(!hot);
+
+	// MP direct type: not a heal.
+	BotCore::SkillMeta mp = MakeMeta(2, 3, 0);
+	mp.directType = 2;
+	mp.firstDamage = 500;
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(mp, hot), 0u);
+
+	// timeDamage > 0 but no duration: only firstDamage.
+	BotCore::SkillMeta noDur = MakeMeta(3, 3, 0);
+	noDur.directType = 1;
+	noDur.firstDamage = 120;
+	noDur.timeDamage = 200;
+	noDur.type3DurationSec = 0;
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(noDur, hot), 120u);
+	CHECK(!hot);
+
+	// {3, 4} pair: Type4 only, no heal.
+	BotCore::SkillMeta iceArrow = MakeMeta(110615, 3, 4);
+	iceArrow.buffType = 6;
+	CHECK(BotCore::SkillSendsType4(iceArrow));
+	CHECK(!BotCore::SkillSendsType3(iceArrow));
+	hot = false;
+	CHECK_EQ((unsigned)BotCore::SkillHealNominal(iceArrow, hot), 0u);
+
+	// {1, 4}: Type4 true.
+	BotCore::SkillMeta leg = MakeMeta(106520, 1, 4);
+	CHECK(BotCore::SkillSendsType4(leg));
+
+	// {4, 3}: Type4 false, Type3 true.
+	BotCore::SkillMeta pair43 = MakeMeta(4, 4, 3);
+	CHECK(!BotCore::SkillSendsType4(pair43));
+	CHECK(BotCore::SkillSendsType3(pair43));
+
+	// Cure: Type5 REMOVE_TYPE4 only.
+	BotCore::SkillMeta cure = MakeMeta(112525, 5, 0);
+	cure.type5Kind = BotCore::kType5RemoveType4;
+	CHECK(BotCore::SkillIsCureDebuff(cure));
+	BotCore::SkillMeta cureDisease = MakeMeta(112535, 5, 0);
+	cureDisease.type5Kind = BotCore::kType5RemoveType3;
+	CHECK(!BotCore::SkillIsCureDebuff(cureDisease));
+	BotCore::SkillMeta resurrect = MakeMeta(112733, 5, 0);
+	resurrect.type5Kind = 3;
+	CHECK(!BotCore::SkillIsCureDebuff(resurrect));
+}
+
+TEST_CASE("Perception_Status_Type4")
+{
+	BotCore::SkillMeta malice = MakeMeta(112703, 4, 0);
+	malice.buffType = 2;
+	malice.isBuff = false;
+
+	BotCore::ObservedStatusTable table;
+	CHECK_EQ((int)table.Records(), 0);
+
+	BotCore::SkillEvent ev = MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 1000, 1, 150);
+	CHECK(table.Observe(ev, &malice) == BotCore::kStatusRecorded);
+
+	const BotCore::StatusObs * r = table.Find(2985, 2, 1000);
+	CHECK(r != nullptr);
+	if (r != nullptr)
+	{
+		CHECK_EQ((unsigned)r->skillId, 112703u);
+		CHECK_EQ((int)r->caster, 2984);
+		CHECK(!r->isBuff);
+		CHECK_EQ((unsigned)r->src, (unsigned)BotCore::kSrcEstimate);
+		CHECK_EQ((unsigned long long)r->startMs, 1000ull);
+		CHECK_EQ((unsigned long long)r->endMs, 151000ull);
+		CHECK_EQ((unsigned)BotCore::StatusRemainingMs(*r, 61000), 90000u);
+	}
+	CHECK(table.Find(2985, 2, 151000) == nullptr);   // boundary: endMs > nowMs
+	CHECK_EQ(table.CountDebuffs(2985, 1000), 1);
+	CHECK_EQ(table.CountBuffs(2985, 1000), 0);
+	CHECK_EQ(table.CountDebuffs(2985, 151000), 0);
+
+	// Events that must not produce a record.
+	BotCore::ObservedStatusTable none;
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 1000, 0, 150), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 1000, 1, 0), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 1000, 1, -104), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicCasting, 112703, 2984, 2985, 1000, 1, 150), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicFlying, 112703, 2984, 2985, 1000, 1, 150), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, -1, 1000, 1, 150), &malice) == BotCore::kStatusIgnored);
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 1000, 1, 150), nullptr) == BotCore::kStatusIgnored);
+	BotCore::SkillMeta healMeta = MakeMeta(112527, 3, 0);
+	healMeta.directType = 1;
+	healMeta.firstDamage = 960;
+	CHECK(none.Observe(MakeEvent(BotCore::kMagicEffecting, 112527, 2984, 2985, 1000, 1, 150), &healMeta) == BotCore::kStatusIgnored);
+	CHECK_EQ((int)none.Records(), 0);
+}
+
+TEST_CASE("Perception_Status_Replace")
+{
+	BotCore::SkillMeta acBuff = MakeMeta(112660, 4, 0);
+	acBuff.buffType = 2;
+	acBuff.isBuff = true;
+	BotCore::SkillMeta malice = MakeMeta(112703, 4, 0);
+	malice.buffType = 2;
+	malice.isBuff = false;
+	BotCore::SkillMeta hpBuff = MakeMeta(112654, 4, 0);
+	hpBuff.buffType = 1;
+	hpBuff.isBuff = true;
+
+	BotCore::ObservedStatusTable table;
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112660, 2984, 2985, 0, 1, 600), &acBuff);
+	CHECK_EQ((int)table.Records(), 1);
+
+	// A debuff on the same buffType replaces the buff.
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 5000, 1, 150), &malice);
+	CHECK_EQ((int)table.Records(), 1);
+	const BotCore::StatusObs * r = table.Find(2985, 2, 5000);
+	CHECK(r != nullptr);
+	if (r != nullptr)
+	{
+		CHECK(!r->isBuff);
+		CHECK_EQ((unsigned)r->skillId, 112703u);
+		CHECK_EQ((unsigned long long)r->endMs, 155000ull);
+	}
+	CHECK_EQ(table.CountBuffs(2985, 5000), 0);
+
+	// A buff with a different buffType lives alongside; Collect orders by endMs.
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112654, 2984, 2985, 6000, 1, 600), &hpBuff);
+	BotCore::StatusObs out[8];
+	int n = table.Collect(2985, 6000, out, 8);
+	CHECK_EQ(n, 2);
+	if (n == 2)
+	{
+		CHECK_EQ((unsigned long long)out[0].endMs, 155000ull);
+		CHECK_EQ((unsigned)out[0].buffType, 2u);
+		CHECK_EQ((unsigned long long)out[1].endMs, 606000ull);
+		CHECK_EQ((unsigned)out[1].buffType, 1u);
+	}
+
+	// A successful buff on the same buffType refreshes the stale record.
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112654, 2984, 2985, 7000, 1, 600), &hpBuff);
+	CHECK_EQ((int)table.Records(), 2);
+	r = table.Find(2985, 1, 7000);
+	CHECK(r != nullptr);
+	if (r != nullptr)
+		CHECK_EQ((unsigned long long)r->endMs, 607000ull);
+
+	// Per-unit record capacity: buffType 9 evicts the earliest-expiring record (buffType 1).
+	BotCore::ObservedStatusTable cap;
+	for (int bt = 1; bt <= 8; bt++)
+	{
+		BotCore::SkillMeta m = MakeMeta((uint32_t)(2000 + bt), 4, 0);
+		m.buffType = (uint8_t)bt;
+		m.isBuff = false;
+		cap.Observe(MakeEvent(BotCore::kMagicEffecting, m.skillId, 2984, 2990, 0, 1, (int16_t)(100 + 10 * bt)), &m);
+	}
+	CHECK_EQ((int)cap.Records(), 8);
+	BotCore::SkillMeta extra = MakeMeta(3000, 4, 0);
+	extra.buffType = 9;
+	extra.isBuff = false;
+	cap.Observe(MakeEvent(BotCore::kMagicEffecting, 3000, 2984, 2990, 0, 1, 500), &extra);
+	CHECK_EQ((int)cap.Records(), 8);
+	CHECK(cap.Find(2990, 1, 0) == nullptr);
+	CHECK(cap.Find(2990, 9, 0) != nullptr);
+	CHECK(cap.Find(2990, 2, 0) != nullptr);
+}
+
+TEST_CASE("Perception_Status_CureAndDeath")
+{
+	BotCore::SkillMeta debuff = MakeMeta(112703, 4, 0);
+	debuff.buffType = 2;
+	debuff.isBuff = false;
+	BotCore::SkillMeta buff = MakeMeta(112654, 4, 0);
+	buff.buffType = 1;
+	buff.isBuff = true;
+	BotCore::SkillMeta cure = MakeMeta(112525, 5, 0);
+	cure.type5Kind = BotCore::kType5RemoveType4;
+	BotCore::SkillMeta cureDisease = MakeMeta(112535, 5, 0);
+	cureDisease.type5Kind = BotCore::kType5RemoveType3;
+	BotCore::SkillMeta resurrect = MakeMeta(112733, 5, 0);
+	resurrect.type5Kind = 3;
+
+	BotCore::ObservedStatusTable table;
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 0, 1, 150), &debuff);
+	table.Observe(MakeEvent(BotCore::kMagicEffecting, 112654, 2984, 2985, 100, 1, 600), &buff);
+
+	// The cure removes only the debuff; data[1] = 0 is still a cure.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112525, 2984, 2985, 200, 0, 0), &cure) == BotCore::kStatusCured);
+	CHECK(table.Find(2985, 2, 200) == nullptr);
+	CHECK(table.Find(2985, 1, 200) != nullptr);
+
+	// Curing with no debuff still reports kStatusCured.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112525, 2984, 2985, 300, 1, 0), &cure) == BotCore::kStatusCured);
+	CHECK(table.Find(2985, 1, 300) != nullptr);
+
+	// A cure on another target does not touch this unit.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112525, 2984, 4000, 300, 1, 0), &cure) == BotCore::kStatusCured);
+	CHECK(table.Find(2985, 1, 300) != nullptr);
+
+	// REMOVE_TYPE3 and other Type5 kinds are ignored; records unchanged.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112535, 2984, 2985, 400, 1, 0), &cureDisease) == BotCore::kStatusIgnored);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112733, 2984, 2985, 500, 1, 0), &resurrect) == BotCore::kStatusIgnored);
+	CHECK(table.Find(2985, 1, 500) != nullptr);
+
+	// ClearTarget empties the unit; Clear empties everything.
+	table.ClearTarget(2985);
+	CHECK(table.Find(2985, 1, 500) == nullptr);
+	CHECK_EQ((int)table.Units(), 0);
+	table.Clear();
+	CHECK_EQ((int)table.Records(), 0);
+}
+
+TEST_CASE("Perception_Status_PairSkills")
+{
+	BotCore::SkillMeta leg = MakeMeta(106520, 1, 4);
+	leg.buffType = 6;
+	leg.isBuff = false;
+	BotCore::SkillMeta iceArrow = MakeMeta(110615, 3, 4);
+	iceArrow.buffType = 6;
+	iceArrow.isBuff = false;
+
+	BotCore::ObservedStatusTable table;
+
+	// Type1 half of a pair carries no duration -> ignored.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 106520, 2984, 2985, 0, 1, 0), &leg) == BotCore::kStatusIgnored);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 106520, 2984, 2985, 0, 1, -104), &leg) == BotCore::kStatusIgnored);
+
+	// Type4 half is recorded.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 106520, 2984, 2985, 1000, 1, 10), &leg) == BotCore::kStatusRecorded);
+	CHECK_EQ((int)table.Records(), 1);
+
+	// {3, 4}: the target -1 summary is ignored, the real target is recorded; same buffType -> one record.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 110615, 2984, -1, 2000, 1, 12), &iceArrow) == BotCore::kStatusIgnored);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 110615, 2984, 2985, 2100, 1, 12), &iceArrow) == BotCore::kStatusRecorded);
+	CHECK_EQ((int)table.Records(), 1);
+	const BotCore::StatusObs * r = table.Find(2985, 6, 2100);
+	CHECK(r != nullptr);
+	if (r != nullptr)
+		CHECK_EQ((unsigned)r->skillId, 110615u);   // the last write wins
+
+	// Collect tie on endMs: buffType ascending.
+	BotCore::ObservedStatusTable tie;
+	BotCore::SkillMeta d2 = MakeMeta(10, 4, 0);
+	d2.buffType = 2;
+	d2.isBuff = false;
+	BotCore::SkillMeta d1 = MakeMeta(11, 4, 0);
+	d1.buffType = 1;
+	d1.isBuff = false;
+	tie.Observe(MakeEvent(BotCore::kMagicEffecting, 10, 1, 50, 0, 1, 100), &d2);
+	tie.Observe(MakeEvent(BotCore::kMagicEffecting, 11, 1, 50, 0, 1, 100), &d1);
+	BotCore::StatusObs out[8];
+	int n = tie.Collect(50, 0, out, 8);
+	CHECK_EQ(n, 2);
+	if (n == 2)
+	{
+		CHECK_EQ((unsigned)out[0].buffType, 1u);
+		CHECK_EQ((unsigned)out[1].buffType, 2u);
+	}
+}
+
+TEST_CASE("Perception_Status_Capacity")
+{
+	BotCore::SkillMeta debuff = MakeMeta(112703, 4, 0);
+	debuff.buffType = 2;
+	debuff.isBuff = false;
+
+	BotCore::ObservedStatusTable table;
+	for (int i = 0; i < BotCore::kObsStatusUnits; i++)
+	{
+		int16_t tgt = (int16_t)(3000 + i);
+		uint64_t t = (uint64_t)(100 * (i + 1));
+		CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, tgt, t, 1, 60), &debuff) == BotCore::kStatusRecorded);
+	}
+	CHECK_EQ((int)table.Units(), BotCore::kObsStatusUnits);
+	CHECK(table.Find(3000, 2, 3200) != nullptr);
+
+	// The 33rd target evicts the unit with the smallest lastMs (the first).
+	int16_t fresh = (int16_t)(3000 + BotCore::kObsStatusUnits);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, fresh, 5000, 1, 60), &debuff) == BotCore::kStatusRecorded);
+	CHECK_EQ((int)table.Units(), BotCore::kObsStatusUnits);
+	CHECK(table.Find(3000, 2, 5000) == nullptr);
+	CHECK(table.Find(fresh, 2, 5000) != nullptr);
+
+	// Copies are independent.
+	BotCore::ObservedStatusTable copy = table;
+	CHECK_EQ((int)copy.Units(), BotCore::kObsStatusUnits);
+	copy.Clear();
+	CHECK_EQ((int)copy.Units(), 0);
+	CHECK_EQ((int)table.Units(), BotCore::kObsStatusUnits);
+
+	// Prune drops expired records and empties their units.
+	BotCore::ObservedStatusTable prune;
+	BotCore::SkillMeta b1 = MakeMeta(20, 4, 0);
+	b1.buffType = 1;
+	b1.isBuff = false;
+	BotCore::SkillMeta b2 = MakeMeta(21, 4, 0);
+	b2.buffType = 2;
+	b2.isBuff = false;
+	prune.Observe(MakeEvent(BotCore::kMagicEffecting, 20, 1, 2985, 0, 1, 10), &b1);
+	prune.Observe(MakeEvent(BotCore::kMagicEffecting, 21, 1, 2985, 0, 1, 60), &b2);
+	prune.Observe(MakeEvent(BotCore::kMagicEffecting, 20, 1, 2986, 0, 1, 10), &b1);
+	prune.Prune(20000);
+	CHECK_EQ((int)prune.Records(), 1);
+	CHECK_EQ((int)prune.Units(), 1);
+	CHECK(prune.Find(2985, 2, 20000) != nullptr);
+}
+
+TEST_CASE("Perception_HealRing")
+{
+	BotCore::SkillMeta great = MakeMeta(112527, 3, 0);
+	great.directType = 1;
+	great.firstDamage = 960;
+	BotCore::SkillMeta hotOnly = MakeMeta(112548, 3, 0);
+	hotOnly.directType = 1;
+	hotOnly.timeDamage = 2500;
+	hotOnly.type3DurationSec = 30;
+	BotCore::SkillMeta damage = MakeMeta(110503, 3, 0);
+	damage.directType = 1;
+	damage.firstDamage = -300;
+	BotCore::SkillMeta debuff = MakeMeta(112703, 4, 0);
+	debuff.buffType = 2;
+	debuff.isBuff = false;
+
+	BotCore::HealObsRing ring;
+	// data[1] = 0 still stores a heal (the server leaves data[1] as sent).
+	CHECK(ring.Observe(MakeEvent(BotCore::kMagicEffecting, 112527, 2984, 2985, 1000, 0, 0), &great));
+	CHECK(ring.Observe(MakeEvent(BotCore::kMagicEffecting, 112548, 2984, 2985, 2000, 0, 0), &hotOnly));
+
+	// Non-heals, wrong op, target -1 and null meta do not store.
+	CHECK(!ring.Observe(MakeEvent(BotCore::kMagicEffecting, 110503, 2984, 2985, 2500, 1, 0), &damage));
+	CHECK(!ring.Observe(MakeEvent(BotCore::kMagicEffecting, 112703, 2984, 2985, 2600, 1, 150), &debuff));
+	CHECK(!ring.Observe(MakeEvent(BotCore::kMagicCasting, 112527, 2984, 2985, 2700, 1, 0), &great));
+	CHECK(!ring.Observe(MakeEvent(BotCore::kMagicEffecting, 112527, 2984, -1, 2800, 1, 0), &great));
+	CHECK(!ring.Observe(MakeEvent(BotCore::kMagicEffecting, 112527, 2984, 2985, 2900, 1, 0), nullptr));
+	CHECK_EQ(ring.Count(), 2);
+
+	CHECK_EQ((unsigned)ring.SumNominal(2985, 3000, 5000), 3460u);
+	CHECK_EQ((unsigned)ring.SumNominal(2985, 3000, 1500), 2500u);
+	CHECK_EQ((unsigned)ring.SumNominal(9999, 3000, 5000), 0u);
+	CHECK_EQ((unsigned)ring.SumNominal(BotCore::kSkillIdAny, 3000, 5000), 3460u);
+	CHECK_EQ(ring.CountIn(2985, 3000, 5000), 2);
+	CHECK_EQ(ring.CountIn(2985, 3000, 1500), 1);
+
+	// Ring overflow.
+	BotCore::HealObsRing big;
+	for (int i = 0; i < 70; i++)
+		big.Observe(MakeEvent(BotCore::kMagicEffecting, 112527, 2984, 2985, (uint64_t)(10000 + i), 1, 0), &great);
+	CHECK_EQ(big.Count(), BotCore::kHealObsRing);
+	CHECK_EQ((unsigned)big.Total(), 70u);
+	CHECK_EQ((unsigned long long)big.At(0).tMs, 10069ull);
+
+	// Copies are independent.
+	BotCore::HealObsRing copy = big;
+	CHECK_EQ(copy.Count(), BotCore::kHealObsRing);
+	copy.Clear();
+	CHECK_EQ(copy.Count(), 0);
+	CHECK_EQ(big.Count(), BotCore::kHealObsRing);
+}
