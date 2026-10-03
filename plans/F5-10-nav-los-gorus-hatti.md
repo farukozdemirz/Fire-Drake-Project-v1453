@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; paralel hat, `docs/17` §1 "Paralel yürütülebilir işler") |
 | Branch | `bot/F5-10` (taban: `gece/2026-10-02-nav`) |
 | Bağımlı olduğu planlar | F5-01 (`BotCore/NavGrid.h`), F5-02 (`BotCore/NavPath.h`: `NavCell`), F5-04 (`BotCore/NavTrack.h`: `NavRingCells`): hepsi `KAPANDI`, `gece/2026-10-02-nav` içinde; bu planın testleri mevcut 217 testin üstüne eklenir |
@@ -306,20 +306,28 @@ git diff --stat gece/2026-10-02-nav...bot/F5-10
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F5-10` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F5-10` @ `1f3d1c3` (kod commit'i `2124a1d`; paralel hat `nav`, gece modu, `AUTO_LOOP=1`; sunuculara dokunulmadı, birleştirme/push yapılmadı)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `NavLos.h` ve `NavLosTests.cpp` `touch` sonrası `./tools/build.sh Release` rc=0 (çıktıda `NavLosTests.cpp` yeniden derlendi); çıktıda `warning`/`error` yok (`/v:minimal` uyarıları da basar; Level 4 açık: `BotCore.vcxproj:50,60`, `BotCoreTests.vcxproj:52,66`) |
+| K2 | ✔ | `run-tests.sh Release --no-build --list`: `NavLos_Grid`, `NavLos_Terrain`, `NavLos_Mode`, `NavLos_PickCell`, `NavLos_Reference`, `NavLos_RealMap` (satır 171-176) |
+| K3 | ✔ | Release tam koşu rc=0, `223 tests, 0 failed`, 223 `[ OK ]`; gerçek `SKIPPED` satırı yok (`grep -i skipped` yalnızca `skipped=23966` sayacını eşleştirir); `NAVLOS ref: queries=5000 clear=3272 mismatches=0 asym=0`; beş `NAVLOS real off(...)` satırı; `NAVLOS real: walk=88508 tested=64559 grid=47245 grid_terrain=43163 skipped=23966 asym=0 violations=0 ms_p95=0.0009`; `NAVLOS real pick: reposition=3935 found=3935 violations=0 ms_p95=0.0140` |
+| K4 | ✔ | `zone71.navgrid` geçici olarak `.bak` adına taşındı: `run-tests.sh Release --no-build NavLos_` rc=0, `NAVLOS real map: SKIPPED (...)`, `6 tests, 0 failed`; dosya geri konuldu (`ls build/nav`) |
+| K5 | ✔ | `./tools/run-tests.sh Debug` (derleme dahil) rc=0, çıktıda `warning`/`error` yok, `223 tests, 0 failed` |
+| K6 | ✔ | Tablo 1-4 (`NavLos_Grid/_Terrain/_Mode/_PickCell`) Release ve Debug'da `[ OK ]`; testin plan tablolarıyla satır satır karşılaştırması: Tablo 1 satır 1-35, Tablo 2 altı satır x dört `H` + altı parametre değişimi, Tablo 3, Tablo 4 a-m (`NavLosTests.cpp:208-435`); referans `mismatches=0 asym=0 clear=3272`; gerçek harita sayıları (toplam ve ofset başına) tam eşit, Release `ms_p95` 0,0009 ≤ 0,05 ve 0,0140 ≤ 0,5 (Debug'da kapı `#ifndef _DEBUG` ile atlanır; Debug pick p95 0,4003) |
+| K7 | ✔ | `grep -n "windows.h\|stdafx.h\|GameServer\|shared/" BotCore/NavLos.h` boş (rc=1); `git diff --stat gece/2026-10-02-nav...bot/F5-10`: yalnızca `BotCore/BotCore.vcxproj` (+1), `BotCore/NavLos.h` (+170), `BotCoreTests.vcxproj` (+1), `NavLosTests.cpp` (+637), kendi plan dosyası; `GameServer/`, `AIServer/`, `shared/`, `docs/`, `NavGrid.h`, `NavPath.h`, `NavTrack.h`, `NavStuck.h` yok; silinen kod satırı 0 |
+| K8 | ✔ | Eski 217 test değişmedi (testlerde silinen satır yok, yalnızca yeni dosya); Release'te `NAVGRID real map: n=513 main=88508`, `NAVPATH T-NAV-03 set=near64 ... found=997 ... expanded_p50=306 expanded_p95=2431`, `NAVREACH real: components=143 largest=88279 pockets=229`, `NAVRETREAT real: solo A cell=(159,228) ... len=105.657 cand=2799`, `NAVFORM real: walk=88508 usable8=72459`, `NAVSTUCK real: walk=88508 sidestep_h=86017 sidestep_n=86968 violations=0 clr2_cells=66265 clr2_found=66003` plandaki sayılarla aynı |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
-
-```
-…
-```
+- Denetim notları (engel değil):
+  - Kod incelemesi: `NavLosGridClear` (`BotCore/NavLos.h:36-98`) planın §5.1 kurallarıyla birebir (`unit <= 0` ret, aynı hücre muaf, `double` genişletilmiş DDA, `1e300` "geçiş yok", eşitlikte köşegen adım, bitiş hücresi muaf, ızgara dışı `Event != 1` engelli, `Walk` kullanılmaz); `NavLosTerrainClear` (`:103-130`) kesin `>`, uçlar örneklenmez, `sampleM <= 0`/`len <= 0` kısayolu; `NavPickLosCell` (`:149-169`) başarısızlıkta `out`'a dokunmaz, `scratch`'i `NavRingCells` ile tamamen yeniden yazar. Heap yok (yalnızca `scratch`), global/`static` değişebilir durum yok, saat yok, yalnızca `NavTrack.h` + standart başlıklar.
+  - Biçim: yeni dosyalar ASCII, çalışma ağacında CRLF (indekste LF; mevcut dosyalarla aynı `autocrlf` düzeni), tab girinti, Allman. `.vcxproj` farkları yalnızca birer satır, BOM korunmuş (`EF BB BF`, taban ile aynı), konum plana uygun. `build/` commit edilmemiş, çalışma ağacı temiz.
+  - Küçük not: plan `NavLos_Terrain` için "`NavLosClear == (NavLosGridClear && NavLosTerrainClear)` her satırda" der; test bunu yalnızca satır bazında `NavLosClear` ile, `NavLosTerrainClear` ile ise iki satırda (`NavLosTests.cpp:297-298`) ve 1,9 örneğinde sınar. Bileşim kuralı gerçek haritada 64559 çiftte `violations == 0` ile zaten sınanıyor; ek iş istenmez.
+  - Uygulayıcı Raporu'ndaki iddialar (commit, dosyalar, 223 test, referans ve harita sayıları, K4) bağımsız olarak yeniden üretildi; fark yok. Rapordaki Release `ms_p95` 0,0015/0,0145, doğrulamada 0,0009/0,0140 (makine yükü farkı; kapıların çok altında).
+  - İstemci (GUI) gerektiren kontrol yok; T-NAV-LOS-01 (oyun içi ölçüm) plan gereği kapsam dışı.
+- Bulgular (önem sırasıyla): engelleyici bulgu yok.
+- Düzeltme talimatı: gerekmiyor.
