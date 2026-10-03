@@ -380,6 +380,7 @@ Proje sahibi acil ayrıldı; testler dönünce yapılacak, gece döngüsü o sı
 
 | Test | Sonuç | Kanıt |
 |---|---|---|
+| T-NAV-02 (eğim; harita yürüyüş oturumu, Karus karakteri) | **YAPILDI:** sürekli çıkılan en dik yerel eğim 0,47; 0,78 kısmen; 0,94 ve 1,26 çıkılamadı (iniş mümkün: 1,07). Karar ADR-0024: bot sınırı **0,45** (F5-69, HAZIR). 0,54/0,65 test edilmedi (proje sahibi: rahat/güvenli) | `plans/_logs/trace/karus_su.log` ve oturum kayıtları (yerel, ad içerir), `docs/12` §3 |
 | T-NAV-09 (su, Q-26; harita yürüyüş oturumu, Karus karakteri) | **GEÇTİ, F5-67 İPTAL:** çukur 3 ve 4 gerçek su (ekran görüntüsü + `y` −5,6 / −2,4 m); girilip çıkılabiliyor, suda hız düşmüyor (medyan 6,91 m/s, karada 6,78); proje sahibi: "sadece gereksiz bir rota" | `plans/_logs/trace/karus_su.log` (yerel, ad içerir), `docs/12` §13.1, `tools/route-extract.py` |
 | T-ARCH-13 (F4-08) | GEÇTİ: insan → `BotPHD_K` daveti, party panelinde ad/seviye/sınıf/HP-MP doğru; bot-bot party'de lider "P" sembolü görüldü. Sunucu: `PartyInvite` `created`, `PartyAccept` `joined`. Not: `BotMF_K` önceki testlerden ölü (HP 0) kayıtlıydı, `paccept` `refused (dead)`; oturumda `BotMI_K` kullanıldı | proje sahibi gözlemi, `Logs/bots/2026-10-03/live-*.jsonl` |
 | T-ARCH-14 (F4-09) | GEÇTİ: `pdecline` "davet reddedildi"; kabul + `pleave` iki kişilik party dağıldı; lider ayrılınca party dağıldı ve iki botta "P" kalktı. Sunucu: `PartyDecline` 2, `PartyLeave` 6, `FAIRNESS_REJECT` 0 | aynı |

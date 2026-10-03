@@ -32,7 +32,7 @@ GameServer başlangıcında zone 71 için bir kez hesaplanır. `C3DMap`, `SMDFil
 | Katman | Hücre | İçerik |
 |---|---|---|
 | `walk` | 4 m | Olay = 1 ve ana bileşende |
-| `slope` | 4 m | Komşu yükseklik farkı; `|Δh| > P-NAV-MAX-STEP` (başlangıç 2,5 m / 4 m) ise kenar engelli `[Ö]`. Gerçek istemcinin tırmanabildiği eğim T-NAV-02 ile kalibre edilir. |
+| `slope` | 4 m | Komşu yükseklik farkı; `|Δh| > P-NAV-MAX-STEP` (başlangıç 2,5 m / 4 m) ise kenar engelli `[Ö]`. Gerçek istemcinin tırmanabildiği eğim T-NAV-02 ile kalibre edilir. **T-NAV-02 SONUCU (2026-10-03, insan istemcisi, paket izleyici, karakterin kendi yüksekliği) `[V]`:** sürekli çıkılan en dik yerel eğim **0,47** (84 m'lik rampa, ortalama 0,24); 0,78 yamaçta +4 m çıkılıp takılındı; 0,94 ve 1,26 **çıkılamadı** (iniş mümkün: en dik iniş 1,07). Karar (ADR-0024, F5-69): botun `P-NAV-MAX-SLOPE` değeri **0,45** (1,8 m / 4 m); haritada Walk hücrelerinin %96,6'sı ulaşılabilir, doğuşlar/arena/bowl/kapılar bağlı kalır, rota +%0..+%25 uzar. |
 | `clearance` | 4 m | En yakın engelli hücreye mesafe (BFS, hücre) |
 | `danger_static` | 4 m | Karşı ulusun guard tower halkası (kapıya ≤ 90 m) **yasaklı** (hücre bayrağı, dışarıdan girilemez; `BotCore/NavDanger.h`, ADR-0006 Eki F5-06), kendi halkası **güvenli işaretli**; canavar spawn dikdörtgenleri + arama menzili (yol maliyeti; henüz yok). Takıma göre iki ayrı katman (Karus/El Morad). |
 | `danger_dynamic` | 4 m | Görünür düşmanların etki haritası (melee: 15 m çekirdek, ağırlık 1,0; mage: 45 m menzil diski, ağırlık 0,6 `[A]`; 8 m doğrusal sönüm `[A]`; hücre başına 0–255, en büyük değer birleşimi), 500 ms'de bir statik katmanın kopyası üzerine yeniden kurulur |
@@ -164,7 +164,7 @@ Uygulama (`BotCore/NavStuck.h`, ADR-0006 Eki F5-09, F5-09 planı `[Ö]`/`[A]`; t
 | Test | Amaç |
 |---|---|
 | T-NAV-01 | Temel koşu hızı ve hareket paketi sıklığının gerçek istemciyle ölçülmesi |
-| T-NAV-02 | Eğim kalibrasyonu: istemcinin tırmanamadığı eğimlerin işaretlenmesi |
+| T-NAV-02 | Eğim kalibrasyonu: istemcinin tırmanamadığı eğimlerin işaretlenmesi **YAPILDI (2026-10-03):** bkz. §3 `slope` satırı, ADR-0024 |
 | T-NAV-03 | 1000 rastgele A* sorgusu: başarı, süre, düğüm sayısı. Sorgu dağılımı `[Ö]` ([ADR-0006](adr/ADR-0006-navigasyon-izgara-astar.md) madde 4): kapı kümesi Chebyshev ≤ 64 hücre (256 m); ≤ 150 hücre ve tüm harita kümeleri raporlanır. F5-02'de birim/performans testi olarak gerçeklenir |
 | T-NAV-04 | Dar geçit ve köprü noktalarında 50 geçiş: takılma oranı |
 | T-NAV-05 | Respawn noktasından arenaya yürüyüş süresi (summon değerinin hesabı) |

@@ -1,5 +1,7 @@
 # Harita yürüyüş oturumu protokolü (T-NAV-02 eğim, T-NAV-09 su, T-ENV-ARENA-02 arena, rota kaydı)
 
+> **Durum (2026-10-03):** Karus oturumunda town → bowl, bowl'da arama, karşı kapı (Lunar War araya girdi), su (T-NAV-09 GEÇTİ) ve eğim (T-NAV-02 YAPILDI, ADR-0024) tamamlandı; sonuçlar `docs/STATUS.md` ve `docs/12` §3. Kalan: arena A turu (T-ENV-ARENA-02) ve El Morad oturumu. Bölüm 6'daki eğim tablosu ilk sürümdür; düz zeminden yaklaşılabilirlik filtresi sonradan eklendi (`tools/slope-candidates.py`).
+
 > Okuyan: proje sahibi. Yazan: Claude (2026-10-03). Bu oturum **bot gerektirmez**: kendi (insan) karakterinle iki ırkta yürürsün, sunucu hareketlerini paket izleyiciyle kaydeder. Süre: ırk başına yaklaşık 45–60 dk. Kaynaklar: `docs/12` §13.1, `docs/15` T-NAV-02/09, `plans/F5-60`, `tools/route-extract.py`, `tools/slope-candidates.py` (ikisi de `--selftest` geçti).
 
 ## 1. Neden bu oturum, neyi çözüyor
