@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `23fe31d`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-74 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: **F5-73** (`NavDrive` Follow kipi, saf mantık; merge `bc3170d`), **F5-70** (`/bot goto`, `SharedPathfinder()`, `BotSession::m_navDrive`; merge `99d7170`), F5-59 (`NavService`), F5-61 (kiriş guard'ı), F5-71 (bileşen farkındalıklı takipçi), F4-12/F4-50 (`ObsTable` gözlem tablosu, `UnitObs.lastMoveMs/lastSpeed`). **F5-72'den bağımsız** (F5-72 `KAPANDI`/birleşti, `3bf2ad2`; yalnızca `BotCore/ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py`; bu plan yalnızca `GameServer/Bot/` altındaki yedi dosya) |

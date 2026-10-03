@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `1bfb885`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-71 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`), F5-05 (`NavReach`), F5-53 (`NavBudget`, chase simülasyonu), F5-69 (eğim 0,45, KI-023'ün kaynağı). **F5-62 ve F5-70'e bağımlı DEĞİLDİR** ve onlarla dosya paylaşmaz (F5-62, `DOĞRULANDI` ve `gece/2026-10-02`ye birleşti: `NavDrive.h`, `NavDriveTests.cpp`, iki `.vcxproj`; bu plan: `NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`). F5-63 (Follow kipi) bu planın `UpdateReachable`ını kullanır |

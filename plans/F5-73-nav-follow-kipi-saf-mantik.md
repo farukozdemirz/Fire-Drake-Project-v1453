@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `bc3170d`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-73 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-04 (`NavFollower`/`NavTargetTracker`), F5-05 (`NavReach`), F5-09 (`NavStuckMonitor`/`NavPickSideStep`/`NavStuckPenalties`), F5-52 + F5-56 (hız kestirimi, gözlem zaman damgası), F5-54 (`NavPacketCadenceParams`), F5-57 (`NavProgressAssessor`), F5-62 (`NavDrive` `Goto`), F5-71 (`UpdateReachable`). **F5-70'e (`/bot goto` sunucu bağlaması) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-70 yalnızca `GameServer/Bot/` altındaki yedi dosyaya dokunur; bu plan yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h` ve iki test dosyasına. |
