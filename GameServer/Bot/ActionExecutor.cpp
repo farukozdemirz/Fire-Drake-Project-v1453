@@ -730,13 +730,27 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 		return out;
 	}
 
+	// ADR-0017 Ek F4-33: a resurrection (Type5 + Moral 25 + the Stone of Life, MAGIC_TYPE5.Type RESURRECTION) is a supported
+	// skill although MAGIC.UseItem != 0 and Moral 25 is not in CastMoralSupported. Static game data only: the caller's
+	// class/level/quest checks above and below still apply.
+	bool resurrection = false;
+	if (m->bType[0] == 5 && m->iUseItem != 0)
+	{
+		_MAGIC_TYPE5 * t5 = g_pMain->m_Magictype5Array.GetData(skillId);
+		resurrection = t5 != nullptr
+			&& BotCore::CastResurrectionSupported(m->bType[0], m->bType[1], m->bMoral, m->iUseItem, t5->bType)
+			&& m->bFlyingEffect == 0
+			&& BotCore::CastHpCostSupported(m->sHP);
+	}
+
 	bool flyingCast = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
-	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
-		|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
-		|| (m->bFlyingEffect != 0 && !flyingCast)
-		|| m->iUseItem != 0
-		|| !BotCore::CastMoralSupported(m->bMoral)
-		|| !BotCore::CastHpCostSupported(m->sHP))
+	if (!resurrection
+		&& (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
+			|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
+			|| (m->bFlyingEffect != 0 && !flyingCast)
+			|| m->iUseItem != 0
+			|| !BotCore::CastMoralSupported(m->bMoral)
+			|| !BotCore::CastHpCostSupported(m->sHP)))
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "unsupported_skill";
@@ -755,7 +769,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 
 	bool self = targetName.empty();
 	bool wantedSelf = (m->bMoral == MORAL_SELF);
-	bool wantedTarget = (m->bMoral == MORAL_ENEMY);
+	bool wantedTarget = BotCore::CastNeedsOtherTarget(m->bMoral);
 	if ((wantedSelf && !self) || (wantedTarget && self))
 	{
 		out.kind = CastOutcome::REFUSED;
