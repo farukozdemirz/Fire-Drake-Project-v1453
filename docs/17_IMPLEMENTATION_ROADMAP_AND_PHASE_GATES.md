@@ -217,8 +217,8 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Priest tek hedef heal | Type3 dost tek | ✔ (`MORAL_FRIEND_WITHME`, ad ile) | — | party HP ✔ (F4-18) | T-IGT-PRI-01 |
 | Priest grup heal (112557/112560, party hedefi r=30) | Type3 party/alan | ✘ | **m.5** (party hedefi çözümü açıkça yazılmalı, aşağıda) | party konumları ✔ | T-PRI-03 |
 | Priest buff (AC/HP/direnç) | Type4 dost | ✘ | **m.4** (F7'den önce) | dost buff gözlemi: F4-52/53 | T-PRI-04 |
-| Priest cure | Type5 (REMOVE_TYPE4/disease) | ◐ F4-32 HAZIR (Cure curse/disease, `Moral` 2; Bless of God `Moral` 6 kapalı) | **m.6a** (F7'den önce) | dost debuff gözlemi: F4-53 | T-PRI-05 |
-| Priest diriltme | Type5 + Stone of Life (`iUseItem`) | ✘ | **m.6 + m.8** (taş stoğu) | ceset (`WIZ_DEAD` ✔), kendi taş stoğu | T-PRI-08 |
+| Priest cure | Type5 (REMOVE_TYPE4/disease) | ◐ F4-32 KAPANDI (Cure curse/disease, `Moral` 2; Bless of God `Moral` 6 kapalı) | **m.6a** (F7'den önce) | dost debuff gözlemi: F4-53 | T-PRI-05 |
+| Priest diriltme | Type5 + Stone of Life (`iUseItem`) | ◐ F4-33 HAZIR (Resurrection love/grace/favors, `Moral` 25; taşlar **ölü hedeften** alınır, botlarda 30 adet var) | **m.6b** (F7'den önce); taş yeniden stoklaması m.8 | ceset (`WIZ_DEAD` ✔), ölü hedefin taş stoğu (`TeamBlackboard`; insan oyuncuda bilinmez) | T-PRI-08 |
 | Priest debuff + hedef çağrısı | Type4 düşman (Malice/Parasite) | ◐ F4-28 KAPANDI (tek hedef, `Moral` 7; hedef çağrısı/provoke ayrı) | **m.4** (F7'den önce) | debuff başarısı: F4-52; düşman durumu: F4-53; düşman adı: F4-50 | T-PRI-06 |
 | Priest'e baskı: cast kesme/geri çekilme | cast iptali | ✘ | **m.1** | düşman konum+hız: F4-50 | T-PRI-07 |
 | Mage tek hedef, uçmayan, tek tipli Type3 | Type3 düşman (Ignition) | ✔ | — | düşman HP: F4-51 | T-MAG-01 |

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `8590e33`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-32` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-28 (Type4 tek tipli: `Moral` 2 yolu, MEC-MAG-15) — `KAPANDI`; F4-31 (`CastMoralSupported`, `CastHpCostSupported`, `BeginCast` destek koşulu) — `KAPANDI` (merge `78759b5`) |
