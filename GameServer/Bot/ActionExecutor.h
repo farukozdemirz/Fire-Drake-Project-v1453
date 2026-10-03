@@ -48,7 +48,7 @@ struct CastOutcome
 	enum Kind { NOTHING, SENT, FINISHED, REFUSED, FAILED };
 	Kind kind;
 	const char * reason;   // constant text, never freed: "ok", "casting", "flying", "effected", "missed", "srv_fail", "no_result",
-	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "bad_target",
+	                       // "not_in_game", "dead", "sitting", "bad_skill", "unsupported_skill", "quest_locked", "no_item", "bad_target",
 	                       // "out_of_range", "not_standing", "no_mana", "recast", "type_gate", "gap", "rate", "too_early",
 	                       // "stopping", "cancelled", "dropped", "idle"
 	                       // single Type4 (ADR-0017 Ek F4-28): "effected" carries the duration in the echo code, a redundant
@@ -225,8 +225,13 @@ public:
 	// Gate (Type8, Moral 1, MAGIC_TYPE8.WarpType 1: the caster is warped to its resurrection/start point; self cast only)
 	// and descent (Type8, Moral 4, WarpType 25: the caster is warped to a party member within MAGIC_TYPE8.Radius metres;
 	// the target must be a party member other than the caster; ADR-0017 Ek F4-35); a Gate or a descent reports "effected"
-	// when the server broadcasts it, which does not prove the caster moved (docs/03 MEC-MAG-22)),
+	// when the server broadcasts it, which does not prove the caster moved (docs/03 MEC-MAG-22); class skills with
+	// MAGIC.UseItem (Type1/3/4, MAGIC.Skill != 0: Impact scrolls, Absolute power, Judgment; ADR-0017 Ek F4-36) are
+	// supported when the other rules pass; item-effect magics (MAGIC.Skill == 0) and the dual-typed Type1 + Type3/4
+	// skills (Scream, Shock Stun) stay unsupported),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
+	// "no_item" (the skill's MAGIC.UseItem, or for MAGIC.BeforeAction 1..4 the class stone 379058000 + n * 1000, is not
+	// in the caster's own bag or not usable by its class/level; ADR-0017 Ek F4-36, docs/03 MEC-MAG-23),
 	// "bad_target" (moral does not match the target kind; corpse-friend, summon and descent need a named target).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);

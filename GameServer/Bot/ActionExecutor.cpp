@@ -768,7 +768,7 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 		&& (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 			|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)
 			|| (m->bFlyingEffect != 0 && !flyingCast)
-			|| m->iUseItem != 0
+			|| !BotCore::CastItemSkillSupported(m->bType[0], m->sSkill, m->iUseItem)
 			|| !BotCore::CastMoralSupported(m->bMoral)
 			|| !BotCore::CastHpCostSupported(m->sHP)))
 	{
@@ -784,6 +784,19 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "quest_locked";
+		return out;
+	}
+
+	// ADR-0017 Ek F4-36 (docs/03 MEC-MAG-23, U8/U9): a skill with MAGIC.UseItem needs that item AND, for BeforeAction 1..4,
+	// the class stone in the caster's own bag (the server asks for both: MagicInstance.cpp:246-260). The bot reads only its
+	// own CUser (CanUseItem checks class, level range and existence), so no foreign state is touched; the server still
+	// decides (a missing item would end as srv_fail with a wasted CASTING packet).
+	if (!resurrection && m->iUseItem != 0
+		&& (!user->CanUseItem(m->iUseItem)
+			|| !user->CanUseItem(BotCore::CastConsumeItem(m->nBeforeAction, m->iUseItem))))
+	{
+		out.kind = CastOutcome::REFUSED;
+		out.reason = "no_item";
 		return out;
 	}
 

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-36` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-35 (`BeginCast` Type8 bloğu ve destek koşulu) — `KAPANDI` (merge `9239997`); F4-27 (`quest_locked` kuralı) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-26 (`{3, 4}` çifti), F4-25 (uçan Type3), F4-29 (alan) — `KAPANDI` |
@@ -249,18 +249,71 @@ git diff --check gece/2026-10-02...bot/F4-36
 
 ### Tur 1
 
-- Durum: —
-- Branch / commit'ler: —
-- Değişen dosyalar ve neden: —
-- Derleme sonucu (`tools/build.sh Release` son 10 satır): —
-- Kabul kriterleri öz-değerlendirme: —
-- Plandan sapmalar ve gerekçeleri: —
-- Açık sorular: —
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-36` (taban `gece/2026-10-02` @ `8b31e52`); `09449aa` — "[F4-36] Eşya tüketen sınıf skill'leri: CastItemSkillSupported + no_item ön kontrolü"
+- Değişen dosyalar ve neden:
+  - `BotCore/BotCombat.h`: §5.1 bloğu `CastWarpNeedsOtherTarget`'tan sonra, `CastTargetIdField` öncesine eklendi (sabitler `kClassStoneBase`/`kClassStoneStep`/`kClassWarriorId`/`kClassPriestId`, `CastItemSkillSupported`, `CastConsumeItem`). Yalnızca ekleme (33 satır), BOM/CRLF korundu.
+  - `Tests/BotCoreTests/CombatTests.cpp`: dosya sonuna `Combat_ItemSkill_Guard` (46 satır). Mevcut testler değişmedi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` destek koşulundaki `|| m->iUseItem != 0` yerine `|| !BotCore::CastItemSkillSupported(m->bType[0], m->sSkill, m->iUseItem)` (satır 771); `quest_locked` bloğundan sonra `no_item` ön kontrolü (satır 792-802). İki hunk, ikisi de `BeginCast` içinde.
+  - `GameServer/Bot/ActionExecutor.h`: `CastOutcome::reason` listesine `"no_item"`; `BeginCast` yorumuna eşyalı sınıf skill'leri ve `no_item` açıklaması. Yalnızca yorum.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
+  - `proj-GameServer.vcxproj -> ...\x86-Release\Server\GameServer.exe`
+  - `BotCoreTests.vcxproj -> ...\x86-Release\Tests\BotCoreTests.exe`
+  - Debug de hatasız (`BotCoreTests.vcxproj -> ...\x86-Debug\Tests\BotCoreTests.exe`). Değişen dört dosyada yeni uyarı yok (iki C4789 `UpgradeHandler.cpp`'de, önceden var).
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ Release rc=0; değişen dosyalarda uyarı yok.
+  - K2 ✔ Debug rc=0.
+  - K3 ✔ `tools/run-tests.sh Release` ve `Debug`: `248 tests, 0 failed`; `Combat_CastTypes_Supported`, `Combat_WarpCast_Guard`, `Combat_ItemSkill_Guard` üçü de `[ OK ]`. **Not:** plan 113 test bekliyordu; gerçek toplam **248** (bu çalışma ağacında nav/F8 planlarının testleri de mevcut; F4-36 öncesi 247 → sonrası 248, +1). Sayı plan metnindeki 112→113 tabanına göre değil, güncel ağaca göre doğru.
+  - K4 ✔ `grep` K4 desenleri eşleşme vermedi; `std::min`/`std::max` yok; `BotCombat.h` diff'inde silinen satır yok.
+  - K5 ✔ `m->iUseItem != 0` tam iki satır (737 diriltme, 794 `no_item`); `CastItemSkillSupported` tek satır (771, destek koşulu içinde); `CastConsumeItem` tek satır (796); `"no_item"` tek satır (799); `no_item` başında `!resurrection &&`; blok `quest_locked`'ten sonra `bool self = ...`'dan önce; diğer koşul terimleri yerinde; `m_Magictype8Array` 1.
+  - K6 ✔ `ActionExecutor.cpp` diff'i yalnızca `BeginCast` içinde iki hunk; `git diff --stat` yalnızca §4'teki 4 dosya + plan; proje dosyaları/`BotSession`/`BotManager`/`Telemetry`/`tools` değişmedi.
+  - K7 ✔ yeni ini/komut/thread/telemetri yok; diff'te `Emit(` eklenmedi.
+  - K8 ✔ dört dosya CRLF + ASCII (`file` durumu aynı); `git diff --check` boş.
+  - K9 ✔ guard grep'leri beklenen sayılarda; 112 önceki testin tamamı geçiyor.
+  - K10 ✔ `check-perception-contract.py` `RESULT: PASS` (`files scanned: 31`, R1/R4/R5 = 0), `--selftest` `selftest OK`.
+  - K11 (çalışma zamanı) Claude'a bırakıldı.
+- Plandan sapmalar ve gerekçeleri:
+  - Test sayısı plandaki "112 → 113" değil, güncel ağaçta "247 → 248". Bunun nedeni tabanın (veya bu çalışma ağacının) nav/F8 testlerini de içermesidir; F4-36 kendi testinde +1 ekler. Yeni test adı ve içeriği plan §5.2 ile birebir.
+- Açık sorular: yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — —
+### Tur 1 — 2026-10-03
 
-- Karar: —
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-36` @ `f39c4f9` (kod `09449aa`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0; log'da `warning` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0; `warning` 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug`: rc=0, `248 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `Combat_WarpCast_Guard`, `Combat_ItemSkill_Guard` (plandaki "113" tabanı eskidir: `gece/2026-10-02`'de `git grep -c "^TEST_CASE"` toplamı 247, bu plan +1 ⇒ 248) |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; eklenen satırlarda `std::min`/`std::max` 0; `-` satırı 0 (yalnızca ekleme, +33) |
+| K5 | ✔ | `m->iUseItem != 0` iki satır (`ActionExecutor.cpp:737` diriltme, `:794` `no_item`); `CastItemSkillSupported` `:771` (destek koşulu içinde); `CastConsumeItem` `:796`; `"no_item"` `:799`; koşul `!resurrection &&` ile başlıyor (`:794`); blok `quest_locked`'ten sonra, `bool self = ...`'dan önce; `CastHpCostSupported` üç satırda (`:743`, `:758`, `:773`), diğer koşul terimleri yerinde; `m_Magictype8Array` 1 |
+| K6 | ✔ | `git diff --stat`: yalnızca §4'teki 4 dosya + plan; `ActionExecutor.cpp` iki hunk (`:768-771` ve `:787-802`), ikisi de `BeginCast` içinde (`TickCast` `:824`'ten önce); vcxproj/filters, `BotSession.*`, `BotManager.cpp`, `Telemetry.cpp`, `tools/` farkı boş |
+| K7 | ✔ | koddaki farkta eklenen `Emit(` yok; yeni ini anahtarı/komut/thread/olay türü yok; `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; `git diff --check` boş |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki testlerin tamamı geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS`, `files scanned: 31` |
+| K11 | ✔ | S1–S7 çalışma zamanında geçti (aşağıda; ölçülemeyenler bulgularda) |
+
+**Çalışma zamanı** (Release `GameServer.exe`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-055303.jsonl`, `Logs/Bot_3_10_2026.log`; `summary` ve `ENABLED=0` için ayrı yeniden başlatma). Botlar: `BotMF_K` (2984), `BotMI_K` (2985), `BotPHD_K` (2986), `BotWP_E` (2987), `BotWG_K` (2988), `BotPHB_K` (2989).
+
+- **S1 ✔ Absolute power (`110802`, Type4 + eşya).** `cast BotMF_K 110802 self 1`: `CastTime 0` ⇒ tek `CastEffect` (`casting` aşaması yok), `effected` `op 3`, **`code 30`** (plan `300` bekliyordu; echo birimi saniye: `Duration 30`), `ACTION_SUBMIT` `target` = çağıranın kimliği; log `cast finished (effected) after 1 cycle(s), 1 ok, 1 packet(s) sent`. MP: ilk atış 6021 → 5821 (−200 = −240 + kümeli +40 yenileme), ikinci atış **5961 → 5721 (−240 tam)**. Üç atış (buff bitince, 32,9 sn ve 30,0 sn arayla) hepsi `effected`; **MEC-MAG-15 (buff etkinken aynı `BuffType`) ölçülemedi**: 25–30 sn penceresi iki denemede de ıskalandı (komut dosyası saniyede bir okunuyor). Stone of Mage tüketimi `[D]` (DB okunmaz; üç `effected`, `Bot_*.log`'da `RobItem`/`exception`/`assert` yok).
+- **S2 ✔ Impact (scroll tüketilmez).** `BotMF_K` 33 m'den `cast ... 110557 BotWP_E 1`: `casting` `op 1` `cast_ms 1580` → `effected` `op 3` `code 0`, `since_casting_ms` 1634; MP **6021 → 5801 (−220 tam)**. İkinci atış (20,3 sn `ReCastTime` sonrası) yine `casting` → `effected` (çantada **1 adet** `379070000` olduğu hâlde `no_item` değil ⇒ **scroll tüketilmedi** `[V]`). `BotMI_K` Ice Impact `110657`: `casting` `op 1` → `flying` `op 2` (`since_casting_ms` 1635) → `effected` `op 3` `code 10` (`since_flying_ms` 1091); MP 6021 → 5621 (−400 = −440 + yenileme); hedef HP 1953 → 1545.
+- **S3 ✔ Judgment (`112802`).** `BotPHD_K` 8 m'de: `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range` (`value 80`, `limit 10`); 2 m'de yine `out_of_range` (`value 20`); 1 m'de (`move BotPHD_K 1274 928`, hedef (1274, 927)): `CastTime 0` ⇒ tek `CastEffect`, `effected` `op 3` `code 0`, 1 paket. MP 5492 → 5372 (−120: −200 + iki yenileme kümesi, kesin değil); hedef HP 1392 → 1205. `DAMAGE` olayı yazılmadığı için hasar büyüklüğü (`Hit 500`) ölçülemedi.
+- **S4 ✔ Sunucu ağaç reddi.** `cast BotMI_K 110557 BotWP_E 1` (`[5] = 52 < 57`): `CastStart` `ok:false` `srv_fail` `op 4` `code -100`, MP 6021 sabit; `cast BotMF_K 110757 BotWP_E 1` (Thunder, `[7] = 0`): `srv_fail` `op 4` `code -100`, MP yalnızca yenileme kadar arttı (5801 → 5841). İkisi de bot kuralını geçti (`no_item` değil).
+- **S5 ✔ Bot kuralları.** `cast BotMF_K 110554 BotWP_E 1` ve `110535` ⇒ `refused (no_item)`; `cast BotMF_K 490001 self 1` ⇒ `refused (unsupported_skill)`; `cast BotWG_K 106802`/`106820`/`106815 BotWP_E 1` ⇒ `refused (unsupported_skill)`; altısında da jsonl'de `ACTION_SUBMIT` Cast satırı yok (paket gitmedi), MP değişmedi.
+- **S6 ✔ Gerilemesiz.** F4-33: `cast BotPHD_K 112733 BotWP_E 1` `BeginCast`'ten geçti (`CastStart` gitti, `srv_fail` `code -100`; hedef canlı, `no_item` ile bozulmadı); F4-35 `cast BotMF_K 110015 self 1` `casting` → `effected`; F4-32 `cast BotPHD_K 112525 self 1` `effected` `code 0`; F4-28 `cast BotPHB_K 112603 self 1` `effected` `code 600`; F4-29 Inferno `cast BotMF_K 110545 BotWP_E 1` `target -1` (hem `CastStart` hem `CastEffect`), `effected`. F4-34 summon yeniden koşulmadı (koddaki fark bu yolu değiştirmiyor).
+- **S7 ✔ Ayarlar ve temizlik.** `TELEMETRY=summary`: Absolute power `effected` (`cast finished (effected)`), `live-055813.jsonl`'de `ACTION_` satırı **0**, `PERF_SAMPLE` 32 (decisions koşusunda 6 bot `tick_p95_us` 108–427 µs; summary'de 2 bot 111 µs). `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya yerinde kaldı), `live-*` sayısı (12) ve `Bot_3_10_2026.log` satır sayısı (5966) değişmedi. `GameServer.log` son girdi 2.10 02:17, koşuda yeni hata yok; `FAIRNESS_REJECT` koşuda 2 (ikisi doğru `out_of_range`). Temizlik: botlar despawn, sunucular `stop` (nazik), `GameServer.ini` yedeğe döndü (`diff` boş), `GameServer.exe` `md5` `cc6886ea…` değişmedi, `BotCommands.*` silindi, çalışma ağacı temiz.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **Plan metni `code` değerinde yanlış tahmin etti:** Absolute power `effected` `code` = **30** (`Duration` saniye), planda `300` bekleniyordu. Karar katmanı (F7) buff süresini bu değerden saniye olarak okur. `BeginCast`/`TickCast` doğru, düzeltme gerekmez.
+  2. *(not)* **Judgment menzili:** `Range 0` ⇒ silah menzili çok kısa: 2 m `out_of_range` (`value 20`, `limit 10`), 1 m `effected`. F7 priest melee yaklaşması için 1 m'ye yaklaşmalıdır; `limit 10` birimi `value`'ya göre 0,1 m olarak yorumlanabilir `[A]` (`FAIRNESS_REJECT` alanları `docs/` içinde ayrıca doğrulanmadı).
+  3. *(not)* **Ölçülmeyenler:** Stone of Mage/Priest tüketimi (`USERDATA` okunamaz) `[D]` kaldı; MEC-MAG-15 (etkin buff üstüne Absolute power) ölçülemedi; Judgment hasar büyüklüğü ve `DAMAGE` olayı yok; `BotMI_K` Ice Impact ikinci atışı (scroll tüketimi) yalnızca Fire Impact ile gösterildi; El Morad `2xxxxx` karşılıkları, Minor Resist/Counter Curse/Discountis ve Armor ailesi (planın "ölçülmez" listesi) koşulmadı.
+  4. *(not)* **Ortam:** Ronark canavarları düşman botları (`BotWP_E`) iki kez öldürdü (bowl, ADR bilgisi); `summary` koşusunda Impact yerine eşyalı Absolute power kullanıldı (aynı `BeginCast`/`no_item` yolu). `BotWP_E` DB'de ölü başlayınca `regene` ile El Morad başlangıcına taşındı. MP ölçümlerinde kümeli +40 yenileme payı: kesin değerler Fire Impact −220 ve Absolute power −240.
+  5. *(not)* Uygulayıcı raporu doğru: commit listesi (`09449aa` kod, `f39c4f9` rapor), dosyalar, derleme, test sayısı (248; plandaki 113 eski tabana göre yazılmış, rapor sapmayı doğru açıklıyor), K5 satır numaraları kendi grep'imle örtüşüyor.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
