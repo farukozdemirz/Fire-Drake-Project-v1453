@@ -5,10 +5,10 @@
 | Durum | HAZIR |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-72 (taban: gece/2026-10-02)` |
-| Bağımlı olduğu planlar | `KAPANDI`: F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`), F4-20 (`ScriptRunner`: her adım `BotManager::ExecuteCommand` yolundan), F4-42 (`tools/skill-script-gen.py`), F5-70 (`/bot goto`, merge `99d7170`). **F5-73'e (`NavDrive` Follow kipi) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-73 yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp`; bu plan `ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py` |
+| Bağımlı olduğu planlar | `KAPANDI`: F4-19 (`BotCore/ScriptPlan.h`, `ParseScript`), F4-20 (`ScriptRunner`: her adım `BotManager::ExecuteCommand` yolundan), F4-42 (`tools/skill-script-gen.py`), F5-70 (`/bot goto`, merge `99d7170`). **F5-73'e (`NavDrive` Follow kipi; artık `gece/2026-10-02` dalında birleşti, merge `bc3170d`) bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz: F5-73 yalnızca `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp`; bu plan `ScriptPlan.h`, `ScriptTests.cpp`, `tools/skill-script-gen.py` |
 | İlgili gereksinim / kabul | ADR-0017 Ek F4-19 madde 2 (izinli komut sözlüğü, 20 verb; **bu planın genişletmesi ADR-0017 Ek F5-72 olarak doğrulamada yazılır**); F5-70 plan §0 (betik fiili bu plana ayrıldı); `docs/17` F4 "betikli test senaryoları" ve F5-66 (çalışma zamanı doğrulama koşusu betikle `goto` verebilsin) |
 | Tahmini büyüklük | S (3 dosya; saf mantık + Python aracı; `GameServer` kaynağı değişmez) |
-| Hazırlayan / tarih | Claude / 2026-10-03 (gece modu, ön-plan; referanslar `gece/2026-10-02-preplan` @ `fa24182` üzerinde doğrulandı) |
+| Hazırlayan / tarih | Claude / 2026-10-03 (gece modu, ön-plan; referanslar `gece/2026-10-02-preplan` @ `fa24182` üzerinde doğrulandı; `f636c17` üzerinde yeniden doğrulandı, bkz. Tazeleme notu) |
 
 ---
 
@@ -18,14 +18,14 @@ Test betikleri (`./Scripts/<ad>.txt`, `/bot script run <ad>`) artık `goto <bot>
 
 ## 2. Bağlam (okunması zorunlu)
 
-Satır numaraları `gece/2026-10-02-preplan` @ `fa24182` üzerinde okundu. Sapma görürsen **dur** (§5 adım 1).
+Satır numaraları `gece/2026-10-02` @ `f636c17` üzerinde yeniden doğrulandı (ilk yazım `fa24182`). Sapma görürsen **dur** (§5 adım 1).
 
 - `BotCore/ScriptPlan.h` (yalnızca standart kütüphane; son değişiklik `59662a7` F4-19): sözlük yorumu `:59` ("the 20 verbs"), `IsScriptVerb` `:60`, `kVerbs[]` dizisi `:62-67` (`"move", "stop", "attack", "cast", "pot", "sit", "stand", "target", "regene", "pinvite", "paccept", "pdecline", "pleave", "ppromote", "pkick", "pchat", "see", "npcs", "snap", "list"`), karşılaştırma küçük harfle yapılır (`:69-84`), `ParseScript` yalnızca ilk sözcüğü (`verb`) sözlükle denetler `:224-230` — argüman doğrulaması **yoktur** (argümanı çalışma zamanında `CommandGoto` doğrular).
 - `Tests/BotCoreTests/ScriptTests.cpp`: `Script_VerbWhitelist` `:44-73` (`verbs[]` dizisi `:46-51`, `for (int i = 0; i < 20; ++i)` `:53`, olumsuz örnekler `:60-69`). Dosya CRLF + ASCII. Dosyada altı `TEST_CASE` var (`Script_ParseValid` `:7` … `Script_ErrorLineNumbers` `:208`). `BotCoreTests.vcxproj:101` dosyayı zaten içerir.
 - `GameServer/Bot/BotManager.cpp:629-630` `goto` → `CommandGoto` dağıtımı (F5-70); `GameServer/Bot/ScriptRunner.cpp:206-214` her adımı `m_mgr.ExecuteCommand(command)` ile çalıştırır ve `SCRIPT_STEP` telemetrisine `verb` alanını yazar (fiil sözlüğüne bağımlı kod yok). **Bu iki dosyaya dokunulmaz.**
-- `tools/skill-script-gen.py` (LF + ASCII): `VERBS` demeti `:73-79` (yorum `:73` "The 20 verbs a script may run"), `VERB_SET` `:79`; `raw` satırı sözlükte olmayan fiili reddeder `:214-222`; `check_bytes` aynı kümeyle `bad verb` der `:379-380`; selftest `check("check_bad_verb", …)` `:546-547` (`0 teleport X`); `python3 tools/skill-script-gen.py --selftest` bugün `selftest: 23 checks, 0 failed` basar `[V]`.
+- `tools/skill-script-gen.py` (LF + ASCII): `VERBS` demeti `:73-79` (yorum `:73` "The 20 verbs a script may run"), `VERB_SET` `:79`; `raw` satırı sözlükte olmayan fiili reddeder `:214-222`; `check_bytes` aynı kümeyle `bad verb` der `:379-380`; selftest `# 16.` bloğu `:538-549`, `check("check_bad_verb", …)` `:548-549` (`0 teleport X`); `python3 tools/skill-script-gen.py --selftest` bugün `selftest: 23 checks, 0 failed` basar `[V]`.
 - Sözlüğün başka kopyası yoktur: `git grep -n -a -E '"pkick"' -- . ':!docs' ':!plans'` yalnızca `ScriptPlan.h:65`, `ScriptTests.cpp:49`, `skill-script-gen.py:76` (üç kopya) ile `BotManager.cpp:657`/`:2221` (komut dağıtımı ve bir günlük metni; sözlük değildir) verir `[V]`; başka kopya çıkarsa **dur**.
-- Test sayısı tabanda: şu an `293` (`git grep -h -c '^TEST_CASE' -- Tests/BotCoreTests` toplamı); F5-73 birleşince `293 + 21 = 314` olması beklenir. **Taban sayıyı başlangıçta kendin ölç** ve K2'yi ona göre oku (bu plan **+1** test ekler).
+- Test sayısı tabanda: F5-73 birleştiği için şu an `314` (`git grep -h -c '^TEST_CASE' -- Tests/BotCoreTests` toplamı `[V]`, `f636c17`); bu plan sonrası `315` beklenir. **Taban sayıyı başlangıçta kendin ölç** ve K2'yi ona göre oku (bu plan **+1** test ekler).
 
 ### Karar kaydı (otonom döngüde Claude kararı — gözden geçirilmeli; yeni ADR yok: ADR-0017 Ek F4-19 madde 2'nin uygulaması, **ADR-0017 Ek F5-72 doğrulamada yazılır**)
 
@@ -72,7 +72,7 @@ Satır numaraları `gece/2026-10-02-preplan` @ `fa24182` üzerinde okundu. Sapma
      - `"0 goto"` → `SCRIPT_OK`, 1 adım, `command == "goto"` (argüman doğrulaması ayrıştırıcıda yok, D3).
      - `"0 gotoo BotWP_K 1 2"` → `SCRIPT_ERR_BAD_VERB`, `errorLine == 1`; `"0 move BotWP_K 1 2\r\n10 goto2 BotWP_K 1 2"` → `SCRIPT_ERR_BAD_VERB`, `errorLine == 2` (ya-hep-ya-hiç: `steps` boş).
      - `kScriptMaxSteps` etkileşimi: 100 `goto` satırı → `SCRIPT_OK`, 100 adım; 101. satır `SCRIPT_ERR_TOO_MANY_STEPS` (mevcut `Script_Limits` kalıbıyla; yeni sınır yok).
-4. **`tools/skill-script-gen.py`:** `:73` yorumu `# The 21 verbs a script may run (BotCore/ScriptPlan.h: IsScriptVerb).`; `VERBS` demetinin ilk satırı `"move", "goto", "stop", ...` olur (başka satır değişmez). Selftest'te `# 16.` bloğunun sonuna (`check_bad_verb` satırından hemen sonra, `# 17.`'den önce):
+4. **`tools/skill-script-gen.py`:** `:73` yorumu `# The 21 verbs a script may run (BotCore/ScriptPlan.h: IsScriptVerb).`; `VERBS` demetinin ilk satırı `"move", "goto", "stop", ...` olur (başka satır değişmez). Selftest'te `# 16.` bloğunun sonuna (`:548-549` `check_bad_verb` satırından hemen sonra, `# 17.`'den (`:551`) önce):
    - `ok, message = check_bytes(b"0 goto BotWP_K 1274 890\n")` → `check("check_ok_goto", ok and message.startswith("ok: 1 steps"))`;
    - `o = offsets(gen("raw 0 goto BotWP_K 1274 890\ncast B 1000 self 1\n", magic))` → `check("raw_goto_passthrough", o[0] == (0, "goto BotWP_K 1274 890"))` (ham adım `t0` öncesi sırada kalır; `raw_sets_t0` kalıbı).
    - Sonuç: `selftest: 25 checks, 0 failed`.
@@ -82,7 +82,7 @@ Satır numaraları `gece/2026-10-02-preplan` @ `fa24182` üzerinde okundu. Sapma
 ## 6. Kabul kriterleri
 
 - [ ] K1: `./tools/build.sh Release` ve `Debug` rc=0; `BotCore/ScriptPlan.h` `touch` edilip yeniden derlenince **yeni uyarı yok** (`grep -c "warning"` sayısı rapora; eski `UpgradeHandler.cpp` C4789 dışında artış yok)
-- [ ] K2: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; sayı = tabandaki sayı **+ 1** (F5-73 henüz birleşmediyse `293 + 1 = 294`; birleştiyse `314 + 1 = 315`; rapora başlangıç ve son sayı); `Script_VerbWhitelist` ve `Script_GotoStep` `[ OK ]`; diğer `Script_*` testleri değişmeden geçer
+- [ ] K2: `./tools/run-tests.sh Release` ve `Debug`: `0 failed`; sayı = tabandaki sayı **+ 1** (F5-73 birleşti: `314 + 1 = 315`; rapora başlangıç ve son sayı); `Script_VerbWhitelist` ve `Script_GotoStep` `[ OK ]`; diğer `Script_*` testleri değişmeden geçer
 - [ ] K3: `python3 tools/skill-script-gen.py --selftest` → `selftest: 25 checks, 0 failed`; `check_ok_goto` ve `raw_goto_passthrough` çıktıda/`FAILED` listesinde değil; `python3 tools/skill-script-gen.py --check` bir geçici dosyayla (`printf '0 goto BotWP_K 1274 890\n0 list\n' > /tmp/g.txt`) `ok: 2 steps` verir, `0 follow X` içeren dosya `bad verb` ile rc≠0 verir (rapora komut ve çıktı)
 - [ ] K4: `git diff --stat gece/2026-10-02...bot/F5-72` yalnızca §4'teki 3 dosya + plan dosyası + `plans/README.md` (yalnızca kendi satırının durum sözcüğü); `git diff -U0 gece/2026-10-02...bot/F5-72 -- BotCore/ScriptPlan.h` yalnızca iki satır değişikliği (`-`/`+` çifti: yorum ve `kVerbs[]` ilk satırı); `GameServer/`, `AIServer/`, `shared/`, `docs/`, `*.vcxproj*`, diğer `BotCore/` dosyaları farkı **boş**; `git diff --check` boş
 - [ ] K5: `file BotCore/ScriptPlan.h Tests/BotCoreTests/ScriptTests.cpp` → ASCII + CRLF; `file tools/skill-script-gen.py` → ASCII, CRLF **yok** (LF korunur); `python3 tools/check-perception-contract.py` rc=0
@@ -115,6 +115,13 @@ git grep -n -a -E '"goto"' -- BotCore tools Tests
 - **Bot avantajı yasağı / adalet:** betik bota yeni yetki vermez; `goto` adımı `ExecuteCommand` → `CommandGoto` → `ActionExecutor::BeginGoto` yolundan geçer (aynı `BotFairnessGuard`, `CheckMoveChord`, `kMovePeriodMs` hızı). Betik sözlüğü yaşam döngüsü komutlarını (`spawn despawn match scenario script`) dışarıda tutmaya devam eder.
 - **Dürüstlük:** `Script_GotoStep` yalnızca ayrıştırıcı sözleşmesini sınar; `goto` adımının oyunda çalıştığı K7/K8'de Claude'un çalışma zamanı koşusuyla kanıtlanır. Çalıştırmadığın testi "geçti" yazma.
 - Beklenmedik durumda (sözlüğün dördüncü bir kopyası çıkarsa, `ScriptPlan.h` başka bir yerde sabit 20'ye dayanıyorsa, ek dosya gerekiyorsa) **dur** ve `Durum: UYGULANIYOR (BLOKE)` ile raporla.
+
+### Tazeleme (2026-10-03, otonom ön-plan tazeleme, `gece/2026-10-02` @ `f636c17`)
+
+- Önceki planın (F5-73, merge `bc3170d`) değiştirdiği dosyalar `BotCore/NavDrive.h`, `BotCore/NavTrack.h`, `NavDriveTests.cpp`, `NavTrackTests.cpp`: bu planın dosyalarıyla **kesişmez**; `git diff fa24182 HEAD -- BotCore Tests` yalnızca bu dört dosyayı gösterir `[V]`. `ScriptPlan.h` son değişikliği hâlâ `59662a7`.
+- Doğrulananlar `[V]`: `ScriptPlan.h` yorum `:59`, `IsScriptVerb` `:60`, `kVerbs[]` `:62-67` (20 eleman), `ParseScript` fiil denetimi `:224-230`, `kScriptMaxSteps = 100`, `kScriptMaxLines = 128` (`:13-14`); `ScriptTests.cpp` `Script_VerbWhitelist` `:44-73`, 6 `TEST_CASE`, `Script_Limits` `:143`, `vcxproj:101`; `skill-script-gen.py` `VERBS` `:73-79`, `raw` `:214-222`, `check_bytes` `:379-380`; `"pkick"` yalnızca 3 sözlük kopyası + `BotManager.cpp:657`/`:2221`; `BotManager.cpp:629` `goto` dağıtımı, `ScriptRunner.cpp:214` `ExecuteCommand`; `--selftest` bugün `23 checks, 0 failed`.
+- Düzeltilenler: selftest satır numaraları (`# 16.` `:538`, `check_bad_verb` `:548-549`, `# 17.` `:551`); taban test sayısı `293` → `314` (F5-73 birleşti), K2 beklentisi `315`; F5-73 notu "birleşti" olarak güncellendi.
+- Adım/kabul çelişkisi yok; plan geçerli, Durum `HAZIR` kalır.
 
 ---
 
