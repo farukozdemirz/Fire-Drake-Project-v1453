@@ -179,6 +179,17 @@ namespace BotCore
 		// nothing was due or no target was observed yet (Plan() unchanged).
 		bool Update(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
 			float botX, float botZ, float botSpeedMps, const NavFollowParams & params);
+		// Same as Update, but with edge-connected component labels (F5-71; `Reach` is NavReach or any
+		// type with `int ComponentOf(int x, int z) const`, -1 = off-grid / not Walk). When the bot's
+		// own cell is labelled: a lead-predicted point is accepted only inside the bot's component,
+		// and ring cells outside it are skipped without an A* run (no try counted; ringMaxTries
+		// bounds A* runs). Bot cell not labelled (not Walk / off-grid): identical to Update.
+		template <class Reach>
+		bool UpdateReachable(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach & reach)
+		{
+			return UpdateImpl<Reach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, &reach);
+		}
 
 		const NavFollowPlan & Plan() const { return m_plan; }
 		NavReplanReason LastReason() const { return m_reason; }  // reason of the last replan; None before the first
@@ -186,6 +197,10 @@ namespace BotCore
 		const NavTargetTracker & Tracker() const { return m_tracker; }
 
 	private:
+		template <class Reach>
+		bool UpdateImpl(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
+			float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach);
+
 		NavTargetTracker m_tracker;
 		NavFollowPlan m_plan;
 		NavPathResult m_path;
@@ -328,8 +343,21 @@ namespace BotCore
 		return m_tracker.Observe(tMs, x, z, speedField);
 	}
 
+	// Stand-in for the Reach parameter of UpdateImpl when no labels are given (never dereferenced).
+	struct NavNoReach
+	{
+		int ComponentOf(int, int) const { return -1; }
+	};
+
 	inline bool NavFollower::Update(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
 		float botX, float botZ, float botSpeedMps, const NavFollowParams & params)
+	{
+		return UpdateImpl<NavNoReach>(grid, pathfinder, nowMs, botX, botZ, botSpeedMps, params, nullptr);
+	}
+
+	template <class Reach>
+	bool NavFollower::UpdateImpl(const NavGrid & grid, NavPathfinder & pathfinder, int64_t nowMs,
+		float botX, float botZ, float botSpeedMps, const NavFollowParams & params, const Reach * reach)
 	{
 		int64_t targetT = 0;
 		float tx = 0.0f;
@@ -358,6 +386,12 @@ namespace BotCore
 		if (reason == NavReplanReason::None)
 			return false;
 
+		NavCell botCell;
+		botCell.x = grid.CellOf(botX);
+		botCell.z = grid.CellOf(botZ);
+		const int botComp = reach ? reach->ComponentOf(botCell.x, botCell.z) : -1;
+		// -1 when no labels were given or the bot cell is not labelled: no component filtering.
+
 		// Velocity and lead prediction with back-off onto a walkable cell.
 		float vx = 0.0f;
 		float vz = 0.0f;
@@ -382,7 +416,8 @@ namespace BotCore
 			{
 				const float qx = tx + vx * lead;
 				const float qz = tz + vz * lead;
-				if (grid.Walk(grid.CellOf(qx), grid.CellOf(qz)))
+				if (grid.Walk(grid.CellOf(qx), grid.CellOf(qz))
+					&& (botComp < 0 || reach->ComponentOf(grid.CellOf(qx), grid.CellOf(qz)) == botComp))
 				{
 					predX = qx;
 					predZ = qz;
@@ -392,10 +427,6 @@ namespace BotCore
 				lead *= 0.5f;
 			}
 		}
-
-		NavCell botCell;
-		botCell.x = grid.CellOf(botX);
-		botCell.z = grid.CellOf(botZ);
 
 		NavRingCells(grid, predX, predZ, params.ringMinM, params.ringMaxM, botCell, m_candidates);
 
@@ -419,19 +450,20 @@ namespace BotCore
 			if (maxTries < 1)
 				maxTries = 1;
 
-			const int limit = maxTries < static_cast<int>(m_candidates.size())
-				? maxTries : static_cast<int>(m_candidates.size());
 			bool finished = false;
-			for (int i = 0; i < limit; ++i)
+			for (size_t i = 0; i < m_candidates.size() && m_plan.tries < maxTries; ++i)
 			{
-				pathfinder.Find(grid, botCell, m_candidates[static_cast<size_t>(i)], params.search, m_path);
+				if (botComp >= 0 && reach->ComponentOf(m_candidates[i].x, m_candidates[i].z) != botComp)
+					continue;   // provably NoPath: not worth an A* run, not a try
+
+				pathfinder.Find(grid, botCell, m_candidates[i], params.search, m_path);
 				++m_plan.tries;
 				m_plan.expanded += m_path.expanded;
 				m_plan.pathStatus = m_path.status;
 
 				if (m_path.status == NavPathStatus::Found)
 				{
-					m_plan.goal = m_candidates[static_cast<size_t>(i)];
+					m_plan.goal = m_candidates[i];
 					m_plan.pathCost = m_path.cost;
 					NavSmoothPath(grid, m_path.cells, params.smooth, m_plan.smooth);
 					m_plan.status = NavFollowStatus::Planned;

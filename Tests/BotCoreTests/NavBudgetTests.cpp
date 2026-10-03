@@ -468,12 +468,7 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 		std::printf("NAVBUDGET chase: SKIPPED (build/nav/zone71.navgrid missing; run tools/nav-export.py)\n");
 		return;
 	}
-	// Pinned to the pre-ADR-0024 slope; re-baseline in a follow-up plan. Under the 0.45 limit a
-	// failed plan refresh leaves a stale plan that the deferred contract then follows (8 ticks in
-	// mode B), which this invariant test is not about; the sampling fix alone does not clear it.
-	BotCore::NavParams pinnedParams;
-	pinnedParams.maxSlope = 0.625f;
-	grid.Build(pinnedParams);
+	grid.Build();   // production slope limit (ADR-0024, 0.45)
 	REQUIRE(grid.MainComponentCells() == 88508);
 
 	// Keep the chase sampling (bot starts, targets, drift snapping) on the edge-connected main
@@ -713,7 +708,7 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 				bs.follower.ObserveTarget(t, tb.x, tb.z, 45);
 
 				const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-				const bool planned = bs.follower.Update(grid, pathfinder, t, bs.x, bs.z, 4.5f, fp);
+				const bool planned = bs.follower.UpdateReachable(grid, pathfinder, t, bs.x, bs.z, 4.5f, fp, reach);
 				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 				if (planned)
 				{
@@ -811,6 +806,8 @@ TEST_CASE("NavBudget_Deferred_Chase_Sim")
 					}
 					moved = true;
 				}
+				if (moved)
+					snapWalk(bs.x, bs.z);   // a smoothed chord may cross an edge-isolated pocket cell and the planner cannot leave one (KI); keep the follower on the main component like the target
 				if (!moved && !follow)
 				{
 					// Holding: position must not change at all (no jitter). Compared against the
