@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 20) |
 | Branch | `bot/F4-44` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-43 (`tools/skill-check.py` yenilenmeye dayanıklı MP hükmü, `bots/config/skill_priest_k.{spec,txt}`) — `KAPANDI` (merge `5318a90`); F4-42 (`tools/skill-script-gen.py`) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-29 (alan skill), F4-26 (çift tipli) — `KAPANDI` |
@@ -161,16 +161,33 @@ git diff --stat gece/2026-10-02...bot/F4-44
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-44` — `<kısa-sha> [F4-44] …`
+- Branch / commit'ler: `bot/F4-44` — `e6c1565 [F4-44] priest curse betiği spec + üretilmiş .txt` (+ bu raporu ve `Durum: UYGULANDI`'yı taşıyan ikinci commit)
 - Değişen dosyalar ve neden:
-  - `…`
+  - `bots/config/skill_priest_k_curse.spec` (yeni): `BotPHD_K`'nın 6 düşman hedefli curse'ünü (`112703`/`112757`/`112745`/`112760`/`112724`/`112736`) üç El Morad botuna atan spec; §5.1 içeriği aynen.
+  - `bots/config/skill_priest_k_curse.txt` (yeni, üretilmiş): `skill-script-gen.py` çıktısı; 18 `cast` + 1 `list` = 19 adım, son ofset 175700 ms.
+  - `plans/F4-44-skill-betik-priest-curse-dusman-hedefli.md`: `Durum` + bu rapor.
 - Derleme sonucu (`tools/build.sh Release` son 10 satır):
   ```
-  …
+    BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+    Lua.vcxproj -> ...\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> ...\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> ...\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  BUILD_RC=0
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh` → `251 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme: K1 ✔ (üretim `diff` boş, rc=0); K2 ✔ (`ok: 19 steps, 791 bytes, 21 lines, last offset 175700 ms`); K3 ✔ (18 `cast BotPHD_K`, 18 `cast`, 1 `list`, 0 yasak verb; her skill 3 satır, hedefler sırayla `BotWP_E`/`BotWG_E`/`BotMF_E`; `112703` ilk ofset `0`); K4 ✔ (farklar `112703`/`112745`/`112724`/`112736` 8900, `112757` 10900, `112760` 11900; hepsi recast alt sınırının altında değil); K5 ✔ (`skill-script-gen.py --selftest` `23 checks, 0 failed`, `skill-check.py --selftest` `32 checks, 0 failed`; iki araç değişmedi); K6 ✔ (Release rc=0, yeni uyarı yok; `251 tests, 0 failed`); K7 ✔ (aşağıdaki `git diff --stat` yalnızca üç dosyayı gösterir); K8/K9 Claude'un çalışma zamanı işidir, bu turda yapılmadı.
+- Plandan sapmalar ve gerekçeleri: Yok. Ofsetler plan §5.2'deki diziyle birebir.
+- Açık sorular: Yok.
+
+`git diff --stat gece/2026-10-02...bot/F4-44` (commit sonrası) yalnızca:
+```
+ bots/config/skill_priest_k_curse.spec | 24 ++++
+ bots/config/skill_priest_k_curse.txt  | 21 ++++
+ plans/F4-44-...md                    | ... 
+```
 
 ---
 
