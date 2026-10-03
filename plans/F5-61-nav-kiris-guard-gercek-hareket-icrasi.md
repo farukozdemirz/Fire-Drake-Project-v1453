@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-61 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI` (hepsi `gece/2026-10-02`'ye birleşti): **F5-59** (`NavService`: `Instance()`, `Ready()`, `Grid()`), F5-50 (`NavCheckStep`), F5-58 (kalıcı duvar regresyonu), F4-01 (`SubmitMove`, `CheckMoveStep`), F4-55 (giriş el sıkışması; çalışma zamanı K9-K11 bot girişi buna dayanır). Şemsiye: F5-55 (dilim 3). F5-62 bu planın guard'ına dayanır |
@@ -182,17 +182,52 @@ git diff --check gece/2026-10-02...bot/F5-61
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-61` — `<kısa-sha> [F5-61] …`
+- Branch / commit'ler: `bot/F5-61` (taban `gece/2026-10-02` @ `aeca42b`)
+  - `24dd471 [F5-61] Kiris guard'i: CLI-08 blocked_chord (NavChordGuard + SubmitMove)` (6 kod dosyası + plan)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavChordGuard.h` (yeni): `ChordVerdict`/`ChordResult`/`CheckMoveChord`, `kChordIgnoreMeters = 0.08f`; `NavCheckSegment` süpercover'ı sarar (D6 eğim kapalı), D3 kısa/aynı-konum muafiyeti, D5 başlangıç hücresi `Walk` değilse çıkış noktasından denetim, `grid == nullptr` → `Skipped`, NaN/ızgara dışı → `OutOfBounds`.
+  - `BotCore/BotCore.vcxproj` (değişti): tek `ClInclude` satırı.
+  - `Tests/BotCoreTests/NavChordGuardTests.cpp` (yeni): 7 test (aşağıda).
+  - `Tests/BotCoreTests/BotCoreTests.vcxproj` (değişti): tek `ClCompile` satırı.
+  - `GameServer/Bot/ActionExecutor.cpp` (değişti): `NavService.h` + `NavChordGuard.h` include; `EmitFairnessReject`'e sona `const char * extraFields = nullptr`; `SubmitMove`'da `CheckMoveStep` sonrası kiriş denetimi (satır 119-141): ihlalde `rule:"CLI-08"`, `reason:"blocked_chord"`, ek `cell_x`/`cell_z`/`verdict`, `m_moveActive=false`, `REFUSED`; ret yolunda `HandlePacket` (satır 159) **çağrılmaz**.
+  - `GameServer/Bot/ActionExecutor.h` (değişti): yalnızca `MoveOutcome::reason` yorumuna `"blocked_chord"`.
+  - `plans/F5-61-…md`: `Durum` ve bu rapor.
+- Derleme sonucu (`./tools/build.sh Release`, `Debug`; rc=0/rc=0, son satırlar):
   ```
-  …
+  proj-AIServer.vcxproj -> ...\AIServer.exe
+  BotCoreTests.vcxproj -> ...\Tests\BotCoreTests.exe
+  proj-GameServer.vcxproj -> ...\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ … (K9-K12 Claude'un çalışma zamanı kriterleri)
-- Gerçek-harita test satırları (`NAVCHORD ...`): …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Değişen dosyalar `touch` edilip yeniden derlendiğinde yalnızca önceden var olan `GameServerDlg.cpp` C4834/C4267 uyarıları görüldü; `ActionExecutor.cpp`/`NavChordGuard*.h/cpp` için yeni uyarı 0.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔: Release rc=0, Debug rc=0; yeni uyarı 0.
+  - K2 ✔: Release ve Debug `274 tests, 0 failed`; yedi yeni ad `[ OK ]` (taban 267 + 7); mevcut `Motion*` dahil gerilemesiz.
+  - K3 ✔: aşağıdaki `NAVCHORD` satırları (SKIPPED değil).
+  - K4 ✔: `git diff --stat gece/2026-10-02...bot/F5-61` yalnızca §4 (6 dosya, 2 yeni) + plan; `BotMotion.h`/`NavSegment.h` farkı 0 satır, `GameServer/proj-GameServer.vcxproj` farkı 0, `docs/`/`tools/` farkı 0; `git diff --check` boş.
+  - K5 ✔: `grep -n -E "windows.h|stdafx|GameServer|shared/|new |malloc|static " BotCore/NavChordGuard.h` boş (rc=1); `check-perception-contract.py` `RESULT: PASS` (R1-R5 0), rc=0.
+  - K6 ✔: mevcut `CLI-05`/`step_too_long` çağrısı (`ActionExecutor.cpp:102-104`) diff'te **yok**; yeni çağrı `ActionExecutor.cpp:134` (`rule:"CLI-08"`, `reason:"blocked_chord"`); ret dalı `ActionExecutor.cpp:141` `return out;` — `HandlePacket` `ActionExecutor.cpp:159`'dan önce.
+  - K7 ✔ (kod okuması): `Grid() == nullptr` iken `CheckMoveChord` → `Skipped`, yeni `if` girmiyor; `EmitFairnessReject` yeni parametresi varsayılan `nullptr` olduğundan mevcut çağrıların çıktısı bayt bayt aynı.
+  - K8 ✔: yeni dosyalar `ASCII text, with CRLF`; `git grep -n kChordIgnoreMeters BotCore/NavChordGuard.h` → tanım `:17` + kullanım `:53` (rapor/yorum satırları `:29`, `:101`).
+  - K9-K12: Claude'un çalışma zamanı kriterleri; bu turda yapılmadı.
+- Gerçek-harita test satırları (`NAVCHORD ...`):
+  ```
+  NAVCHORD vector[0] cell=(162,203)
+  NAVCHORD vector[1] cell=(237,238)
+  NAVCHORD vector[2] cell=(248,249)
+  NAVCHORD real map: vectors=3 blocked=3
+  NAVCHORD planner chords=9138 blocked=0
+  NAVCHORD planner quantised chords=9138 blocked=0
+  NAVCHORD perf: chords=20000 ms_p95=0.000300
+  ```
+  Nicemlenmiş planlayıcı kirişleri `blocked=0` (bulgu yok). Debug perf `ms_p95=0.001100` (kapı yalnızca Release, ≤ 0.02 ms).
+- Plandan sapmalar ve gerekçeleri:
+  1. **§5.5 `NavChord_Synthetic` "bitiş ızgara dışı → `OutOfBounds`"**: standart bir `NavGrid`'de (kenar hücreleri `Walk` değil) içeriden dışarı giden kiriş önce engelli kenar hücresine değdiği için `NavCheckSegment` onu `BlockedCell` döndürür, `OutOfBounds` değil. Test, `OutOfBounds` için **başlangıcı ızgara dışı** olan kirişi (`-1.0`) kullanır ve içeriden dışarı giden kirişi ayrıca `BlockedCell` olarak sabitler; `NavSegmentTests`'teki kenar-dışı örnekleri de böyledir.
+  2. **§5.5 `NavChord_RealMap_StraightVectors` "aynı ihlal hücresi"**: `NavCheckSegment` **geçiş sırasındaki ilk** engelli hücreyi verir: `(162,203)`, `(237,238)`, `(248,249)`. Plandaki `(163,203)`, `(239,237)`, `(248,250)` ise `nav_measure`'in kendi `Blocked()`/Python oracle sıralamasından gelir; C++ guard ile yeniden üretilemez. Test, `NavSegmentAuditTests_StraightSteps` kalıbıyla `BlockedCell` + raporlanan hücrenin `Walk` olmaması üzerinden doğrular. K3'ün istediği `vectors=3 blocked=3` satırı üretilir.
+  3. **`NavChordGuard.h` başlık yorumu**: plan iskeletindeki "no global/static state" ifadesi düz `static ` dizgesini içerdiği için planın **kendi K5 grep'ini** kirletir; "no global state and no dynamic memory" olarak yazıldı (davranış değişmez).
+  4. `#include <algorithm>` ve `#include <cmath>` eklendi (`std::min`, `std::isfinite`, `std::floor`, `std::sqrt`); planın izin verdiği standart kütüphane kapsamında. Test dosyasına `std::abs(int)` için `<cstdlib>` eklendi.
+  5. `NavChordGuard.h`'e D5 için `tExit >= 1.0` erken `Ok` dalı eklendi (kiriş başlangıç hücresinden çıkmadan bitiyorsa "içinde biter → Ok" kuralının uç durumu; NaN/negatif ilerleme üretmez).
+- Açık sorular:
+  - Yok (engelleyici değil). Not: çalışma alanında bana ait olmayan izlenmeyen `plans/.supervisor-stop` dosyası vardır; dokunulmadı ve commit'e alınmadı.
 
 ---
 
