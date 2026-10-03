@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `99d7170`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-70 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-59 (`NavService`, `NAV=1`), F5-61 (kiriş guard'ı `CheckMoveChord`, `SubmitMove` içinde), F5-62 (`BotCore/NavDrive.h`, `Goto` kipi saf mantık; merge `8522239`), F5-69 (eğim 0,45). **F5-71'e bağımlı DEĞİLDİR** ve onunla dosya paylaşmaz (F5-71: `BotCore/NavTrack.h`, `NavTrackTests.cpp`, `NavBudgetTests.cpp`; bu plan: yalnızca `GameServer/Bot/` altındaki yedi dosya). Not: `BotSession.h` `NavDrive.h`'yi, o da `NavStuck.h` → `NavTrack.h`'yi dahil eder; F5-71 `gece/2026-10-02`'ye birleşti (`1bfb885`, `KAPANDI`): `NavTrack.h`'ye `NavNoReach`, `NavFollower::UpdateReachable`/`UpdateImpl` şablonları ve `UpdateImpl`'e yönlenen `inline Update` eklendi; bu plan o başlığı değiştirmez, yalnızca GameServer birimlerine dahil edilmesi yeni olur (K1). F5-63 (`Follow`), F5-64, F5-65 bu planın `m_navDrive`/`SharedPathfinder` üzerine kurulur |
