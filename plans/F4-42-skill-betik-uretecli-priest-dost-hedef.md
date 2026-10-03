@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 18) |
 | Branch | `bot/F4-42` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-41 (`tools/skill-check.py`, cast `mp`/`mp_after`/`skill` telemetrisi) — `KAPANDI` (merge `0901ae0`); F4-40 (envanter doldurma, MP pot stoku) — `KAPANDI`; F4-19/F4-22 (betik ayrıştırıcı ve `Scripts/` yükleyici) — `KAPANDI` |
@@ -225,3 +225,34 @@ git diff --stat gece/2026-10-02...bot/F4-42
   - Repo `core.autocrlf=true` olduğundan Git, `bots/config/skill_priest_k.{spec,txt}` için "LF will be replaced by CRLF the next time Git touches it" uyarısı verir. Bu çalışma ağacında dosyalar LF'tir ve K2 `diff`'i boş kalır; taze bir checkout'ta Git `.txt`'i CRLF'e çevirebilir (`.txt` için `.gitattributes` kuralı yok ve `.gitattributes` bu planın dokunulabilir dosyaları arasında değil). Doğrulama bu çalışma ağacında yapıldığı sürece K2/K3 geçerlidir.
 - **Açık sorular:** Yok. K7 (gerçek koşu, `docs/05` §9 işlemesi) planda Claude'a bırakılmıştır.
 
+---
+
+## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-03
+
+**Karar: DOĞRULANDI.** İncelenen commit: `bot/F4-42` @ `c6ce271` (kod commit'i `f4e4528`; taban `gece/2026-10-02`, gece modu, otonom döngü). Çalışma ağacı temizdi.
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 tools/skill-script-gen.py --selftest` → `selftest: 23 checks, 0 failed`, çıkış 0; §5.4'teki 17 durumun hepsi adlandırılmış kontrol (`tools/skill-script-gen.py:412-568`). |
+| K2 | ✔ | Gerçek `MAGIC`, `--magic` verilmeden (sqlcmd): üretim çıkış 0, `diff /tmp/skill_priest_k.txt bots/config/skill_priest_k.txt` boş. Plan §2'deki 15 `MAGIC` satırı (`Msp/CastTime/ReCastTime/Range/Type1/Moral`) kendi sqlcmd sorgumla birebir aynı. |
+| K3 | ✔ | `--check` → `ok: 30 steps, 1109 bytes, 32 lines, last offset 115500 ms` (çıkış 0); `pinvite` 3 + `paccept` 3, 21 `cast`, 2 `pot`, 1 `list` = 30. |
+| K4 | ✔ | `grep -c '^[0-9]* cast BotPHD_K'` = 9, `BotPHB_K` = 12, `grep -c 112703` = 0. |
+| K5 | ✔ | `./tools/build.sh Release` rc=0 (7 proje çıktısı, uyarı satırı yok); `./tools/run-tests.sh` → `251 tests, 0 failed`. |
+| K6 | ✔ | `git diff --name-only gece/2026-10-02...bot/F4-42`: yalnızca `tools/skill-script-gen.py`, `bots/config/skill_priest_k.spec`, `bots/config/skill_priest_k.txt`, plan dosyası. C++/`docs/`/`skill-check.py` farkı yok. |
+| K7 | ✔ | Çalışma zamanı (aşağıda). Betik hatasız yüklendi, 30/30 adım zamanında (`max late 107 ms`), `skill-check.py --min-n 2` raporu üretildi; sonuçlar ve bulgular `docs/05` §9.1'e işlendi. |
+
+**K7 çalışma zamanı ayrıntısı.** `bot-refill.sh apply --mp-pots 20` (`BOTSTOCK: rows=12 ok=12 fail=0 changed=12`), `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions` (ini yedekten geri yüklendi, farksız), Release sunucu (`build/bin/x86-Release`), 4 bot spawn (4 sn arayla), `BotCommands.txt` ile `script run skill_priest_k`. `Bot_3_10_2026.log`: `loaded (30 step(s), last offset 115500 ms)`, `finished skill_priest_k: completed, 30/30 step(s) in 115556 ms (max late 107 ms)`; `bad verb`/`offset` hatası yok. `live-084452.jsonl` üstünde araç: 15 skill satırı; PASS 5, WARN 3, FAIL 6, NO_DATA 1. Sunucular `stop` ile kapatıldı, botlar önce `despawn all` ile temiz kaydedildi, `Scripts/skill_priest_k.txt` kopyası silindi. Envanter doldurma (`--mp-pots 20`) geri alınmadı (sonraki dilimler aynı stoku kullanır).
+
+**Bulgular (önem sırasıyla; hiçbiri engelleyici değil):**
+
+1. **[Plan/spec] `raw` hazırlık aralığı 1000 ms yetmiyor** — `bots/config/skill_priest_k.spec:2-7` (planın §5.2'sindeki değerler): `BotWP_K`/`BotWG_K` `paccept` → `CLI-15 accept_wait` (`value` 996/989 < 1000); bu yüzden party'ye yalnızca `BotPHB_K` girdi, Moral 4/6 skill'lerin party üyesi hedefli ölçümü geçerli sayılmaz. Düzeltme: `raw` ofsetleri ≥ 1500 ms aralıkla (F4-43'te; Claude karar verir). Uygulayıcı planı doğru uyguladı.
+2. **[Araç, F4-41] MP yenilenmesi `mp_verdict`'i bozuyor** — `tools/skill-check.py`: bot MP'si cast sırasında +20/+40 kümeli yenilenir; 5 FAIL'in hepsinde `mp_delta_max == Msp`. Hüküm `max` ile verilmeli ya da yenilenme payı tanımlanmalı.
+3. **[Koşu girdisi] Bot konumu** — `BotWP_K`/`BotWG_K` priestlerden ~400 m uzakta doğdu; betikten önce `move` gerekti (betik konumlandırmaz; kapsam dışıydı).
+4. **[Ö]** `112548` 2. tur `srv_fail -100` (tam canlı hedefe heal); `112656` Greatness `no_result`. Nedenleri araştırılmadı.
+5. Not (üslup): `# bots:` başlığı yürütücü botları ilk görünme sırasıyla yazıyor (plan "sıralı bot adları" diyordu, belirsiz; Uygulayıcı sapmayı bildirdi, işlevsel etkisi yok).
+6. Not (üslup): plan gövdesinde Uygulayıcı §8'in son maddesinin başına tesadüfen bir boşluk eklemiş (`- Uçan skill ...` → ` - Uçan skill ...`); etkisiz.
+7. Not (test gücü): selftest'in `check_*` kontrolleri yalnızca "reddedildi" der, sebep sınıfını ayırmaz; `unknown_skill` satır numarasını doğrulamaz (aracın kendisi `line N:` yazıyor, elle görüldü). `--check` ile `ParseScript` (`BotCore/ScriptPlan.h:117-230`) satır satır karşılaştırıldı: sınırlar, sıra, fiil listesi ve hata sınıfları eşdeğer.
+
+**Kural denetimi:** C++ yok (mekanik/thread/bot-avantajı/vcxproj uygulanmaz); yalnızca `MAGIC` okundu (kişisel veri tablosu yok); araç sunucuya bağlanmaz ve yalnızca istenen dosyayı yazar; yeni dosyalar ASCII/LF (`.py` için `.gitattributes` `eol=lf`; `.spec/.txt` için kural yok, Uygulayıcının notu geçerli); bot sistemi varsayılan kapalı, yalnızca koşu sırasında açıldı.
