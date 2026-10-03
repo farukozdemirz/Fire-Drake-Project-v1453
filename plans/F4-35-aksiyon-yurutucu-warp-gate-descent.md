@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `9239997`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-35` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-34 (summon istisnası: `BeginCast` Type8 bloğu, `wantedTarget`) — `KAPANDI` (merge `1ac6c55`); F4-28 (`Moral` 1 `self` kuralı) — `KAPANDI`; F4-31 (`Moral` 4 party hedefli) — `KAPANDI`; F4-08 (party kurulumu `/bot pinvite`, `/bot paccept`; yalnızca çalışma zamanı sınaması için) — `KAPANDI` |
