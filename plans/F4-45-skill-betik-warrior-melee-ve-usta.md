@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 21) |
 | Branch | `bot/F4-45` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-44 (`bots/config/skill_priest_k_curse.{spec,txt}`, üslup örneği) — `KAPANDI` (merge `0673515`); F4-42 (`tools/skill-script-gen.py`), F4-43 (`tools/skill-check.py` MP hükmü) — `KAPANDI`; F4-37 (`{1, 3}`/`{1, 4}` melee çiftleri), F4-36 (eşya skill'leri), F4-40 (envanter doldurma) — `KAPANDI` |
@@ -200,3 +200,32 @@ git diff --stat gece/2026-10-02...bot/F4-45
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
+
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-45` @ `729ed26` (kod/spec commit'i `063e8b5`; `729ed26` yalnızca Uygulayıcı Raporu). Gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı, döngü betiği yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `skill-script-gen.py bots/config/skill_warrior_k.spec --out /tmp/...` rc=0; `diff` boş |
+| K2 | ✔ | `--check` → `ok: 14 steps, 572 bytes, 16 lines, last offset 140000 ms`, rc=0 |
+| K3 | ✔ | `cast BotWP_K` 13, `cast` 13, `list` 1, `raw\|pinvite\|paccept\|pot\|move` 0; ilk ofset `0` (`106001`); `self` yalnızca `106001`/`106720`/`106730`; çevrim 2: `106525`/`106535`/`106545`/`106520`, diğerleri 1; `awk $5!=...` çıktısı boş (hedefler yalnızca `BotWP_E`/`BotWG_E`/`self`); ofset dizisi plan §5.2 ile birebir |
+| K4 | ✔ | `awk` farkları: 7500, 10600, 26500, 3500/3500/3500, 11700, 2500/2500/2500, 11600, 26900, son `list` 27200 (plan K4 ile birebir) |
+| K5 | ✔ | `skill-script-gen.py --selftest` `23 checks, 0 failed`; `skill-check.py --selftest` `32 checks, 0 failed`; `git diff --stat ... -- tools` boş (araçlar değişmedi) |
+| K6 | ✔ | `./tools/build.sh Release` rc=0, 7 proje bağlandı, uyarı satırı yok (C++ değişmedi); `./tools/run-tests.sh` `251 tests, 0 failed` |
+| K7 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-45`: yalnızca `skill_warrior_k.spec`, `skill_warrior_k.txt` ve plan dosyası; plan dosyasında yalnızca `Durum` ve Uygulayıcı Raporu değişti |
+| K8 | ✔ | Çalışma zamanı (aşağıda): `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`; üç bot canlı zone 71; hedefler `BotWP_K`'ya 1,12 m; MP 5370 (≥ 2958 `[V]`); betik `Scripts/skill_warrior_k.txt` |
+| K9 | ✔ (bulgu ile) | 14/14 adım, en geç gecikme 96 ms; 13 skill görünür, başlayan sayıları planla aynı; `missed` 0; Scream `code 7`, leg cutting `code 10`. **`srv_fail` = 0 beklentisi karşılanmadı:** leg cutting ikinci çevrim `-103` (Bulgu 1); sunucu davranışı, planın "değilse bulgudur" hükmü kapsamında `docs/05` §9.4 ve KI-021'e işlendi, araç/betik hatası değil. Stone tüketimi ölçülemedi `[Ö]` (Bulgu 3, plan "yoksa `[Ö]`" der) |
+
+- Biçim: iki dosya ASCII (`file`), CR yok (`grep -P '\r'` boş); spec, plan §5.1 bloğuyla bayt bayt aynı (`diff` boş); C++/`.vcxproj`/docs/ADR/araçlar/mevcut `bots/config/*` değişmedi.
+
+**K8/K9 çalışma zamanı ayrıntısı.** `GameServer.ini`'ye geçici `[BOT] ENABLED=1 MAX_BOTS=16 TELEMETRY=decisions`, Release sunucu; `BotWP_K`, `BotWP_E`, `BotWG_E` 6 sn arayla spawn (zone 71; (1272, 934), (1250, 940), (1274, 960)). El Morad botları önceki koşulardan kalan düşük HP ile doğdu (2510/5650 ve 1620/5650): `pot <bot> 389015000 15/8` ile 5650'ye getirildi, sonra `move BotWP_E 1273 934.5`, `move BotWG_E 1271 933.5` (mesafe 1,12 m, hız 45); `list` ile `hp > 0`, konumlar ve MP 5370/5370 doğrulandı. `script run skill_warrior_k`: `loaded (14 step(s), last offset 140000 ms)`, `finished skill_warrior_k: completed, 14/14 step(s) in 140029 ms (max late 96 ms)`. `live-093943.jsonl` üstünde `skill-check.py --min-n 1`: 13 skill, PASS 12, FAIL 1 (`106520`), WARN 0, NO_DATA 0. Bulguyu doğrulamak için ek deneme: `cast BotWP_K 106520 BotWP_E 10` (çevrim 1, 3, 5, 7, 9 `effected`, 2, 4, 6, 8, 10 `srv_fail -103`). Betik sonu `list`: `BotWP_E` 3845/5650, `BotWG_E` 4699/5650 (ikisi de hayatta). Botlar `despawn all`, sunucular `stop`, `GameServer.ini` yedekten geri yüklendi (`cmp` aynı), `Scripts/skill_warrior_k.txt` kopyası ve `BotCommands.txt` silindi. Sonuçlar `docs/05` §9.4'e işlendi.
+
+- Bulgular (önem sırasıyla; hiçbiri engel değil):
+  1. `docs/05` §9.4 Bulgu 1, KI-021: leg cutting (`106520`, `{1, 4}`) aynı hedefe debuff süresi (10 sn) dolmadan yeniden atılınca dönüşümlü `-103` (6/6 çift); `MagicInstance.cpp:1756-1760` kod okuması bunu öngörmüyordu, neden `[A]`. `docs/03` MEC-MAG-24 cümlesi buna göre düzeltildi (v1.23). Betiğin kendisi doğru (planın amacı ölçmekti).
+  2. `docs/05` §9.4 Bulgu 2: bot HP'si kalıcı; koşu öncesi `list` + `pot` kurulum adımı olmalı (F4-44 bulgu 2 ile aynı sınıf).
+  3. `docs/05` §9.4 Bulgu 3: Stone of Warrior tüketimi ölçülemedi (telemetri/`snap` taş stoku vermiyor).
+  4. Üslup: Uygulayıcı raporundaki derleme çıktısı kısaltılmış, rc ve `251 tests` doğrulamada yeniden üretildi; başka sapma yok.
+- Düzeltme talimatı: yok (`DOĞRULANDI`).
