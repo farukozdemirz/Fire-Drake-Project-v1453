@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-32` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-28 (Type4 tek tipli: `Moral` 2 yolu, MEC-MAG-15) — `KAPANDI`; F4-31 (`CastMoralSupported`, `CastHpCostSupported`, `BeginCast` destek koşulu) — `KAPANDI` (merge `78759b5`) |
@@ -207,16 +207,23 @@ git diff --check gece/2026-10-02...bot/F4-32
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-32` — `<kısa-sha> [F4-32] …`
+- Branch / commit'ler: `bot/F4-32` (taban: `gece/2026-10-02`) — `1ca8af6 [F4-32] Type5 cure dilimi: {5,0} tip destegi ve Moral 2 kapisi` (kod/plan Durum)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h`: `CastTypesSupported(5, 0)` açıldı; yeni `CastTypeMoralSupported(type0, moral)` (Type5 yalnızca `Moral` 2, diğer tipler pass-through); yorum güncellendi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` destek koşuluna tek satır `!BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)`.
+  - `GameServer/Bot/ActionExecutor.h`: `BeginCast` yorumuna Type5 cure açıklaması eklendi.
+  - `Tests/BotCoreTests/CombatTests.cpp`: `Combat_CastTypes_Supported` güncellendi (`(5,0)` `true`; yeni `false` satırları); yeni `Combat_CureCast_Guard` eklendi; `Combat_PartyCast_Guard` içindeki mevcut `CastTypesSupported(5, 0) == false` satırı zorunlu olarak `true` yapıldı (açıklama: aşağıda, plandan sapma).
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    CombatTests.cpp
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Release rc=0, Debug rc=0; değişen dört dosyada uyarı gözlenmedi.
+- Kabul kriterleri öz-değerlendirme: K1 ✔ (Release rc=0), K2 ✔ (Debug rc=0), K3 ✔ (`109 tests, 0 failed`, iki yapılandırmada; `Combat_CastTypes_Supported`, `Combat_CureCast_Guard`, `Combat_PartyCast_Guard` `[ OK ]`), K4 ✔ (include denetimi boş, `std::min/max` yok), K5 ✔ (tek eşleşme, biçim doğru), K6 ✔ (tek hunk, tek eklenen satır; `--stat` yalnız §4'teki 4 dosya; yasak dosyalarda fark boş; commit sonrası ölçüldü), K7 ✔ (`Emit(` boş; yeni ini/komut/thread yok), K8 ✔ (dört dosya CRLF+ASCII, `git diff --check` boş), K9 ✔ (guard grep sayıları; önceki testler geçiyor), K10 ✔ (`RESULT: PASS`, `files scanned: 19`, R1..R5 ihlal 0/0). K11 Claude'un çalışma zamanı turunda.
+- Plandan sapmalar ve gerekçeleri:
+  1. **`Combat_PartyCast_Guard` içindeki `CASTTypesSupported(5, 0) == false` satırı `true` yapıldı.** Plan §5.2 bunu açıkça anmıyor, ancak `(5,0)` artık desteklendiği için mevcut assert zorunlu olarak geçersizdi (ilk test koşusunda `Combat_PartyCast_Guard` `[FAIL]`). Aynı dosya ve aynı amaç (tip kapısı) kapsamındadır; K3'ün "önceki 108 test hâlâ geçiyor" şartı bunu gerektirir. Davranış/mekanik değişikliği değildir.
+- Açık sorular: Yok.
 
 ---
 
