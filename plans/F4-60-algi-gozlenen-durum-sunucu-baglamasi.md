@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2, m.10 algı eksikleri; F6/F7 priest ve stall için ön koşul) |
 | Branch | `bot/F4-60 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-53 (`SkillMeta`, `ObservedStatusTable`, `HealObsRing`) `KAPANDI`; F4-52 (`m_skillEvents` beslemesi, `snap <bot> events`) `KAPANDI`; F4-28/F4-32 (Type4/cure atılabilir; çalışma zamanı doğrulaması için) `KAPANDI` |
@@ -134,27 +134,66 @@ git diff --check gece/2026-10-02...bot/F4-60
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (çalışma zamanı doğrulaması K9 Claude'un işidir; yapılmadı)
+- Branch / commit'ler: `bot/F4-60` (taban `gece/2026-10-02`); kod `473a466` `[F4-60] Gozlenen durum tablosu sunucu baglamasi: FillSkillMeta, besleme, WIZ_DEAD, snap status`
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/Perception.h` (+16): yalnızca `ObservedStatusTable::Targets(int16_t*, int) const` (`Units()`'ten sonra); `nullptr`/`cap <= 0` ⇒ 0, yuva sırası, `count > 0`.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+55): `Perception_Status_Targets` (boş/`nullptr`/`cap 0`; iki kayıtlı 2985 + tek kayıtlı 2986 sıra; `cap 1`; `ClearTarget`; cure son debuff'ı silince birim yok; 33. hedefte 32).
+  - `GameServer/Bot/BotSession.h` (+2): `m_status`, `m_healObs` (`m_skillEvents` altında, `m_obsLock` yorumuyla).
+  - `GameServer/Bot/BotSession.cpp` (+68): dosya-statik `FillSkillMeta` (statik tablo değer kopyası; Type4 satırı yoksa `false`); F4-52 bloğunda `EFFECTING && target >= 0` iken kilit dışında `FillSkillMeta`, kilit altında `m_skillEvents.Add` + `m_status`/`m_healObs` beslemesi; F4-52 bloğunun altında `WIZ_DEAD` (≥2 bayt) kilidi altında `m_status.ClearTarget` (mevcut iki `WIZ_DEAD` dalına dokunulmadı); `ResetForRespawn` kilit bloğunda `m_status.Clear()`/`m_healObs.Clear()`.
+  - `GameServer/Bot/BotManager.cpp` (+52/−3): `CommandSnap` kullanım dizgesi `[events|status]`, `wantStatus`, kilit altında `statusCopy`/`healCopy` kopyası, `status units=… records=… heals_total=… heals_in_ring=…` + birim başına canlı kayıtlar (`target/skill/type/buff|debuff/caster/remain/src=E`) + en yeni ≤5 heal satırı; `else if (wantStatus)` dalı, `events` ve argümansız dallar değişmedi.
+- Derleme sonucu: `./tools/build.sh Release` ve `Debug` rc=0. Beş dosya `touch` edilip yeniden derlendiğinde `warning C`/`error C` 0 (Release ve Debug). `./tools/run-tests.sh Release` ve `Debug`: `260 tests, 0 failed`; `Perception_Status_Targets` iki yapılandırmada `[ OK ]`.
 - Kabul kriterleri öz-değerlendirme (K9: Claude yapar):
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ (Release rc=0, beş dosya touch + yeniden derleme, yeni uyarı yok)
+  - K2 ✔ (Debug rc=0, yeni uyarı yok)
+  - K3 ✔ (`260 tests, 0 failed` ×2; 259 → 260; yeni ad `[ OK ]` ×2)
+  - K4 ✔ (`BotCore` eklenen satırlarda yasak include yok; `Perception.h` silinen satır 0)
+  - K5 ✔ (`RESULT: PASS`, R1 0 / R2 0 (28 izinli) / R3 0 (18 izinli) / R4 0 / R5 0; `--selftest` rc=0; eklenen satırlarda yasak sembol yok; `m_Magictable` yalnız `FillSkillMeta` satırı `:13`)
+  - K6 ✔ (`git diff --stat` yalnız 5 dosya + plan; `shared/`, `AIServer/`, `tools/`, `docs/`, `ScriptPlan.h`, `UnitView` yok)
+  - K7 ✔ (tüm `m_status`/`m_healObs` kullanımları `m_obsLock` altında; `FillSkillMeta` çağrısı `:151` kilit `:152`'den önce; `EFFECTING && target >= 0` koşulu)
+  - K8 ✔ (eklenen satırlar ASCII; beş dosya `file` çıktısı ASCII + CRLF; sekme/Allman; `git diff --check` boş; yeni `printf`/`Sleep`/`CreateThread`/`rand` yok; yeni ini/komut/thread/paket isteği yok; mevcut `WIZ_DEAD` dalları, `m_castEcho` bloğu ve `m_skillEvents.Add` satırı değişmedi). **Not:** `snap` kullanım dizgesi iki satırı dışında bir `-` satırı daha var: `CommandSnap` doğrulamasında `if (words.size() == 2 && !wantEvents)` → `… && !wantStatus` (plan §3.5'in `status` kabulü için zorunlu; K8'in "yalnızca kullanım dizgesi" ifadesiyle lafzen çelişir, §3.5 ile uyumlu).
+  - K9 ⏳ (Claude; sunucu açılmadı, plan §5.5 ve §6 gereği)
+- Plandan sapmalar ve gerekçeleri: Yok (yukarıdaki K8 notu dışında). Kod iskeleti §5.3/§5.4 imzalarına birebir uyuldu.
+- Açık sorular: Yok.
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar:
-- İncelenen:
+- Karar: DOĞRULANDI
+- İncelenen: `bot/F4-60` @ `57981cd` (kod `473a466`; taban `gece/2026-10-02`). Çalışma ağacı temizdi; gece modu (`AUTO_LOOP=1`): birleştirme/push yapılmadı.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | | |
+| K1 | ✔ | `./tools/build.sh Release` rc=0; `BotSession.cpp`, `BotManager.cpp`, `BotSession.h`, `Perception.h` `touch` edilip yeniden derlendi (iki dosya derleme satırı görüldü): `warning C`/`error` 0 |
+| K2 | ✔ | `./tools/build.sh Debug` rc=0, aynı dosyalar yeniden derlendi, uyarı 0 |
+| K3 | ✔ | Release ve Debug: `260 tests, 0 failed`; `Perception_Status_Targets` her ikisinde `[ OK ]` (test gövdesi okundu: boş/`nullptr`/`cap 0`, sıra, `cap 1`, `ClearTarget`, cure, 33. hedef = 32) |
+| K4 | ✔ | `BotCore` farkında eklenen satırlarda `#include`/`stdafx`/`GameServer`/`shared/` yok; `Perception.h` silinen satır 0 (+16) |
+| K5 | ✔ | `check-perception-contract.py`: `RESULT: PASS`, R1 0, R2 0 (28 izinli), R3 0 (18 izinli), R4 0, R5 0; `--selftest` rc=0; eklenen satırlarda yasak sembol 0; `grep -n m_Magictable BotSession.cpp` yalnız `FillSkillMeta` içinde (`:13`; diğer tablo erişimleri de aynı fonksiyonda) |
+| K6 | ✔ | `git diff --stat gece/2026-10-02...bot/F4-60`: yalnızca `Perception.h`, `PerceptionTests.cpp`, `BotSession.h/.cpp`, `BotManager.cpp` + plan dosyası; `shared/`, `AIServer/`, `tools/`, `docs/`, `ScriptPlan.h` yok |
+| K7 | ✔ | `m_status`/`m_healObs`: `BotSession.cpp:154-155` (kilit `:152` altında), `:167` (`WIZ_DEAD`, kendi `lock_guard`), `:552-553` (`ResetForRespawn` kilitli blok); `BotManager.cpp:2608-2609` kilit altındaki kopya; biçimlendirme kilit dışında. `FillSkillMeta` `:151` kilitten önce, yalnızca `ev.op == kMagicEffecting && ev.target >= 0` iken |
+| K8 | ✔ | Beş dosya ASCII + CRLF (`file`; satır sayısı = CR sayısı: 2415/2415, 2934/2934, 205/205, 615/615, 3539/3539); `git diff --check` rc=0; eklenen satırlarda ASCII dışı 0, yeni `printf`(snprintf dışı)/`Sleep`/`CreateThread`/`rand(` yok; sekme + Allman; `-` satırları yalnızca kullanım dizgeleri (2) ve `!wantEvents` → `!wantEvents && !wantStatus` doğrulaması (§3.5 gereği, rapordaki not doğru) |
+| K9 | ✔ (S1-S8) | Aşağıda |
 
-- Bulgular:
-- Düzeltme talimatı:
+**Çalışma zamanı (K9; `Release`, `[BOT] ENABLED=1`, `TELEMETRY=decisions` geçici olarak runtime ini'ye eklendi ve iş sonunda geri yüklendi (md5 aynı); zone 71; `BotPHD_K` (2984), `BotPHB_K` (2985), `BotWP_K` (2986), `BotWG_K` (2987), `BotWP_E` (2988), `BotPHB_E` (2989), `BotPHD_E` (2990); iş bitince `run-servers.sh stop`, `0/3`):**
+
+- **S1 ✔** (`112645` Fresh mind): `BotPHB_K` → `BotWP_K`, `cast finished (effected)`. Gözlemciler `BotPHD_K`, `BotWG_K`, `BotPHB_K` hepsinde `status target=2986 skill=112645 type=8 buff caster=2985 remain=596190ms src=E` (yaş ≈ 3,8 sn; 600 000 − yaş ile uyumlu). `BotWP_K`'nın gerçek satırı `buff skill=112645 type=8 buff remain=596s`: fark < 1 sn (≤ 3 sn).
+- **S2 ✔** (`112703` Malice → `BotWP_E`): gözlemcide `target=2988 skill=112703 type=2 debuff caster=2984 remain=146176ms`; `BotWP_E` gerçek `buff skill=112703 type=2 debuff remain=146s`: fark < 1 sn. Reddedilen atışta kayıt yok: `BotPHD_K` `112645` (`srv_fail`, `code -100`) ve `BotPHB_E` `212703` (`srv_fail`) sonrası gözlemcilerde `units=0` / yeni kayıt yok.
+- **S3 ✔** (`212703` + Cure curse): `BotPHD_E` `212703` → `BotWP_K`: gözlemcide `target=2986 skill=212703 type=2 debuff caster=2990 remain=145081ms` (üç kayıt), `BotWP_K` gerçek listesi `212703 type=2 debuff 146s` + `112645 type=8`. `BotPHD_K` `112525` → `BotWP_K` sonrası gözlemcide yalnız `112645 type=8` kaldı (debuff silindi), `BotWP_K` gerçek listesinde `type=2` yok.
+- **S4 ✔** (`112527` Great healing): `BotWP_E` `BotWP_K`'ya 6 vuruş (HP 4854/5650), `cast BotPHD_K 112527 BotWP_K` (`effected`): dört gözlemcide `heals_total=1 heals_in_ring=1`, `status heal age=… skill=112527 caster=2984 target=2986 nominal=960 hot=0`.
+- **S5 ✔** (kopyalama): ardışık `snap` çıktıları aynı kayıt sayısı/aynı kayıtlar, `remain` azalıyor (ör. `2986` `596190` → `584184` → `572210` → `534979` → `524064` → `489141`; her biri yaş farkıyla uyumlu), tutarsız satır yok.
+- **S6 (tahmin hata payı, yalnızca burada kayıt):** E ↔ gerçek `remain` farkı: S1 596,19 sn ↔ 596 sn, S2 146,18 ↔ 146, S3 145,08 ↔ 146 (gerçek satır tam saniyeye yuvarlıyor); hepsinde < 1 sn. Sunucunun yayınladığı süre sabit olduğundan (iptal/bitiş yayını yok) hata payı yalnızca yuvarlamadır; asıl belirsizlik süre aşımından önce biten/iptal edilen etkilerdedir (MEC-BUF-07, bu testte tetiklenmedi). `docs/05`'e yazılmadı.
+- **S7 ✔** (ölüm): `BotPHD_K` `112703` → `BotPHD_E` (gözlemcide `target=2990 … remain=137483ms`), `BotWP_K` 10 vuruşla öldürdü (`attack finished (killed)`, `list` `hp=0/3491`); sonraki `snap status`'ta `units=2 records=2` ve 2990 kaydı yok (`WIZ_DEAD` → `ClearTarget`); 2986/2988 kayıtları korunmuş.
+- **S8 ✔** (gerileme): argümansız `snap` sonunda `events total=16` (değişmedi); `snap … events` → `events total=16 in_ring=16`; `snap BotPHD_K foo` ve `snap BotPHD_K status events` → `usage: snap <bot> [events|status]`; `status` çıktısı `events total=` satırı yazmıyor; `see`, `cast`, `list`, `move`, `attack`, `spawn` çalıştı; `Bot_3_10_2026.log`'da bu oturumda `WARN`/`ERROR` 0.
+
+**Kapsam ve rapor doğruluğu:** Uygulayıcı Raporu'ndaki sayılar (+16/+55/+2/+68/+52−3, 259 → 260) ve derleme/test iddiaları bağımsız yeniden üretildi.
+
+- Bulgular (hepsi not, engel değil):
+  1. **[Plan hatası, kod değil] Çalışma zamanı kurulumunda sınıf/ağaç:** plan K9 S1'de `112645`'i `BotPHD_K`'ya (curse ağacı), S3'te `212703`'ü `BotPHB_E`'ye (buff ağacı) atıyordu; ikisi de `srv_fail` (`-100`) verdi (iki bot ilgili skill ağacında puansız). Doğru çağıranlar: buff skill'leri `BotPHB_K`/`BotPHB_E`, curse `BotPHD_K`/`BotPHD_E`; Great healing/Cure curse `BotPHD_K` ile atılabildi. Gelecekteki doğrulama planlarında bu eşleşme kullanılmalı.
+  2. **[Not] `snap … status` yalnızca ilk 10 birim ve birim başına ≤ 8 kayıt basar** (`BotManager.cpp` `kPrintStatusUnits`): tablo 32 birimdir; dökümde gizlenen birimler `units=` satırından anlaşılır. Karar katmanı doğrudan tabloyu okuyacağı için engel değil.
+  3. **[Üslup] `WIZ_DEAD` bloğu** (`BotSession.cpp:160-168`) NPC/oyuncu kimliğini tek anahtarla kullanıyor (planla uyumlu); `(int16_t)id` NPC kimliği 32767'yi aşarsa negatife sarar, ancak `ObservedStatusTable` zaten `int16_t` anahtar ve `ParseSkillEvent` aynı türü kullanıyor (tutarlı).
+  4. **[Not] Sunucu-bot beslemesinde `m_hp`/`m_healObs` tam sağlıklı hedefe heal** bu testte denenmedi (`[Ö]`); `heals_total` sayacı yalnız başarılı `EFFECTING`'i sayar.
+- Düzeltme talimatı: yok.

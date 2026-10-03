@@ -1,6 +1,53 @@
 #include "stdafx.h"
 #include "BotSession.h"
 
+// Copies the static skill tables' values into a BotCore::SkillMeta (ADR-0017 Ek F4-60). Returns false when the base
+// MAGIC row is missing or when a required Type4 row has no record (without it the record's buffType is unknown).
+// Type3/Type5 rows are optional: a missing row leaves those fields zero, which the classification helpers treat as
+// "no such part". No table row pointer is stored and nothing is written back; the caller runs this outside m_obsLock.
+static bool FillSkillMeta(uint32 skillId, BotCore::SkillMeta & out)
+{
+	memset(&out, 0, sizeof(out));
+	out.skillId = skillId;
+
+	_MAGIC_TABLE * m = g_pMain->m_MagictableArray.GetData(skillId);
+	if (m == nullptr)
+		return false;
+
+	out.type1 = m->bType[0];
+	out.type2 = m->bType[1];
+
+	if (out.type1 == 4 || out.type2 == 4)
+	{
+		_MAGIC_TYPE4 * t4 = g_pMain->m_Magictype4Array.GetData(skillId);
+		if (t4 == nullptr)
+			return false;
+		out.buffType = t4->bBuffType;
+		out.isBuff = t4->bIsBuff;
+	}
+
+	if (out.type1 == 3 || out.type2 == 3)
+	{
+		_MAGIC_TYPE3 * t3 = g_pMain->m_Magictype3Array.GetData(skillId);
+		if (t3 != nullptr)
+		{
+			out.directType = t3->bDirectType;
+			out.firstDamage = t3->sFirstDamage;
+			out.timeDamage = t3->sTimeDamage;
+			out.type3DurationSec = t3->bDuration;
+		}
+	}
+
+	if (out.type1 == 5)
+	{
+		_MAGIC_TYPE5 * t5 = g_pMain->m_Magictype5Array.GetData(skillId);
+		if (t5 != nullptr)
+			out.type5Kind = t5->bType;
+	}
+
+	return true;
+}
+
 BotSession::BotSession(const char * charName, const char * accountName)
 	: m_charName(charName), m_accountName(accountName), m_pUser(nullptr),
 		m_phase(PHASE_QUEUED), m_selectSeen(false), m_updateCount(0), m_slotId(0),
@@ -96,9 +143,28 @@ void BotSession::OnPacket(Packet & pkt)
 		BotCore::SkillEvent ev;
 		if (BotCore::ParseSkillEvent(pkt.contents(), pkt.size(), nowMs, ev))
 		{
+			// ADR-0017 Ek F4-60: the status/heal tables are fed only by targeted EFFECTING broadcasts. The tables are
+			// read outside m_obsLock (the table has its own lock); Add(ev) runs for every event.
+			BotCore::SkillMeta meta;
+			bool haveMeta = false;
+			if (ev.op == BotCore::kMagicEffecting && ev.target >= 0)
+				haveMeta = FillSkillMeta(ev.skillId, meta);
 			std::lock_guard<std::mutex> lock(m_obsLock);
 			m_skillEvents.Add(ev);
+			m_status.Observe(ev, haveMeta ? &meta : nullptr);
+			m_healObs.Observe(ev, haveMeta ? &meta : nullptr);
 		}
+	}
+
+	// Perception status deaths (ADR-0017 Ek F4-60, MEC-DTH-01): a WIZ_DEAD broadcast clears all estimated status
+	// records of the dead unit. The two WIZ_DEAD branches below (player and NPC) keep their own behavior; player and
+	// NPC ids share one key space here, so one block covers both. Leaving view does not clear: the buff keeps running
+	// server-side and the estimate stays usable when the unit comes back; capacity evicts stale units.
+	if (opcode == WIZ_DEAD && pkt.size() >= 2)
+	{
+		uint16 id = (uint16)pkt.contents()[0] | ((uint16)pkt.contents()[1] << 8);
+		std::lock_guard<std::mutex> lock(m_obsLock);
+		m_status.ClearTarget((int16_t)id);
 	}
 
 	// State change broadcast: u16 socket id, u8 bType, u32 nBuff (User.cpp:2817-2819). Only the bot's own packet is recorded;
@@ -483,6 +549,8 @@ void BotSession::ResetForRespawn()
 		m_team.Clear();
 		m_hp.Clear();
 		m_skillEvents.Clear();
+		m_status.Clear();
+		m_healObs.Clear();
 		m_regionDroppedLastCount = 0;
 		for (int i = 0; i < 8; i++)
 			m_regionDroppedLastIds[i] = 0;
