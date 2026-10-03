@@ -130,7 +130,7 @@ git grep -n -a -E '"goto"' -- BotCore tools Tests
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-72` (taban `gece/2026-10-02`) — `<sha> [F5-72] Betik fiili goto: izinli komut sozlugu 20 -> 21`
+- Branch / commit'ler: `bot/F5-72` (taban `gece/2026-10-02`) — `81650f2 [F5-72] Betik fiili goto: izinli komut sozlugu 20 -> 21`
 - Değişen dosyalar ve neden:
   - `BotCore/ScriptPlan.h`: `kVerbs[]` 20 → 21 (`"goto"`, `"move"`'dan sonra), sözlük yorumu "20 verbs" → "21 verbs" (Kapsam §3.1).
   - `Tests/BotCoreTests/ScriptTests.cpp`: `Script_VerbWhitelist` 21 fiile güncellendi (+`IsScriptVerb("GOTO")`); sonuna yeni `Script_GotoStep` (+1 test) eklendi (Kapsam §3.2).
@@ -148,7 +148,7 @@ git grep -n -a -E '"goto"' -- BotCore tools Tests
   - `skill-script-gen.py --selftest`: başlangıç `23 checks, 0 failed` → son `25 checks, 0 failed`.
   - `--check /tmp/g.txt` (`0 goto …` + `0 list`): `ok: 2 steps, 31 bytes, 2 lines, last offset 0 ms`, rc=0; `--check /tmp/f.txt` (`0 follow X`): `1: bad verb`, rc=1.
   - Sözlük üç kopyada tutarlı (`git grep -n -a -E '"goto"' -- BotCore tools Tests` → `ScriptPlan.h:64`, `ScriptTests.cpp:48`, `skill-script-gen.py:75`).
-- Plandan sapmalar ve gerekçeleri: yok.
+- Plandan sapmalar ve gerekçeleri: `plans/README.md` F5-72 satırındaki durum sözcüğü **güncellenmedi**; `AGENTS.md` §2 `plans/README.md`'yi dokunulmayacaklar listesinde sayıyor ve düzenleme izni kapalı. K4'ün izin verdiği kümeye `plans/README.md` dahil, ancak değişikliği zorunlu kılmıyor; durum sözcüğünü Claude/gece döngüsü günceller.
 - Açık sorular: yok.
 
 ---
