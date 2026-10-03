@@ -502,8 +502,14 @@ Aynı mekanik için üç ayrı şey vardır ve karıştırılmaz: (1) **ölçül
 | Party | `WIZ_PARTY 0x2F` | alt opcode 1 create, 2 permit, 3 insert, 4 remove, 5 delete, 0x1C promote | [`shared/packets.h:238-249`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/shared/packets.h#L238-L249) |
 | Chat | `WIZ_CHAT 0x10` | `u8 type, string` | [`GameServer/ChatHandler.cpp:89-276`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/GameServer/ChatHandler.cpp#L89-L276) |
 | Item taşıma | `WIZ_ITEM_MOVE 0x1F` | (bkz. kod) | [`GameServer/ItemHandler.cpp:541-743`](https://github.com/ko4life-net/Fire-Drake-Project-v1453/blob/0f520272ae1f11472623d62bff76fff98562e7b3/GameServer/ItemHandler.cpp#L541-L743) |
+| Party (ayrıntı) | `WIZ_PARTY 0x2F` | gelen: `CREATE`/`INSERT` `u8 alt, string ad`; `PERMIT` `u8 alt, u8 kabul`; `PROMOTE`/`REMOVE` `u8 alt, u16 oturum kimliği`; `DELETE` `u8 alt`. giden: `PERMIT` `u8 alt, u16 davetEdenSid, string ad`; `INSERT` ad taşır | `GameServer/PartyHandler.cpp:6-50`, `:158-159` `[D]` |
+| Bölge isteği | `WIZ_REQ_USERIN 0x16` / `WIZ_REQ_NPCIN 0x1D` | `u16 sayı, u16 kimlik[sayı]` | `GameServer/User.cpp:1232-1234` `[D]` |
+| Bölge bildirimi (giden) | `WIZ_REGIONCHANGE 0x15` / `WIZ_NPC_REGION 0x1C` | `u16 sayı, u16 kimlik[sayı]` (≥ 500 bayt sıkıştırılır) | `GameServer/GameServerDlg.cpp:1345-1357`, `:1546-1557` `[D]` |
+| Ölüm (giden) / doğuş (giden) | `WIZ_DEAD 0x11` / `WIZ_REGENE 0x12` | `u16 ölenKimlik` / `u16 x, u16 z, u16 y` | `GameServer/Unit.cpp:959-961`, `GameServer/AttackHandler.cpp:196-198` `[D]` |
 
 Paket alanlarının gerçek istemcideki değerleri (ör. `distance` ölçeği, `echo`) T-MECH-CLIENT-02 ile kayıttan doğrulanır `[A]`.
+
+Paket izleyici (`FDP_PACKET_TRACE`, F4-39 sonrası) bu paketlerden **gelen** `WIZ_PARTY`/`WIZ_REGENE`/`WIZ_REQ_USERIN`/`WIZ_REQ_NPCIN`/`WIZ_CHAT` ve **giden** `WIZ_DEAD`/`WIZ_REGIONCHANGE`/`WIZ_NPC_REGION`/`WIZ_REGENE`/`WIZ_PARTY` kaydeder; chat metni ve party adları sansürlüdür (yalnızca tip/alt opcode ve kimlikler yazılır, ADR-0018 Ek 15). CLI-14..CLI-20'nin `[A]` değerleri bu kayıtlarla `tools/packet-trace-summary.py --cli` çıktısından ölçülür.
 
 ## 15. Mekanik hatalar ve tuhaflıklar
 

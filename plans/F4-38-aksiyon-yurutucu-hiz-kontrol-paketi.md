@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `d1d41b3`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-38` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-37 (ADR-0018 Ek 13, dilim 6f) — `KAPANDI` (merge `dd8262e`); F4-13/F4-15 (`TickUserIn`/`TickNpcIn`: otomatik istemci trafiği kalıbı) — `KAPANDI`; F4-01 (`BotCore/BotMotion.h`, hız/adım kuralı) — `KAPANDI` |
