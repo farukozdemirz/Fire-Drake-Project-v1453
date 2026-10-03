@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2, m.10 algı eksikleri; F6/F7 priest ve stall için ön koşul) |
 | Branch | `bot/F4-60 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F4-53 (`SkillMeta`, `ObservedStatusTable`, `HealObsRing`) `KAPANDI`; F4-52 (`m_skillEvents` beslemesi, `snap <bot> events`) `KAPANDI`; F4-28/F4-32 (Type4/cure atılabilir; çalışma zamanı doğrulaması için) `KAPANDI` |
@@ -134,13 +134,27 @@ git diff --check gece/2026-10-02...bot/F4-60
 
 ### Tur 1
 
-- Durum:
-- Branch / commit'ler:
+- Durum: UYGULANDI (çalışma zamanı doğrulaması K9 Claude'un işidir; yapılmadı)
+- Branch / commit'ler: `bot/F4-60` (taban `gece/2026-10-02`); kod `473a466` `[F4-60] Gozlenen durum tablosu sunucu baglamasi: FillSkillMeta, besleme, WIZ_DEAD, snap status`
 - Değişen dosyalar ve neden:
-- Derleme sonucu:
+  - `BotCore/Perception.h` (+16): yalnızca `ObservedStatusTable::Targets(int16_t*, int) const` (`Units()`'ten sonra); `nullptr`/`cap <= 0` ⇒ 0, yuva sırası, `count > 0`.
+  - `Tests/BotCoreTests/PerceptionTests.cpp` (+55): `Perception_Status_Targets` (boş/`nullptr`/`cap 0`; iki kayıtlı 2985 + tek kayıtlı 2986 sıra; `cap 1`; `ClearTarget`; cure son debuff'ı silince birim yok; 33. hedefte 32).
+  - `GameServer/Bot/BotSession.h` (+2): `m_status`, `m_healObs` (`m_skillEvents` altında, `m_obsLock` yorumuyla).
+  - `GameServer/Bot/BotSession.cpp` (+68): dosya-statik `FillSkillMeta` (statik tablo değer kopyası; Type4 satırı yoksa `false`); F4-52 bloğunda `EFFECTING && target >= 0` iken kilit dışında `FillSkillMeta`, kilit altında `m_skillEvents.Add` + `m_status`/`m_healObs` beslemesi; F4-52 bloğunun altında `WIZ_DEAD` (≥2 bayt) kilidi altında `m_status.ClearTarget` (mevcut iki `WIZ_DEAD` dalına dokunulmadı); `ResetForRespawn` kilit bloğunda `m_status.Clear()`/`m_healObs.Clear()`.
+  - `GameServer/Bot/BotManager.cpp` (+52/−3): `CommandSnap` kullanım dizgesi `[events|status]`, `wantStatus`, kilit altında `statusCopy`/`healCopy` kopyası, `status units=… records=… heals_total=… heals_in_ring=…` + birim başına canlı kayıtlar (`target/skill/type/buff|debuff/caster/remain/src=E`) + en yeni ≤5 heal satırı; `else if (wantStatus)` dalı, `events` ve argümansız dallar değişmedi.
+- Derleme sonucu: `./tools/build.sh Release` ve `Debug` rc=0. Beş dosya `touch` edilip yeniden derlendiğinde `warning C`/`error C` 0 (Release ve Debug). `./tools/run-tests.sh Release` ve `Debug`: `260 tests, 0 failed`; `Perception_Status_Targets` iki yapılandırmada `[ OK ]`.
 - Kabul kriterleri öz-değerlendirme (K9: Claude yapar):
-- Plandan sapmalar ve gerekçeleri:
-- Açık sorular:
+  - K1 ✔ (Release rc=0, beş dosya touch + yeniden derleme, yeni uyarı yok)
+  - K2 ✔ (Debug rc=0, yeni uyarı yok)
+  - K3 ✔ (`260 tests, 0 failed` ×2; 259 → 260; yeni ad `[ OK ]` ×2)
+  - K4 ✔ (`BotCore` eklenen satırlarda yasak include yok; `Perception.h` silinen satır 0)
+  - K5 ✔ (`RESULT: PASS`, R1 0 / R2 0 (28 izinli) / R3 0 (18 izinli) / R4 0 / R5 0; `--selftest` rc=0; eklenen satırlarda yasak sembol yok; `m_Magictable` yalnız `FillSkillMeta` satırı `:13`)
+  - K6 ✔ (`git diff --stat` yalnız 5 dosya + plan; `shared/`, `AIServer/`, `tools/`, `docs/`, `ScriptPlan.h`, `UnitView` yok)
+  - K7 ✔ (tüm `m_status`/`m_healObs` kullanımları `m_obsLock` altında; `FillSkillMeta` çağrısı `:151` kilit `:152`'den önce; `EFFECTING && target >= 0` koşulu)
+  - K8 ✔ (eklenen satırlar ASCII; beş dosya `file` çıktısı ASCII + CRLF; sekme/Allman; `git diff --check` boş; yeni `printf`/`Sleep`/`CreateThread`/`rand` yok; yeni ini/komut/thread/paket isteği yok; mevcut `WIZ_DEAD` dalları, `m_castEcho` bloğu ve `m_skillEvents.Add` satırı değişmedi). **Not:** `snap` kullanım dizgesi iki satırı dışında bir `-` satırı daha var: `CommandSnap` doğrulamasında `if (words.size() == 2 && !wantEvents)` → `… && !wantStatus` (plan §3.5'in `status` kabulü için zorunlu; K8'in "yalnızca kullanım dizgesi" ifadesiyle lafzen çelişir, §3.5 ile uyumlu).
+  - K9 ⏳ (Claude; sunucu açılmadı, plan §5.5 ve §6 gereği)
+- Plandan sapmalar ve gerekçeleri: Yok (yukarıdaki K8 notu dışında). Kod iskeleti §5.3/§5.4 imzalarına birebir uyuldu.
+- Açık sorular: Yok.
 
 ---
 
