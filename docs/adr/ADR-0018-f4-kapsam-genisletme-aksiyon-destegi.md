@@ -117,3 +117,93 @@ Ek 2 madde 4 / `docs/17` §2.1 m.10'un kalanı: **gözlenen durum tablosu** (F4-
 
 ## Ek 27 (2026-10-03, F4-60; otonom döngüde Claude kararı — gözden geçirilmeli)
 Ek 26'nın sunucu bağlaması **F4-60** ve **F4-61** olarak ikiye bölünür (gece kuralı: ≤ ~6 dosya, tek yetenek). Kararlar: (a) **F4-60** = `SkillMeta` kurucusu (`BotSession.cpp` dosya-statik `FillSkillMeta`, `m_MagictableArray`/`m_Magictype3/4/5Array` değer kopyası, `m_obsLock` dışında), `m_status`/`m_healObs` beslemesi yalnız `EFFECTING` + hedefli olaylarda, `WIZ_DEAD` ile `ClearTarget` (tek yeni blok, mevcut iki `WIZ_DEAD` dalına dokunulmaz), `ResetForRespawn` temizliği, `/bot snap <bot> status` dökümü (`events` gibi ikinci argüman) ve dökümün birim listesi için `ObservedStatusTable::Targets` sorgusu (+1 birim test); (b) görüş dışına çıkan birim (`INOUT out`) **temizlenmez**: buff sunucuda sürer, tahmin görüşe dönüşte geçerli kalabilir, taşmayı kapasite ve `Prune` yönetir; (c) `UnitView`/`NpcView` durum alanları, `PerceptionSnapshot` ekleri ve `check-perception-contract.py` R5 güncellemesi **F4-61**'dedir (R5 yasaklı sözcükler `buff`/`skill` yüzünden ayrı denetim gerektirir); (d) çalışma zamanı doğrulaması gözlenen kaydı sunucunun gerçek buff listesiyle (`FillSelfExtras`, `snap` `buff skill=…` satırları) karşılaştırır, tahmin hata payı doğrulama raporuna bir kez yazılır, `docs/05`'e girmez. Gerekçe ve ayrıntı: `plans/F4-60-algi-gozlenen-durum-sunucu-baglamasi.md`. Dilim sırası: F4-60 → F4-61 (görünüm alanları, R5) → `BotMI_K` (buz 70) betiği ve eşyalı mage skill'leri, F5-55 (navigasyon sunucu entegrasyonu).
+
+## Ek 28 (2026-10-03, proje sahibi talebi: kalan skill türlerinin sınıflandırması; Claude kararı — gözden geçirilmeli)
+
+> Numara: Ek 27 = F4-60; Ek 29 F4-61 için ayrıldı. ADR'deki iki yinelenen "Ek 2/Ek 3" başlığı eski bir numaralandırma kusurudur (içerikleri farklıdır; başlıkları değiştirilmedi).
+> Kaynak: `gece/2026-10-02` ucu (2026-10-03); `docs/05` §9.6 (mage koşusu) bu tarihte hâlâ yok.
+
+### Soru ve yöntem
+
+Proje sahibinin talebi: "Kalan skill türlerini sınıf ve seçilen build ihtiyacına göre sınıflandır: warrior/priest/mage hedefi için gerekli; sonraki kapsamda gerekli; rogue/archer veya mevcut kapsam dışı. Kapsam dışı skill türleri, gerekli olmadığı sürece F6'ya geçişi engellemesin."
+
+Yöntem (hepsi depo dosyalarından; veritabanına bağlanılmadı):
+
+1. **Kapı:** bugün bir skill'in `unsupported_skill` ile reddedildiği yer `GameServer/Bot/ActionExecutor.cpp:732-785` (`BeginCast`); karar saf mantıkta `BotCore/BotCombat.h:323-500` (`CastTypesSupported`, `CastTypeMoralSupported`, `CastMoralSupported`, `CastHpCostSupported`, `CastItemSkillSupported`, `CastResurrectionSupported`, `CastSummonSupported`, `CastWarpSupported`). Kapı şu an yalnızca şunları açar: tek tip `{1,0} {3,0} {4,0} {5,0}` (Type5 yalnızca `Moral` 2), çiftler `{3,4} {1,3} {1,4}`, `Moral` 1/2/4/6/7/8/10/11, `HP < 10000`, eşyalı skill'lerde `MAGIC.Skill != 0` ve `Type1 ∈ {1,3,4}`, artı üç istisna: diriltme (Type5 + `Moral` 25 + Stone of Life), summon (`Type1 = 8`, `Moral` 4, `WarpType` 12), warp (Gate `Moral` 1 `WarpType` 1; descent `Moral` 4 `WarpType` 25).
+2. **Veri:** `docs/appendix/data/skills_warrior.csv`, `skills_priest.csv`, `skills_mage.csv` (Karus; El Morad satırları `+100000` ve sayısal olarak aynı: `docs/appendix/data/skills_summary_notes.md` §5 "Nation twin check"). Üç referans master sınıfı için (106, 110, 112) pasif olmayan her satır, yukarıdaki kapının saf yeniden yazımından (bu oturumda Python ile; `BeginCast`'in quest ve çanta denetimleri hariç) geçirildi. Bu bir **kapı simülasyonudur**, `BeginCast`'in çalıştırılması değildir.
+3. **Build ihtiyacı:** `docs/04` §3.4 (`strSkill` profilleri: W-P `[70,0,52,20]`, W-G `[60,62,0,20]`, P-HD `[60,0,62,20]`, P-HB `[60,62,0,20]`, M-F `[70,52,0,20]`, M-I `[52,70,0,20]`; `db/002`) ve `docs/04` §5. Bir skill, `SkillLevel` değeri ilgili ağaçtaki puanı aşmıyorsa (ağaç 0 için seviye ≤ 80) o profil için **ulaşılabilir**dir.
+4. **Rol ihtiyacı:** `docs/05` §5-§7 çekirdek tablolar, `docs/06` §4/§8/§12, `docs/07` §4-§10, `docs/08` §5/§7/§8, `docs/09` §6-§7, `docs/17` §2.1 matrisi ve §5 kapıları (G6a-c, G7a-c), `docs/15` §4.9 (T-IGT-*).
+
+### Sınıf tanımları
+
+| Sınıf | Anlamı |
+|---|---|
+| **GEREKLİ-F6** | G6a/G6b/G6c (`docs/17` §5) veya F6 davranışı (warrior/priest solo/mage tek hedef) bu skill türünü atamadan yazılamaz/ölçülemez |
+| **GEREKLİ-F7** | G7a/G7b/G7c veya F7 davranışı (priest destek, summon, takım) gerektirir; F6'dan sonra |
+| **SONRAKİ** | Gerekli olabilir ama referans build'lerde ulaşılabilir değil ya da ancak yeni bir karar/profil (ADR) ile gündeme gelir |
+| **KAPSAM DIŞI** | rogue/archer, monster/NPC/item, sunucuda etkisiz/engelli veya referans build'de ulaşılamayan; yapılması gerekmez |
+
+### Birinci bulgu: referans build'lerde kapıda **kalan** tür yok denecek kadar azdır
+
+Pasif olmayan skill'ler (Karus master sınıfları, bu oturumdaki kapı simülasyonu):
+
+| Sınıf | Pasif olmayan satır | Kapıdan geçen | Reddedilen | Reddedilenler |
+|---|---|---|---|---|
+| 106 warrior | 46 | 43 (42 genel + 1 warp) | **3** | Binding `106630`, provoke `106645`, sacrifice `106660` |
+| 110 mage | 89 | 86 (84 genel + summon + Gate) | **3** | Escape `110035`, Freezing Distance `110674`, Blink `110774` |
+| 112 priest | 95 | 92 (88 genel + 3 diriltme + Gate) | **3** | Bless of God `112671`, Sleep Wing `112730`, Sleep Carpet `112751` |
+
+Üç sınıfın CSV'sinde **hiç** Type2, Type6, Type9 satırı ve **hiç** `Moral` 12/13 (ayrıca 3/5/14/15) yoktur (`skills_*.csv`, bu oturumda sayıldı). Yani proje sahibinin saydığı "Type2 (okçu/rogue), Type6, Type9, Moral 12/13, Escape, Blink, Wild advent" türleri warrior/priest/mage referans build'lerinin skill ağaçlarında zaten bulunmaz ya da ulaşılamaz.
+
+### Kalan türlerin sınıflandırması
+
+| Tür / `Moral` | Örnek skill kimliği | Hangi sınıf/build kullanır | Sınıf | Gerekçe (AC/T-* ve rol davranışı) | F6'ya geçişi engeller mi |
+|---|---|---|---|---|---|
+| Type7, `Moral` 7 (Binding) | `106630` / `206630` (ağaç 6, puan 30) | yalnızca W-G (savunma 62); W-P ve diğerleri ulaşamaz | **KAPSAM DIŞI** (Q-22'yi kapatma önerisi: "kullanılmaz") | Sunucu `ExecuteType7` (`GameServer/MagicInstance.cpp:2160-2231`) yalnızca `bTargetChange == 1` iken sabit `sDamage` (Binding/provoke için `T7_shDamage = 10`) uygular; kışkırtma/aggro kodu yoktur, işlev her zaman `false` döner (`:2230`; cooldown/`UseItem` kaydı da yok, `docs/appendix/research/B_combat.md` "Type 7"). Veri açıklaması "monster"dır (`T7_strNote`: "Provoke a monster…"). W-G peel `docs/06` §4 madde 4'te **descent + Scream/leg cutting** ile tanımlıdır; `docs/06` §12 "Binding/provoke ilk sürümde kullanılmaz" der; AC-WAR-04 (peel p50 ≤ 1,5 sn) Type7 gerektirmez. `docs/17` §2.1 satırı "Type7 opsiyonel" der: bu ek onu "gereksiz" yapar | **Hayır** |
+| Type7, `Moral` 10 (provoke) | `106645` / `206645` (ağaç 6, puan 45; `T7_byRadius 30`) | W-G | **KAPSAM DIŞI** | Yukarıdaki gibi; `Moral` 10 alan yolunda aynı `bTargetChange == 1` sabit hasarı | **Hayır** |
+| Type7, `Moral` 7/10 (Sleep) | Sleep Wing `112730` (ağaç 7, puan 30), Sleep Carpet `112751` (puan 51) | yalnızca P-HD (curse ağacı 62: ikisi de ulaşılabilir) | **KAPSAM DIŞI** | `T7_byTargetChange = 2`; `ExecuteType7` yalnızca `== 1` dalında bir şey yapar (`:2202`, `:2221`) ⇒ bu skill'ler sunucuda **etkisizdir** (veri açıklaması "monster"). `docs/07` §9.1 debuff listesinde yoktur. Kapı açık olsaydı bot 120/240 MP'yi boşa harcardı; kapalı kalması doğru | **Hayır** |
+| Type3, `Moral` 4, `HP ≥ 10000` (sacrifice) | `106660` / `206660` (W-G ağaç 6, puan 60) | W-G | **KAPSAM DIŞI** (bilerek kapalı) | `CastHpCostSupported` (`BotCombat.h:392-399`, ADR-0018 Ek 7): çağıran 10000 HP kaybeder, bot ölür. `docs/06` kullanmaz. Açılırsa yalnızca "party üyesine tam HP" karar kuralıyla ve ayrı karar ile | **Hayır** |
+| Type8 `WarpType` 1, `Moral` 6 (Escape) | `110035` / `210035` (`109035`/`209035`); M-F/M-I seviye 35 | M-F, M-I | **KAPSAM DIŞI** | Ronark'ta (zone 71 > `ZONE_BIFROST`) sunucu reddeder ve MP'yi düşürür (`docs/03` MEC-T8-04, MEC-MAG-22; ADR-0018 Ek 11). Mage kaçışı için Gate `110015` açık ve ölçüldü (Q-12 cevaplandı: tam ulus başlangıcına ışınlar) | **Hayır** |
+| Type8 `WarpType` 20, `Moral` 1 (Blink) | `110774` / `210774` (`Etc 517`, `SkillLevel 80`, ağaç 7) | yok (M-F `[70,52,0,20]`, M-I `[52,70,0,20]`: ağaç 7 = 0 puan) | **KAPSAM DIŞI** | Referans build'de ulaşılamaz; `docs/08` §7 "Blink standart profilde yoktur (CHR-08)"; ADR-0018 Ek 11 | **Hayır** |
+| Type8 `WarpType` 25, `Moral` 7 (Wild advent) | `108770` / `208770` (`Skill 1087`: rogue sınıfı 108; `skills_summary_notes.md:57`) | rogue | **KAPSAM DIŞI** (rogue) | `docs/01` §2 rogue/archer kapsam dışı; üç referans sınıfın CSV'sinde yok; ADR-0018 Ek 11 | **Hayır** |
+| Type8 `WarpType` 12/21 (item: Call Party, monster staff) | `490050` (Call Party), `490088` (Monster Summons Staff) (`skills_summary_notes.md:80-81`) | item kullanan herhangi biri | **KAPSAM DIŞI** | Item skill'leri (`MAGIC.Skill = 0`) pot yolundadır; Ronark `490050` bölgesinde sunucu engeli (`B_combat.md` "Warp type 12 rules"); ADR-0018 Ek 12 `Skill == 0` kapalı | **Hayır** |
+| Type5, `Moral` 6 (Bless of God) | `112671` / `212671` (ağaç 6, puan 70) | yalnızca P-HB2 varyantı (Heal 52 + Buff 70, `docs/04` §5.4); P-HB `[60,62,0,20]` ulaşamaz | **SONRAKİ** (ADR kapılı varyant) | Tek `Moral` 6 Type5; party çapında debuff temizleme. Referans P-HB'de ulaşılamaz; `docs/07` §8 cure'u üye başına Cure curse (`Moral` 2, açık, ölçüldü F4-32/F4-43) ile tanımlar. P-HB2 "deney için, L1 dışı, ADR ile" (`docs/04:188`); karar verilirse ayrı küçük dilim | **Hayır** |
+| Type4 + uçan + eşya (Freezing Distance) | `110674` (`Etc 517`, `UseItem 379061000`, `FlyingEffect 293`, ağaç 6, puan 80) | yok (M-I buz 70) | **KAPSAM DIŞI** | Puan (80 > 70) ve quest (`Etc 517`) nedeniyle ulaşılamaz (ADR-0018'in quest ekleri [F4-27 'Ek 3 (2026-10-03, quest ile açılan skill'ler)'], `docs/04` §3.4 "72-80 skill puan yüzünden erişilemez") | **Hayır** |
+| Type2 (okçu) | **örnek kimlik yok**: dokümanda/ADR'de Type2 skill kimliği verilmemiş, üç referans sınıfın CSV'sinde Type2 satırı yok, rogue CSV'si depoda yok (uydurulmadı) | archer/rogue (bot profili yok: `db/002` 6 profil) | **KAPSAM DIŞI** (rogue/archer) | ADR-0018 Ek 7: dilim 2b ertelendi; `docs/01` §2; ok tüketimi ve yay denetimi ancak ayrı ADR ile | **Hayır** |
+| Type9 (stealth/detect) ve `{1,9}` çifti | `108680` (stealth/lupine, `{1,9}`; `plans/F4-37-…:80`) | rogue | **KAPSAM DIŞI** (rogue) | `ExecuteType9` (`MagicInstance.cpp:2460`) rogue gizlilik/görme; warrior/priest/mage ağaçlarında yok; ADR-0018 Ek 3/Ek 13 "kapalı çiftler" | **Hayır** |
+| Type6 (dönüşüm) | item büyüleri `MagicNum 478001` (item `379134000` Snowman, `Type6` dönüşüm) ve `MagicNum 472001` (item `381001000` Transformation Scroll) (`docs/appendix/data/potions_consumables_notes.md:195-211`); sınıf skill'i yok | herhangi biri (item) | **KAPSAM DIŞI** | PvP zone'larında dönüşüm engelli (`B_combat.md` "Type 6": zone > 2 hariç Eslant, NPC dönüşümü hariç); referans ağaçlarda Type6 yok | **Hayır** |
+| `Moral` 12 (AREA_ALL) / 13 (SELF_AREA) | oyuncu skill'i yok; ADR-0018 Ek 25 (d) canavar skill'lerini `300106`/`300208` olarak anar (`Moral` değerleri bu oturumda doğrulanmadı) | monster/NPC | **KAPSAM DIŞI** | Üç referans sınıfın CSV'sinde `Moral` 12/13 sıfır satır; sunucuda `UserRegionCheck` AREA_ALL arena/PvP zone ister (`B_combat.md` §4) | **Hayır** |
+| Type5 `RESURRECTION_SELF` (item skill) | `480001` (`BotCombat.h:405-406` yorumu; item) | item | **KAPSAM DIŞI** | `CastResurrectionSupported` yalnızca `type5Kind == 3` (RESURRECTION) açar; kendini diriltme scroll'u PvP yolunda gereksiz | **Hayır** |
+| Pasifler (`Type1 = Type2 = 0`) | Hinder, resist, Arrest, endure, Bulwark, immunity, evading (106xxx savunma ağacı) | W-G | **KAPSAM DIŞI** (cast yok) | Sunucu/istemci stat koduyla uygulanır (`skills_summary_notes.md` §2 "Passive rows"); bot atmaz | **Hayır** |
+
+### İkinci bulgu: "gerekli" sınıfındaki türlerin **hepsi kapıda zaten açık**; geriye kalanlar tür değil, doğrulama işleridir
+
+Proje sahibinin birinci sınıfı (warrior/priest/mage hedefi için gerekli) kapıda **boştur**: warrior, priest ve mage'in rol belgelerinin saydığı skill'lerin hepsi `BeginCast`'ten geçer ve F4 planlarında çalışma zamanında ölçülmüştür (`docs/05` §9.1-§9.7; F4-34/F4-35/F4-49 doğrulama raporları). Aşağıdaki işler **skill türü değildir**, kapıda açık ama kanıtı eksik gruplardır; sınıflandırma açısından "gerekli" ama F6'yı engellemezler:
+
+| İş (tür açık) | Örnek skill kimliği | Sınıf | Neden gerekli / hangi kabul | Durum / sahibi plan | F6'ya geçişi engeller mi |
+|---|---|---|---|---|---|
+| Mage tek hedef/uçan/alan, çift tipli `{3,0}`/`{3,4}` botla çalışma zamanı ölçümü (uçan alan `{3,4}` Ice burst ilk kez) | Burn `110503`, Fire ball `110515`, Pillar of fire `110551`, Fire burst `110533`, Ice burst `110633`, Supernova `110560`, Prismatic `110670` | **GEREKLİ-F6** | G6c: T-MAG-01..04, AC-MAG-01/03; `docs/08` §5-§6 | F4-48 K9/K10 "sabaha ertelendi" (plan raporu); sonuç `docs/05` §9.6 henüz yok (§9.5 ve §9.7 var) | **Hayır** (kod desteği var; `unsupported_skill`/`bad_*` çıkarsa yeni küçük C++ dilimi). Ölçüm F6-08 ile paralel yürür; G6c kapanış kanıtıdır |
+| `BotMI_K` (buz 70) betiği, eşyalı mage skill'leri (Fire Impact `110557`, Absolute power `110802`) çalışma zamanı ölçümü | `110557`, `110802`, `110570` incineration, `110571` meteor Fall | **GEREKLİ-F6** (Impact, M-I çekirdeği) ve **GEREKLİ-F7** (Absolute power: `P-MAG-BURST-WINDOW`, `docs/08` §5 madde 4) | `docs/08` §6.2 tablosu; `docs/09` §7 senkron patlama | F4-48 kapsam dışı (d); STATUS/ADR-0018 Ek 26 "dilim sırası: `BotMI_K` betiği ve eşyalı mage skill'leri" bekliyor | **Hayır** (kapı F4-36 ile açık; eksik olan ölçüm) |
+| Gözlenen durum tablosunun sunucu bağlaması (başkalarının buff/debuff'ı, heal olayları): saf mantık F4-53 `KAPANDI`; sunucu bağlaması F4-60 `DOĞRULANDI` (merge `7891f74`), görünüm alanları F4-61 (ADR-0018 Ek 27, plan henüz yok) | `ObservedStatusTable`, `HealObsRing` (`BotCore/Perception.h`) | **GEREKLİ-F7** (priest cure/buff takibi, `pending_heals` ve heal-stall; `docs/07` §5.1/§7.2/§8, `docs/09` §6.1; G7a) | `docs/17` §5 G7a "F4-52/53" ön koşulu | F4-60/F4-61 (ADR-0018 Ek 27) | **Hayır** (F6 priest solo yalnızca kendi buff listesini kullanır: `SelfState` F4-17; takım gözlemi F7) |
+| Eşya sayacı (Stone of Warrior/Priest/Life tüketimi ölçülemiyor; `snap` eşya sayacı yok) | Scream `106802`, Judgment `112802`, Resurrection `112733` (taş hedeften) | **GEREKLİ-F7** (diriltme güvenliği `docs/07` §10; stok `TeamBlackboard.MemberStatus.stok`), kısmen F6 (warrior MP/taş rezervi `docs/06` §8 "Stone of Warrior bitti") | `docs/07` §10 satır 4 (ölen botun taş stoğu) | `docs/05` §9.4 Bulgu 3; ADR-0018 Ek 8 sıralama notu; plan yok | **Hayır** (taş stoğu bot satırlarında 30/50 ile başlar, `db/002`/`db/004`; F6 solo'da taş bitmeden önce karar gerekmez; "taş bitti" geri bildirimi telemetriye değil `no_item` retlerine dayanır) |
+| Summon sonucunun doğrulanması (`effected` ışınlanmayı kanıtlamaz; hedef konumu veya `SkillEvent.data[1]`) | summon friend `110004`/`210004` | **GEREKLİ-F7** | `docs/08` §8.1 SUM-01..07, AC-MAG-04/05; MEC-MAG-21 | ADR-0018 Ek 10: karar katmanı işi; F4-52 olay halkası hazır | **Hayır** |
+
+### Sonuç: "F6 için gerçekten engelleyen tür var mı?" — **Hayır**
+
+Kanıt zinciri:
+
+1. **F6'nın tanımı** (`docs/17` §2, F6 bloğu satır 151-163): warrior, priest (kendi/tek müttefik), mage (summon hariç); TeamBlackboard, çağrılar ve summon kapsam dışı. Kapılar: G6a (ADR-0018 m.4: Type4 self), G6b (priest heal, pot), G6c (m.2/m.3/m.5: uçan, çift tipli, alan).
+2. **Bu üç kapının gerektirdiği her tür kapıda açıktır**: Type4 tek tip (F4-28), uçan Type3 (F4-25), çift tipli `{3,4}` (F4-26), alan `Moral` 10 (F4-29/F4-30), party hedefli `Moral` 4/6 (F4-31), cure `Moral` 2 (F4-32), diriltme `Moral` 25 (F4-33), summon/Gate/descent (F4-34/F4-35), eşyalı sınıf skill'leri (F4-36), `{1,3}`/`{1,4}` çiftleri (F4-37), alan-dost `Moral` 11 (F4-49). `BeginCast` kapısının bu oturumdaki yeniden yazımı, üç referans sınıfta ulaşılabilir her skill'in kapıdan geçtiğini gösterir; reddedilen dokuz skill'in hiçbiri bir rol belgesinde zorunlu değildir (tablo).
+3. **Reddedilen dokuz skill'in rol belgelerindeki yeri:** Binding/provoke `docs/06` §12 "kullanılmaz", sacrifice kullanılmaz, Escape/Blink `docs/08` §7 ve §11 (Gate yeterli), Freezing Distance ulaşılamaz, Bless of God P-HB'de ulaşılamaz (`docs/04` §5.4), Sleep Wing/Carpet debuff listesinde yok (`docs/07` §9.1).
+4. **Type7 kararı kapanır:** `docs/17` §2.1 "ADR-0018'e eklenmeli: Type7 opsiyonel" ve ADR-0018 Ek 1 madde 3 "ayrı kısa karar planı" açıktı. `ExecuteType7`'nin kod okuması (`:2160-2231`) Binding/provoke'un PvP'de kışkırtma yapmadığını, yalnızca 10 sabit hasar verdiğini gösterir `[D]`. Bu ek, ayrı karar planını gereksiz kılar: **Q-22 (`docs/18` satır 71) kapatılır: "Type7 kullanılmaz"**. Çalışma zamanı doğrulaması (bir W-G botun bir düşmana Binding atması) yapılmadı `[A]`; karar kod okumasına dayanır, ölçüm gerekirse W-G solo koşusunda tek atışla sonradan eklenir.
+5. **Okçu/rogue:** `docs/01` §2 ve ADR-0018 Ek 7 zaten kapsam dışı; `db/002`'de rogue/okçu botu yok. Proje sahibine bekleyen tek soru (`docs/reports/gece-2026-10-03.md` §7 madde 4: "okçu/rogue botları kurulacak mı?") "hayır" kaldığı sürece Type2/Type9/Wild advent sınıfı bu ekte KAPSAM DIŞI kalır.
+
+Engelleyici olmayan ama F6 kabulünde (G6c) dikkat edilecek **tek şey**: mage skill'lerinin çalışma zamanı ölçümü (F4-48 K9/K10) henüz yapılmadı; G6c kapanışı bunu ister. Bu, F6-08'in **yazılmasını/uygulanmasını** engellemez; F6-08 kabulünden önce yapılmalıdır.
+
+### Doğrulanamayanlar / sınırlar
+
+- Kapı simülasyonu `BeginCast`'in kendisi değildir (quest ve çanta denetimleri, `bad_skill` sınıf/seviye denetimi çıkarıldı). Sayılar `docs/appendix/data/skills_*.csv`'den hesaplandı; CSV'nin üretim tarihi sonrası `MAGIC` tablosu değiştiyse sapabilir (DB'ye bağlanılmadı).
+- Type7'nin istemcide ne yaptığı (örneğin yalnızca görsel) bilinmiyor `[A]`; yalnızca sunucu davranışı okundu.
+- `300106`/`300208` kimliklerinin `Moral` değerleri doğrulanmadı (yalnızca ADR-0018 Ek 25 (d)'de anılıyor).
+- Okçu Type2 için örnek skill kimliği bulunamadı; uydurulmadı.
+- ADR'de numara: Ek 27 F4-60'a ait; eklerken `gece/2026-10-02` ucunda bir sonraki boş numara yeniden kontrol edilmeli.

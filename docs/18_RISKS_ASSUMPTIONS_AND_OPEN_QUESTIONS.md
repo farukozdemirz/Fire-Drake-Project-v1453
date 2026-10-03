@@ -75,6 +75,8 @@ Değerlendirme (2026-10-02) ADR'leri **KABUL** (proje sahibi kararları, 2026-10
 | Q-26 | İstemci suya/göl cebine girebiliyor mu, suda yavaşlıyor mu, kıyı olay ızgarasıyla uyumlu mu (T-NAV-09) | Su katmanı gerekir mi (`docs/12` §13.1) | İstemcide göl kıyısında yürüme + sunucu konum kaydı | F5 |
 | Q-27 | `ObsTable` bazı bot çiftlerinde neden tek yönlü görüyor (KI-DEG-01, F4-54) | Karar katmanının girdisi | F4-54 teşhis koşusu | F4 |
 | Q-28 | 51–54 quest kimlikleri (32 skill) sunucuda `UseStanding` sütununda: sunucu bu quest'leri uygulamasın mı kalsın, yoksa `Etc`'e taşınıp (`UseStanding` 0) sunucu da uygulasın mı (KI-017 yan etkisi de kalkar) | Bot ve insan eşitliği, T-MECH-SKILL ölçümü, KI-017 | Karar (ADR) + `docs/03` MEC-MAG-14; öneri: mevcut hâl (ADR-0003 quest şartlarını gevşetmişti), bot satırlarına yine de quest yazılır | F4 |
+| Q-29 | Geri çekilme eşiği: kullanıcı gereksinimi "HP %30'un altında geri çekil" ile `docs/11` §4.2 formülü (`0,30 + role_adj + 0,05·threat − 0,08·support + 0,1·[kök]`; 1v1 melee yakınken 0,35) ve `docs/10` yeniden giriş eşiği (REENTER 0,85) ile `docs/11` (0,65) çelişiyor: sabit %30 taban mı, formül mü; yeniden giriş eşiği hangisi | F6-05 geri çekilme ve yeniden giriş davranışı (warrior uçtan uca hedefi), T-SUR-*, AC-SUR | Karar (ADR) + `docs/11` §4 sadeleştirme; öneri: ilk uçtan uca koşuda `threatWeight = 0` (yani sabit %30 taban), formül F6 sonrası ayarlanır | F6 |
+| Q-30 | `B0-NAIVE` baseline tanımı eksik: pot %30'da HP için mi MP için mi, priest/mage için "en yakın düşmana saldırır / rastgele hazır skill" kümesi, ve `docs/17` F6 kabulündeki "EVAL-1v1'de **anlamlı** yener" ifadesinin sayısal tanımı (AC-EVAL-01 SPRT +100 Elo yalnızca 8v8) | F6-01 (B0-NAIVE), F6-10 (EVAL-1v1), G6 kabulü | Karar (ADR) + `docs/15` §5, `docs/17` F6; öneri: F6-01 geçici tanım `[A]` ile yazılır, F6-10 öncesi sahibin onayı | F6 |
 
 ## 4. Riskler
 
@@ -111,3 +113,4 @@ Değerlendirme (2026-10-02) ADR'leri **KABUL** (proje sahibi kararları, 2026-10
 | 2026-10-01 | v1.0 | İlk sürüm |
 | 2026-10-02 | v1.1 | Değerlendirme: Q-25..Q-27, ADR-0030..0033-DEG bağlantıları |
 | 2026-10-03 | v1.2 | Kimlik çakışması giderildi: aynı `Q-27` numarasını iki ayrı soru taşıyordu. İlk verilen (2026-10-02) `Q-27` = `ObsTable` tek yönlü görüş; quest kimlikleri sorusu **Q-28** oldu. F4-27 planı, `docs/reports/gece-2026-10-03*.md` ve diğer eski kayıtlardaki "Q-27" (quest anlamında) ifadeleri Q-28'dir; kapanmış planlar/raporlar tarihsel olduğundan metinleri değiştirilmedi |
+| 2026-10-03 | v1.3 | Q-29 (geri çekilme eşiği) ve Q-30 (`B0-NAIVE`/"anlamlı yener" tanımı) eklendi (F6 planlama bulguları, `docs/reports/plan-bagimlilik-F6-2026-10-03.md`) |
