@@ -219,11 +219,15 @@ public:
 	// ADR-0017 Ek F4-33); a resurrection reports "effected" when the server broadcasts it, which does not prove the
 	// target is alive (docs/03 MEC-MAG-20));
 	// summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend; the target must be a party member other than the
-	// caster, the server teleports it to the caster; Gate, Escape, Blink, descent and other warp types stay unsupported;
+	// caster, the server teleports it to the caster; Escape, Blink, Wild advent and the other warp types stay unsupported;
 	// ADR-0017 Ek F4-34); a summon reports "effected" when the server broadcasts it, which does not prove the target
-	// moved (docs/03 MEC-MAG-21)),
+	// moved (docs/03 MEC-MAG-21);
+	// Gate (Type8, Moral 1, MAGIC_TYPE8.WarpType 1: the caster is warped to its resurrection/start point; self cast only)
+	// and descent (Type8, Moral 4, WarpType 25: the caster is warped to a party member within MAGIC_TYPE8.Radius metres;
+	// the target must be a party member other than the caster; ADR-0017 Ek F4-35); a Gate or a descent reports "effected"
+	// when the server broadcasts it, which does not prove the caster moved (docs/03 MEC-MAG-22)),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
-	// "bad_target" (moral does not match the target kind; corpse-friend and summon need a named target).
+	// "bad_target" (moral does not match the target kind; corpse-friend, summon and descent need a named target).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 

@@ -424,6 +424,34 @@ namespace BotCore
 			&& useItem == 0 && warpType == kType8WarpSummon;
 	}
 
+	// --- warp casts: Gate and descent (ADR-0017 Ek F4-35, docs/03 MEC-MAG-22) ---
+
+	// MAGIC.Type1 = 8, MAGIC_TYPE8.WarpType 1 with MAGIC.Moral 1 (MORAL_SELF) = Gate (110015/210015): the caster is warped to
+	// its resurrection/start point. WarpType 25 with Moral 4 (MORAL_PARTY) = descent (106650/206650): the caster is warped to
+	// a party member within MAGIC_TYPE8.Radius metres, so a descent needs a named target other than the caster. The other
+	// warp types (1 with Moral 6 = Escape, 12 = summon (F4-34), 13 cross-zone summon, 20 Blink, 21 monster summon,
+	// 25 with Moral 7 = Wild advent) stay closed here.
+	constexpr uint8_t kMoralSelf = 1;
+	constexpr uint8_t kType8WarpGate = 1;
+	constexpr uint8_t kType8WarpDescent = 25;
+
+	// The warps the bot casts: Type8 alone, no item; Gate = Moral 1 + WarpType 1, descent = Moral 4 + WarpType 25. The caller
+	// still rejects flying effects and "sacrifice" HP costs.
+	inline bool CastWarpSupported(uint8_t type0, uint8_t type1, uint8_t moral, uint32_t useItem, uint8_t warpType)
+	{
+		if (type0 != 8 || type1 != 0 || useItem != 0)
+			return false;
+
+		return (warpType == kType8WarpGate && moral == kMoralSelf)
+			|| (warpType == kType8WarpDescent && moral == kMoralPartyMember);
+	}
+
+	// A descent warps the caster to ANOTHER party member; naming itself would waste the MP. Gate is a self cast.
+	inline bool CastWarpNeedsOtherTarget(uint8_t warpType)
+	{
+		return warpType == kType8WarpDescent;
+	}
+
 	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{
