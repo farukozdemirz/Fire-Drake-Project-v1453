@@ -68,7 +68,7 @@ Her telemetri kaydı tek satır JSON'dur (JSONL). Ortak alanlar:
 - **`t`:** `steady_clock` zamanı, milisaniye (süreç içi karşılaştırma için; duvar saati yalnızca `MATCH_START/END`).
 - **Seviye eşlemesi:** `summary`: `MATCH_START/END`, `PERF_SAMPLE`; `decisions`: `+` `DECISION`, `ACTION_*`, `FAIRNESS_REJECT`, `SCRIPT_*`, `TARGET_*`, `STATE_CHANGE`, `DEATH/RESPAWN`, `POTION`, `BUFF_*`, `HEAL`, `DAMAGE`; `trace`: `+` `NAV_*` ve tek bota özel ayrıntı. Seviye eşlemesinin tek kaynağı bu tablodur; kodda sabittir.
 - **Düşürülebilir olaylar:** `PERF_SAMPLE`, `DECISION` (kuyruk yumuşak sınırı aşılınca düşer); diğerleri yalnızca sert sınırda düşer. Düşürme sayaçları `PERF_SAMPLE` kaydındaki `dropped_soft`/`dropped_hard` alanlarındadır.
-- **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir.
+- **`PERF_SAMPLE` alanları (F3-01):** `window_ms`, `tick_n`, `tick_p50_us`, `tick_p95_us`, `tick_p99_us`, `tick_max_us` (BotManager `Tick()` toplam süresi, MET-PERF-02), `sessions`, `in_game`, `pool_free`, `skipped_ticks`, `queue_len`, `written`, `dropped_soft`, `dropped_hard`. Bot başına tick süresi (MET-PERF-01) karar katmanı gelince eklenir. Nav payı alanları (`nav_us_p95/p99/max`, `nav_queries`, `nav_deferred`, `nav_wait_max_ms`) F5-55 dilimleriyle eklenir; **bugün yoktur** (`docs/12` §13.5.3).
 - **`SELFTEST`:** yalnızca `[BOT] TELEMETRY_SELFTEST=1` iken yazıcı/taşma öz-sınaması üretir (`i` alanı); analiz araçları yok sayar.
 - **Dosya:** `Logs/bots/<YYYY-MM-DD>/live-<HHMMSS>.jsonl`.
 - **Maç bağlamı (ADR-0007 Ek, F3-02):** `/bot match start <senaryo> [seed]` ile açılan maçta olaylar `Logs/bots/<YYYY-MM-DD>/<match>.jsonl` dosyasına `"match":"<senaryo>-<seed>-<tekrar>"` ile yazılır; `/bot match end [sonuç]` ile `MATCH_END` yazılıp dosya kapanır ve `<match>.summary.json` oluşur. Maç yokken `match` = `"-"`, dosya `live-*.jsonl`. `mode` bu aşamada hep `live`; taraf eki ve ScenarioRunner alanları F3-03'te.
@@ -219,8 +219,8 @@ MET-ACT-02 / MET-FAIR-01 uygulama notu (F4-21, ADR-0017 Eki F4-21): telemetridek
 | Kimlik | Ad | Tanım | Başlangıç bütçesi `[Ö]` |
 |---|---|---|---|
 | MET-PERF-01 | Bot tick süresi | Bot başına karar+aksiyon süresi p50/p95/p99 | p95 ≤ 0.3 ms |
-| MET-PERF-02 | BotManager toplam süre | Tick başına tüm botlar | 16 bot için p95 ≤ 5 ms; 64 bot için ≤ 15 ms |
-| MET-PERF-03 | Yol bulma maliyeti | Arama başına süre ve genişletilen düğüm | p95 ≤ 2 ms, düğüm limiti [12](12_NAVIGATION_AND_POSITIONING.md) |
+| MET-PERF-02 | BotManager toplam süre | Tick başına tüm botlar; ölçüm `PERF_SAMPLE.tick_p95_us`, `in_game` = 16, en kötü 5 sn pencere; nav payı ayrı alanda (`docs/12` §13.5.3) | 16 bot için p95 ≤ 5 ms; 64 bot için ≤ 15 ms |
+| MET-PERF-03 | Yol bulma maliyeti | **Tek arama** (near64, MSVC Release) süresi ve genişletilen düğüm; 16 bot toplamı MET-PERF-02'nin nav payıdır, MET-PERF-03 değildir | p95 ≤ 2 ms, düğüm limiti [12](12_NAVIGATION_AND_POSITIONING.md) |
 | MET-PERF-04 | Sunucu etkisi | Botsuz ve botlu durumda ana timer gecikmesi, CPU, bellek | Botlu/botsuz CPU artışı raporlanır |
 | MET-PERF-05 | Ağ etkisi | Botların ürettiği bölge yayını (paket/sn, bayt/sn) | Raporlanır |
 
