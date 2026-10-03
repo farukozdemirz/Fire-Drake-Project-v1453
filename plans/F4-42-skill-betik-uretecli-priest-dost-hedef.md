@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 18) |
 | Branch | `bot/F4-42` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-41 (`tools/skill-check.py`, cast `mp`/`mp_after`/`skill` telemetrisi) — `KAPANDI` (merge `0901ae0`); F4-40 (envanter doldurma, MP pot stoku) — `KAPANDI`; F4-19/F4-22 (betik ayrıştırıcı ve `Scripts/` yükleyici) — `KAPANDI` |
@@ -187,4 +187,41 @@ git diff --stat gece/2026-10-02...bot/F4-42
 - Araç yalnızca dosya üretir; sunucuya bağlanmaz. `Scripts/` klasörüne (depo dışı) **yazma**; kopyalama Claude'un koşusunda yapılır.
 - Zamanlama modeli `[A]`'dır (uçuş aşaması, sunucu gecikmesi, MP yenilenmesi hesaba girmez; `margin_ms` payı bunun içindir). Koşuda bir adım ofsetinde bot hâlâ önceki cast'teyse `BeginCast` reddeder: bu bir **betik zamanlama bulgusudur**, araç `--margin-ms` ile ayarlanır (Claude karar verir); DeepSeek kendi başına `margin_ms` varsayılanını değiştirmez.
 - MP bütçesi `[A]`: priest'in azami MP'si ölçülmedi; `pot` adımları `389220000` (Potion of Ancient Spirit, +2160 MP; `db/004` yuva 21) stokunun `--mp-pots` ile doldurulmasını gerektirir. Stok yoksa `pot` `no_stock` ile reddedilir; bu da bulgudur.
-- Uçan skill ve düşman hedefli skill bu planda yok (Kapsam dışı); spec'e ekleme.
+ - Uçan skill ve düşman hedefli skill bu planda yok (Kapsam dışı); spec'e ekleme.
+
+---
+
+## Uygulayıcı Raporu
+
+### Tur 1
+
+- **Durum:** UYGULANDI. Yalnızca §4'teki dört dosyaya dokunuldu; C++/derleme girdisi değişmedi.
+- **Branch / commit'ler:** `bot/F4-42` (taban `gece/2026-10-02`).
+  - `f4e4528` `[F4-42] skill-script-gen.py üreteci, priest dost hedefli spec ve üretilmiş betik`
+  - (bu rapor ve `Durum` satırı: sonraki commit)
+- **Değişen dosyalar:**
+  - `tools/skill-script-gen.py` (yeni, 647 satır): spec + `MAGIC` → `ParseScript` sınırlarına uyan betik; `--check` (ParseScript kurallarının birebir yansıması) ve `--selftest` (23 adlandırılmış kontrol); `skill-check.py`'deki `--magic` ayrıştırıcısı ve `load_magic_sql` (bayt olarak çöz) kopyalandı.
+  - `bots/config/skill_priest_k.spec` (yeni): §5.2 listesi (6 `raw`, 9+12 `cast`, 2 `pot`).
+  - `bots/config/skill_priest_k.txt` (yeni, üretilmiş): 32 satır, 30 adım, son ofset 115500 ms.
+  - `plans/F4-42-...md`: `Durum` + bu rapor.
+- **Kabul kriterleri öz-değerlendirmesi:**
+  - **K1 ✔** `python3 tools/skill-script-gen.py --selftest` → `selftest: 23 checks, 0 failed`, çıkış 0. §5.4'teki 17 durumun tamamı adlandırılmış kontrol olarak kapsanır (1 `cursor_sequential`; 2 `bots_parallel`; 3–5 `period_*`; 6 `pot_advance`; 7 `raw_sets_t0` (+`raw_absent_t0`); 8 `sorted_stable`; 9 `trailing_list`; 10 `unknown_skill`; 11 `bad_verb_raw`; 12 `bad_cycles`; 13 `step_limit`+`step_limit_no_file`; 14 `offset_limit`; 15 `deterministic`; 16 `check_ok`+`check_bad_offset_order`+`check_too_many_lines`+`check_line_too_long`+`check_bad_verb`; 17 `sqlcmd_non_utf8`).
+  - **K2 ✔** Gerçek `MAGIC` ile (`--magic` verilmeden, sqlcmd) üretim `/tmp`'ye yazıldı; `diff /tmp/skill_priest_k.txt bots/config/skill_priest_k.txt` boş.
+  - **K3 ✔** `--check` → `ok: 30 steps, 1109 bytes, 32 lines, last offset 115500 ms`; 6 `raw`, 21 `cast`, 2 `pot`, 1 `list` = 30 adım, `N=30 ≤ 100`, son ofset ≤ 600000.
+  - **K4 ✔** `grep -c '^[0-9]* cast BotPHD_K'` = 9, `... BotPHB_K` = 12, `grep -c 112703` = 0.
+  - **K5 ✔** `./tools/build.sh Release` hatasız bitti; yeni uyarı yok (yalnızca önceden var olan `UpgradeHandler.cpp(634/862)` C4789). `./tools/run-tests.sh` → `251 tests, 0 failed`.
+  - **K6 ✔** `git diff --name-only gece/2026-10-02...bot/F4-42` yalnızca dört dosyayı listeler (`GameServer/`, `BotCore/`, `Tests/`, `tools/skill-check.py`, `docs/` farkı yok).
+  - **K7 → Claude'da** (çalışma zamanı; bu planda DeepSeek sunucu açmaz).
+- **Derleme çıktısının son satırları:**
+  ```
+    BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+  ```
+  (Tek uyarı: `UpgradeHandler.cpp(634): warning C4789`, `(862)` — bu plan öncesinden var.)
+- **Plandan sapmalar / notlar:**
+  - `# bots:` başlığı, `cast`/`pot` satırlarındaki **yürütücü** botları ilk görünme sırasıyla yazar (`BotPHD_K BotPHB_K`); hedef botlar (`BotWP_K`, `BotWG_K`) başlığa girmez. Plan bu satırın içeriğini tanımlamıyor ve hiçbir kabul kriteri denetlemiyor; işlevsel etkisi yok (yorum satırı, sunucu yok sayar).
+  - `--check` `kScriptMaxBytes` karşılaştırması dosya baytı üzerinden, satır uzunluğu denetimi ise çözülen metin üzerinden yapılır (betikler ASCII olduğu için C++ `std::string` bayt sayımıyla aynı sonucu verir).
+  - Repo `core.autocrlf=true` olduğundan Git, `bots/config/skill_priest_k.{spec,txt}` için "LF will be replaced by CRLF the next time Git touches it" uyarısı verir. Bu çalışma ağacında dosyalar LF'tir ve K2 `diff`'i boş kalır; taze bir checkout'ta Git `.txt`'i CRLF'e çevirebilir (`.txt` için `.gitattributes` kuralı yok ve `.gitattributes` bu planın dokunulabilir dosyaları arasında değil). Doğrulama bu çalışma ağacında yapıldığı sürece K2/K3 geçerlidir.
+- **Açık sorular:** Yok. K7 (gerçek koşu, `docs/05` §9 işlemesi) planda Claude'a bırakılmıştır.
+
