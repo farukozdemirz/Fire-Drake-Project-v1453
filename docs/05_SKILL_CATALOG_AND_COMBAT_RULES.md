@@ -242,6 +242,34 @@ Recast: her skill için en küçük aralık, beklenen alt sınırın üstünde (
 
 Koşu girdisi (bulgu): `BotMF_E` yürüyüş sırasında canavar (Harunga, (1300, 940) çevresi) tarafından öldü; `despawn`+`spawn` onu 0 HP ile geri getirdi, `regene` ile (630, 920)'ye dirilip başka bir noktaya (1262, 920) yürütüldü. Bot konumlandırma ve diriltme betik dışıdır; hedef canlılığı operatör sorumluluğudur `[V]`. Hız parametresi 90 (`move ... 90`) `speed_field` ile reddedildi (yalnızca yürüme hızı 45 kabul).
 
+### 9.4 Bot koşusu: Karus warrior melee, self ve usta skill'leri (F4-45, 2026-10-03)
+
+`BotWP_K` (saldırı ağacı 70, berserk 52, usta 20; (1272, 934)) → `BotWP_E` (1273, 934,5) ve `BotWG_E` (1271, 933,5) (zone 71; ikisi de `BotWP_K`'ya 1,12 m, silah menzili 2,0 m içinde), `bots/config/skill_warrior_k.txt` (14 adım), `[BOT] TELEMETRY=decisions`; `tools/skill-check.py --min-n 1`. Betik 14/14 adım zamanında koştu (140 029 ms, en geç gecikme 96 ms) `[V]`. Sonuç: 13 skill, PASS 12, FAIL 1 (leg cutting), WARN 0, NO_DATA 0; `missed` 0, `no_result` 0, `guard_reject` 0 `[V]`. `BotWP_K` MP'si koşu başında 5370/5370 (modeldeki ~4438 `[D]` yerine ölçülen değer `[V]`); betik sonunda 3306 (toplam 2958 beklenen maliyet, yenilenme dahil 2064 net düşüm; MP yetmezliği yok) `[V]`.
+
+| Skill | Ad | Başlayan/etkili | Sonuç kodu | MP düşümü (beklenen) | Hüküm | Not |
+|---|---|---|---|---|---|---|
+| `106001` | sprint | 1/1 | 10 (süre sn) | 5 (5) | PASS | self, `BuffType 6` hız buff'ı |
+| `106720` | Outrage | 1/1 | 30 | 60 (60) | PASS | self, `BuffType 5` |
+| `106730` | restoration | 1/1 | 0 | 105 (105) | PASS | self HoT; tek atış (yeniden atılamaz, §3) |
+| `106525` | Carving | 2/2 | 0 | 90 (90) | PASS | zar skill'i; `missed` yok (2/2) `[V]`, oran hakkında hüküm vermez |
+| `106535` | prick | 2/2 | 0 | 120 (120) | PASS | kesin isabet |
+| `106545` | Cleave | 2/2 | 0 | 150 (150) | PASS | zar skill'i; `missed` yok (2/2) |
+| `106520` | leg cutting | **2/1** (+`srv_fail` 1) | 10 / **-103** | 84 (84) | **FAIL** | aşağıdaki bulgu |
+| `106557` | sword aura | 1/1 | 0 | 250 (250) | PASS | |
+| `106560` | sword dancing | 1/1 | 0 | 300 (300) | PASS | |
+| `106570` | Howling Sword | 1/1 | 0 | 400 (400) | PASS | |
+| `106802` | Scream | 1/1 | 7 | 300 (300) | PASS | `{1, 4}` sonucu `effected` ve `code` = Type4 süresi 7 sn (MEC-MAG-24 ile uyumlu) `[V]` |
+| `106815` | Exceed Break | 1/1 | 0 | 400 (400) | PASS | `{1, 3}`; `missed` yok (1/1) |
+| `106820` | Shock Stun | 1/1 | 0 | 250 (250) | PASS | `{1, 3}`; `missed` yok (1/1) |
+
+Recast: `106525`/`106535`/`106545` en küçük aralık 1092/1096/1100 ms ≥ 500 (PASS) `[V]`; tek atışlı skill'lerde aralık ölçülmez (NO_DATA beklenen).
+
+**Bulgu 1 (leg cutting `106520` aynı hedefe art arda: dönüşümlü `-103`, KI-021).** Betikteki iki çevrimde (5174 ms arayla) ikincisi `MAGIC_FAIL` (`op 4`) ve `code -103` (`SKILLMAGIC_FAIL_NOEFFECT`) ile bitti, MP düşmedi. Ayrı denemede (`cast BotWP_K 106520 BotWP_E 10`, çevrim arası ~5,2 sn) tam bir kalıp çıktı: çevrim 1, 3, 5, 7, 9 `effected` (`code 10`), 2, 4, 6, 8, 10 `srv_fail` (`-103`); toplam 6 çiftin 6'sında ikinci atış reddedildi `[V]`. Hız debuff'ı süresi 10 sn, çevrim aralığı ~5,2 sn: ikinci atışta hedefte önceki leg cutting debuff'ı hâlâ aktif; ondan sonraki atışta (10,3 sn sonra) başarılı olduğundan reddedilen atış debuff'ı silmiş görünüyor `[Ö]`. Kod okuması (`MagicInstance.cpp:1756-1760`: aynı `BuffType` debuff'ı silinip yeniden eklenir) bu sonucu **öngörmüyordu**; MEC-MAG-24'ün "eski debuff silinip yenisi eklenir" cümlesi leg cutting için çalışma zamanında doğrulanmadı. Gerçek neden (hangi koşul `-103` veriyor) bu dilimde `[A]`: bu bir araç/betik hatası değil, sunucu davranışıdır; spec planla aynen yazıldığı için doğrulamayı geçti.
+
+**Bulgu 2 (hedef sağlığı koşu öncesi kurulum).** El Morad botları önceki koşulardan kalan HP ile doğdu (`BotWP_E` 2510/5650, `BotWG_E` 1620/5650; HP/MP kalıcı). Hedefler `pot <bot> 389015000 <n>` (8 ve 15 kullanım) ile tam HP'ye getirildi; betik sonu `list`: `BotWP_E` 3845/5650, `BotWG_E` 4699/5650, ikisi de hayatta `[V]`. Gelecek koşu planlarında "spawn sonrası `list` ile HP, gerekirse `pot`" adımı Claude'un çalışma zamanı kurulumuna yazılmalı.
+
+**Bulgu 3 (Stone of Warrior tüketimi ölçülemedi).** Telemetri taş stokunu vermiyor (`stock_after` yalnızca `UsePotion`'da), bot `snap` yalnızca HP/MP iksiri sayar ve çanta DB'si (USERDATA) okunamaz; beklenen 50 → 47 `[Ö]` (MEC-MAG-23/MEC-MAG-24 `[D]`). Kesin ölçüm için `snap` stok satırının eşya sayacı kazanması gerekir (ayrı iş).
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
