@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-62 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-57 (`NavRoutePoint`, `NavRouteProgressM`), F5-59 (`NavService`), F5-61 (`CheckMoveChord`, merge `gece/2026-10-02`), F5-69 (eğim 0,45). F5-70 (sunucu bağlaması), F5-63, F5-64, F5-65 bu planın `NavDrive`'ına dayanır |
@@ -255,10 +255,42 @@ git diff --check gece/2026-10-02...bot/F5-62
   1. `NavDrive_Goto_EndpointsOffCentre`'a planın açıkça yazmadığı `CHECK_EQ(planned, pairs)` / `CHECK_EQ(arrived, planned)` eklendi (plan beklentisi "uygulayıcı `Planned == pairs` bekler"); ölçüm 300/300, geçti.
   2. `NavQuantiseM` içinde kapsam dışı koordinatlar için ön koşul denetimi (`BeginGoto` yapar).
   3. Plan taslağındaki `static bool ValidCoord` yerine `bool ValidCoord(...) const` kullanıldı; K5 `grep "static "` temiz kalsın diye.
-- Açık sorular (biri seçilmeli; `NodeLimit == 0` iddiası kod/ölçümle çelişiyor):
-  1. (a) Random testte `NodeLimit` geçerli bir "planlanmadı" sonucu sayılsın: kabul `planned ≥ %85` ve `nopath + nodelimit == pairs − planned`, `InvalidStart/InvalidGoal == 0`, `unrecoverable == 0`; ya da
-  2. (b) Random çiftler `NavReach` ile `start`'ın `EdgeOpen` bileşenine kısıtlansın (test `NavDrive` yol izlemesini ölçsün, ulaşılabilirliği değil); ya da
-  3. (c) Plan, random endpoint ofset üretiminin RNG sözleşmesini yazsın (benim uygulamam `0,1 + 0,1·NextBelow(39)`; farklı ofset protokolü farklı hücre çiftleri ve farklı `NodeLimit` sayısı verir). `NodeLimit == 0` korunacaksa çift seçiminin cep hücrelerini dışlaması gerekir.
+- Açık sorular (**çözüldü: (a)** — Claude kararı, aşağıdaki "BLOKE cevabı"):
+  1. (a) **seçildi:** Random testte `NodeLimit` geçerli bir "planlanmadı" sonucu sayılır: kabul `planned ≥ %85` ve `nopath + nodelimit == pairs − planned`, `InvalidStart/InvalidGoal == 0`, `unrecoverable == 0`; ya da
+  2. (b) Random çiftler `NavReach` ile `start`'ın `EdgeOpen` bileşenine kısıtlanır (test `NavDrive` yol izlemesini ölçer, ulaşılabilirliği değil); ya da
+  3. (c) Plan, random endpoint ofset üretiminin RNG sözleşmesini yazar (uygulama `0,1 + 0,1·NextBelow(39)`; farklı ofset protokolü farklı hücre çiftleri ve farklı `NodeLimit` sayısı verir). `NodeLimit == 0` korunacaksa çift seçiminin cep hücrelerini dışlaması gerekir.
+
+### Tur 2 (Doğrulama Turu 1 düzeltmeleri)
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F5-62` (taban `gece/2026-10-02`); düzeltme yalnızca `Tests/BotCoreTests/NavDriveTests.cpp`, `BotCore/NavDrive.h`'ye dokunulmadı.
+- Talimat uygulaması (aynen):
+  1. `printf` biçimi `... nopath=%d nodelimit=%d blocked_events=%d ...` (`nodelimit` artık `nopath`'ten sonra).
+  2. `CHECK_EQ(nodelimit, 0);` silindi.
+  3. `CHECK_EQ(nopath, pairs - planned);` → `CHECK_EQ(nopath + nodelimit, pairs - planned);`.
+  Diğer CHECK'ler aynen korundu (`planned*100 >= pairs*85`, `badstart`/`badgoal` 0, `unrecoverable` 0, `violations` 0); hiçbir eşik gevşetilmedi.
+- Değişen dosyalar ve neden: `Tests/BotCoreTests/NavDriveTests.cpp` (+3/−4): yalnızca `NavDrive_RealMap_Random` karar satırı ve `printf` başlığı; test beklentisi `NodeLimit`'i geçerli "planlanmadı" sonucu sayacak biçimde düzeltildi (BLOKE cevabı (a)).
+- Derleme sonucu (`tools/build.sh Release` / `Debug` son satırları):
+  ```
+  NavDriveTests.cpp
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+  ```
+  ```
+  NavDriveTests.cpp
+  BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe
+  ```
+  İkisi rc=0; `NavDrive.h`/`NavDriveTests.cpp` için yeni uyarı yok (kalan uyarılar eski `GameServerDlg.cpp` C4267, `UpgradeHandler.cpp` C4789).
+- Test sonucu: `./tools/run-tests.sh Release` ve `Debug` → **`289 tests, 0 failed`** (13 `NavDrive_*` adı `[ OK ]`); `--list | wc -l` = 289.
+- Gerçek-harita test satırı (yeni `NAVDRIVE random`):
+  ```
+  NAVDRIVE random pairs=300 planned=295 nopath=2 nodelimit=3 blocked_events=1 replans=1 unrecoverable=0 truncated=0
+  ```
+- Kabul kriterleri öz-değerlendirme (bu tur):
+  - K2 ✔: `Release` + `Debug` `289 tests, 0 failed`; 13 `NavDrive_*` `[ OK ]`.
+  - K3 ✔: `NAVDRIVE respawn karus` / `elmorad` / `NAVDRIVE random` (`planned=295 ≥ %85`, `nopath + nodelimit = 2 + 3 = 5 = pairs − planned`, `unrecoverable=0`) / `NAVDRIVE perf` satırları üretildi; `blocked=0`, iki doğuş `Planned`+`Arrived`.
+  - `python3 tools/check-perception-contract.py` rc=0 (K5).
+- Plandan sapmalar: yok (talimat birebir uygulandı).
+- Açık soru: yok.
 
 ---
 

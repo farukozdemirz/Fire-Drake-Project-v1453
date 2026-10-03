@@ -769,15 +769,14 @@ TEST_CASE("NavDrive_RealMap_Random")
 		violations += r.sampleViolations;
 	}
 
-	std::printf("NAVDRIVE random pairs=%d planned=%d nopath=%d blocked_events=%d replans=%d unrecoverable=%d truncated=%d\n",
-		pairs, planned, nopath, blockedEvents, replans, unrecoverable, truncated);
+	std::printf("NAVDRIVE random pairs=%d planned=%d nopath=%d nodelimit=%d blocked_events=%d replans=%d unrecoverable=%d truncated=%d\n",
+		pairs, planned, nopath, nodelimit, blockedEvents, replans, unrecoverable, truncated);
 	CHECK(planned * 100 >= pairs * 85);
-	CHECK_EQ(nodelimit, 0);
 	CHECK_EQ(badstart, 0);
 	CHECK_EQ(badgoal, 0);
 	CHECK_EQ(unrecoverable, 0);
 	CHECK_EQ(violations, 0);
-	CHECK_EQ(nopath, pairs - planned);
+	CHECK_EQ(nopath + nodelimit, pairs - planned);
 }
 
 TEST_CASE("NavDrive_Perf")
