@@ -207,3 +207,7 @@ Engelleyici olmayan ama F6 kabulünde (G6c) dikkat edilecek **tek şey**: mage s
 - `300106`/`300208` kimliklerinin `Moral` değerleri doğrulanmadı (yalnızca ADR-0018 Ek 25 (d)'de anılıyor).
 - Okçu Type2 için örnek skill kimliği bulunamadı; uydurulmadı.
 - ADR'de numara: Ek 27 F4-60'a ait; eklerken `gece/2026-10-02` ucunda bir sonraki boş numara yeniden kontrol edilmeli.
+
+## Not (2026-10-03, ADR-0022, proje sahibi)
+
+Ek 7 (okçu/rogue ertelendi): **rogue ve okçu botları kapsam dışıdır** (proje sahibi onayı). Ek 3 (quest ile açılan skill'ler): bot quest kurulumu (`db/003`) **onaylandı**; Q-28 (sunucuda zorunlu kılma) için **şimdilik mevcut hâl**.

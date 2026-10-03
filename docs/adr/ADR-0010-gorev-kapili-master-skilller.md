@@ -20,3 +20,7 @@ Profiller daha zayıf ama doğrulanabilir. MB-03 (mage armor yansıma hatası) i
 
 ## Doğrulama
 T-DATA-04 (ileri profil öncesi).
+
+## Güncelleme (2026-10-03, ADR-0022, proje sahibi)
+
+Bot karakter satırlarına görev durumu **yalnızca açık ad listesiyle ve geri alınabilir şekilde** (`db/003_bot_quests.sql` + rollback) yazılabilir; gerçek oyuncu kayıtları ve oyun mekaniği değişmez. "Betikle görevleri tamamlanmış saymak" alternatifi bot satırları için kabul edildi; "görev şartını DB'den kaldırmak" reddedilmiş kalır.
