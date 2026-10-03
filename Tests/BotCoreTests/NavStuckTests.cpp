@@ -1320,12 +1320,13 @@ TEST_CASE("NavStuck_SideStep_RealMap")
 	std::sort(durations.begin(), durations.end());
 	const double msP95 = PercentileDouble(durations, 0.95);
 
+	// ADR-0024 (maxSlope 0.45): re-measured on the real grid, 2026-10-03.
 	CHECK_EQ(walk, 88508);
-	CHECK_EQ(sidestepH, 86017);
-	CHECK_EQ(sidestepN, 86968);
+	CHECK_EQ(sidestepH, 85208);
+	CHECK_EQ(sidestepN, 86512);
 	CHECK_EQ(violations, 0);
 	CHECK_EQ(clr2Cells, 66265);
-	CHECK_EQ(clr2Found, 66003);
+	CHECK_EQ(clr2Found, 65739);
 #ifndef _DEBUG
 	CHECK(msP95 <= 0.2);
 #endif

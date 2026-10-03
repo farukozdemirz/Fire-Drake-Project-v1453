@@ -18,9 +18,10 @@ namespace BotCore
 {
 	struct NavParams
 	{
-		// P-NAV-MAX-SLOPE [A]: max |dh| / horizontal distance of one edge
-		// (docs/12 s2: 2.5 m per 4 m cell = 0.625). Calibrated later by T-NAV-02.
-		float maxSlope = 0.625f;
+		// P-NAV-MAX-SLOPE [V]: max |dh| / horizontal distance of one edge
+		// (1.8 m per 4 m cell = 0.45). Measured by T-NAV-02 (human client, 2026-10-03):
+		// sustained climbs up to 0.47, 0.78 and steeper failed; ADR-0024.
+		float maxSlope = 0.45f;
 	};
 
 	class NavGrid

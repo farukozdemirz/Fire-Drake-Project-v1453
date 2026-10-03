@@ -405,12 +405,12 @@ TEST_CASE("NavSegment_Slope")
 	const int n = 20;
 	const float unit = 4.0f;
 
-	// Edge step exactly at the slope limit: maxSlope * unit = 2.5 m.
+	// Edge step exactly at the slope limit: maxSlope * unit = 1.8 m.
 	std::vector<float> atLimit((size_t)n * (size_t)n, 0.0f);
 	for (int x = 0; x < n; ++x)
 	{
 		for (int z = 0; z < n; ++z)
-			atLimit[CellIndex(n, x, z)] = (x >= 10) ? 2.5f : 0.0f;
+			atLimit[CellIndex(n, x, z)] = (x >= 10) ? 1.8f : 0.0f;
 	}
 	NavGrid limitGrid = MakeNav(n, unit, RingEvents(n), atLimit);
 	CHECK(Check(limitGrid, CenterX(limitGrid, 8), CenterX(limitGrid, 5), CenterX(limitGrid, 12), CenterX(limitGrid, 5), true) == NavSegmentVerdict::Ok);
@@ -420,7 +420,7 @@ TEST_CASE("NavSegment_Slope")
 	for (int x = 0; x < n; ++x)
 	{
 		for (int z = 0; z < n; ++z)
-			above[CellIndex(n, x, z)] = (x >= 10) ? 2.51f : 0.0f;
+			above[CellIndex(n, x, z)] = (x >= 10) ? 1.81f : 0.0f;
 	}
 	NavGrid aboveGrid = MakeNav(n, unit, RingEvents(n), above);
 	BotCore::NavSegmentResult r = BotCore::NavCheckSegment(aboveGrid,
@@ -432,15 +432,15 @@ TEST_CASE("NavSegment_Slope")
 	// The slope layer is optional and defaults off: the same steep chord only checks Walk.
 	CHECK(Check(aboveGrid, CenterX(aboveGrid, 8), CenterX(aboveGrid, 5), CenterX(aboveGrid, 12), CenterX(aboveGrid, 5)) == NavSegmentVerdict::Ok);
 
-	// Vertex (diagonal) step uses the unit*sqrt(2) scale: limit = 0.625 * 4 * sqrt(2) = 3.5355 m.
+	// Vertex (diagonal) step uses the unit*sqrt(2) scale: limit = 0.45 * 4 * sqrt(2) = 2.5456 m.
 	const int m = 12;
 	std::vector<float> diag((size_t)m * (size_t)m, 0.0f);
-	diag[CellIndex(m, 6, 6)] = 3.5f;
+	diag[CellIndex(m, 6, 6)] = 2.5f;
 	NavGrid diagOk = MakeNav(m, unit, RingEvents(m), diag);
 	CHECK(Check(diagOk, CenterX(diagOk, 5), CenterX(diagOk, 5), CenterX(diagOk, 6), CenterX(diagOk, 6), true) == NavSegmentVerdict::Ok);
 
 	std::vector<float> diagBad((size_t)m * (size_t)m, 0.0f);
-	diagBad[CellIndex(m, 6, 6)] = 3.6f;
+	diagBad[CellIndex(m, 6, 6)] = 2.6f;
 	NavGrid diagSteep = MakeNav(m, unit, RingEvents(m), diagBad);
 	BotCore::NavSegmentResult d = BotCore::NavCheckSegment(diagSteep,
 		CenterX(diagSteep, 5), CenterX(diagSteep, 5), CenterX(diagSteep, 6), CenterX(diagSteep, 6), true);

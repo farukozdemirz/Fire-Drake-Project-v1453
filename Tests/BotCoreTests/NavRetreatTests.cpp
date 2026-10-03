@@ -1195,11 +1195,12 @@ TEST_CASE("NavRetreat_RealMap")
 	planner.Find(grid, &elm, qSolo, params, out);
 	CHECK(out.status == NavRetreatStatus::Found);
 	CHECK(out.cell == Cell(159, 228));
-	CHECK(std::fabs(out.score - 2.13283f) <= 2e-3f);
-	CHECK(std::fabs(out.pathLengthM - 105.657f) <= 0.05f);
+	// ADR-0024 (maxSlope 0.45): re-measured on the real grid, 2026-10-03.
+	CHECK(std::fabs(out.score - 2.11074f) <= 2e-3f);
+	CHECK(std::fabs(out.pathLengthM - 108.971f) <= 0.05f);
 	CHECK_EQ((int)out.path.size(), 27);
-	CHECK_EQ(out.candidates, 2799);
-	CHECK_EQ(out.expanded, 2799);
+	CHECK_EQ(out.candidates, 2733);
+	CHECK_EQ(out.expanded, 2733);
 	CHECK(out.safe);
 	CHECK_EQ((int)out.danger, 0);
 	CheckResult(grid, &elm, none, qSolo, params, out);
@@ -1215,8 +1216,8 @@ TEST_CASE("NavRetreat_RealMap")
 	CHECK(std::fabs(out.score - 0.61716f) <= 2e-3f);
 	CHECK(std::fabs(out.pathLengthM - 35.314f) <= 0.05f);
 	CHECK_EQ((int)out.path.size(), 9);
-	CHECK_EQ(out.candidates, 245);
-	CHECK_EQ(out.expanded, 245);
+	CHECK_EQ(out.candidates, 239);
+	CHECK_EQ(out.expanded, 239);
 	CHECK(out.safe);
 	CheckResult(grid, &elm, none, qParty, params, out);
 	const NavCell partyCell = out.cell;
@@ -1236,8 +1237,8 @@ TEST_CASE("NavRetreat_RealMap")
 	CHECK(std::fabs(out.pathLengthM - 112.284f) <= 0.05f);
 	CHECK(out.pathLengthM > soloLen);
 	CHECK_EQ((int)out.path.size(), 27);
-	CHECK_EQ(out.candidates, 2783);
-	CHECK_EQ(out.expanded, 2783);
+	CHECK_EQ(out.candidates, 2697);
+	CHECK_EQ(out.expanded, 2697);
 	float minMelee = 1.0e30f;
 	for (size_t i = 0; i < out.path.size(); ++i)
 	{
@@ -1260,10 +1261,10 @@ TEST_CASE("NavRetreat_RealMap")
 	NavRetreatQuery qC = Query(startC, NavRetreatMode::Solo, false, 0.0f, 0.0f, none);
 	planner.Find(grid, &elm, qC, params, out);
 	CHECK(out.status == NavRetreatStatus::Found);
-	CHECK(out.cell == Cell(320, 271));
+	CHECK(out.cell == Cell(320, 270));
 	CHECK(!elm.Forbidden(out.cell.x, out.cell.z));
-	CHECK(std::fabs(out.score - (-0.09771f)) <= 2e-3f);
-	CHECK(std::fabs(out.pathLengthM - 89.657f) <= 0.05f);
+	CHECK(std::fabs(out.score - (-0.10876f)) <= 2e-3f);
+	CHECK(std::fabs(out.pathLengthM - 91.314f) <= 0.05f);
 	CHECK_EQ((int)out.path.size(), 23);
 	CHECK_EQ((int)out.danger, 0);
 	int forbOnPath = 0;
@@ -1284,8 +1285,8 @@ TEST_CASE("NavRetreat_RealMap")
 	}
 	CHECK_EQ(forbOnPath, 22);
 	CHECK(prefix);
-	CHECK_EQ(out.candidates, 1247);
-	CHECK_EQ(out.expanded, 2424);
+	CHECK_EQ(out.candidates, 806);
+	CHECK_EQ(out.expanded, 1959);
 	CheckResult(grid, &elm, none, qC, params, out);
 	const NavCell cCell = out.cell;
 	const float cScore = out.score;
@@ -1302,8 +1303,8 @@ TEST_CASE("NavRetreat_RealMap")
 	CHECK(std::fabs(out.score - 0.5f) <= 1e-3f);
 	CHECK(std::fabs(out.pathLengthM) <= 1e-4f);
 	CHECK_EQ((int)out.path.size(), 1);
-	CHECK_EQ(out.candidates, 2089);
-	CHECK_EQ(out.expanded, 2089);
+	CHECK_EQ(out.candidates, 1954);
+	CHECK_EQ(out.expanded, 1954);
 	const int dStay = (out.cell == startD) ? 1 : 0;
 	const int dCand = out.candidates;
 	CheckResult(grid, &elm, none, qD, params, out);
