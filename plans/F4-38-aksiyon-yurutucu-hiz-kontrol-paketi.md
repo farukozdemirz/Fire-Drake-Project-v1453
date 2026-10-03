@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2) |
 | Branch | `bot/F4-38` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-37 (ADR-0018 Ek 13, dilim 6f) — `KAPANDI` (merge `dd8262e`); F4-13/F4-15 (`TickUserIn`/`TickNpcIn`: otomatik istemci trafiği kalıbı) — `KAPANDI`; F4-01 (`BotCore/BotMotion.h`, hız/adım kuralı) — `KAPANDI` |
@@ -291,6 +291,25 @@ Beklenmeyen `no_result`/`warped` bu planın hatası değil, **sonuç olarak rapo
 - Kabul kriterleri öz-değerlendirme: K1 ✔, K2 ✔, K3 ✔ (251 tests, 0 failed; iki yeni ad; Debug da 251/0), K4 ✔, K5 ✔ (aşağıdaki sapmaya bakınız), K6 ✔, K7 ✔ (tek `-` satırı başlatıcı listesinde), K8 ✔ (`BotManager.cpp` `-` satırı yok), K9 ✔ (yalnızca 8 dosya; `*.vcxproj*` farkı yok), K10 ✔ (hepsi ASCII + CRLF; `git diff --check` boş), K11 ✔, K12 ✔ (`TickUserIn\|TickNpcIn` = 2, `CheckMoveStep` = 2), K13 Claude'da (çalışma zamanı, plan §7).
 - Plandan sapmalar ve gerekçeleri:
   1. K5'in `grep "SpeedHackTime\|SpeedHackUser\|...\|m_LastX\|m_LastZ\|->Warp("` komutu boş değil; tek eşleşme `ActionExecutor.cpp:27`, **plan öncesinden var olan** bir yardımcı fonksiyon yorumudur (`CUser::SpeedHackUser()` adını anar). Bu planla eklenen kodda kullanım yoktur; yorum, sunucu sınır eşlemesini belgeleyen mevcut satırdır ve planın "dokunulmayacak mevcut kod değişmez" çizgisine uymak için değiştirilmedi. K5'in amacı (botun `SpeedHackTime`/`Warp`/`m_LastX` kullanmaması) karşılanmıştır. **Karar Claude'a bırakılır.**
+- Açık sorular: yok.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-38` (Tur 1 düzeltme turu; yeni commit bu raporla atılır).
+- Yapılan tek değişiklik: `GameServer/Bot/BotSession.cpp` yapıcı başlatıcı listesine, `m_npcInHasLast(false), m_npcInRequests(0), m_npcInUnits(0),` satırının hemen altına ve bildirim sırasıyla `m_speedHasLast(false), m_speedChecks(0), m_speedWarps(0),` eklendi (`BotSession.h:150-153`; `m_speedLast` sınıf tipi olduğundan listeye eklenmedi, varsayılan oluşturulur). Başka satıra dokunulmadı; `OnPacket()` blokları ve `ResetForRespawn()` değişmedi.
+- Derleme ve test:
+  - `./tools/build.sh Release` rc=0; `BotSession.cpp` için yeni uyarı yok (görülen uyarılar yalnızca önceden var olan `GameServerDlg.cpp` C4834/C4267 ve `UpgradeHandler.cpp` C4789).
+  - `./tools/build.sh Debug` rc=0; `BotSession.cpp` için yeni uyarı yok (yalnızca önceden var olan `GameServerDlg.cpp` C4267).
+  - `./tools/run-tests.sh Release`: `251 tests, 0 failed`.
+  - `./tools/run-tests.sh Debug`: `251 tests, 0 failed`.
+- Düzeltme talimatı doğrulaması:
+  - `git diff gece/2026-10-02...bot/F4-38 -- GameServer/Bot/BotSession.cpp | grep '^-' | grep -v '^---'` çıktısı yalnızca başlatıcı listesindeki bilinçli değiştirilen satırı gösterir (`m_partyLeaveEcho(0), ... m_npcInEcho(0)` → `m_warpEcho(0)` eklenmiş satır; Tur 1 değişikliği). `OnPacket()` bloklarından `-` satırı yok.
+  - `HEAD`'e göre fark tek eklemedir (tek `+` satırı, `-` satırı yok).
+  - `file GameServer/Bot/BotSession.cpp` → `C source, ASCII text, with CRLF line terminators` (değişmedi).
+  - `git diff --check` boş (rc=0).
+- Kriter öz-değerlendirmesi: Bu tur yalnızca bulgu 1'i (başlatıcı listesi) giderir; K1–K12 yeniden sağlanır (derleme/tests), K7 ek `-` satırı üretmez, K10 korunur. K13 (çalışma zamanı) Claude'da.
+- Plandan sapmalar: yok.
 - Açık sorular: yok.
 
 

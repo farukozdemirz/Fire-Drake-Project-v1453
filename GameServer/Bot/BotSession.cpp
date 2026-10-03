@@ -20,6 +20,7 @@ BotSession::BotSession(const char * charName, const char * accountName)
 		m_chatHasLast(false), m_chatLastHash(0),
 		m_userInHasLast(false), m_userInRequests(0), m_userInUnits(0),
 		m_npcInHasLast(false), m_npcInRequests(0), m_npcInUnits(0),
+		m_speedHasLast(false), m_speedChecks(0), m_speedWarps(0),
 		m_selectResult(SELECT_PENDING), m_packetTotal(0), m_attackEcho(0),
 		m_selfSid(-1),
 		m_castSelfId(-1), m_castEcho(0), m_castEchoVictims(0), m_stateEcho(0),
