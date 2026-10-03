@@ -160,7 +160,7 @@ git diff --stat gece/2026-10-02...bot/F5-60
 
 - Durum: UYGULANDI
 - Karar özeti (§3 tablosu, mekanik): **`BELİRSİZ`** — dayanak satırı: **§3 üçüncü satır** ("Zemin gerçeği yok / doğrulanamadı"). Adım 5 `KABUL` ölçütünü sağlayan doğrulanmış bir su maskesi üretilemedi (§2/§5.5: istemci `.gtd` biçimi çözülemedi, hücre-başına doku indeksi ızgarası kanıtlanamadı), bu yüzden `Walk` ∩ su ve yol/kiriş-suması sayıları "su" olarak yorumlanamaz. **"Suya takılmıyor" kabulü verilmedi**; `WATER_TRUTH none`. **F5-67 `TASLAK` kalır** (Claude yazacak). Karar T-NAV-09 insan testine bağlı (§9).
-- Branch / commit'ler: `bot/F5-60` — `<kısa-sha> [F5-60] nav ölçümü: su ve engel verisi denetimi (nav_measure water + nav-water-audit.py)`; plan/raporda ek commit. Taban `gece/2026-10-02` (= `78550f0`).
+- Branch / commit'ler: `bot/F5-60` — `aad29d4 [F5-60] Nav olcumu: su ve engel verisi denetimi (nav_measure water + nav-water-audit.py)`; bu rapor güncellemesi ek commit. Taban `gece/2026-10-02` (= `78550f0`).
 - Değişen dosyalar ve neden:
   - `tools/nav-measure/nav_measure.cpp` — yalnızca yeni `water` bölümü (`Water`, `HeightPct`, `LabelComponents`, `SegmentTouchesSet`), `Ctx`'e `waterT`/`waterMin`/`maskPath` alanları, `main`'e `--water-t`/`--water-min`/`--mask` bayrakları ve `if (section == "water")` dalı, kullanım satırı. `water` `all` listesine **eklenmedi**.
   - `tools/nav-water-audit.py` (yeni) — `basins` bağımsız Python çapraz kontrolü (aynı anahtarlar/sayılar), `probe-client` keşif komutu, `--selftest` (12×12 sentetik: çukur havza, cep, kenar bileşeni).
