@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DÜZELTME GEREKLİ |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi; ADR-0018 Ek 16) |
 | Branch | `bot/F4-40` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F1-04 (`db/002_bot_characters.sql`, 12 bot satırı ve `strItem` düzeni) ve F4-27 (`db/003` betik kalıbı: yedek tablo, öz denetim, geri alma) — `KAPANDI`; F4-04 (pot dilimi, `PotKindOf`), F4-36/F4-37 (taş ve scroll tüketimi) — `KAPANDI` |
@@ -200,6 +200,25 @@ file db/004_bot_inventory.sql db/004_bot_inventory_rollback.sql tools/bot-refill
 - Açık sorular:
   - K8 (Claude, çalışma zamanı): sunucu açıkken (`[BOT] ENABLED=1`) `apply --hp-pots 7 ...` sonrası `/bot snap` stok ölçümü ve pot tüketiminin kalıcılığı. Sunucular bu çalışma ağacında kapalı bırakıldı; DB son `rollback` ile işe başlamadan önceki durumda.
   - Not (sapma değil): uygulama sırasında paralel `nav` hattı ayrı çalışma ağacındadır; bu planda sunucu çalıştırılmadı.
+
+### Tur 2
+
+- Durum: UYGULANDI
+- Branch / commit'ler: `bot/F4-40` (taban `gece/2026-10-02`); düzeltme commit'i bu raporla birlikte.
+- Düzeltme (yalnızca Doğrulama Turu 1 talimatındaki maddeler):
+  1. `db/004_bot_inventory_rollback.sql`: yedek tablo varlık denetimi ile `UPDATE`/`DELETE`/`COMMIT`/`PRINT restored=<N>` bloğu **tek batch** içinde `IF OBJECT_ID(N'dbo.USERDATA_BOT_STOCK_BACKUP', N'U') IS NULL BEGIN PRINT '...restored=0'; END ELSE BEGIN ... END` biçimine getirildi; aradaki `GO` ve `RETURN` kaldırıldı. Sorgular tablo adını doğrudan içeriyor; ELSE dalı çalışmadığında derleme hatası vermediği geçici bir `/tmp` betiğiyle önce doğrulandı (bu yüzden `sp_executesql` gerekmedi). Mevcut davranış korundu: `CONVERT(binary(584), STUFF(...))`, yalnızca 12 bot adı (açık liste), yedek satırları silinir/tablo korunur, satır içeriği hiç basılmaz.
+- Sınama (sunucular kapalı; `./tools/run-servers.sh status` → `0/3`, yalnızca ilgisiz pid 4336; yalnızca çıktı satırları ve rc yazıldı, satır içeriği okunmadı/basılmadı):
+  - 2a (yedek tablo yok): `EXEC sp_rename 'dbo.USERDATA_BOT_STOCK_BACKUP','USERDATA_BOT_STOCK_BACKUP_X'` sonrası `tools/bot-refill.sh rollback` → `BOTSTOCK_ROLLBACK: restored=0`, **başka hata satırı yok**, `rc=0`; tablo `EXEC sp_rename '..._X','USERDATA_BOT_STOCK_BACKUP'` ile eski adına döndürüldü, `SELECT COUNT(*)` = `0` (tablo korundu).
+  - 2b (normal dizi): `apply` → `BOTSTOCK: rows=12 ok=12 fail=0 changed=5 hp=100 mp=0 life=30 class=50` (rc 0); tekrar `apply` → `changed=0` (rc 0); `rollback` → `BOTSTOCK_ROLLBACK: restored=12` (rc 0); tekrar `rollback` → `BOTSTOCK_ROLLBACK: restored=0` (rc 0). Son komut `rollback`; DB ilk durumda.
+- Doğrulama komutları (talimat 3):
+  - `bash -n tools/bot-refill.sh` rc 0.
+  - `file db/004_bot_inventory_rollback.sql` → `ASCII text`; `grep -c $'\r'` = 0 (LF).
+  - `git diff --check` boş.
+  - `git status --short` yalnızca `M db/004_bot_inventory_rollback.sql`. `git diff --stat gece/2026-10-02...bot/F4-40` ayrıca `docs/STATUS.md` ve `plans/README.md` gösterir; bunlar **Claude'un `4c976e1` Doğrulama commit'inden** gelir, bu turun değişikliği değildir (AGENTS.md gereği `docs/`/`plans/README.md` dokunulmadı).
+  - `./tools/build.sh Release` rc=0; `./tools/run-tests.sh Release` son satır `251 tests, 0 failed`.
+- Kriter öz-değerlendirmesi (talimat maddeleri): madde 1 ✔; madde 2a ✔ (`restored=0`, ek hata yok, rc=0, tablo 0 satır); madde 2b ✔ (`rows=12 ok=12 fail=0`, `changed=0`, `restored=12`, `restored=0`, son komut `rollback`); madde 3 ✔ (`bash -n`, ASCII+LF, `git diff --check` boş, build rc=0, `251 tests, 0 failed`).
+- Plandan sapmalar: yok.
+- Açık sorular: Yukarıdaki `git diff --stat` notu (Claude'un Doğrulama commit'inden gelen `docs/STATUS.md`/`plans/README.md`). K8 (Claude, çalışma zamanı) hâlâ yapılmadı; bu düzeltme yalnızca geri alma betiğini değiştirir, `apply` yolu aynıdır.
 
 ---
 
