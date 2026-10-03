@@ -227,8 +227,9 @@ public:
 	// the target must be a party member other than the caster; ADR-0017 Ek F4-35); a Gate or a descent reports "effected"
 	// when the server broadcasts it, which does not prove the caster moved (docs/03 MEC-MAG-22); class skills with
 	// MAGIC.UseItem (Type1/3/4, MAGIC.Skill != 0: Impact scrolls, Absolute power, Judgment; ADR-0017 Ek F4-36) are
-	// supported when the other rules pass; item-effect magics (MAGIC.Skill == 0) and the dual-typed Type1 + Type3/4
-	// skills (Scream, Shock Stun) stay unsupported),
+	// supported when the other rules pass; item-effect magics (MAGIC.Skill == 0) stay unsupported; the melee pairs
+	// Type1 + Type3 and Type1 + Type4 (Scream, Shock Stun, Exceed Break, leg cutting; ADR-0017 Ek F4-37) are supported,
+	// every other type pair stays unsupported),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
 	// "no_item" (the skill's MAGIC.UseItem, or for MAGIC.BeforeAction 1..4 the class stone 379058000 + n * 1000, is not
 	// in the caster's own bag or not usable by its class/level; ADR-0017 Ek F4-36, docs/03 MEC-MAG-23),
@@ -243,6 +244,8 @@ public:
 	// dropped. FAILED: handler produced no result / dead caster / unknown skill, series dropped.
 	// dual-typed: the EFFECTING echo comes from the Type4 part (code = duration), "missed" is never reported,
 	// no echo = "no_result".
+	// Type1 + Type3 / Type1 + Type4 (ADR-0017 Ek F4-37, docs/03 MEC-MAG-24): the server broadcasts twice (the Type1 hit, then the Type3 / Type4 part);
+	// the LAST packet is the echo: {1, 4} reports the Type4 duration in "code" (never "missed"), {1, 3} keeps the Type1 code (0 = "effected", -104 = "missed").
 	// single Type4: the EFFECTING echo carries the duration in "code" (never "missed"); a buff whose BuffType is already
 	// on the target fails with "srv_fail" (docs/03 MEC-MAG-15); out-of-range or dead target gives "no_result".
 	// area: the EFFECTING echo is the last packet the server sent (Type3: target -1 broadcast, code 0; {3, 4}/{4, 0}:

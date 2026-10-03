@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-37` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-36 (`CastItemSkillSupported` + `no_item` kuralı) — `KAPANDI` (merge `bc15a0b`); F4-26 (`{3, 4}` çifti, tip damgaları iki tip için) — `KAPANDI`; F4-28 (Type4 tek tipli), F4-27 (`quest_locked`) — `KAPANDI` |
