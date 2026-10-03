@@ -248,7 +248,7 @@ file BotCore/NavDrive.h BotCore/NavTrack.h Tests/BotCoreTests/NavDriveTests.cpp 
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-73` — `<kısa-sha> [F5-73] NavDrive Follow kipi (saf mantık)` (bkz. commit)
+- Branch / commit'ler: `bot/F5-73` — `8df3081 [F5-73] NavDrive Follow kipi (saf mantik)` (bu rapor commit'i hariç)
 - Değişen dosyalar ve neden:
   - `BotCore/NavTrack.h` — `NavFollower::InvalidatePlan()`; `Update`/`UpdateReachable`/`UpdateImpl`'a son `const NavCostField * field = nullptr`; `Find`'a `field` (yalnızca ekleme/imza; `field == nullptr` yolu bayt bayt eski).
   - `BotCore/NavDrive.h` — `NavDriveMode::Follow`, `NavFollowEnd`, `NavFollowDriveParams` (halka `[3,0; 6,4]`, `NavPacketCadenceParams()`), `NavDriveEvents`; `BeginFollow`/`ObserveTarget`/`TickFollow` (şablon + reach'siz)/`NextFollowStep`/`OnPacketSent`/`OnPacketRejected` ve erişimciler; `PlanGoto`'nun rota kurma bloğu mekanik olarak özel `AdoptRoute`'a taşındı (`Goto` davranışı aynı); `Replan` koruması `m_mode != Goto`.
