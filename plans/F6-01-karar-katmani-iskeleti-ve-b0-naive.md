@@ -1,8 +1,10 @@
+> **İPTAL — yerine F6-11.** Bu taslağın tasarım notları tarihseldir; geçerli sözleşme `plans/F6-11-karar-katmani-iskeleti-ve-b0-naive.md` planındadır (ADR-0019 varsayılanları, `ReasonCode` kaynağı düzeltmesi, altı ek FSM kenarı, tamamlanmış parametre tablosu). `plans/F6-02..F6-10` ve `plans/F7-*` taslaklarındaki "F6-01" ifadeleri F6-11'i anlar.
+
 # F6-01: Karar katmanı iskeleti: ortak FSM, niyet (`Intent`) sözleşmesi, parametre kayıt defteri ve `B0-NAIVE` baseline'ı (`BotCore/Brain.h` ve 3 yeni başlık)
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK |
+| Durum | İPTAL (2026-10-03, ön-plan: yazılmış hâli **F6-11** olarak eklendi; döngü yalnızca yeni plan dosyası kabul ettiğinden ve kimlikler yeniden kullanılmadığından; kimlik yeniden kullanılmaz) |
 | Faz | F6 — Sınıf davranışları, hayatta kalma ve solo (`docs/17` §2; kapılar G6a/G6b/G6c, §5) |
 | Branch | `bot/F6-01 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | F3-05 (`BotCore` + `Tests/BotCoreTests` çatısı, `Rng`) `KAPANDI`; F4-03/F4-04/F4-05/F4-24 (`BotCore/BotCombat.h` guard fonksiyonları) `KAPANDI`; F4-16/F4-17/F4-18 (`PerceptionSnapshot`, `SelfState`, `TeamView`) `KAPANDI`; F4-50/F4-51/F4-52 (`UnitView` meta, `HpTable`, `SkillEventRing`) `KAPANDI`. F5 gerekmez (saf mantık) |
