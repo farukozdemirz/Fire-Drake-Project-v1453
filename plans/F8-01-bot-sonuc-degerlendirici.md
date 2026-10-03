@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
@@ -198,16 +198,111 @@ git diff --stat gece/2026-10-02-nav...bot/F8-01
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F8-01` — `<kısa-sha> [F8-01] …`
+- Branch / commit'ler: `bot/F8-01` (taban `gece/2026-10-02-nav`)
+  - `8895e8e [F8-01] Maç sonuç değerlendiricisi: tools/bot-outcome-eval.py + örnek + --selftest (67 vaka)`
+  - plan kaydı commit'i (bu rapor + `Durum`)
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `tools/bot-outcome-eval.py` (yeni, 1407 satır): §5 sözleşmesine göre maçları gruplar,
+    kural parametrelerini çözer, `killdiff_timed`/`wipe_first`/`timed_score` sonucunu
+    hesaplar, `OUTCOME`/`SUMMARY` (ya da `--json`) yazar; `--selftest` 67 vaka.
+  - `tools/bot-outcome-eval/sample.jsonl` (yeni, 21 satır): §5.7'deki örnek girdi.
+  - `plans/F8-01-bot-sonuc-degerlendirici.md`: yalnızca `Durum` satırı ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release` son 7 satır):
   ```
-  …
+    BotCore.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\BotCore.lib
+    Lua.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\Lua.lib
+    shared.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\libs\shared.lib
+    proj-LogInServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\LogInServer.exe
+    proj-GameServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Server\AIServer.exe
+    BotCoreTests.vcxproj -> C:\dev\fdp-nav\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Yeni uyarı/hata yok. `./tools/run-tests.sh` son satırı: `223 tests, 0 failed`
+  (değişmedi). Sunuculara dokunulmadı (paralel hat `nav`; `run-servers.sh status`
+  ana hattın sunucularını gösteriyor, kapatılmadı).
+
+### Doğrulama çıktıları (istenen)
+
+`python3 tools/bot-outcome-eval.py --selftest | tail -1`:
+```
+SELFTEST PASS n=67
+```
+
+`python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl`:
+```
+OUTCOME match=SMP-win-1-1 rule=killdiff_timed result=win_a k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-draw-1-1 rule=killdiff_timed result=draw k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-wipe-1-1 rule=wipe_first result=win_a k_a=2 k_b=0 diff=+2 alive_a=2 alive_b=0 engage_ms=500 end_ms=7000 end=wipe reasons=-
+OUTCOME match=SMP-noeng-1-1 rule=killdiff_timed result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+SUMMARY n=4 win_a=2 win_b=0 draw=1 invalid=1 no_result=0
+```
+
+`... sample.jsonl --win-margin 3`:
+```
+OUTCOME match=SMP-win-1-1 rule=killdiff_timed result=draw k_a=3 k_b=1 diff=+2 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-draw-1-1 rule=killdiff_timed result=draw k_a=2 k_b=1 diff=+1 alive_a=- alive_b=- engage_ms=1000 end_ms=121000 end=duration reasons=-
+OUTCOME match=SMP-wipe-1-1 rule=wipe_first result=win_a k_a=2 k_b=0 diff=+2 alive_a=2 alive_b=0 engage_ms=500 end_ms=7000 end=wipe reasons=-
+OUTCOME match=SMP-noeng-1-1 rule=killdiff_timed result=invalid k_a=- k_b=- diff=- alive_a=- alive_b=- engage_ms=- end_ms=- end=- reasons=NO_ENGAGE
+SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0
+```
+
+### K10 — ADR-0031-DEG / `docs/15` §6b örnek eşlemesi
+
+| Örnek | Vaka adı | Sonuç |
+|---|---|---|
+| killdiff (14,11,+3) | `kd_14_11` | win_a |
+| killdiff (10,8,+2, sınır) | `kd_10_08` | win_a |
+| killdiff (9,8,+1) | `kd_09_08` | draw |
+| killdiff (8,8,0) | `kd_08_08` | draw |
+| killdiff (8,9,-1) | `kd_08_09` | draw |
+| killdiff (7,9,-2) | `kd_07_09` | win_b |
+| killdiff (3,12,-9) | `kd_03_12` | win_b |
+| killdiff 0-0 (hasar var) | `kd_00_00_damage` | draw |
+| killdiff 0-0 (hasar yok) | `kd_00_00_nodamage` | invalid NO_ENGAGE |
+| margin 3 (14,11) | `kdm3_14_11` | win_a |
+| margin 3 (10,8) | `kdm3_10_08` | draw |
+| margin 3 (7,9) | `kdm3_07_09` | draw |
+| 2v2 (3,1) | `kd2v2_03_01` | win_a |
+| 2v2 (2,1) | `kd2v2_02_01` | draw |
+| wipe: B'nin son botu ölür, A 3 canlı | `wipe_b_last_dies_a3` | win_a |
+| wipe: süre dolar, A 4 / B 2 | `wipe_timeout_a4_b2` | win_a |
+| wipe: süre dolar, 3 / 3 | `wipe_timeout_3_3` | draw |
+| wipe: son botlar aynı tick'te ölür | `wipe_same_tick_draw` | draw |
+
+(Saf `judge_killdiff` sınırları ayrıca `kd_pure_judge_boundaries` vakasında sınanır.)
+
+### Kabul kriterleri öz-değerlendirme
+
+- K1 ✔ `--selftest` çıkış 0, son satır `SELFTEST PASS n=67` (≥ 50), `FAIL ` ile başlayan satır yok.
+- K2 ✔ §5.6 tablosundaki tüm adlar `^PASS <ad>$` olarak bir kez geçer (listeli grep: `missing=0`).
+- K3 ✔ sample çıktısı §5.7'deki 5 satırla birebir aynı (`sample_file_expected` vakası + elle `diff`), çıkış 0.
+- K4 ✔ `--win-margin 3`: `SMP-win` draw, `SMP-wipe` win_a, `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0`.
+- K5 ✔ `--win-margin 9` → 2; var olmayan yol → 2; sample `--strict` → 1; sample → 0; `--json` assert geçti.
+- K6 ✔ (`/tmp/f801-mut`): `judge_killdiff` `>=` → `>` mutasyonu rc=1, 8 `FAIL` (dahil
+  `kd_10_08`, `kdm3_14_11`); aynı-tick sınırı `t_value > t0 + tick_ms` → `>=` mutasyonu
+  rc=1, `wipe_same_tick_draw` `draw` yerine `win_b` (FAIL).
+- K7 ✔ içe aktarımlar yalnız `json/os/sys/tempfile`; yazan `open()` yalnız `--selftest`
+  yollarında (`write_records`, `cli_bad_json_line_rc2`); ASCII; CRLF yok.
+- K8 ✔ (kayıt commit'i sonrası) `git diff --stat gece/2026-10-02-nav...bot/F8-01` yalnız
+  iki yeni dosya + plan; `GameServer/`, `BotCore/`, `Tests/`, `shared/`, `AIServer/`, `docs/` değişmedi.
+- K9 ✔ `tools/build.sh Release` hatasız; `223 tests, 0 failed`.
+- K10 ✔ yukarıdaki eşleme tablosu (killdiff 7 + 0-0 iki durum, margin 3 üç, 2v2 iki, wipe dört).
+
+- Plandan sapmalar ve gerekçeleri:
+  - `--selftest` vaka sayısı 67'dir (istenen ≥ 50); §5.6 tablosundaki adların tamamı aynen var.
+  - `win_killer_*` için önce tek bir toplayıcı vaka yazılmıştı; ad yinelemesini önlemek için
+    her alt vaka ayrı `case()` yapıldı (K2 `grep -c` = 1 şartı).
+  - `sample.jsonl` için `git` `core.autocrlf=true` uyarısı verdi ("LF will be replaced by
+    CRLF"); depodaki blob LF (CR sayısı 0). Çalışma ağacında da LF. `.gitattributes`'a
+    `*.jsonl` satırı eklemek bu planın izinli dosya listesinde değildir, eklenmedi; taze bir
+    CRLF checkout'unda K7 `grep -c $'\r'` şartı etkilenebilir (aşağıdaki açık soru).
+- Açık sorular:
+  - `sample.jsonl` (ve olası başka `.jsonl` araç dosyaları) için `.gitattributes`'a
+    `*.jsonl text eol=lf` eklenmeli mi? Bu plan yalnız iki yeni dosyaya dokunulmasına izin
+    veriyor; gerekirse küçük bir bakım planı gerekir.
+- Not: Bu araç sunucu davranışını değiştirmez; `ENABLED=0` (varsayılan) hiç etkilenmez.
+  Gerçek logda `DEATH`/`DAMAGE` henüz yoktur; kabul `sample.jsonl` + `--selftest` iledir.
+
 
 ---
 
