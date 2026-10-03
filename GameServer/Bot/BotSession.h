@@ -160,6 +160,8 @@ public:
 	BotCore::TeamTable m_team;                             // guarded by m_obsLock (the same mutex as m_obs): the bot's party members, from received WIZ_PARTY packets only (Perception, ADR-0017 Ek F4-18)
 	BotCore::HpTable m_hp;                                 // guarded by m_obsLock (the same mutex as m_obs): HP observations from received WIZ_TARGET_HP packets only (Perception, ADR-0017 Ek F4-51)
 	BotCore::SkillEventRing m_skillEvents;                 // guarded by m_obsLock (the same mutex as m_obs): received WIZ_MAGIC_PROCESS broadcasts of any caster (Perception, ADR-0017 Ek F4-52)
+	BotCore::ObservedStatusTable m_status;                 // guarded by m_obsLock (the same mutex as m_obs): estimated buff/debuff records from received EFFECTING broadcasts (Perception, ADR-0017 Ek F4-53/F4-60)
+	BotCore::HealObsRing m_healObs;                        // guarded by m_obsLock (the same mutex as m_obs): observed heal events from received EFFECTING broadcasts (Perception, ADR-0017 Ek F4-53/F4-60)
 
 	std::atomic<int> m_selectResult;                       // SelectResult, set by OnPacket
 	std::atomic<uint32> m_packetTotal;

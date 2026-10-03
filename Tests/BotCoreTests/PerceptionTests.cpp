@@ -2877,3 +2877,58 @@ TEST_CASE("Perception_HealRing")
 	CHECK_EQ(copy.Count(), 0);
 	CHECK_EQ(big.Count(), BotCore::kHealObsRing);
 }
+
+TEST_CASE("Perception_Status_Targets")
+{
+	BotCore::ObservedStatusTable table;
+	int16_t out[BotCore::kObsStatusUnits];
+
+	// Empty table, null out and non-positive cap.
+	CHECK_EQ(table.Targets(out, BotCore::kObsStatusUnits), 0);
+	CHECK_EQ(table.Targets(nullptr, BotCore::kObsStatusUnits), 0);
+	CHECK_EQ(table.Targets(out, 0), 0);
+
+	BotCore::SkillMeta b1 = MakeMeta(20, 4, 0);
+	b1.buffType = 1;
+	b1.isBuff = true;
+	BotCore::SkillMeta b2 = MakeMeta(21, 4, 0);
+	b2.buffType = 2;
+	b2.isBuff = false;
+
+	// 2985 carries two records, 2986 one; slot order is the order the units were first stored.
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 20, 1, 2985, 0, 1, 10), &b1) == BotCore::kStatusRecorded);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 21, 1, 2985, 0, 1, 60), &b2) == BotCore::kStatusRecorded);
+	CHECK(table.Observe(MakeEvent(BotCore::kMagicEffecting, 20, 1, 2986, 0, 1, 10), &b1) == BotCore::kStatusRecorded);
+
+	int n = table.Targets(out, BotCore::kObsStatusUnits);
+	CHECK_EQ(n, 2);
+	if (n == 2)
+	{
+		CHECK_EQ((int)out[0], 2985);
+		CHECK_EQ((int)out[1], 2986);
+	}
+	CHECK_EQ(table.Targets(out, 1), 1);
+	if (table.Targets(out, 1) == 1)
+		CHECK_EQ((int)out[0], 2985);
+
+	// ClearTarget drops only that unit.
+	table.ClearTarget(2985);
+	n = table.Targets(out, BotCore::kObsStatusUnits);
+	CHECK_EQ(n, 1);
+	if (n == 1)
+		CHECK_EQ((int)out[0], 2986);
+
+	// A unit whose last record is cured is no longer listed.
+	BotCore::ObservedStatusTable cured;
+	BotCore::SkillMeta cure = MakeMeta(112525, 5, 0);
+	cure.type5Kind = BotCore::kType5RemoveType4;
+	CHECK(cured.Observe(MakeEvent(BotCore::kMagicEffecting, 21, 1, 2987, 0, 1, 10), &b2) == BotCore::kStatusRecorded);
+	CHECK(cured.Observe(MakeEvent(BotCore::kMagicEffecting, 112525, 1, 2987, 0, 1, 0), &cure) == BotCore::kStatusCured);
+	CHECK_EQ(cured.Targets(out, BotCore::kObsStatusUnits), 0);
+
+	// The table caps at kObsStatusUnits units.
+	BotCore::ObservedStatusTable full;
+	for (int i = 0; i <= BotCore::kObsStatusUnits; i++)
+		CHECK(full.Observe(MakeEvent(BotCore::kMagicEffecting, 20, 1, (int16_t)(3000 + i), (uint64_t)(1000 + i), 1, 10), &b1) == BotCore::kStatusRecorded);
+	CHECK_EQ(full.Targets(out, BotCore::kObsStatusUnits), BotCore::kObsStatusUnits);
+}

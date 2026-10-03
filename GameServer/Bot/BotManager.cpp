@@ -2556,14 +2556,15 @@ void BotManager::CommandSnap(const std::string & args)
 
 	if (words.size() != 1 && words.size() != 2)
 	{
-		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events]");
+		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events|status]");
 		return;
 	}
 
 	bool wantEvents = (words.size() == 2 && words[1] == "events");
-	if (words.size() == 2 && !wantEvents)
+	bool wantStatus = (words.size() == 2 && words[1] == "status");
+	if (words.size() == 2 && !wantEvents && !wantStatus)
 	{
-		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events]");
+		WriteBotLog("BotManager: cmd snap: usage: snap <bot> [events|status]");
 		return;
 	}
 
@@ -2594,6 +2595,8 @@ void BotManager::CommandSnap(const std::string & args)
 	BotCore::TeamTable teamCopy;
 	BotCore::HpTable hpCopy;
 	BotCore::SkillEventRing eventCopy;
+	BotCore::ObservedStatusTable statusCopy;
+	BotCore::HealObsRing healCopy;
 	{
 		std::lock_guard<std::mutex> lock(s->m_obsLock);
 		obsCopy = s->m_obs;
@@ -2601,6 +2604,9 @@ void BotManager::CommandSnap(const std::string & args)
 		teamCopy = s->m_team;
 		hpCopy = s->m_hp;
 		eventCopy = s->m_skillEvents;
+		// ADR-0017 Ek F4-60: only the copy happens under the lock; the dump below runs with the lock released.
+		statusCopy = s->m_status;
+		healCopy = s->m_healObs;
 	}
 
 	// The only read of the bot's own session: its CUser, which the contract allows.
@@ -2793,6 +2799,46 @@ void BotManager::CommandSnap(const std::string & args)
 				"BotManager: cmd snap:   event age=%ums op=%u skill=%u caster=%d target=%d d0=%d d1=%d d2=%d",
 				(unsigned)age, (unsigned)ev.op, (unsigned)ev.skillId,
 				(int)ev.caster, (int)ev.target, (int)ev.data[0], (int)ev.data[1], (int)ev.data[2]);
+			WriteBotLog(message);
+		}
+	}
+	else if (wantStatus)
+	{
+		// Estimated (E class) records derived from received broadcasts only; the server never sends another unit's
+		// buff list, so a real end can be earlier or later (MEC-BUF-07, docs/13 section 5.2a).
+		snprintf(message, sizeof(message),
+			"BotManager: cmd snap:   status units=%d records=%d heals_total=%u heals_in_ring=%d",
+			statusCopy.Units(), statusCopy.Records(), (unsigned)healCopy.Total(), healCopy.Count());
+		WriteBotLog(message);
+
+		const int kPrintStatusUnits = 10;
+		int16_t unitIds[BotCore::kObsStatusUnits];
+		int unitCount = statusCopy.Targets(unitIds, BotCore::kObsStatusUnits);
+		for (int i = 0; i < unitCount && i < kPrintStatusUnits; i++)
+		{
+			BotCore::StatusObs recs[BotCore::kObsStatusPerUnit];
+			int n = statusCopy.Collect(unitIds[i], nowMs, recs, BotCore::kObsStatusPerUnit);
+			for (int j = 0; j < n; j++)
+			{
+				const BotCore::StatusObs & r = recs[j];
+				snprintf(message, sizeof(message),
+					"BotManager: cmd snap:   status target=%d skill=%u type=%u %s caster=%d remain=%ums src=E",
+					(int)unitIds[i], (unsigned)r.skillId, (unsigned)r.buffType,
+					r.isBuff ? "buff" : "debuff", (int)r.caster,
+					(unsigned)BotCore::StatusRemainingMs(r, nowMs));
+				WriteBotLog(message);
+			}
+		}
+
+		const int kPrintStatusHeals = 5;
+		for (int i = 0; i < healCopy.Count() && i < kPrintStatusHeals; i++)
+		{
+			const BotCore::HealObs & h = healCopy.At(i);
+			uint32 age = (nowMs >= h.tMs) ? (uint32)(nowMs - h.tMs) : 0;
+			snprintf(message, sizeof(message),
+				"BotManager: cmd snap:   status heal age=%ums skill=%u caster=%d target=%d nominal=%u hot=%d",
+				(unsigned)age, (unsigned)h.skillId, (int)h.caster, (int)h.target,
+				(unsigned)h.nominal, h.hot ? 1 : 0);
 			WriteBotLog(message);
 		}
 	}

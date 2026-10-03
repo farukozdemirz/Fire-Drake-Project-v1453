@@ -2046,6 +2046,22 @@ namespace BotCore
 			return n;
 		}
 
+		// Target ids of the units that carry at least one record, in slot order (a unit's slot keeps its place once
+		// it is stored). Writes at most cap ids and returns the count. A null out or a non-positive cap writes
+		// nothing and returns 0. A listing derived from the visible units would miss targets that are not in view.
+		int Targets(int16_t * out, int cap) const
+		{
+			if (out == nullptr || cap <= 0)
+				return 0;
+			int w = 0;
+			for (int i = 0; i < kObsStatusUnits && w < cap; i++)
+			{
+				if (m_units[i].count > 0)
+					out[w++] = m_units[i].target;
+			}
+			return w;
+		}
+
 		int Records() const
 		{
 			int n = 0;
