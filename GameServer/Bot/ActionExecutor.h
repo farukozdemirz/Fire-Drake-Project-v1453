@@ -217,9 +217,13 @@ public:
 	// Resurrection of love/grace/favors; the target must be a dead friendly bot other than the caster, the server takes
 	// the stones from the dead target; Bless of God, RESURRECTION_SELF and other item skills stay unsupported;
 	// ADR-0017 Ek F4-33); a resurrection reports "effected" when the server broadcasts it, which does not prove the
-	// target is alive (docs/03 MEC-MAG-20)),
+	// target is alive (docs/03 MEC-MAG-20));
+	// summon (Type8, Moral 4, MAGIC_TYPE8.WarpType 12: summon friend; the target must be a party member other than the
+	// caster, the server teleports it to the caster; Gate, Escape, Blink, descent and other warp types stay unsupported;
+	// ADR-0017 Ek F4-34); a summon reports "effected" when the server broadcasts it, which does not prove the target
+	// moved (docs/03 MEC-MAG-21)),
 	// "quest_locked" (the skill's MAGIC.Etc quest is not completed; docs/03 MEC-MAG-14),
-	// "bad_target" (moral does not match the target kind; corpse-friend needs a named target).
+	// "bad_target" (moral does not match the target kind; corpse-friend and summon need a named target).
 	static CastOutcome BeginCast(BotSession * s, uint32 skillId, const std::string & targetName, uint32 count,
 		std::chrono::steady_clock::time_point now);
 

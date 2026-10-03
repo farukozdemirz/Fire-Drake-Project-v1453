@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-34` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-33 (diriltme istisnası kalıbı: `BeginCast` ayrı istisna + `wantedTarget`) — `KAPANDI` (merge `184beba`); F4-31 (`Moral` 4 party hedefli, MEC-MAG-18) — `KAPANDI`; F4-08 (party kurulumu `/bot pinvite`, `/bot paccept`; yalnızca çalışma zamanı sınaması için) — `KAPANDI` |
@@ -224,10 +224,74 @@ git diff --check gece/2026-10-02...bot/F4-34
 
 ## Uygulayıcı Raporu (DeepSeek doldurur)
 
-_Henüz uygulanmadı._
+### Tur 1
+
+- **Durum:** UYGULANDI (tüm uygulama adımları yapıldı; derleme ve birim testleri geçti). Planda istenen çalışma zamanı doğrulaması (S1–S7) Claude'a aittir; bu turda yapılmadı.
+- **Branch:** `bot/F4-34` (taban: `gece/2026-10-02` @ `0b77e34`). Commit'ler: `[F4-34] ...` (kod) ve `[F4-34] Uygulandı ...` (Durum + rapor) — commit hash'leri commit sonrası `git log`'ta görülür.
+- **Değişen dosyalar ve nedenleri:**
+  - `BotCore/BotCombat.h`: `kMoralPartyMember` (4) ve `kType8WarpSummon` (12) sabitleri ve `CastSummonSupported(type0, type1, moral, useItem, warpType)` eklendi (plan §5.1). Yalnızca ekleme (+17 satır); mevcut fonksiyonlar değişmedi.
+  - `GameServer/Bot/ActionExecutor.cpp`: `BeginCast` içine summon istisnası (`m->bType[0] == 8` için `m_Magictype8Array` okuması + `CastSummonSupported` + `bFlyingEffect == 0` + `CastHpCostSupported`) ve `if (!resurrection && !summon` değişikliği; `wantedTarget = ... || summon` (plan §5.3 a/b). İki hunk, ikisi de `BeginCast` içinde.
+  - `GameServer/Bot/ActionExecutor.h`: yalnızca `BeginCast` yorumu (destek listesine summon, `bad_target` açıklaması; plan §5.3 d).
+  - `Tests/BotCoreTests/CombatTests.cpp`: yeni `Combat_SummonCast_Guard` (110 → 111; plan §5.2).
+- **Derleme çıktısının son satırları:**
+  - `./tools/build.sh Release`: `All 14057 functions were compiled... proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe` — hata yok; yalnızca mevcut `UpgradeHandler.cpp` C4789 uyarıları.
+  - `./tools/build.sh Debug`: `proj-GameServer.vcxproj -> ...\build\bin\x86-Debug\Server\GameServer.exe`, `BotCoreTests.vcxproj -> ...\build\bin\x86-Debug\Tests\BotCoreTests.exe` — hata yok.
+- **Testler:** `./tools/run-tests.sh Release` ve `Debug`: `111 tests, 0 failed`; `Combat_CastTypes_Supported`, `Combat_ResurrectionCast_Guard`, `Combat_SummonCast_Guard` `[ OK ]`.
+- **Kriter öz-değerlendirmesi:**
+  - K1 ✔ (Release hatasız; değişen dört dosyada yeni uyarı yok), K2 ✔ (Debug hatasız).
+  - K3 ✔ (`111 tests, 0 failed` Release + Debug; üç test adı `[ OK ]`).
+  - K4 ✔ (BotCore saflık grep'i boş; `git diff ... | grep '^+' | grep std::min/std::max` boş; `grep '^-'` boş = yalnızca ekleme).
+  - K5 ✔ (`CastSummonSupported`/`m_Magictype8Array` tam iki satır; `CastNeedsOtherTarget` tek satır ve `|| summon`; `if (!resurrection && !summon`; `m->iUseItem != 0` sayısı 2).
+  - K6 ✔ (ActionExecutor.cpp iki hunk, ikisi de `BeginCast` içinde; `git diff --stat` yalnızca dört dosyayı gösterir; korunan dosyaların diff'i boş; proje dosyaları değişmedi).
+  - K7 ✔ (diff'te yeni `Emit(` yok; yeni ini anahtarı/komut/thread/telemetri türü/alanı yok).
+  - K8 ✔ (dört dosya `file` çıktısı: ASCII + CRLF; `git diff --check` boş).
+  - K9 ✔ (CheckMoveStep 2, CheckAttack/CheckCastStart/CheckCastEffect/CheckCastFly/CheckCastLand/CheckCastCancel/CheckPotion ≥ 1; önceki 110 test geçiyor).
+  - K10 ✔ (`python3 tools/check-perception-contract.py`: `files scanned: 19`, R1 0/0, R2 0/28, R4 0/0, R5 0/0, `RESULT: PASS`; araç/istisna listeleri değişmedi).
+  - K11 — Claude'a ait (çalışma zamanı S1–S7); bu turda yapılmadı.
+- **Plandan sapmalar:** Yok. Plan §5.1/§5.2/§5.3 metinleri birebir uygulandı (yorum metinleri dahil). `docs/`, `plans/README.md`, ADR dosyaları değiştirilmedi.
+- **Açık sorular:** Yok.
+
 
 ---
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-_Henüz doğrulanmadı._
+### Tur 1 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-34` @ `07aab4b` (kod `33460ae`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`, `AUTO_INTEGRATION_BRANCH=gece/2026-10-02`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
+- Kriter sonuçları:
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0, `error`/`warning C` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, `error`/`warning C` 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` ikisinde rc=0, `111 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `Combat_ResurrectionCast_Guard`, `Combat_SummonCast_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>`; eklenen satırlarda `std::min`/`std::max` 0; `-` satırı 0 (yalnızca ekleme, +17) |
+| K5 | ✔ | `ActionExecutor.cpp` `:752` `m_Magictype8Array`, `:754` `CastSummonSupported` (her biri bir kez); `:785` `CastNeedsOtherTarget(m->bMoral) \|\| summon;` tek satır; `CastTypesSupported(m->bType[0], m->bType[1])`, `CastTypeMoralSupported`, `(m->bFlyingEffect != 0 && !flyingCast)`, `CastMoralSupported`, `CastHpCostSupported` mevcut `if` içinde yerinde (`:761-766`); `if (!resurrection && !summon` var; `grep -c "m->iUseItem != 0"` = 2 |
+| K6 | ✔ | `git diff --stat`: yalnızca §4'teki 4 dosya + plan dosyası; `ActionExecutor.cpp` iki hunk (`:743` destek koşulu çevresi, `:782` `wantedTarget`), ikisi `BeginCast` içinde; `BotSession.*`, `BotManager.cpp`, `Telemetry.cpp`, vcxproj/filters, `tools/` farkı boş (0 bayt) |
+| K7 | ✔ | kod farkında eklenen `Emit(` yok (tek eşleşme plan dosyasındaki rapor metni); yeni ini anahtarı/komut/thread/olay türü yok; `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; çalışma ağacında CR'siz satır 0; `git diff --check` rc=0, çıktı boş; eklenen satırlarda ASCII dışı karakter yok |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki 110 test dahil 111 test geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS`, `files scanned: 19` (değişmedi) |
+| K11 | ✔ | S1–S7 çalışma zamanında geçti (aşağıda; ortam notları bulgularda) |
+
+**Çalışma zamanı** (Release `GameServer.exe`, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-045457.jsonl`, `Logs/Bot_3_10_2026.log`; `summary` ve `ENABLED=0` için ayrı yeniden başlatma. Botlar: `BotMF_K` (2984, summon eden), `BotWP_K` (2985, çağrılan), `BotWG_K` (2986, party dışı), `BotMF_E` (2987, DB'de ölü), `BotWP_E` (2988, öldürücü), `BotMI_E` (2989), `BotPHD_K`, `BotPHB_K`).
+
+- **S1 ✔ Summon friend (`110004`) ışınlar.** `pinvite BotMF_K BotWP_K` → `paccept BotWP_K`; `snap BotMF_K` `team in_party=1 self_leader=1`, `member id=2985`. `BotMF_K` (1274,925); `BotWP_K` `move` ile (1274,960)'a yürütüldü (35 m, `list` ile teyit). `snap BotWP_K` ışınlanma öncesi: `dist=35.0`. `cast BotMF_K 110004 BotWP_K 1`: `CastStart` `ACTION_SUBMIT` **`"target":2985`** (`-1` değil), `cast_ms 1580` → `casting` `op 1`; `CastEffect` `since_casting_ms 1634` → `effected`, `op 3`, `code 0`, **`victims` alanı yok**; log `cast finished (effected) after 1 cycle(s), 1 ok, 2 packet(s) sent`. Hemen `list`: `BotWP_K` **(1274,925)** = `BotMF_K` konumu (fark 0 m); `BotMF_K` MP **6021 → 6016 (−5)**. `snap BotWP_K` ışınlanma sonrası: `pos=(1274.0, 925.0)`, `member id=2984 ... dist=0.0`, `allies 2`, `events total=3`. `move BotWP_K 1274 928` → `arrived ... after 1 packets` (`m_bWarp` takılmadı); `Bot_*.log`'da `WIZ_WARP`/hata/exception satırı 0.
+- **S2 ✔ Ölü hedef: `effected` ama ışınlanma yok.** `BotMF_K` (1274,895), `BotWP_K` (1274,925) (30 m). `BotWP_K` düşman `BotWP_E` ile yakın dövüşte öldürüldü (`hp=0/5650`, `BotMF_E` DB'de ölü olduğundan, bulgu 2). `cast BotMF_K 110004 BotWP_K 1` ⇒ `casting` → `effected`, `op 3`, `code 0`; üç ayrı deneme sonrası `list`: `BotWP_K` **hâlâ `hp=0`, aynı konum (1274,925)**; `BotMF_K` MP **6021 → 6016 (−5), her üç denemede** (MP summon başarısız olsa da düşer `[V]`).
+- **S3 ✔ Party dışı hedef.** `cast BotMF_K 110004 BotWG_K 1` (Karus, party dışı): `CastStart` `ok:false`, `srv_fail`, `op 4`, `code -100`, MP 6021 sabit (tavan), hedef yerinde (1274,890). `cast BotMF_K 110004 BotWP_E 1` (El Morad düşman): `srv_fail`, `code -100`. Party'siz çağıran (`cast BotMI_E 210004 BotWP_E 1`, ikisi de party'siz): `srv_fail`. (Taze oturumda party'siz Karus çifti ayrıca denenmedi; `BotMI_E` ile aynı kural sınandı.)
+- **S4 ✔ Bot kuralları.** `cast BotMF_K 110004 self 1` ⇒ `refused (bad_target)`; jsonl'de `ACTION_SUBMIT` yok (karar kimliği atlamadı), MP sabit. Menzil: S1 ve S5'te 35 m'de `FAIRNESS_REJECT` yazılmadı (`grep -c FAIRNESS_REJECT` = 0).
+- **S5 ✔ İptal.** `BotWP_K` 35 m uzakta, canlı: `cast BotMF_K 110004 BotWP_K 1`, `casting` yanıtı görülür görülmez `cast BotMF_K off`: `CastCancel` **`"target":2985`**, `cause cmd`, `since_casting_ms 1098`, `cancelled`, `op 4`, `code -100`; MP 6021 sabit; `BotWP_K` (1274,960)'da kaldı.
+- **S6 ✔ Kapalı kalanlar ve recast.** `110015` Gate, `110035` Escape, `110774` Blink (`SkillLevel 80` botta geçer) ve `cast BotWG_K 106650 BotWP_K 1` (descent) ⇒ dördünde `refused (unsupported_skill)`; `109004` ⇒ `refused (bad_skill)`; beşinde de jsonl'de `ACTION_SUBMIT` yok. Recast: `cast BotMF_K 110004 BotWP_K 3`: her çevrimde `casting` + `effected`, ardışık EFFECTING'ler 1,886 sn arayla (cycle 2 `t=222793865`, cycle 3 `t=222795751`), log `cast finished (effected) after 3 cycle(s), 3 ok, 6 packet(s) sent`. MP: sonda 6021/6021 (tavan, kümeli +40 yenileme −15'i örttü; tek cast'te −5 S1/S2'de kesin ölçüldü).
+- **S7 ✔ Gerilemesiz ve kapsam.** `cast BotPHB_K 112606 self 1` (Grace, `Moral` 4): `casting` + `effected`, `code 600` (**`bad_target` değil**: Moral 4 `self` serbest); `cast BotPHB_K 112603 self 1` `effected`, `code 600` (F4-28); `cast BotPHD_K 112525 self 1` `effected`, `code 0` (F4-32); `cast BotPHD_K 112557 self 1` grup heal `target -1`, `effected`, `victims 1` (F4-31); `cast BotMF_K 110545 BotWP_E 1` Inferno `target -1`, `effected`, `victims 1` (F4-29); `cast BotMF_K 110518 BotWP_E 1` Moral 7 `target 2988`, `effected` (F4-23/F4-28 hattı). **F4-33 diriltme:** `cast BotPHD_K 112733 BotWP_K 1` (`Moral` 25) `BeginCast`'ten geçti (`casting`, `bad_target` değil) ve CASTING'te `srv_fail` verdi: hedefte yetersiz Stone of Life (F4-33 raporundaki bilinen DB durumu, bulgu 3); `CastNeedsOtherTarget(25)` ve `|| summon` kod farkıyla değişmedi. `TELEMETRY=summary`: `BotMF_K` → `BotWG_K` summon çalıştı (`BotWG_K` (1274,890) → (1274,915)), `live-050312.jsonl`'de `ACTION_` satırı 0. `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya yerinde kaldı), `Logs/bots/` dosya sayısı (8) ve `Bot_3_10_2026.log` satır sayısı (5089) değişmedi. Sunucu 3/3 UP, `Bot_*.log`'da `WIZ_WARP`/exception/assert 0.
+- Temizlik: botlar despawn (konumlar DB'ye yazıldı: `BotWP_K` ölü ve (1274,925), `BotMF_K` (1274,915), `BotWG_K` (1274,915)), sunucular `stop` (nazik), `GameServer.ini` ve `GameServer.exe` orijinallerine döndü (`diff` ini == `GameServer.ini.bak-before-bot-test-20261002`, exe `md5` değişmedi), `BotCommands.*` silindi, çalışma ağacı temiz.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **`effected` ≠ ışınlandı doğrulandı:** ölü hedefte `effected`, `code 0`, hedef yerinde ve MP −5 (`docs/03` MEC-MAG-21 `[D]` → `[V]`, `v1.17`). Karar katmanı (F7) başarıyı hedefin konumundan ya da `SkillEvent.data[1]`'den çıkarmalıdır.
+  2. *(not)* **Plan kurulum notu (planlayıcı eksiği):** §7 öldürücü olarak `BotMF_E`'yi (`210518`) varsayar, ancak `BotMF_E` DB'de `hp 0/1541` ölü başlıyor (F4-33 ölçümünden kalma); `regene` onu 600+ m uzağa taşır. Öldürücü olarak `BotWP_E` yakın dövüşle (`attack BotWP_E BotWP_K 80`, ~3 dk) kullanıldı. Ayrıca doğuş konumları plandaki "aynı nokta" değildir (DB'den: `BotMF_K` 925, `BotWP_K` 940, `BotWG_K` 890, `BotWP_E` (1278,948)); mesafe `move` ile ayarlandı. Kod değişikliği gerekmez.
+  3. *(not)* **Diriltme (Moral 25) bu koşuda başarıyla ölçülemedi:** `BotWP_K`'nın Stone of Life stoğu F4-33 ölçümünde tükenmişti (`db/002` yeniden uygulanmadı), bu yüzden `112733` CASTING'te `srv_fail`. Gerileme değil; `db/002` yeniden uygulanmadan sonraki diriltme ölçümü anlamsız (`docs/STATUS.md` notu aynen geçerli).
+  4. *(not)* **MP ölçümü:** botlar MP tavanındayken kümeli +40 yenileme düşüşü örter; tek cast'te −5 `list` ile yenilemeden önce yakalanınca (S1, S2×3) kesin, 3 çevrimlik recast'te (−15) tavana döndü.
+  5. *(not)* **Işınlanan botun algısı (§8 d):** ışınlanma sonrası `snap BotWP_K` yeni konumu (`pos=(1274.0, 925.0)`), çağıranı `dist=0.0` ve `events total=3` gösterdi, kalıcı sapma yok; ancak eski bölgede başka varlık olmadığından eski bölge kaydının kalıp kalmadığı **ölçülemedi** `[A]`. `docs/KNOWN_ISSUES.md`'ye kayıt gerekmedi.
+  6. *(not)* Uygulayıcı raporu doğru: commit listesi (`33460ae` kod, `07aab4b` rapor), dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; plandan sapma yok.
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
