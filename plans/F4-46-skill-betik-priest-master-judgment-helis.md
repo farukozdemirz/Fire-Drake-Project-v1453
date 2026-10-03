@@ -169,9 +169,10 @@ git diff --stat gece/2026-10-02...bot/F4-46
 - Açık sorular: Yok. K8/K9 (gerçek koşu, sunucu açma, bot konumlandırma) plan gereği Claude'un işidir; DeepSeek sunucu çalıştırmadı.
 - `git diff --stat gece/2026-10-02...bot/F4-46` (gerçek çıktı):
   ```
-   bots/config/skill_priest_k_master.spec | 11 +++++++++++
-   bots/config/skill_priest_k_master.txt  |  7 +++++++
-   plans/F4-46-skill-betik-priest-master-judgment-helis.md | <Durum/rapor commit'i>
+   bots/config/skill_priest_k_master.spec             | 11 +++++++++++
+   bots/config/skill_priest_k_master.txt              |  7 +++++++
+   plans/F4-46-skill-betik-priest-master-judgment-helis.md | 32 ++++++++++++++++------
+   3 files changed, 41 insertions(+), 9 deletions(-)
   ```
 
 ---
