@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02-nav, merge `43c4e02`) |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
