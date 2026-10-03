@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `8522239`) |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-62 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: F5-02 (`NavPathfinder`), F5-03 (`NavSmoothPath`), F5-57 (`NavRoutePoint`, `NavRouteProgressM`), F5-59 (`NavService`), F5-61 (`CheckMoveChord`, merge `gece/2026-10-02`), F5-69 (eğim 0,45). F5-70 (sunucu bağlaması), F5-63, F5-64, F5-65 bu planın `NavDrive`'ına dayanır |
