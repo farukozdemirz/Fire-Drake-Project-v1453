@@ -225,6 +225,23 @@ F4-42 bulgularının (§9.1) durumu:
 
 Kalan WARN: `112645` (Msp 60; düşümler 20/60/60) ve `112657` (Msp 360; tek örnek 320): ikisi de yenilenme payı sınırında tek örnek sapmasıdır, MP düşümü hatası belirtisi yok `[Ö]`. Not: BuffType 1 üçlüsü (`112654`, `112657`, `112656`) aynı hedefe art arda atılamaz; ölçüm betiği hedefleri bu yüzden dağıtır (`112657` için yalnızca bir örnek).
 
+### 9.3 Bot koşusu: Karus priest düşman hedefli curse skill'leri (F4-44, 2026-10-03)
+
+`BotPHD_K` (curse ağacı 62) → `BotWP_E`, `BotWG_E`, `BotMF_E` (zone 71; priest (1274, 928), hedefler (1250, 940), (1274, 960), (1262, 920): hepsi 56 m içinde, birbirinden ≥ 23 m ⇒ Torment her seferinde tek hedefe vurdu), `bots/config/skill_priest_k_curse.txt` (19 adım), `[BOT] TELEMETRY=decisions`; `tools/skill-check.py --min-n 1`. Betik 19/19 adım zamanında koştu (en geç gecikme 107 ms) `[V]`. Sonuç: 6 skill, PASS 5, WARN 1, FAIL 0, NO_DATA 0; her skill için başlayan 3 = etkili 3, `srv_fail` 0, `no_result` 0, `missed` 0 `[V]`.
+
+| Skill | Ad | Başlayan/etkili | MP düşümü (min/med/max, beklenen) | Hüküm | Not |
+|---|---|---|---|---|---|
+| `112703` | Malice | 3/3 | 0/40/40 (40) | WARN | tek düşüm 0: o atışta cast sırasındaki kümeli MP yenilenmesi (+20/+40) düşümü tamamen kapattı `[Ö]` (F4-43 §9.2 ile aynı örüntü); en büyük düşüm = `Msp` |
+| `112757` | Torment (alan) | 3/3 | 110/150/150 (150) | PASS | alan skill'i hedef botun konumuna atıldı (F4-29); `bad_target`/`out_of_view` yok |
+| `112745` | Parasite | 3/3 | 60/60/100 (100) | PASS | sonuç: hedeflerin azami HP'si %80'e düştü: `BotWP_E`/`BotWG_E` 5650 → 4520, `BotMF_E` 1541 → 1233 (`list`, `hp=/…`) `[V]` |
+| `112760` | Massive | 3/3 | 180/180/180 (180) | PASS | saldırı debuff'ının etkisi (hasar) ölçülmedi `[A]` |
+| `112724` | Slow | 3/3 | 80/120/120 (120) | PASS | 3/3 sonuç paketi geldi; direnç zarı (MEC-BUF-05) üç atışta da direnç vermedi; 3 örnek direnç oranı hakkında hüküm vermez `[Ö]` |
+| `112736` | Sweep mana | 3/3 | 120/160/160 (160) | PASS | hedef MP'si: telemetride yok; betik sonu `list`: `BotWP_E`/`BotWG_E` 5370 → 4610, `BotMF_E` 6021 → 5181 (düşüm 760-840; son atıştan `list`e ~10-35 sn yenilenme var, 960 MP düşümü yenilenmeyle uyumlu) `[Ö]` |
+
+Recast: her skill için en küçük aralık, beklenen alt sınırın üstünde (`recast_min_gap_ms` 9054-12062 ≥ 8900/10900/11900), recast PASS `[V]`. Aynı `BuffType` debuff'ları (Malice+Torment `BuffType 2`) aynı hedefe art arda atıldığında yenileme başarıyla bitti (MEC-MAG-15 `[V]`).
+
+Koşu girdisi (bulgu): `BotMF_E` yürüyüş sırasında canavar (Harunga, (1300, 940) çevresi) tarafından öldü; `despawn`+`spawn` onu 0 HP ile geri getirdi, `regene` ile (630, 920)'ye dirilip başka bir noktaya (1262, 920) yürütüldü. Bot konumlandırma ve diriltme betik dışıdır; hedef canlılığı operatör sorumluluğudur `[V]`. Hız parametresi 90 (`move ... 90`) `speed_field` ile reddedildi (yalnızca yürüme hızı 45 kabul).
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
