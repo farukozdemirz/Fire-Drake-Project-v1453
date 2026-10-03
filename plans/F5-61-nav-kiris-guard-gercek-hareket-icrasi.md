@@ -19,6 +19,8 @@
 3. **`tools/check-perception-contract.py`:** R2 kısıtlı semboller (`GetUserPtr`, `GetMap`, ...) listesinde `GetZoneID`/`GetX`/`GetZ`/`NavService` **yok**; yeni kod bunlardan yalnızca botun **kendi** konumunu/bölgesini ve `NavService` ızgarasını okur. R4: `NavChordGuard.h` yalnızca standart kütüphane ve kardeş başlıklar içerir.
 4. **Kararlar (otonom döngüde Claude kararı — gözden geçirilmeli; ADR-0006 Ek F5-61):** D5 (başlangıç hücresi `Walk` değilse çıkış muafiyeti) taslaktaki gibi **kabul edildi**; D3 durma/aynı-konum muafiyet eşiği `kStopSlackMeters` (0,05 m) yerine, paket nicemlemesinin köşegen hatasına (en çok 0,0708 m) uyan **`kChordIgnoreMeters = 0.08f`** yapıldı (gerekçe §2 D3). Önkoşul olan F5-59 taslağın "Açık soru" maddesi bu iki karar ile kapandı.
 
+> **Karar (2026-10-03, ADR-0021, proje sahibi):** D5: başlangıç hücresi `Walk` değilse kiriş denetimi başlangıç hücresinden **çıkış noktasına kadar muaftır**; çıkıştan sonraki her hücre `Walk` olmak zorundadır (plandaki öneri onaylandı).
+
 ## 1. Amaç
 
 `[BOT] NAV=1` iken botun gönderdiği **her** `WIZ_MOVE` adımı (düz `/bot move` dahil), `CUser::HandlePacket()`'e verilmeden önce **kiriş** (botun o anki konumu → paketin konumu) olarak denetlenir: kirişin dokunduğu hücrelerden biri `Walk` değilse paket **gönderilmez**, `FAIRNESS_REJECT` (`rule:"CLI-08"`, `reason:"blocked_chord"`) yazılır ve yürüyüş durur. Bugün yalnızca adım uzunluğu denetlenir; planlayıcısız düz hedef adımı 6000 çiftin 447'sinde (%7,45) engelli hücreye değiyor (`docs/12` §13.1). `NAV=0` (varsayılan) veya `ENABLED=0` iken davranış **değişmez**.
