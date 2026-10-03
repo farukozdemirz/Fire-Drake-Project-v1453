@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DÜZELTME GEREKLİ |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-01 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F3-02, F3-06 `KAPANDI` (`MATCH_START`/`MATCH_END`, `tools/bot-telemetry-report.py`); F5-11 `KAPANDI` (`gece/2026-10-02-nav`, merge `e211ae3`). Sunucu tarafı `DEATH`/`DAMAGE` emisyonu **yoktur** (§2); araç belgelenmiş girdi sözleşmesine göre yazılır, gerçek log gelince aynen çalışır |
@@ -308,20 +308,39 @@ SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `<sha>`
+- Karar: DÜZELTME GEREKLİ
+- İncelenen: `gece/2026-10-02-nav...bot/F8-01` @ `64dfd01` (iki commit: `8895e8e`, `64dfd01`; paralel hat `nav`, gece modu, sunuculara dokunulmadı, birleştirme/push yapılmadı)
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | `--selftest > /tmp/st.txt` rc=0; son satır `SELFTEST PASS n=67`; `grep -c '^FAIL '` = 0 |
+| K2 | ✔ | Planın 23 adlı `grep -c "^PASS <ad>$"` döngüsü: hepsi `1`; ayrıca §5.6 tablosundaki tüm vaka adları (69 aday, sonuç sözcükleri hariç) `PASS` satırı olarak var |
+| K3 | ✔ | sample çıktısı, plandaki beklenen 5 satırdan çıkarılan dosyayla `diff` boş; rc=0 |
+| K4 | ✔ | `--win-margin 3`: `SMP-win` `draw`, `SMP-wipe` `win_a`, `SUMMARY n=4 win_a=1 win_b=0 draw=2 invalid=1 no_result=0` |
+| K5 | ✔ | `--win-margin 9` rc=2; `/nonexistent` rc=2; sample `--strict` rc=1; sample rc=0; `--json` assert geçti |
+| K6 | ✔ | Kopyada `:284` `fark >= win_margin` → `fark > win_margin`: rc=1, 8 `FAIL` (`kd_pure_judge_boundaries`, `kd_10_08`, `kdm3_14_11`, `kdm1_09_08`, ...), `SELFTEST FAIL failed=8 of 67`. Kopyada `:391` `t_value > t0 + tick_ms` → `>=`: rc=1, `FAIL wipe_same_tick_draw: result: 'win_b' != 'draw'`, `failed=1 of 67` |
+| K7 | ✔ | içe aktarımlar `json/os/sys/tempfile` (`:28-31`); `open(` yazımları yalnızca `:708` (`write_records`) ve `:1261` (selftest); okuma `:172`; ASCII (`grep -P` boş); CR sayısı 0 (iki dosya); shebang `:1` |
+| K8 | ✔ | `git diff --stat`: yalnızca `tools/bot-outcome-eval.py`, `tools/bot-outcome-eval/sample.jsonl`, plan; plan diff'inde silinen satırlar yalnızca şablon satırları ve `Durum` |
+| K9 | ✔ | `./tools/build.sh Release` rc=0, `warning`/`error C` sayısı 0; `./tools/run-tests.sh`: `223 tests, 0 failed` (diff yalnızca `tools/` ve plan olduğundan beklenen) |
+| K10 | ✔ | Uygulayıcı raporundaki eşleme tablosu: killdiff 7 + 0-0 iki durum, margin 3 üç, 2v2 iki, wipe dört; her vaka adı `--selftest` çıktısında `PASS` |
 
 - Bulgular (önem sırasıyla):
-  1. …
+  1. **`--win-rule` komut satırı seçeneği hiç çalışmıyor** (`tools/bot-outcome-eval.py:119-126`, ilgili kullanım `:18`, `:35`, `:40`, plan §1/§5.3). `PARAM_OPTIONS` içindeki tüm seçenekler `parse_cli_int` ile tamsayıya çevriliyor; `--win-rule` değeri bir sözcük (`wipe_first`) olduğundan her zaman `error: option --win-rule needs an integer` ve çıkış 2 veriyor. Kanıt: `python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl --win-rule wipe_first; echo rc=$?` → `error: option --win-rule needs an integer`, `rc=2`. Sonraki doğrulama (`:134-135`) ve çözümleme (`:225-226`) kodu doğru yazılmış ama ulaşılamaz. `--selftest` bu yolu hiç sınamadığı için 67/67 geçiyor; plan §5.6 tablosu da bu CLI seçeneği için vaka istemiyordu (plan boşluğu), ama §1'deki kullanım sözleşmesi ve §5.3 ("komut satırı > `MATCH_START` alanı > varsayılan") açıkça `--win-rule`'ü tanımlıyor. Düzeltme küçük: kapsam dışına çıkmaz.
+  2. Not (engel değil): `parse_cli_int` `int(raw, 10)` kullandığı için `1_0` gibi alt çizgili değer `10` kabul edilir (`:101`); önemsiz.
+  3. Not (engel değil): uygulayıcının açık sorusu (`sample.jsonl` için `.gitattributes`): depodaki blob LF, çalışma ağacında CR yok; ancak `*.jsonl` satırı yok ve `core.autocrlf=true` ile CRLF checkout riski var (KI-009'un aynısı, `.jsonl` için). Bu planın kapsamı dışı olduğundan kapsamı genişletilmedi; `docs/KNOWN_ISSUES.md` KI-017 olarak kaydedildi (küçük bakım planı, `.gitattributes`'a `*.jsonl text eol=lf`).
+  4. Not: kural mantığı (`judge_killdiff`, `eval_killdiff`, `eval_wipe`, `evaluate_match`) planın §5.4'üne satır satır uyuyor: sınırlar dahil (`:284`, `:319`, `:548`), 1v1 özel durumu (`:361-387`), tick penceresi (`:391`), `TRUNCATED` yalnızca başka neden yokken ve sonlanma yokken (`:561-567`), neden sırası `REASON_ORDER`. Ek elle sınama (1v1 wipe, `win_margin: true` → `ERROR`, `timed_score` sayaçları) beklenen çıktıyı verdi.
 - Düzeltme talimatı (DeepSeek'e aynen verilecek):
 
 ```
-…
+plans/F8-01-bot-sonuc-degerlendirici.md — Doğrulama Turu 1 düzeltmeleri. Aynı branch'te yalnızca şunları yap, sonra raporuna "Tur 2" ekle:
+1. tools/bot-outcome-eval.py parse_args (satır ~119-126): `--win-rule` değeri tamsayıya çevrilmemeli. `--win-rule` için ham dizgeyi `opts["win_rule"]`'a ata (değer eksikse mevcut "option --win-rule needs a value" hatası kalsın); diğer beş seçenek (`--duration-sec`, `--win-margin`, `--early-end-margin`, `--engage-timeout-sec`, `--tick-ms`) `parse_cli_int` ile kalsın. Geçersiz kural adı mevcut satır 134-135 denetimiyle çıkış 2 vermeli (değiştirme).
+2. --selftest'e üç yeni vaka ekle (mevcut 67 vakanın adlarını değiştirme; ad yinelemesi yok; her biri bağımsız `case()`):
+   - `cli_win_rule_option`: `MATCH_START`'ında `win_rule` alanı olmayan 2v2 maç (A'nın iki kill'i, süre dolar), `--win-rule wipe_first` ile koş: `rule=wipe_first` ve `end=alive_count` olmalı.
+   - `cli_win_rule_priority`: `MATCH_START` `win_rule:"killdiff_timed"` iken `--win-rule timed_score` komut satırı değeri kazanır: `result=no_result`, `k_a`/`k_b` dolu.
+   - `cli_win_rule_invalid_rc2`: `--win-rule bogus` -> çıkış 2 ve stdout'ta hiç `OUTCOME` satırı yok.
+3. Doğrula ve raporla: `python3 tools/bot-outcome-eval.py tools/bot-outcome-eval/sample.jsonl --win-rule timed_score` çıktısı (dört maç da kuralı komut satırından almalı: `rule=timed_score`; beklenen: `SMP-win` ve `SMP-draw` `no_result`, `SMP-wipe` `invalid` `TRUNCATED` (7100 ms'de biten günlük, 300 sn'lik pencere dolmadan), `SMP-noeng` `invalid` `NO_ENGAGE`; `SUMMARY n=4 win_a=0 win_b=0 draw=0 invalid=2 no_result=2`), `--selftest | tail -1` (`SELFTEST PASS n=70`), K2'nin 23 adlı `grep -c` döngüsü, K7'nin `grep` komutları (ASCII, CR=0, yalnızca stdlib). Başka dosyaya ve başka mantığa dokunma; `.gitattributes` dahil (KI-017 ayrı).
 ```
+
