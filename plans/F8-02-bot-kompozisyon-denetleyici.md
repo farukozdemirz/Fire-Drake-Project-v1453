@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F8 — Değerlendirme ve 8v8 (`docs/17` §2; paralel hat `nav`, değerlendirme/analiz araçları: `docs/17` §1 "analiz araçları her fazla paralel") |
 | Branch | `bot/F8-02 (taban: gece/2026-10-02-nav)` |
 | Bağımlı olduğu planlar | F8-01 `KAPANDI` (merge `43c4e02`; yalnızca üslup/`--selftest` kalıbı için). Karakter seti kaynağı `db/002` F1-04 `KAPANDI` |
@@ -390,3 +390,32 @@ plans/F8-02-bot-kompozisyon-denetleyici.md — Doğrulama Turu 1 düzeltmeleri. 
 3. Tur 1 raporundaki K6(a) cümlesini düzelt: "24 FAIL" yerine mutasyonu (tools/bot-composition-check.py satır 49, C8-A "WP": 2 -> 1; /tmp altındaki kopyada) yeniden çalıştırıp ölçtüğün gerçek FAIL sayısını yaz (denetçi 10 ölçtü; farklı çıkarsa nedenini de yaz). Mutasyonu yalnızca /tmp altındaki kopyada yap; depodaki dosyayı bozma.
 4. python3 tools/bot-composition-check.py --selftest | tail -1 (SELFTEST PASS n=58), gerçek db/002 ve sample-20.sql çıktılarının planla hâlâ aynı olduğunu (diff boş) ve ./tools/run-tests.sh | tail -1 (223 tests, 0 failed) raporuna yaz. Dosyalar ASCII/LF kalsın (LC_ALL=C grep -nP '[^\x00-\x7F]' ve grep -c $'\r' boş/0). Commit: [F8-02] Tur 2: ...; planın Durum'unu UYGULANDI yap.
 ```
+
+### Tur 2 — 2026-10-03
+
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02-nav...bot/F8-02` @ `2097b4d` (4 commit: `6b2ea79`, `cbb84fe`, `a7d89d4`, `2097b4d`; paralel hat `nav`, gece modu, `AUTO_LOOP=1`, sunuculara dokunulmadı: `run-servers.sh status` 0/3 hazır; birleştirmeyi döngü betiği yapar). Tur 1'den beri kod farkı yalnızca `tools/bot-composition-check.py` (+2 −1, `TOOL_DIR`).
+- Kriter sonuçları (10/10 ✔):
+
+| Kriter | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `--selftest` rc 0, son satır `SELFTEST PASS n=58`, `^PASS` 58, `^FAIL` 0 |
+| K2 | ✔ | Plan §5.6 tablosundan (satır 107-116) çıkarılan 58 vaka adının her biri `^PASS <ad>$` olarak tam 1 kez; ad kümesi `--selftest` çıktısındaki PASS/FAIL ad kümesiyle birebir eşit (fazla/eksik ad yok) |
+| K3 | ✔ | Gerçek `db/002`: çıktı plan §5.8 bloğu (satır 148-177, CR atılınca) ile `diff` boş, rc 0. `sample-20.sql`: §5.9 ile aynı (`SQL files=1 rows=20`, `HAVE ... total=10` ×2, üç `SET` `OK`, yedi `PAIR` `missing=0 status=OK`, `SUMMARY have=20 ... pairs_ok=7 pairs_not_ok=0 errors=0`), `COMP` satırları §5.8 ile aynı, `grep -c '^MISSING'` 0, rc 0 |
+| K4 | ✔ | `--json` `python3 -c` doğrulamaları geçti (gerçek: `full20_missing==8`, `len(missing)==8`, `have.K.WP==1`, `pairs[4].id=='EVAL-8v8-A'`, `errors==[]`; sample: `full20_missing==0`, `missing==[]`) |
+| K5 | ✔ | rc: varsayılan 0, `--strict` 1, `--strict --target small` 0, `--strict --target min16` 1, `--strict --sql sample-20.sql` 0, `--target bogus` 2, `--max-bots 0` 2, `--sql /yok.sql` 2, `--nonsense` 2. Profil `XX`'li geçici SQL → tek satır `ERROR /tmp/bad.sql:2: unknown profile 'XX'`, rc 2, `SQL`/`HAVE`/`SUMMARY` yok |
+| K6 | ✔ | `mktemp -d` altında üç ayrı kopya ağacı (araç + sample + `db/002` + `docs/09`/`docs/15`); depo dosyaları değişmedi (`git status` temiz). (a) `tools/bot-composition-check.py:51` (Tur 1'deki satır 49, `TOOL_DIR` ile +2 kaydı) C8-A `"WP": 2`→`1`: rc 1, **10** FAIL (`comp_sizes`, `comp_c8a_counts`, `doc09_table_matches_builtin`, `set_min16_need`, `have12_min16_missing_4`, `missing_real_db002_8_lines`, `missing_needed_by`, `pair_8v8_a_short_4`, `cli_real_expected_output`, `sample_file_expected`); (b) `:307` `min(have[nat][profile], need[profile])`→`have[nat][profile]`: rc 1, 5 FAIL (`have_surplus_not_negative`, `have12_small_ok`, `have20_all_ok`, `cli_real_expected_output`, `sample_file_expected`); (c) `:331` `if candidate not in used_idx:`→`if True:`: rc 1, 4 FAIL (`missing_index_skips_used`, `missing_real_db002_8_lines`, `missing_needed_by`, `cli_real_expected_output`). Uygulayıcının Tur 2'deki "10 FAIL" ölçümü doğrulandı |
+| K7 | ✔ | içe aktarmalar `json os re sys tempfile` (`:28-32`); yasaklı modül yok; yazan `open()` yalnızca `:700`, `:703` (`write_tmp`, `--selftest` içi), `:170`/`:903`/`:927` okuma; `LC_ALL=C grep -nP '[^\x00-\x7F]'` iki dosyada boş; `grep -c $'\r'` 0/0; `file`: ASCII; `#!/usr/bin/env python3` |
+| K8 | ✔ | `git diff --name-only gece/2026-10-02-nav...bot/F8-02`: `tools/bot-composition-check.py`, `tools/bot-composition-check/sample-20.sql`, bu plan dosyası, ayrıca denetçinin kendi kayıtları `plans/README.md`, `docs/STATUS.md` (Tur 1 doğrulama commit'i `a7d89d4`; uygulayıcı dokunmadı). `GameServer/ BotCore/ Tests/ shared/ AIServer/ db/` değişmedi |
+| K9 | ✔ | `./tools/build.sh Release` rc 0 (7 hedef bağlandı, `warning` satırı 0, `error` yok). `./tools/run-tests.sh`: ilk koşu `223 tests, 1 failed` (hangi test olduğu yakalanamadı), ardından 8 ardışık koşu `223 tests, 0 failed` (bkz. Bulgu 2) |
+| K10 | ✔ | Tur 1'deki `docs/15` §6a eşleme tablosu değişmedi; atıf yapılan vakaların hepsi `PASS` |
+
+- Tur 1 bulgularının kapanışı:
+  1. Python 3.8 uyumu: `TOOL_DIR` `tools/bot-composition-check.py:34`'te içe aktarma anında sabitlenmiş, `tool_dir()` `return TOOL_DIR` (`:108-109`); `grep -n "abspath(__file__)"` tek satır. Göreli `__file__` + `exec` taklidi bağımsız yeniden üretildi: Tur 1 sürümü (`cbb84fe`) `1 SELFTEST FAIL failed=1 of 58`, mevcut sürüm `0 SELFTEST PASS n=58`.
+  2. Rapor sayısı: K6(a) "24" düzeltilmiş, ölçülen 10 ile aynı (yukarıda bağımsız doğrulandı). Plan dosyasında Tur 2'de yalnızca `Durum` ve rapor bölümleri değişti.
+- Bulgular (engel değil):
+  1. Not: Uygulayıcı Raporu Tur 2 Madde 3'te mutasyon satırını "satır 49" diye yazıyor; `TOOL_DIR` eklemesinden sonra C8-A tablosu `:51`'de (Tur 1 satırı). Yalnızca bilgi.
+  2. Not (açıklanamayan tek seferlik test hatası): K9 için yeni derlemenin hemen ardındaki ilk `run-tests.sh` koşusu `223 tests, 1 failed` verdi (çıktının yalnızca son iki satırı kaydedildiği için testin adı bilinmiyor; sondaki `[ OK ] Script_ErrorLineNumbers` yalnızca son geçen testtir, başarısız olan değildir). Aynı ikili ile sonraki 8 koşu `0 failed`. Bu dal yalnızca `tools/*.py` ve `tools/*/sample-20.sql` değiştirir, test ikilisi bu dosyaları okumaz; F8-02 ile ilişkilendirilemez. Tekrarlanırsa hangi testin düştüğünü kaydetmek için tam çıktı saklanmalı; `docs/KNOWN_ISSUES.md`'ye ancak yeniden üretilebilirse eklenecek.
+  3. Not (Tur 1'den, planlayıcı tarafı): §7 "K2 komutu"ndaki regex `have12_*`/`have16_*`/`have20_*` adlarını kaçırır; yeni plan yazarken `have[0-9_]` kullanılmalı. Bu turda K2 ad kümesi karşılaştırmasıyla doğrulandı.
+  4. Not: bu turda mutasyon kopya ağaçları `/tmp/f802mut.*` altında bırakıldı (silme komutu izin dışı kaldı); depoda iz yok.
+- Düzeltme talimatı: yok.
