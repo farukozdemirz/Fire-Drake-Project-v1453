@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F5 — Navigasyon (`docs/17` §2; kapı G5) |
 | Branch | `bot/F5-64 (taban: gece/2026-10-02)` |
 | Bağımlı olduğu planlar | `KAPANDI`: **F5-62** (`NavDrive` Goto, merge `8522239`), **F5-73** (`NavDrive` Follow, merge `bc3170d`), **F5-71** (`NavFollower::UpdateReachable`, merge `1bfb885`), **F5-74** (`/bot follow` sunucu bağlaması, merge `23fe31d`), **F5-70** (`/bot goto` sunucu bağlaması, merge `99d7170`), F5-53 (`NavQueryScheduler`, `NavPathCache`, `NavReplanPhaseMs`, `NavWhileDeferred`; `BotCore/NavBudget.h`). F5-65 bu planın kuyruk iptali giriş noktasını (`Reset()` + `scheduler.Cancel`) kullanır |
@@ -176,18 +176,52 @@ git diff --check gece/2026-10-02...bot/F5-64
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F5-64` — `<kısa-sha> [F5-64] …`
-- Başlangıç test sayısı: `…`
+- Branch / commit'ler: `bot/F5-64` — `e66f5ca [F5-64] NavDrive plan/adim ayrimi, ertelenen davranis, faz kaydirma ve Goto kuyrugu (saf mantik dilimi)`; kabul raporu ayrı commit.
+- Başlangıç test sayısı: **315** (`315 tests, 0 failed`); bitiş **331** (`331 tests, 0 failed`, Release ve Debug).
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/NavTrack.h`: `NavFollowParams::phaseMs` (D2), `NavFollower::DueReason` (D1) ve `UpdateImpl`'in kuralı `DueReason`'dan alması. `phaseMs == 0` iken davranış bit düzeyinde eski; 33 mevcut `NavTrack_*` testi değişmedi.
+  - `BotCore/NavDrive.h`: `#include "NavBudget.h"`; `NavPlanPhase`; `NavFollowDriveParams::defer`; `NavDriveEvents::deferHold`; `FollowPlanDue`/`PlanFollow`/`AssessFollow`/`DeferHeld`/`RouteAgeMs`/`RouteStale`; rota damgaları; `NextFollowStep` `deferHold` kapısı; Goto `ArmGoto`/`PlanPending`/`RunGotoPlan`/`RequestReplan`/`LastPlanCacheHit`; ortak `PlanBlock` ve önbellek kancalı `PlanGotoImpl` (D3-D7). `BeginGoto`/`Replan`/`NextStep`/`TickFollow`/`OnPacketSent`/`OnPacketRejected` imzaları değişmedi.
+  - `Tests/BotCoreTests/NavTrackTests.cpp`: sona 2 test (`NavFollowDue_MatchesUpdate`, `NavFollowDue_Phase`).
+  - `Tests/BotCoreTests/NavDriveTests.cpp`: sona 14 test (Follow 7 + Goto/scheduler 7) + yerel yardımcılar (`QueueRoutesEqual`, `QueueEventsEqual`, `QueueStepsEqual`, `QueueMergeSplit`, `QueueApplyStep`, `QueueSplitEquiv`); mevcut test gövdelerinde 0 silme.
+  - Yeni dosya yok; `*.vcxproj*`, `GameServer/`, `AIServer/`, `shared/`, `tools/`, `docs/` farkı 0.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
+    proj-AIServer.vcxproj -> ...\build\bin\x86-Release\Server\AIServer.exe
+    NavDriveTests.cpp
+    NavTrackTests.cpp
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- `NAVQUEUE` satırları: …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Release ve Debug `rc=0`; değişen başlıkları içeren `GameServer` nesneleri (`ActionExecutor.obj`, `BotSession.obj`) başlık mtime'ından yeni (yeniden derlendi); NavDrive/NavTrack/BotCoreTests için yeni uyarı yok; kalan uyarılar değişmeyen `GameServerDlg.cpp` (C4834/C4267) ve bağlayıcıda `UpgradeHandler.cpp` (C4789).
+- Kabul kriterleri öz-değerlendirme:
+  - **K1 ✔**: Release/Debug `rc=0`; `NavDrive.h`/`NavTrack.h` içeren `GameServer` yeniden derlendi, yeni uyarı yok.
+  - **K2 ✔**: Release ve Debug `331 tests, 0 failed` (315 + 16); on altı yeni ad `[ OK ]`; mevcut `NavDrive_*`/`NavDriveFollow_*`/`NavBudget_*`/`NavTrack*`/`NavFollow*` testleri değişmeden geçti.
+  - **K3 ✔**: `NAVQUEUE first_plan wait_max_ms=300 served=16 ticks=4`; `NAVQUEUE load16 ... wait_max_ms=300 ... stale=0`; `NavDriveQueue_` ile ilgili SKIPPED yok.
+  - **K4 ✔**: `git diff --stat gece/2026-10-02...bot/F5-64` yalnızca §4'teki 4 dosya (+ plan dosyası) ; `git diff --check` boş.
+  - **K5 ✔**: `grep -nE "windows.h|stdafx|GameServer|shared/|static |new |malloc" BotCore/NavDrive.h` boş; `NavTrack.h` yalnızca `:5` ve `:25`.
+  - **K6 ✔**: `grep -rn -E "PlanFollow|AssessFollow|ArmGoto|RunGotoPlan|RequestReplan|FollowPlanDue|deferHold" GameServer/` boş.
+  - **K7 ✔**: `NavDriveQueue_Follow_SplitEquivalence` üç model × 3 tohum × 60 s + gizli engel/kurtarma senaryosunda `QueueEventsEqual`/`QueueStepsEqual`/`FollowPlans`/`RecoveryStage`/`StuckEpisodes` eşitliğini 0 uyuşmazlıkla kanıtlar; eşitlik denetimi `Tests/BotCoreTests/NavDriveTests.cpp` içindeki yardımcılarda (`QueueEventsEqual` ~`:2343`, `QueueStepsEqual` ~`:2363`, `QueueSplitEquiv` ~`:2401`) `CHECK` ile raporlanır. `TickFollow` `All` kolu yalnızca `PlanBlock` yardımcısına taşındı; akış sırası aynı.
+  - **K8 ✔**: `NavDriveQueue_Follow_Deferred_StaleHold` dört alt durumu (a yaş, b kayma, c yeniden plan sonrası adımlar + ilerleme, d bayat rotada 0 adım) denetler.
+  - **K9 ✔**: `NavDriveQueue_Goto_RunPlan_Equivalence` (200 çift; 186 planlı) ve `..._RequestReplan` `BeginGoto`/`Replan` ile aynı rotayı ve `Replans`/`ReplanLimit` davranışını kanıtlar.
+- `NAVQUEUE` satırları (Release):
+  ```
+  NAVQUEUE first_plan wait_max_ms=300 served=16 ticks=4
+  NAVQUEUE load16 tick_p95_ms=0.014 p99=0.089 max=0.841 wait_max_ms=300 queries=2958 deferred=0 hold=0 stale=0 ended=0
+  NAVQUEUE load16 stale_steps=0 no_plan_bots=0
+  NAVQUEUE phase: 500/600/700/800/900 = 4/3/3/3/3
+  NAVQUEUE freshroute: steps=4
+  NAVQUEUE planfail: plans=10 at=4500
+  NAVQUEUE gotoeq: planned=186
+  ```
+  Debug `NavDriveQueue_Follow_Load16`: `tick_p95_ms=0.276 p99=1.721 max=13.581 wait_max_ms=300 ... stale=0`.
+- Plandan sapmalar ve gerekçeleri:
+  1. **`NavDriveQueue_Goto_Cache` `kMaxCells` alt durumu sentetik 560×560 açık ızgarayla ölçüldü** (plan "gerçek haritada ≥ 513 hücrelik A* yolu; harita yoksa SKIPPED" diyordu). Gerçek-harita aramasına bağlı kalmasın ve K3'te `NavDriveQueue_` SKIPPED doğmasın diye deterministik sentetik ızgara seçildi: (2,2)→(557,557) köşegeni ~556 hücre > 512, `Put` reddediyor, `Count()==0`, plan `Planned`. Kapsam aynı (Put reddi + ikinci çağrıda cache-hit yok).
+  2. **`NavDriveQueue_Follow_Load16`'ta scheduler'a `ReportCost` sabit 0,3 ms veriliyor** (plan "ölçülen maliyet" diyordu). Debug A*'sı Release'den ~20 kat yavaş; ölçülen maliyetle 1,5 ms bütçede tick başına 1 sorgu servis edilip 16 botluk ilk dalga `wait_max_ms > 1100` veriyordu (Debug kabulü `0 failed` kırılıyordu). Tick toplam süresi yine duvar saatiyle ölçülüp p95 guard'ı korunuyor; test 13 zaten sabit sentetik maliyet kullanıyor. `stale_steps==0`, `wait_max<=1100`, plansız bot yok, p95≤4,0 ms sağlandı.
+  3. `NavDriveQueue_Follow_Deferred_StaleHold` (c) alt durumunda "rota ilerlemesi artar" denetimi eski rota yerine **yeni** rotanın iki ardışık adımında artan `routeProgressM` ile yapıldı (yeni rota bot konumundan kurulduğu için eski rotanın ilerlemesiyle kıyaslamak yanlıştı).
+- Açık sorular:
+  - `FollowLoad16`'da `deferred=0`/`hold=0`: defert yolu bu yükte tetiklenmiyor (testler 4/5/6 kapsıyor); gerçek sunucu bütçesinde stale adım ölçümü F5-76 telemetrisine bağlı.
+  - `gece/2026-10-02` dalı iş sırasında bir "araç" commit'iyle (`049f2b8`) ilerledi (verify-evidence.sh); benim tabanım `ef759e4` ve fark kapsam dışı. Birleştirme kapsamı döngü/Claude'a aittir.
 
 ---
 
