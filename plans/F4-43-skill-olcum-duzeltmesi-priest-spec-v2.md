@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 19) |
 | Branch | `bot/F4-43` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-42 (`tools/skill-script-gen.py`, `bots/config/skill_priest_k.{spec,txt}`) — `KAPANDI` (merge `28cc1d6`); F4-41 (`tools/skill-check.py`) — `KAPANDI` |
@@ -200,16 +200,35 @@ git diff --stat gece/2026-10-02...bot/F4-43
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-43` — `<kısa-sha> [F4-43] …`
+- Branch / commit'ler: `bot/F4-43` (taban `gece/2026-10-02`) — `8fd65a8 [F4-43] skill-check MP hükmü yenilenmeye dayanıklı + priest spec v2`
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `tools/skill-check.py`: `judge_mp` "en büyük düşüm + sınırlı yenilenme payı" kuralına çevrildi; `DEFAULT_MP_REGEN = 60`; `analyze`/`build_report` sona varsayılanlı `mp_regen` parametresi; `--mp-regen` argparse (negatifse `parser.error`); USAGE/docstring satırı; selftest `run_case(mp_regen=...)` + 6 yeni kontrol (bellek içi MAGIC 110601/110602/110603, Msp 80/160/625).
+  - `bots/config/skill_priest_k.spec`: §5.3 içeriği aynen (party aralığı 1500 ms; `112548` hedef başına tek atış ×3; BuffType 1 üçlüsü `112654`×2 hedef + `112657`→`BotPHD_K`; `112656` self en sonda).
+  - `bots/config/skill_priest_k.txt`: `skill-script-gen.py` ile gerçek `MAGIC`'ten yeniden üretildi (31 adım, `t0=9000`).
+  - `plans/F4-43-...md`: yalnızca `Durum` ve bu rapor.
+- Derleme sonucu (`tools/build.sh Release`, rc=0; son satırlar):
   ```
-  …
+  BotCore.vcxproj -> ...\build\bin\x86-Release\libs\BotCore.lib
+  Lua.vcxproj -> ...\libs\Lua.lib
+  shared.vcxproj -> ...\libs\shared.lib
+  proj-LogInServer.vcxproj -> ...\Server\LogInServer.exe
+  proj-GameServer.vcxproj -> ...\Server\GameServer.exe
+  proj-AIServer.vcxproj -> ...\Server\AIServer.exe
+  BotCoreTests.vcxproj -> ...\Tests\BotCoreTests.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  `./tools/run-tests.sh`: `251 tests, 0 failed`.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ `selftest: 32 checks, 0 failed` (rc=0); `grep -c 'mp_regen_pass\|...\|mp_regen_zero_strict' tools/skill-check.py` = 6; `mp_ok`/`mp_off_fail`/`mp_off_warn`/`mp_no_data` korundu.
+  - K2 ✔ fixture (`Msp 625`, tek düşüm `585`, `--min-n 1`): yeni sürüm boş → `WARN`, `--mp-regen 0` → `FAIL`, `--mp-regen 80` → `WARN`; **eski** sürüm (`git show gece/2026-10-02:tools/skill-check.py`) varsayılanda `FAIL` (kanıtlandı).
+  - K3 ✔ `git diff gece/2026-10-02...bot/F4-43 -- tools/skill-check.py` yalnızca docstring/USAGE, `DEFAULT_MP_REGEN`, `analyze`/`build_report` imzaları, `judge_mp`, selftest, argparse/main hunk'ları (11 hunk; `recast_verdict`/`effect_verdict`/sütun/JSON değişmedi).
+  - K4 ✔ `--out /tmp/skill_priest_k.txt` (gerçek MAGIC) rc=0, `diff` boş (`DIFF_EMPTY`).
+  - K5 ✔ `--check` → `ok: 31 steps, 1147 bytes, 33 lines, last offset 121000 ms`; PHD cast 11, PHB cast 11, party 6, pot 2, `112703` 0; `paccept` ofsetleri 1500/4500/7500 (her biri kendi `pinvite`+1500); `112548` 3 satır (`BotWP_K`, `BotWG_K`, `self`); `112656` (satır 23) `112657` (satır 21, hedef `BotPHD_K`) sonrasında.
+  - K6 ✔ `selftest: 23 checks, 0 failed` (araç değişmedi).
+  - K7 ✔ `build.sh Release` rc=0 hatasız; `run-tests.sh` `251 tests, 0 failed`.
+  - K8 ✔ `git diff --stat gece/2026-10-02...bot/F4-43`: yalnızca `tools/skill-check.py`, `bots/config/skill_priest_k.spec`, `bots/config/skill_priest_k.txt`, plan dosyası.
+  - K9 — Claude'un çalışma zamanı turu (sunucu açma/koşu); bu turda yapılmadı.
+- Plandan sapmalar ve gerekçeleri: yok. Spec §5.3 aynen yazıldı; üretici seçenekleri/varsayılanları değiştirilmedi; betik 31 adım (sınırlar içinde).
+- Açık sorular: yok.
 
 ---
 
