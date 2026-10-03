@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-30` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-25 (uçan Type3: CASTING → FLYING → EFFECTING, `CastManaNeed`, `CheckCastFly/Land`) — `KAPANDI`; F4-26 (`{3, 4}` çifti) — `KAPANDI`; F4-29 (alan skill: hedef kimliği `-1`, hedef noktası, `victims`) — `KAPANDI` (merge `78ae6b7`) |
@@ -201,16 +201,39 @@ git diff --check gece/2026-10-02...bot/F4-30
 ### Tur 1
 
 - Durum: UYGULANDI
-- Branch / commit'ler: `bot/F4-30` — `<kısa-sha> [F4-30] …`
+- Branch / commit'ler: `bot/F4-30` (taban: `gece/2026-10-02`) — kod `9d0c86b [F4-30] Ucan alan skill dilimi: CastMoralSupported flyingEffect kosulunu kaldirir (Fire/Ice/Thunder burst)`; bu rapor ayrı commit.
 - Değişen dosyalar ve neden:
-  - `…`
-- Derleme sonucu (`tools/build.sh Release` son 10 satır):
+  - `BotCore/BotCombat.h` — `CastMoralSupported(uint8_t moral, uint16_t flyingEffect)` → `CastMoralSupported(uint8_t moral)`; `Moral` 10 uçan/uçmayan ayrımı olmadan `IsAreaMoral` ile kabul edilir. Üstteki yorum uçan alanı kapsayacak şekilde güncellendi.
+  - `Tests/BotCoreTests/CombatTests.cpp` — `Combat_CastMoral_Supported` tek argümanlı imzaya uyarlandı (`(7, 191)` ve `(10, 191)` satırları kaldırıldı); yeni `Combat_FlyingArea_Guard` eklendi (sınıflandırma, paket alanları, `CastManaNeed`, `CheckCastStart`/`CheckCastFly`/`CheckCastLand`), 106 → 107.
+  - `GameServer/Bot/ActionExecutor.cpp` — yalnızca `BeginCast` destek koşulunda çağrı `CastMoralSupported(m->bMoral, m->bFlyingEffect)` → `CastMoralSupported(m->bMoral)`. Başka değişiklik yok.
+  - `GameServer/Bot/ActionExecutor.h` — `BeginCast` yorumundan "flying area skills are not" kaldırıldı, uçan alan desteği eklendi; `TickCast` yorumuna uçan alan cümlesi eklendi.
+- Derleme sonucu (`tools/build.sh Release` son satırlar):
   ```
-  …
+    CombatTests.cpp
+    BotManager.cpp
+    BotSession.cpp
+    ScenarioRunner.cpp
+    Kod üretiliyor
+    BotCoreTests.vcxproj -> ...\build\bin\x86-Release\Tests\BotCoreTests.exe
+    proj-GameServer.vcxproj -> ...\build\bin\x86-Release\Server\GameServer.exe
   ```
-- Kabul kriterleri öz-değerlendirme: K1 ✔/✘ …
-- Plandan sapmalar ve gerekçeleri: …
-- Açık sorular: …
+  Dört değişen dosya `touch` edilip yeniden derlendi; `grep -iE "warning|error"` çıktısı boş.
+- Kabul kriterleri öz-değerlendirme:
+  - K1 ✔ — Release hatasız; dört dosya `touch` ile yeniden derlendi, değişen dosyalarda uyarı/hata yok.
+  - K2 ✔ — Debug hatasız bitti.
+  - K3 ✔ — `Release` ve `Debug` `107 tests, 0 failed`; çıktıda `[ OK ] Combat_CastMoral_Supported` ve `[ OK ] Combat_FlyingArea_Guard`.
+  - K4 ✔ — `grep windows.h|stdafx|GameServer|shared/` boş; `std::min`/`std::max` eklenmedi; include'lar değişmedi.
+  - K5 ✔ (literal grep hariç, bkz. sapmalar) — `ActionExecutor.cpp`'de `CastMoralSupported(m->bMoral)`; `(m->bFlyingEffect != 0 && !flyingCast)` yerinde.
+  - K6 ✔ — diff yalnızca §4'teki 4 dosya; `ActionExecutor.cpp` tek hunk (`BeginCast` çağrısı), `TickCast`/`SubmitCast` hunk'ı yok; `BotSession.*`, `BotManager.cpp`, `Telemetry.*`, proje dosyaları farkı boş.
+  - K7 ✔ — yeni `Emit(` yok; yeni ini anahtarı/komut/thread/olay türü/alan yok.
+  - K8 ✔ — dört dosya ASCII + CRLF; `git diff --check` boş.
+  - K9 ✔ — guard çağrı sayaçları `CheckMoveStep=2`, `CheckAttack=1`, `CheckCastStart=1`, `CheckCastEffect=1`, `CheckCastFly=1`, `CheckCastLand=1`, `CheckCastCancel=1`, `CheckPotion=1`; 107 testin tamamı geçiyor.
+  - K10 ✔ — `tools/check-perception-contract.py` `RESULT: PASS` (R1 0/0, R2 0/28, R3 0/18, R4 0/0, R5 0/0; 19 dosya).
+  - K11 — Claude `/plan-dogrula` çalışma zamanı (S1–S6); DeepSeek yapmaz.
+- Plandan sapmalar ve gerekçeleri:
+  - K5'teki ikinci grep (`grep -rn "CastMoralSupported(.*,.*)" BotCore GameServer Tests` boş olmalı) plan metnindeki düzenli ifade nedeniyle **test satırlarını da yakalar**: `CHECK_EQ(BotCore::CastMoralSupported(1), true)` satırındaki virgül dıştaki `CHECK_EQ`'ye aittir, fonksiyona ikinci argüman değildir. Daha kesin `grep -rnE "CastMoralSupported\([^)]*,[^)]*\)"` **boş** döner; yani gerçek iki argümanlı çağrı yoktur, kriter amaç olarak karşılanır.
+  - Plandaki test sınıflandırma maddesinin bir kısmı (`IsFlyingCast(4, 291) == false`) tek başına `IsFlyingCast` ile doğrulandı; uçan Type4'ün `BeginCast`'te reddi `(m->bFlyingEffect != 0 && !flyingCast)` koşuluna dayanır ve bu koşul değişmedi (K5).
+- Açık sorular: yok. Çalışma zamanı doğrulaması ve `docs/03` MEC-MAG-17 etiketi Claude'a aittir (K11, §5.4/§7).
 
 ---
 
