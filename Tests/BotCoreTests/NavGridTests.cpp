@@ -217,7 +217,7 @@ TEST_CASE("Nav_Edge_Slope")
 	}
 
 	{
-		// |dh| = 3 m over one 4 m step -> slope 0.75, above the 0.625 default.
+		// |dh| = 3 m over one 4 m step -> slope 0.75, above the 0.45 default.
 		std::vector<float> heights((size_t)n * n, 0.0f);
 		for (int x = 0; x < n; ++x)
 		{
@@ -235,25 +235,25 @@ TEST_CASE("Nav_Edge_Slope")
 	}
 
 	{
-		// |dh| = 2.4 m over 4 m -> 0.6, below the default.
+		// |dh| = 1.6 m over 4 m -> 0.4, below the 0.45 default.
 		std::vector<float> heights((size_t)n * n, 0.0f);
 		for (int x = 0; x < n; ++x)
 		{
 			for (int z = 0; z < n; ++z)
-				heights[CellIndex(n, x, z)] = 2.4f * (float)x;
+				heights[CellIndex(n, x, z)] = 1.6f * (float)x;
 		}
 		BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), heights);
 		CHECK(grid.EdgeOpen(2, 2, 1, 0));
 	}
 
 	{
-		// Diagonal 4*sqrt(2) m: the 0.625 limit is 3.5355 m.
+		// Diagonal 4*sqrt(2) m: the 0.45 limit is 2.546 m.
 		std::vector<float> heights = HeightZeros(n);
-		heights[CellIndex(n, 1, 1)] = 3.5f;
+		heights[CellIndex(n, 1, 1)] = 2.5f;
 		BotCore::NavGrid open = MakeNav(n, unit, RingEvents(n), heights);
 		CHECK(open.EdgeOpen(1, 1, 1, 1));
 
-		heights[CellIndex(n, 1, 1)] = 3.6f;
+		heights[CellIndex(n, 1, 1)] = 2.6f;
 		BotCore::NavGrid closed = MakeNav(n, unit, RingEvents(n), heights);
 		CHECK(!closed.EdgeOpen(1, 1, 1, 1));
 	}
@@ -466,4 +466,142 @@ TEST_CASE("Nav_RealMap_Zone71")
 
 	std::printf("NAVGRID real map: n=%d main=%d clearance_max=%d build_ms=%.1f\n",
 		n, grid.MainComponentCells(), clearanceMax, buildMs);
+}
+
+TEST_CASE("NavGrid_DefaultSlope_045")
+{
+	const int n = 8;
+	const float unit = 4.0f;
+
+	{
+		// |dh| = 1.8 m over one 4 m step -> slope 0.45, at the default limit (open).
+		std::vector<float> heights((size_t)n * n, 0.0f);
+		for (int x = 0; x < n; ++x)
+		{
+			for (int z = 0; z < n; ++z)
+				heights[CellIndex(n, x, z)] = 1.8f * (float)x;
+		}
+		BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), heights);
+		CHECK(grid.EdgeOpen(2, 2, 1, 0));
+	}
+
+	{
+		// |dh| = 1.9 m over 4 m -> slope 0.475, above the 0.45 default.
+		std::vector<float> heights((size_t)n * n, 0.0f);
+		for (int x = 0; x < n; ++x)
+		{
+			for (int z = 0; z < n; ++z)
+				heights[CellIndex(n, x, z)] = 1.9f * (float)x;
+		}
+		BotCore::NavGrid grid = MakeNav(n, unit, RingEvents(n), heights);
+		CHECK(!grid.EdgeOpen(2, 2, 1, 0));
+		CHECK(grid.EdgeOpen(2, 2, 0, 1));
+	}
+
+	{
+		// Diagonal 4*sqrt(2) m: the 0.45 limit is 2.546 m; 2.5 m open, 2.6 m closed.
+		std::vector<float> heights = HeightZeros(n);
+		heights[CellIndex(n, 1, 1)] = 2.5f;
+		BotCore::NavGrid open = MakeNav(n, unit, RingEvents(n), heights);
+		CHECK(open.EdgeOpen(1, 1, 1, 1));
+
+		heights[CellIndex(n, 1, 1)] = 2.6f;
+		BotCore::NavGrid closed = MakeNav(n, unit, RingEvents(n), heights);
+		CHECK(!closed.EdgeOpen(1, 1, 1, 1));
+	}
+}
+
+TEST_CASE("NavGrid_RealMap_DefaultSlopeConnectivity")
+{
+	BotCore::NavGrid grid;
+	if (!grid.LoadFile("build/nav/zone71.navgrid"))
+	{
+		std::printf("NAVSLOPE real map: SKIPPED (build/nav/zone71.navgrid missing; run tools/nav-export.py)\n");
+		return;
+	}
+	grid.Build();
+
+	const int n = grid.Size();
+
+	auto nearestWalk = [&](float wx, float wz)
+	{
+		int bx = -1;
+		int bz = -1;
+		float best = 1.0e30f;
+		for (int x = 0; x < n; ++x)
+		{
+			for (int z = 0; z < n; ++z)
+			{
+				if (!grid.Walk(x, z))
+					continue;
+				const float dx = grid.CellCenter(x) - wx;
+				const float dz = grid.CellCenter(z) - wz;
+				const float d2 = dx * dx + dz * dz;
+				if (d2 < best)
+				{
+					best = d2;
+					bx = x;
+					bz = z;
+				}
+			}
+		}
+		return CellIndex(n, bx, bz);
+	};
+
+	const float lm[5][2] = {
+		{ 1370.0f, 1090.0f },   // Karus spawn
+		{ 630.0f, 920.0f },     // El Morad spawn
+		{ 1274.0f, 890.0f },    // arena A
+		{ 1024.0f, 1024.0f },   // bowl center
+		{ 1375.0f, 1085.0f },   // Karus gate
+	};
+
+	size_t starts[5];
+	for (int k = 0; k < 5; ++k)
+		starts[k] = nearestWalk(lm[k][0], lm[k][1]);
+
+	std::vector<uint8_t> seen((size_t)n * n, 0);
+	std::vector<size_t> stack;
+	stack.push_back(starts[0]);
+	seen[starts[0]] = 1;
+	int reach = 0;
+	const int dxs[4] = { 1, -1, 0, 0 };
+	const int dzs[4] = { 0, 0, 1, -1 };
+	while (!stack.empty())
+	{
+		const size_t cur = stack.back();
+		stack.pop_back();
+		++reach;
+		const int cx = (int)(cur / (size_t)n);
+		const int cz = (int)(cur % (size_t)n);
+		for (int k = 0; k < 4; ++k)
+		{
+			const int nx = cx + dxs[k];
+			const int nz = cz + dzs[k];
+			if (nx < 0 || nx >= n || nz < 0 || nz >= n)
+				continue;
+			if (!grid.EdgeOpen(cx, cz, dxs[k], dzs[k]))
+				continue;
+			const size_t ni = CellIndex(n, nx, nz);
+			if (!seen[ni])
+			{
+				seen[ni] = 1;
+				stack.push_back(ni);
+			}
+		}
+	}
+
+	int connected = 0;
+	for (int k = 0; k < 5; ++k)
+	{
+		if (seen[starts[k]])
+			++connected;
+	}
+
+	std::printf("NAVSLOPE real map: main=%d reach=%d landmarks=%d/5\n",
+		grid.MainComponentCells(), reach, connected);
+	CHECK_EQ(grid.MainComponentCells(), 88508);
+	CHECK_EQ(connected, 5);
+	CHECK(reach >= 85000);
+	CHECK(reach <= 87000);
 }
