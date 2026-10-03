@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; kapsam ADR-0018 ile genişletildi) |
 | Branch | `bot/F4-32` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-28 (Type4 tek tipli: `Moral` 2 yolu, MEC-MAG-15) — `KAPANDI`; F4-31 (`CastMoralSupported`, `CastHpCostSupported`, `BeginCast` destek koşulu) — `KAPANDI` (merge `78759b5`) |
@@ -229,20 +229,40 @@ git diff --check gece/2026-10-02...bot/F4-32
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-### Tur 1 — YYYY-MM-DD
+### Tur 1 — 2026-10-03
 
-- Karar: DOĞRULANDI / DÜZELTME GEREKLİ / REDDEDİLDİ
-- İncelenen: `gece/2026-10-02...bot/F4-32` @ `<sha>`
+- Karar: DOĞRULANDI
+- İncelenen: `gece/2026-10-02...bot/F4-32` @ `499d39f` (kod `1ca8af6`). Çalışma ağacı temizdi; otonom gece döngüsünde (`AUTO_LOOP=1`) birleştirme/push yapılmadı, birleştirmeyi döngü betiği `gece/2026-10-02`'ye yapar.
 - Kriter sonuçları:
 
 | Kriter | Sonuç | Kanıt |
 |---|---|---|
-| K1 | ✔ / ✘ | dosya:satır / komut çıktısı |
+| K1 | ✔ | dört dosya `touch` + `tools/build.sh Release` rc=0, `warning` 0, `error` 0 |
+| K2 | ✔ | `tools/build.sh Debug` rc=0, `warning` 0 |
+| K3 | ✔ | `run-tests.sh Release` ve `Debug` ikisinde rc=0, `109 tests, 0 failed`; `[ OK ] Combat_CastTypes_Supported`, `[ OK ] Combat_PartyCast_Guard`, `[ OK ] Combat_CureCast_Guard` |
+| K4 | ✔ | `grep "windows.h\|stdafx\|GameServer\|shared/" BotCore/BotCombat.h` boş; `#include` yalnızca `<algorithm>`, `<cstdint>` (`:6-7`); eklenen satırlarda `std::min`/`std::max` yok |
+| K5 | ✔ | `ActionExecutor.cpp:735` `|| !BotCore::CastTypeMoralSupported(m->bType[0], m->bMoral)` (tek eşleşme); `CastTypesSupported(m->bType[0], m->bType[1])`, `CastMoralSupported(m->bMoral)`, `CastHpCostSupported(m->sHP)`, `(m->bFlyingEffect != 0 && !flyingCast)` her biri 1 eşleşme |
+| K6 | ✔ | `git diff --stat`: yalnızca §4'teki 4 dosya + plan dosyası; `ActionExecutor.cpp` **tek hunk**, tek eklenen satır (`BeginCast` destek koşulu `:733-738`); vcxproj, `BotSession.*`, `BotManager.cpp`, `Telemetry.*` farkı boş |
+| K7 | ✔ | kod farkında eklenen `Emit(` yok (yalnızca plan dosyasındaki rapor metni eşleşir); yeni ini anahtarı/komut/thread/olay türü yok; `TELEMETRY=summary` ve `ENABLED=0` çalışma zamanında sınandı (aşağıda) |
+| K8 | ✔ | `file`: dört dosya `ASCII text, with CRLF line terminators`; `git diff --check` rc=0, çıktı boş |
+| K9 | ✔ | `CheckMoveStep` 2; `CheckAttack`, `CheckCastStart`, `CheckCastEffect`, `CheckCastFly`, `CheckCastLand`, `CheckCastCancel`, `CheckPotion` 1'er; önceki 108 test dahil 109 test geçiyor |
+| K10 | ✔ | `check-perception-contract.py` `RESULT: PASS`, `files scanned: 19` (değişmedi) |
+| K11 | ✔ | S1–S6 çalışma zamanında geçti (aşağıda) |
 
-- Bulgular (önem sırasıyla):
-  1. …
-- Düzeltme talimatı (DeepSeek'e aynen verilecek):
+**Çalışma zamanı** (Release, `ENABLED=1`, `MAX_BOTS=16`, `TELEMETRY=decisions`, zone 71; `Logs/bots/2026-10-03/live-035244.jsonl`, `Logs/Bot_3_10_2026.log`; `summary` ve `ENABLED=0` için ayrı yeniden başlatma; ini yedekten geri yüklendi (`GameServer.ini.bak-before-bot-test-20261002` ile aynı), `BotCommands.txt` silindi, botlar despawn, sunucular durduruldu, `GameServer.log` bu oturumda değişmedi). MP ölçümünde sunucu yenilemesi **kümeli +40** gelir (~4-5 sn'de bir); bu yüzden "−60 + 40 = −20" imzası cast'in MP'yi düşürdüğünü gösterir.
 
-```
-…
-```
+- **S1 ✔ Cure curse (`112525`).** Kendine: `BotMI_E` `210609` Chill → `BotPHB_K` `snap`: `buffs 1`, `buff skill=210609 type=6 debuff remain=9s`; `cast BotPHB_K 112525 self 1`: `CastStart` `ACTION_SUBMIT` **`"target":2984`** (priest kimliği, `-1` değil, `cast_ms 1580`) → `casting` `op 1`; `CastEffect` `"target":2984` → `effected`, `op 3`, `code 0`, **`victims` alanı yok**; log `cast finished (effected) after 1 cycle(s), 1 ok, 2 packet(s) sent`; sonra `snap`: **`buffs 0`** (debuff gitti). MP 1972 → 1952 (−60 + 40). Dosta: Chill → `BotWP_K` (`snap`: `debuff remain=9s`), `cast BotPHB_K 112525 BotWP_K 1`: `CastStart`/`CastEffect` `"target":2986`, `effected`, `code 0`; `snap BotWP_K`: **`buffs 0`**.
+- **S2 ✔ Cure disease (`112535`).** `BotMF_E` `210539` Hell fire → `BotWP_K`: `list` HP 5211 → 5172 → 5133 → 5055 (saniyelik DoT, ~−40/1,6 sn); `cast BotPHB_K 112535 BotWP_K 1` ⇒ `effected`, `code 0`, MP 2192 → 2112 (−120 + 40); cure sonrası **7 ardışık `list` örneğinde (≈ 10 sn) `BotWP_K` HP 5055 sabit**. **Kontrol (cure'süz):** aynı DoT yeniden verildi: HP 4765 → 4723 → 4681 → 4639 → 4597 → 4555 (≈ −42 / 1,6 sn, ≥ 13 sn boyunca düşmeye devam), yani düşüşün durması cure'ün etkisidir, süre bitişi değil.
+- **S3 ✔ Kaldırılacak bir şey yok.** Debuff'sız `BotWP_K` (`snap`: `buffs 0`): `cast BotPHB_K 112525 BotWP_K 1` ⇒ `effected`, `code 0`, MP 2172 → 2152 (−60 + 40); 3 sn sonra `cast BotPHB_K 112535 BotWP_K 1` ⇒ `effected`, `code 0`, MP 2152 → 2072 (−120 + 40). İkinci cure bot guard'ında `type_gate`/`gap` reddi **almadı** (3 sn arayla). MEC-MAG-19 "boşa cure" aynen çıktı.
+- **S4 ✔ Düşman ve menzil.** `cast BotPHB_K 112525 BotMF_E 1` (El Morad): `CastStart` `"target":2987` → **`ok:false`, `srv_fail`, `op 4`, `code -100`**, MP yalnızca yenilendi (2352 → 2392). `BotPHD_K` 72 m uzakta: `cast BotPHB_K 112525 BotPHD_K 1` ⇒ **paket gitmeden** `FAIRNESS_REJECT` `MEC-MAG-11` `out_of_range`, `value 72.00`, `limit 56.00`, log `cast stopped (out_of_range)`, MP değişmedi.
+- **S5 ✔ İptal ve ölü hedef.** `cast BotPHB_K 112525 BotWP_K 1`, ~1,09 sn sonra `cast BotPHB_K off`: `CastCancel` **`"target":2986`**, `cause cmd`, `since_casting_ms 1087`, `cancelled`, `op 4`, `code -100`, MP yalnızca yenilendi (2512 → 2592). Ölü dost: `BotWP_K` `BotMF_E` `210518` ile öldürüldü (`list` `hp=0/5650`); `cast BotPHB_K 112525 BotWP_K 1` ⇒ `CastStart` `casting`, `CastEffect` **`ok:false`, `no_result`, `op -1`**, log `cast stopped (no_result)`; **MP 3072 → 3052 (−60 + 40: MP düştü)**: `docs/03` MEC-MAG-19 `[D]` → `[V]`.
+- **S6 ✔ Kapalı kalanlar, gerilemesiz, kapsam.** `cast BotPHB_K 112671 self 1` (Bless of God), `112733 BotMF_K 1` (Resurrection), `112805 self 1` (Absoluteness) ⇒ üçü de `refused (unsupported_skill)`, jsonl'de bu skill'ler için `ACTION_SUBMIT` yok. Gerilemesiz: F4-28 `112603 self`: `effected`, `code 600`; F4-31 grup heal `112557 self`: `CastStart`/`CastEffect` `"target":-1`, `effected`, `victims 1`; F4-31 buff `112642 self`: `"target":2984`, `CastEffect` gönderildi; F4-29 Inferno `110545` `BotMF_K` → `BotWP_E`: `target -1`, `effected`, `victims 3`; Moral 7 `110518`: `"target":2990` (kurban kimliği), `effected`, `victims` yok. `TELEMETRY=summary`: `BotPHB_K` kendine cure `effected`, jsonl'de `ACTION_` satırı **0**, yalnızca `PERF_SAMPLE`; `ENABLED=0`: `BotCommands.txt` işlenmedi (dosya yerinde kaldı), `Bot_*.log`'a satır ve yeni jsonl yok. `PERF_SAMPLE` `tick_p95_us` ≈ 82–422 (normal; spawn penceresinde 1065–1282, önceki planlarla aynı). `GameServer.log` değişmedi.
+
+- Bulgular (önem sırasıyla; engelleyici yok):
+  1. *(not)* **Uygulayıcı sapması kabul:** `Tests/BotCoreTests/CombatTests.cpp` `Combat_PartyCast_Guard` içindeki `CastTypesSupported(5, 0) == false` satırı (`:1313`) `true` yapıldı. `(5, 0)` artık desteklendiği için zorunluydu, dosya §4 izin listesinde, mekanik değişikliği değil. Plan §5.2 bu satırı anmamıştı (planlayıcı eksiği).
+  2. *(not)* **S1 kurulum notu:** Chill debuff'ı `remain ≈ 9 sn` sürer; cure öncesi/sonrası `snap` aynı 6-7 sn içinde alınmalıdır (plan §7 bunu belirtmiyordu). Cure sonrası `buffs 0` olması kaldırmanın kanıtıdır; yalnızca süre bitişiyle karışmaz (cure ≈ 4 sn sonra atıldı).
+  3. *(not)* **Hedef kurulum notları:** (a) `regene` botu doğuş noktasına (`1380, 1090`) taşır ve konum DB'de kalır, sonraki oturumda uzak olur (cure `out_of_range`); (b) ölü doğan bot (`hp=0`) `regene` ile dirilir; (c) `BotMF_E` `210518` ile bir savaşçıyı öldürmek ~16 cast sürer (~−320/cast).
+  4. *(not)* **Sonuç sözleşmesi doğrulandı:** `docs/03` MEC-MAG-19 `[D]` → `[V]` (Cure curse/disease debuff ve DoT kaldırır, boşa cure `effected` ve MP düşer, düşman ⇒ `srv_fail`, ölü hedef ⇒ `no_result` ve MP düşer, iptal, menzil).
+  5. *(not)* Uygulayıcı raporu doğru: commit listesi, dosyalar, derleme ve test sayıları kendi çalıştırmamla örtüşüyor; rapordaki `CASTTypesSupported` yazımı küçük bir yazım hatasıdır.
+  6. Sınanmayanlar (plan kapsamı dışı/bilinen sınır): Cure disease'in hedefe gönderdiği `MAGIC_DURATION_EXPIRED` paketi (bota ulaşan bir algı yok; HP düşüşünün durması dolaylı kanıt), HoT'ların korunması (HoT üreten skill kurulmadı; `[D]` kod okuması), buff'ların cure sonrası yerinde kalması (hedefte buff'la birlikte sınanmadı; `[D]`), El Morad priest karşılıkları (aynı kod yolu).
+- Düzeltme talimatı: yok (karar DOĞRULANDI).
