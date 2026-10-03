@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI (2026-10-03, gece/2026-10-02, merge `de64af0`) |
 | Faz | F4 — Aksiyon yürütme ve adalet koruması (`docs/17` §2; ADR-0018 m.9 "T-MECH-SKILL'in botla yeniden koşusu", Ek 24) |
 | Branch | `bot/F4-48` (taban: `gece/2026-10-02`) |
 | Bağımlı olduğu planlar | F4-47 (`tools/skill-check.py` uçan Type3 MP beklentisi `2 × Msp`, selftest 48) — `KAPANDI` (merge `2135a0c`); F4-42 (`tools/skill-script-gen.py`), F4-25/F4-30 (uçan ve uçan alan cast), F4-29 (alan cast), F4-26 (çift tipli `{3, 4}`), F4-27 (quest kilitleri), F4-40 (envanter doldurma) — `KAPANDI`; F4-45/F4-46 (`bots/config/skill_*.spec` üslup örneği) — `KAPANDI` |
