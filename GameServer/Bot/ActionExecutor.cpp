@@ -734,7 +734,8 @@ CastOutcome ActionExecutor::BeginCast(BotSession * s, uint32 skillId, const std:
 	if (!BotCore::CastTypesSupported(m->bType[0], m->bType[1])
 		|| (m->bFlyingEffect != 0 && !flyingCast)
 		|| m->iUseItem != 0
-		|| !BotCore::CastMoralSupported(m->bMoral))
+		|| !BotCore::CastMoralSupported(m->bMoral)
+		|| !BotCore::CastHpCostSupported(m->sHP))
 	{
 		out.kind = CastOutcome::REFUSED;
 		out.reason = "unsupported_skill";
@@ -811,8 +812,9 @@ CastOutcome ActionExecutor::TickCast(BotSession * s, const CastTarget & target,
 
 	bool flying = BotCore::IsFlyingCast(m->bType[0], m->bFlyingEffect);
 
-	// ADR-0017 Ek F4-29: an area skill (MAGIC.Moral 10) always sends target id -1 and the aim point in sData[0..2].
-	bool area = BotCore::IsAreaMoral(m->bMoral);
+	// ADR-0017 Ek F4-29/F4-31: an area skill (MAGIC.Moral 10) and a party-all skill (Moral 6) send target id -1 and the aim
+	// point in sData[0..2]; a Moral 4 (single party member) skill sends the ordinary single-target packet.
+	bool area = BotCore::SendsAimPoint(m->bMoral);
 	CastTarget sent = target;
 	sent.id = BotCore::CastTargetIdField(area, target.id);
 

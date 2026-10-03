@@ -337,25 +337,51 @@ namespace BotCore
 		return moral == kMoralAreaEnemy;
 	}
 
-	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 7 enemy, 8 all (F4-03) and 10 area-enemy (F4-29, flying or not:
-	// the flying area skills Fire/Ice/Thunder burst run the same packet shape through CASTING -> FLYING -> EFFECTING,
-	// F4-30). Whether the skill may fly at all is decided by the caller (IsFlyingCast: Type3 only).
-	inline bool CastMoralSupported(uint8_t moral)
-	{
-		if (moral == 1 || moral == 2 || moral == 7 || moral == 8)
-			return true;
+	// MAGIC.Moral 6 = PARTY_ALL (MagicInstance.h): the whole party within MAGIC_TYPE3/4.Radius of the aim point. Like an area
+	// skill it is cast with target id -1 and the aim point in sData[0] (x) / sData[2] (z); the server picks the victims
+	// (the caster's party members, UserRegionCheck). Moral 4 = PARTY is single-target (a party member or self) and uses the
+	// ordinary packet shape (F4-31, docs/03 MEC-MAG-18).
+	constexpr uint8_t kMoralPartyAll = 6;
 
-		return IsAreaMoral(moral);
+	inline bool IsPartyAllMoral(uint8_t moral)
+	{
+		return moral == kMoralPartyAll;
 	}
 
-	// WIZ_MAGIC_PROCESS 'target' field: an area cast always carries -1, every other cast the target's id.
+	// Skills cast with target id -1 and an aim point: area enemy (10, F4-29) and party-all (6, F4-31).
+	inline bool SendsAimPoint(uint8_t moral)
+	{
+		return IsAreaMoral(moral) || IsPartyAllMoral(moral);
+	}
+
+	// Morals BeginCast accepts: 1 self, 2 friend-with-me, 4 party member, 7 enemy, 8 all (F4-03, F4-31), 10 area-enemy
+	// (F4-29, flying or not: F4-30) and 6 party-all (F4-31). Whether the skill may fly at all is decided by the caller
+	// (IsFlyingCast: Type3 only).
+	inline bool CastMoralSupported(uint8_t moral)
+	{
+		if (moral == 1 || moral == 2 || moral == 4 || moral == 7 || moral == 8)
+			return true;
+
+		return SendsAimPoint(moral);
+	}
+
+	// MAGIC.HP >= 10000 is the server's "sacrifice" convention (MagicInstance.cpp:1041-1048): the caster loses 10000 HP
+	// without a health check, which would kill a bot. The bot never opens such a skill (F4-31).
+	constexpr uint16_t kSacrificeHpCost = 10000;
+
+	inline bool CastHpCostSupported(uint16_t hp)
+	{
+		return hp < kSacrificeHpCost;
+	}
+
+	// WIZ_MAGIC_PROCESS 'target' field: an area cast and a party-all cast always carry -1, every other cast the target's id.
 	inline int16_t CastTargetIdField(bool area, int16_t targetId)
 	{
 		return area ? int16_t(-1) : targetId;
 	}
 
-	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast always sends the aim
-	// point, also for "self" (the caster's own position is the aim point then).
+	// One of sData[0..2]: metres truncated. A single-target self cast sends 0 (F4-03); an area cast and a party-all cast
+	// always send the aim point, also for "self" (the caster's own position is the aim point then).
 	inline int16_t CastCoordField(bool area, bool isSelf, float metres)
 	{
 		return (isSelf && !area) ? int16_t(0) : int16_t(metres);
