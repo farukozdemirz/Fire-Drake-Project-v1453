@@ -216,7 +216,9 @@ git diff --stat gece/2026-10-02...bot/F4-47
 - Açık sorular: yok.
 - `git diff --stat gece/2026-10-02...bot/F4-47` (gerçek çıktı):
   ```
-  (ikinci commit'te dolduruldu)
+   .../F4-47-skill-olcum-ucan-skill-mp-beklentisi.md  |  32 +++-
+   tools/skill-check.py                               | 177 +++++++++++++++++++--
+   2 files changed, 188 insertions(+), 21 deletions(-)
   ```
 
 ---
