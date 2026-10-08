@@ -166,7 +166,9 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
-| [UA-01](UA-01-alphagame-kaynagini-ice-aktarma-ve-derleme.md) | AlphaGame kaynağını içe aktarma ve Release\|Win32 derleme (bot katmanı devre dışı, sunucu çalıştırılmaz) | UA | HAZIR | `bot/UA-01` (taban `yukseltme/alpha`) |
+| [UA-01](UA-01-alphagame-kaynagini-ice-aktarma-ve-derleme.md) | AlphaGame kaynağını içe aktarma ve Release\|Win32 derleme (bot katmanı devre dışı, sunucu çalıştırılmaz) | UA | UYGULANIYOR | `bot/UA-01` (taban `yukseltme/alpha`) |
+| [UA-05](UA-05-alphagame-db-tabani-ve-duzeltme-betikleri.md) | AlphaGame DB tabanı (`.\SQL2019` → `FDP_alpha_game`) ve düzeltme betikleri (`db/020`–`db/023`: ItemClass, pelerin, zone 21, prosedürler) | UA | UYGULANIYOR | `bot/UA-05` |
+| [UA-06](UA-06-alphagame-calisma-dizini-map-lua-ini.md) | AlphaGame çalışma dizini `C:\dev\fdpalpha\server` (Map, Quests, ini) ve ODBC `KO_ALPHA_*` | UA | UYGULANIYOR | `bot/UA-06` |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
