@@ -171,7 +171,7 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | [UA-03](UA-03-alphagame-istemci-duzen-duzeltmeleri.md) | İstemci düzenleri: 73 yuvalı envanter, MyInfo 72 eşya + klan fonu, u32 ağırlıklar, görev sayaçları u16, sadakat paketi klan fonu, klan paketleri | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `7d4e5e69`) | `bot/UA-03` |
 | [UA-04](UA-04-alphagame-bot-katmani-kancalari.md) | Bot katmanını AlphaGame tabanına bağlama: 20 üst kaynak dosyasında kancalar (3 yollu), proje dosyası, paket/hasar izleyicileri | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `c567231c`) | `bot/UA-04` |
 | [UA-05](UA-05-alphagame-db-tabani-ve-duzeltme-betikleri.md) | AlphaGame DB tabanı (`.\SQL2019` → `FDP_alpha_game`) ve düzeltme betikleri (`db/020`–`db/023`: ItemClass, pelerin, zone 21, prosedürler) | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `051f0d3a`) | `bot/UA-05` |
-| [UA-05b](UA-05b-oyuncu-ve-bot-verisi-alphagame-db.md) | Oyun içi düzenlemeler (tükenmeyen potlar, skill görevleri, bowl, klan A1) ve botların taşınması (nick `Xeli0n` → `VoRteX`) | UA | UYGULANIYOR | `bot/UA-05b`, `bot/UA-05c` |
+| [UA-05b](UA-05b-oyuncu-ve-bot-verisi-alphagame-db.md) | Oyun içi düzenlemeler (tükenmeyen potlar, skill görevleri, bowl, klan A1) ve botların taşınması (nick `Xeli0n` → `VoRteX`) | UA | DOĞRULANDI (2026-10-09; `FDP_alpha_game`'e uygulandı) | `bot/UA-05b`, `bot/UA-05c` |
 | [UA-06](UA-06-alphagame-calisma-dizini-map-lua-ini.md) | AlphaGame çalışma dizini `C:\dev\fdpalpha\server` (Map, Quests, ini) ve ODBC `KO_ALPHA_*` | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `be4c60e5`) | `bot/UA-06` |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
