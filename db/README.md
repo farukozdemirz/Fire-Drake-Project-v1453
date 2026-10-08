@@ -125,3 +125,52 @@ tools/bot-refill.sh rollback
 ## Numara ayırma notu (2026-10-03)
 
 `db/001`..`db/004` uygulanmış/yazılmış betiklerdir ve **yeniden numaralandırılmaz**: 001 `MAGIC.Etc`, 002 bot karakterleri, 003 bot quest (F4-27), 004 bot envanter (F4-40). 8v8 için karakter genişletme betikleri **`db/005`** (ilk 16 karakter, F8-03) ve **`db/006`** (+4 çeşitlilik karakteri, F8-04) olarak ayrılmıştır. Eski kayıtlarda (`docs/reports/*`, kapanmış planlar) 16/20 karakter için geçen "`db/003`" ifadesi bu betikleri kasteder; `db/003` her zaman bot quest betiğidir.
+
+## 012 — 1534 pelerinleri (U2-01, ADR-0068 madde 4)
+
+1534 istemcisinin `Data/Cloak.tbl` tablosu (7 kolon) 224 pelerin tanır;
+`KNIGHTS_CAPE` tablosunda 56 satır vardır. Betik eksik 168 pelerini — uzun
+(royal) pelerinler dahil — **istemci tablosundaki değerlerle** ekler. ALPHA
+DB'sinin değerleri kullanılmaz (klan puanı fiyatı ve kademe şartı yanlış;
+`docs/reports/u0-1534/E-veri-farki.md` §2.3).
+
+- Betikler **üretilmiştir**, elle düzenlenmez: `tools/u2-gen-capes.py` istemci
+  `Cloak.tbl`'ını `tools/kotbl.py` ile çözer ve iki betiği yazar. Kolon eşlemesi
+  c0 `sCapeIndex`, c2 `nBuyPrice`, c3 `nDuration`, c4 `byGrade`, c5 `nBuyLoyalty`,
+  c6 `byRanking`. Yalnız 7 kolonlu (1534) tablo kabul edilir; 5 kolonlu eski
+  tablo hata verir. `python3 tools/u2-gen-capes.py --check` depodaki betiklerin
+  üretici çıktısıyla bayt bayt aynı olduğunu denetler (çıkış 0).
+- Yalnızca hedefte olmayan kimlikler eklenir; mevcut satırlara dokunulmaz. Eski
+  56 satırda `byRanking` 0, istemcide 2'dir; fark bilinçli olarak bırakılır
+  (`HandleCapeChange` zaten terfi etmiş klan ister, davranış farkı yok).
+- Eklenen kimlikler `dbo.<Target>_U2_ADDED` kayıt tablosuna yazılır. Betik
+  idempotenttir; ikinci çalıştırma `inserted=0` bildirir.
+- `byRanking` 8–12 olan 84 satır uzun (royal) pelerinlerdir (x40–48, x60–64).
+- Sunucu `strName`'i yüklemez; Korece istemci adları yerine ASCII
+  `Cape <id>` (bilinen desen adlarında `Cape <id> <desen>`) yazılır.
+- Sunucunun kapalı olması **gerekmez**; ancak tablo yalnızca açılışta yüklenir,
+  etki için sunucu yeniden başlatılmalıdır.
+- Beklenen çıktı (56 satırlık tabloda ilk uygulama): `inserted=168
+  already_present=56` ve `target_rows=224 long_capes=84 logged=168`; geri alma:
+  `removed=168 target_rows=56 log_table=absent`.
+
+Uygula (`Target` zorunlu; gerçek kullanımda `KNIGHTS_CAPE`):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v Target=KNIGHTS_CAPE -i db/012_u2_capes_1534.sql
+```
+
+Geri al (yalnız kayıt tablosundaki kimlikleri siler, kayıt tablosunu düşürür;
+tekrar çalıştırılabilir, ikinci çalıştırma `removed=0`):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v Target=KNIGHTS_CAPE -i db/012_u2_capes_1534_rollback.sql
+```
+
+Betikleri yeniden üret (varsayılan istemci yolu
+`/mnt/c/dev/fdp1534/client/Knight Online/Data/Cloak.tbl`):
+
+```bash
+python3 tools/u2-gen-capes.py [--client PATH]
+python3 tools/u2-gen-capes.py --check
+```
