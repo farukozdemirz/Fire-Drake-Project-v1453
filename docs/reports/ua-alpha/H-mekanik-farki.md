@@ -280,7 +280,7 @@ Ne: Bizim sunucu, istemcinin bildirdiği silah gecikmesini ve mesafeyi denetliyo
 **S-2. Hız ve speedhack eşikleri.**
 Ne: AlphaGame hız alanı sınırını herkes için 90 yaptı (bizde 67) ve konum denetiminde geri ışınlamayı ancak üçüncü ardışık ihlalde yapıyor. Neden önemli: Bot zaten 45/67 ile yürüyor; ama sunucu hızlı hareket eden hileciyi artık geç yakalıyor ve bizim "bot ışınlandı mı" telemetrimiz ilk iki ihlali göremiyor. Seçenekler: (a) AlphaGame kuralını kabul et, docs/03'e yaz, botun eşiklerini 77,46/90,55/102,47 m'ye güncelle; (b) bizim 67 sınırını ve tek ihlalde geri ışınlamayı geri getir.
 
-**S-3. AlphaGame skill verisindeki boş `ExpPct` sütunu.**
+**S-3. AlphaGame skill verisindeki boş `ExpPct` sütunu.** **Karar (2026-10-09): bizim değerler, `db/029`; ADR-0069 Ek 2.**
 Ne: AlphaGame `MAGIC_TYPE4` tablosunda `ExpPct` her satırda 0. Sunucu bu sütunu Elysian Web'in büyü hasarı azaltması ve Mana Shield'in mana emmesi için okuyor. Sonuç: Elysian Web altındaki oyuncu büyü hasarı **hiç almaz**, Mana Shield hiçbir şey yapmaz. Neden önemli: Ronark'ta bir priest grubu 20 sn büyüye bağışık olur; mage botların hedef seçimi anlamsızlaşır. İstemci tablosunda bu sütun yoksa AlphaGame verisi içe aktarılırken kaybolmuş olabilir. Seçenekler: (a) UA-05 düzeltme betiğinde bizim değerleri (Elysian Web 70, Mana Shield 15, diğerleri 100) geri yaz; (b) AlphaGame verisini olduğu gibi bırak ve davranışı docs/03'e "kusur" (MB) olarak yaz.
 
 **S-4. Skill quest kilidi neye göre?**
