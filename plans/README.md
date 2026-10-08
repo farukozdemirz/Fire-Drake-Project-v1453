@@ -150,7 +150,7 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
-| [U1-01](U1-01-calisma-zamani-protokol-profili-surum-ve-kripto-anahtari.md) | Çalışma zamanı protokol profili: istemci sürümü ve kripto anahtarı ini'den (`[PROTOCOL] CLIENT_VERSION`, varsayılan = bugünkü davranış) | U1 | HAZIR | `bot/U1-01` (taban: `main`) |
+| [U1-01](U1-01-calisma-zamani-protokol-profili-surum-ve-kripto-anahtari.md) | Çalışma zamanı protokol profili: istemci sürümü ve kripto anahtarı ini'den (`[PROTOCOL] CLIENT_VERSION`, varsayılan = bugünkü davranış) | U1 | KAPANDI (2026-10-08, `main` @ `cb50146c`; birleşik hat `yukseltme/1534`) | `bot/U1-01` (taban: `main`) |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
