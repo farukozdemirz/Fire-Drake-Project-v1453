@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | DOĞRULANDI |
 | Faz | U — Sürüm yükseltme 1534 (`docs/17` §2 U, ADR-0068) |
 | Branch | `bot/U1-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — |
@@ -191,8 +191,102 @@ git status --short
 
 ## Uygulayıcı Raporu
 
-(Uygulayıcı doldurur.)
+### Tur 1
+
+**Durum:** UYGULANDI · **Branch:** `bot/U1-01` (taban `main` @ `1eff1bfe`, ayrı çalışma ağacı `/mnt/c/dev/fdp-u1-01`) · **Uygulayıcı:** Claude ajanı (bu faz için proje sahibinin isteğiyle)
+
+**Commit'ler:**
+- `096f2b63` [U1-01] Durum UYGULANIYOR
+- `aedf7f08` [U1-01] Runtime protocol profile: client version and crypto key from [PROTOCOL] ini
+- `42f5f3d3` [U1-01] ProtocolProfile unit tests (9 cases ...)
+- (bu rapor + `Durum: UYGULANDI` ayrı commit)
+
+**Değişen dosyalar (satırlar HEAD'e göre):**
+- `shared/ProtocolProfile.h` (YENİ, 134 satır): §5.1 arayüzü birebir; gövdeler aynı başlıkta `inline`. Sabitler, iki `inline` global, `EffectiveClientVersion`, `PrivateKeyForVersion`, `ResolvePrivateKey`, `ServerListEcho/LanIp/Extended/UnknownByte`, `LoginVersionReply`, `ParseCryptoKey`, `ClientVersion`, `PrivateKey`. Proje başlığı dahil edilmedi (yalnız `<cstdint>`, `<cstdlib>`).
+- `shared/JvCryption.cpp:4,6-7`: `#define g_private_key` bloğu kaldırıldı; `Init()` → `m_public_key ^ ProtocolProfile::PrivateKey(__VERSION)`.
+- `shared/shared.vcxproj:150`: `<ClInclude Include="ProtocolProfile.h" />`.
+- `GameServer/GameServerDlg.cpp:9` include; `:250-265` `GetTimeFromIni` içinde ODBC/MARS okumalarından hemen sonra (ilk erken `return`'den önce) `[PROTOCOL] CLIENT_VERSION` (negatif / 0xFFFF üstü → 0) ve `CRYPTO_KEY` okuma + tek satır `Protocol: ...` bilgisi.
+- `GameServer/LoginHandler.cpp:2` include; `:15` `VersionCheck` → `uint16(ProtocolProfile::ClientVersion(__VERSION))`.
+- `LogInServer/LoginServer.cpp:5` include; `:86` `const uint16 v = ProtocolProfile::ClientVersion(__VERSION);`; `:95-96` LAN IP, `:104-114` ≥1453 bloğu ve bilinmeyen bayt çalışma zamanı `if`'i (alan sırası/tipleri aynı); `:131-146` `GetInfoFromIni` içinde aynı iki anahtar + tek satır bilgi.
+- `LogInServer/LoginSession.cpp:3` include; `:36` `HandleVersion` → `LoginVersionReply(g_configuredClientVersion, GetVersion())`; `:167-173` `HandleServerlist` echo çalışma zamanı `if`'i. `HandlePatches` değişmedi.
+- `Tests/BotCoreTests/ProtocolProfileTests.cpp` (YENİ, 170 satır, 9 `TEST_CASE`); `Tests/BotCoreTests/BotCoreTests.vcxproj:100` `ClCompile`.
+
+**Başlangıç sırası (§5.3 isteği):** GameServer'da `GetTimeFromIni()` `GameServerDlg.cpp:90`'da, `m_socketMgr.Listen` (`:101`) ve `BotManager::Instance().Startup()` (`:107`) **önce** çağrılır; `VersionCheck` (`User.cpp:286`) ve bot `EnableCrypto` (`Bot/BotManager.cpp:3855`) ancak bunlardan sonra çalışabilir. LogInServer'da `GetInfoFromIni()` `LoginServer.cpp:16`'da, `Listen` (`:52`) ve `UpdateServerList`'i çağıran `Timer_UpdateUserCount` iş parçacığı (`:59`) **önce**. Değerler yalnız bu başlangıç noktasında yazılır, IOCP/zamanlayıcı iş parçacıkları yalnız okur; bu yüzden ek kilit gerekmez.
+
+**Derleme / test çıktıları:**
+- Taban (değişiklikten önce, bu dalda, `main` @ `1eff1bfe` içeriği): `./tools/run-tests.sh Release` → `331 tests, 0 failed` (rc=0). Taban Release derlemesinde 68 uyarı (hepsi mevcut kod).
+- `./tools/build.sh Release` (rc=0), son satırlar:
+  ```
+      0 functions were new in current compilation
+      4 functions had inline decision re-evaluated but remain unchanged
+    Kodun üretilmesi tamamlandı
+    Kod üretiliyor
+    proj-AIServer.vcxproj -> C:\dev\fdp-u1-01\build\bin\x86-Release\Server\AIServer.exe
+    13 of 14838 functions (<0.1%) were compiled, the rest were copied from previous compilation.
+      6 functions were new in current compilation
+      70 functions had inline decision re-evaluated but remain unchanged
+    Kodun üretilmesi tamamlandı
+    proj-GameServer.vcxproj -> C:\dev\fdp-u1-01\build\bin\x86-Release\Server\GameServer.exe
+  ```
+  Artımlı derlemede 6 uyarı; hepsi tabandaki uyarıların eklenen satırlar kadar kaymış hâli: `LoginServer.cpp(245→261) C4834`, `LoginSession.cpp(84→85) C4267`, `GameServerDlg.cpp(820→838) C4834`, `(1147→1165) C4267`, `(1806→1824) C4267`, `LoginHandler.cpp(38→39) C4267`. `ProtocolProfile.h`, `JvCryption.cpp`, `ProtocolProfileTests.cpp` (W4) için uyarı yok.
+- `./tools/build.sh Debug` (rc=0, bu çalışma ağacında sıfırdan tam derleme), son satırlar:
+  ```
+    TradeHandler.cpp
+    Unit.cpp
+    UpgradeHandler.cpp
+    User.cpp
+    Kod Üretiliyor...
+    proj-GameServer.vcxproj -> C:\dev\fdp-u1-01\build\bin\x86-Debug\Server\GameServer.exe
+  ```
+  7 uyarı: dördü yukarıdaki kaymış C4267'ler (`LoginSession.cpp(85)`, `GameServerDlg.cpp(1165)`, `(1824)`, `LoginHandler.cpp(39)`), üçü dokunulmayan dosyalarda (`DBAgent.cpp(1809)`, `EventHandler.cpp(267)`, `MagicInstance.cpp(1867)`). Yeni uyarı yok.
+- `./tools/run-tests.sh Release` → `340 tests, 0 failed` (rc=0).
+- `./tools/run-tests.sh Debug --no-build Protocol_` → `9 tests, 0 failed`.
+
+**Kabul kriterleri:**
+- ✔ K1: Release ve Debug hatasız (rc=0), yeni uyarı yok (yukarıdaki karşılaştırma).
+- ✔ K2: `340 tests, 0 failed`; taban 331; fark 9 = yeni `TEST_CASE` sayısı (`Protocol_PrivateKeyForVersionMatchesLegacyTable`, `_EffectiveClientVersion`, `_ResolvePrivateKey`, `_LoginServerListRules`, `_LoginVersionReply`, `_ParseCryptoKey`, `_LegacyProfileHandshake`, `_Client1534ProfileHandshake`, `_ConfiguredCryptoKeyOverridesVersion`).
+- ✔ K3 (legacy, `CLIENT_VERSION=0`, `CRYPTO_KEY=0`), test `Protocol_LegacyProfileHandshake` (`ProtocolProfileTests.cpp:119`) + kod:
+  - (a) `ClientVersion(1453)==1453` → `LoginHandler.cpp:15` aynı `uint16` 1453'ü yazar.
+  - (b) `PrivateKey(1453)==0x7412580096385200` → `JvCryption.cpp:7`; tablo eşdeğerliği ayrıca `Protocol_PrivateKeyForVersionMatchesLegacyTable`.
+  - (c) `ServerListEcho(1453)==false` → `LoginSession.cpp:168` echo okumaz/yazmaz.
+  - (d) `ServerListLanIp(1453)==false`, `ServerListExtended(1453)==true`, `ServerListUnknownByte(1453)==1` → `LoginServer.cpp:95,104,109`: eski `#if` 1453 derlemesiyle aynı alanlar, aynı sıra ve tipler (`uint8(...)` korunmuş).
+  - (e) `LoginVersionReply(0, 1473)==1473` → `LoginSession.cpp:36` DB'deki en yüksek sürümü (`GetVersion()`, `int16`) aynı tiple yazar.
+- ✔ K4 (`CLIENT_VERSION=1534`), test `Protocol_Client1534ProfileHandshake` (`:137`): sürüm 1534, anahtar `0x1257091582190465`, echo var, LAN IP yok, ≥1453 bloğu var, bilinmeyen bayt 1, `HandleVersion` 1534. `CRYPTO_KEY` ini değerinin sürüm türetmesini ezdiği: `Protocol_ConfiguredCryptoKeyOverridesVersion` (`:153`).
+- ✔ K5: `git diff --stat main...bot/U1-01` → yalnız §4 dosyaları + bu plan dosyası (Durum/rapor): `GameServer/GameServerDlg.cpp`, `GameServer/LoginHandler.cpp`, `LogInServer/LoginServer.cpp`, `LogInServer/LoginSession.cpp`, `Tests/BotCoreTests/BotCoreTests.vcxproj`, `Tests/BotCoreTests/ProtocolProfileTests.cpp`, `shared/JvCryption.cpp`, `shared/ProtocolProfile.h`, `shared/shared.vcxproj`, plan. `GameServer/Bot/`, `BotCore/`, `db/`, `docs/` değişmedi (`git diff --name-only ... | grep -E '^(GameServer/Bot/|BotCore/|db/|docs/)'` boş).
+- ✔ K6: `git show main:<f> | file -` ile `git show HEAD:<f> | file -` 7 değişen dosyanın hepsinde AYNI (depo `core.autocrlf=true`: dizin LF, çalışma ağacı CRLF; çalışma ağacında hepsi "with CRLF line terminators"). BOM'lu üç dosyada (`GameServerDlg.cpp`, `shared.vcxproj`, `BotCoreTests.vcxproj`) BOM `efbbbf` main ve HEAD'de duruyor. Yeni dosyalar: `shared/ProtocolProfile.h: C++ source, ASCII text, with CRLF line terminators`, `Tests/BotCoreTests/ProtocolProfileTests.cpp: C source, ASCII text, with CRLF line terminators`.
+- ✔ K7: Eklenen tek `printf`'ler `GameServerDlg.cpp:262-265` ve `LoginServer.cpp:143-146`; argümanlar sürüm sayısı ve `"ini"`/`"legacy"` dizgeleri. `ProtocolProfile.h`/`JvCryption.cpp` içinde `printf` yok; `printf.*(CryptoKey|PrivateKey|0x1257|0x7412)` araması boş.
+- ✔ K8: `git status --short` temiz (son commit sonrası).
+
+**Plandan sapmalar:**
+1. `shared/ProtocolProfile.h` `<cstdint>`'e ek olarak `<cstdlib>` içerir: §5.1'in istediği `strtoull` bu başlıktadır. Yine yalnız standart kütüphane; `types.h`/`stdafx.h` dahil değil.
+2. §5.4 `#if` dallarını `GetServerList` (`LoginServer.cpp:72-117`) içinde tarif ediyor; kodda üç dal `LoginServer::UpdateServerList()`'tedir (aynı satır aralığı, `:78-117`). `GetServerList` yalnız önbellekteki paketi ekler, değişmedi. Dönüşüm `UpdateServerList`'te yapıldı (aynı dosya, aynı üç dal).
+3. `shared/shared.vcxproj.filters` depoda yok; oluşturulmadı. Yeni başlık yalnız `shared.vcxproj`'a `ClInclude` olarak eklendi. `BotCoreTests` için de `.filters` yok.
+4. `ParseCryptoKey` plandaki asgari tariften daha sıkı: baştaki/sondaki boşluğu tolere eder; işaret (`"-1"`), sonda çöp (`"12zz"`), çift önek (`"0x0x12"`) ve 16'dan fazla anlamlı hex hane (taşma) → 0. Hepsi `Protocol_ParseCryptoKey`'de test edildi.
+
+**Açık sorular / notlar:**
+1. K2'deki "2752" tabanı bu dalda yok: `main` @ `1eff1bfe` üzerinde `run-tests.sh Release` `331 tests` raporluyor. 2752 başka bir dalın veya CHECK sayısının değeri olabilir; karşılaştırma 331 → 340 ile yapıldı.
+2. `PrivateKeyForVersion` 1454..1699 için (planın bağlayıcı tablosu gereği) `0x1257091582190465` döner. Eski `#else` dalı bu sürümlerde `0x7412580096385200` verirdi. Bu yalnız derleme zamanı `__VERSION`'ı 1453 olmayan bir derlemeyi veya ini'de 1454..1699 verilmesini etkiler; legacy 1453 yolu bayt bayt aynı (K3 b).
+3. İlk açılışta `CIni` eksik anahtarları yazacağı için `GameServer.ini` ve `LogInServer.ini`'ye `[PROTOCOL] CLIENT_VERSION=0`, `CRYPTO_KEY=0` eklenecek (planda beklenen davranış). Sunucular başlatılmadı, dağıtım yapılmadı; gerçek konsol satırı Claude'un sunucu denemesinde görülecek.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum (aşağıdaki komutlar) + kod incelemesi.
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | Uygulayıcı: Release/Debug hatasız, yeni uyarı yok (değişen dosyalardaki uyarılar yalnız satır kayması). Ayrıca birleşik hatta (`yukseltme/1534`) `./tools/build.sh Release` rc=0; uyarılar önceden var olan C4834/C4789 |
+| K2 | ✔ | `bot/U1-01`: `./tools/run-tests.sh Release --no-build` → `340 tests, 0 failed` (taban `main` 331 + 9). Birleşik hat (`gece/2026-10-08-kalabalik` + U1-01): `3470 tests, 0 failed`; kalabalık tabanı aynı koşuda `3461 tests, 0 failed` → fark tam 9 (Protocol_*) |
+| K3 | ✔ | Kod incelemesi: legacy yolda `ClientVersion(__VERSION)` = 1453, `PrivateKeyForVersion(1453)` = eski `#else` anahtarı; `UpdateServerList` (planın "GetServerList" dediği yer; sapma 2 kabul) alan sırası/tipleri aynı, bilinmeyen bayt 1, LAN IP yok; `HandleServerlist` echo yalnız ≥ 1500; `HandleVersion` `LoginVersionReply(0, db)` = DB değeri, tip `int16` (eski `short`) → aynı 2 bayt. Test `Protocol_LegacyProfileHandshake` |
+| K4 | ✔ | `Protocol_Client1534ProfileHandshake`: 1534, `0x1257…`, echo var, bayt 1, yanıt 1534 |
+| K5 | ✔ | `git diff --stat main...bot/U1-01`: yalnız §4 dosyaları + plan; `GameServer/Bot`, `BotCore`, `db`, `docs` yok |
+| K6 | ✔ | Uygulayıcı `file` karşılaştırması; birleşik hatta `BotCoreTests.vcxproj` BOM+CRLF korundu |
+| K7 | ✔ | İki `printf` yalnız sürüm ve `ini`/`legacy` yazar |
+| K8 | ✔ | `git status --short` temiz |
+
+Sapmalar (kabul): (1) `<cstdlib>` eklendi (`strtoull`); (2) `#if` dalları `UpdateServerList`'te, `GetServerList` değişmedi; (3) `shared.vcxproj.filters` yok, oluşturulmadı; (4) `ParseCryptoKey` plandan katı — testli. Not: 1454–1699 için anahtar artık `0x1257…` (eski kodda bu sürümler derlenmiyordu; yalnız 1453 yolu bağlayıcıydı).
+
+**Birleşik hat:** `yukseltme/1534` = `gece/2026-10-08-kalabalik` (tüm gece hatları) + `bot/U1-01` (merge `020e4a1d`); çakışmalar yalnız `BotCoreTests.vcxproj`, `KNOWN_ISSUES.md`, `STATUS.md` (iki taraf da satır ekledi; ikisi de korundu).
+
+**Çalışma zamanı:** henüz denenmedi (T-UPG-01 insan testi; ayrı sunucu dizini `C:\dev\fdp1534\server` ile).

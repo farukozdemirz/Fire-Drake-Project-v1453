@@ -6,6 +6,7 @@
 #include "../shared/Ini.h"
 #include "../shared/DateTime.h"
 #include "../shared/HardwareInformation.h"
+#include "../shared/ProtocolProfile.h"
 
 #include <time.h>
 #include <iostream>
@@ -245,6 +246,23 @@ void CGameServerDlg::GetTimeFromIni()
 	// Both need to be enabled to use MARS.
 	if (!m_bMarsEnabled || !bMarsEnabled)
 		m_bMarsEnabled = false;
+
+	// Runtime protocol profile (ADR-0068); 0 or missing keeps the legacy compile-time behaviour.
+	int nClientVersion = ini.GetInt("PROTOCOL", "CLIENT_VERSION", 0);
+	if (nClientVersion < 0 || nClientVersion > 0xFFFF)
+		nClientVersion = 0;
+
+	ProtocolProfile::g_configuredClientVersion = (uint16) nClientVersion;
+
+	std::string strCryptoKey;
+	ini.GetString("PROTOCOL", "CRYPTO_KEY", "0", strCryptoKey, false);
+	ProtocolProfile::g_configuredCryptoKey = ProtocolProfile::ParseCryptoKey(strCryptoKey.c_str());
+
+	// Only the profile source is printed, never the key value.
+	printf("Protocol: client version %u (%s), crypto key profile %s\n",
+		(unsigned int) ProtocolProfile::ClientVersion(__VERSION),
+		ProtocolProfile::g_configuredClientVersion != 0 ? "ini" : "legacy",
+		ProtocolProfile::g_configuredCryptoKey != 0 ? "ini" : "legacy");
 
 	m_byWeather = ini.GetInt("TIMER", "WEATHER", 1);
 

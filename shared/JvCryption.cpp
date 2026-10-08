@@ -1,18 +1,10 @@
 #include "stdafx.h"
 #include "JvCryption.h"
 #include "version.h"
+#include "ProtocolProfile.h"
 
-// Cryption
-#if __VERSION >= 1700
-#define g_private_key 0x1207500120128966
-#elif __VERSION >= 1298 && __VERSION < 1453
-#define g_private_key 0x1234567890123456
-#else
-#define g_private_key	0x7412580096385200
-//#define g_private_key 0x1257091582190465 //1453
-#endif 
-
-void CJvCryption::Init() { m_tkey = m_public_key ^ g_private_key; }
+// Cryption: the private key comes from the runtime protocol profile (ADR-0068).
+void CJvCryption::Init() { m_tkey = m_public_key ^ ProtocolProfile::PrivateKey(__VERSION); }
 
 uint64 CJvCryption::GenerateKey()
 {
