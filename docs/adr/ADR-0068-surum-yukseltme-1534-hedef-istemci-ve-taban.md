@@ -27,6 +27,16 @@ Proje sahibi Moradon: The Resurrection dönemine (yeni Moradon, yeni klan sistem
 5. **Haritalar:** zone 71/72 SMD'lerimiz ve bot gezinme verisi aynen kalır. Yeni Moradon için AlphaGame `moradon_0826.smd` yalnız onarılarak (yükseklik ızgarası transpoze, yürünebilirlik ızgarası yeniden üretim) ayrı planla alınır.
 6. **Ortam:** SQL Server 2019 Express ayrı örnek (`.\SQL2019`) olarak kuruldu; yalnız referans DB için kullanılır. Oyun sunucusu `.\SQLEXPRESS` (2017) üzerinde kalır.
 
+## Ek 1 (2026-10-08): U2 veri kapsamı — geri alınabilir varsayılanlar
+
+Proje sahibi "en uygun hali sen seç" dediği için Claude aşağıdaki varsayılanları seçti; her biri betik kayıt tablosuyla geri alınabilir ve proje sahibi değiştirebilir (`docs/reports/u0-1534/E-veri-farki.md` §8, §9):
+
+1. **Pelerin değerleri istemci `Cloak.tbl`'dan** (ALPHA'dan değil): ALPHA'da 144 satırda klan puanı 0, 143 satırda kademe şartı yanlış. 168 yeni pelerin, 84'ü uzun (royal, `byRanking` 8–12). Mevcut 56 satıra dokunulmaz.
+2. **Eşya kapsamı:** istemcinin çözebildiği ve bizde olmayan tüm kimlikler (≈ 35.860; kaynak ALPHA `ITEM`, `ItemClass`/`ItemExt` E §3.4 kuralıyla üretilir). Yeni satırların seviye/stat şartları ALPHA (dönem) değerleriyle kalır; mevcut satırlardaki düşürülmüş şartlar değişmez.
+3. **NPC/canavar:** yalnız istemcinin tanıdığı kimlikler (K_NPC 79, K_MONSTER 60); **24438–24440 aktarılmaz** (bizim zone 64 bekçileri). Yeni canavarların düşürme tablosu yok.
+4. **VERSION satırı eklenmez:** U1-01 ile giriş sunucusu 1534 profilinde sürümü ini'den bildirir; satır eklense eski 1453 istemcisinin launcher'ı yama isterdi.
+5. **Yeni Moradon (zone 21) yerleşimi ve görevler U3'e** (SMD onarımı ve 552 görev kimliği çakışması nedeniyle).
+
 ## Değerlendirilen alternatifler
 
 | Alternatif | Artılar | Eksiler | Neden seçilmedi |
