@@ -274,3 +274,80 @@ doğrulamasıyla bağlanır):
 python3 tools/u2-gen-alpha.py [items|npcs] [--client DIR]
 python3 tools/u2-gen-alpha.py --check
 ```
+
+## 015 — Yeni Moradon, zone 21 (U3-02, ADR-0068 Ek 2)
+
+> **Yalnızca 1534 DB kopyasına uygulanır** (ör. `FDP_kn1534`; ADR-0068 Ek 2 madde 4).
+> Zone 21 verisi DB'den seçilir; betik canlı `FDP_kn_online`'a uygulanırsa 1453
+> istemcisinin Moradon'u bozulur. Betik `FDP_kn_online` adlı veritabanında çalışmayı
+> reddeder ve hiçbir şeyi değiştirmez.
+
+Yeni Moradon'un DB tarafını tek işlemde yazar: zone 21'in `ZONE_INFO`,
+`START_POSITION`, `K_OBJECTPOS` ve `K_NPCPOS` satırları. Başka zone'lara dokunmaz.
+
+- `ZONE_INFO` 21: `strZoneName = 'moradon_1534.smd'` (U3-01'in ürettiği harita),
+  `InitX/InitZ/InitY = 81590/53079/469`, `RoomEvent = 0` (AIServer `21.aievt`'yi
+  artık yüklemez). `ServerNo`, `Type` ve `bz` değişmez.
+- `START_POSITION` 21: iki ulus da 817/530, `bRangeX = bRangeZ = 10`, dört kapı
+  kolonu 0 (ALPHA'nın satırı). Bizimkinde aralık değeri kapı kolonlarındaydı (10/10),
+  `bRange` ise 0'dı.
+- `K_OBJECTPOS` 21: bizim 3 satırın yerine ALPHA'nın yeni harita konumlarındaki 3
+  satırı yazılır: 4013 (El Morad kapısı), 4014 (Karus kapısı), 5001 (örs).
+  Alınmayanlar:
+  - futbol nesneleri 1019–1022 (bu istemcide orası deniz)
+  - 26 adet tür 50 satırı (efekt, `sIndex` 0): sunucunun `ObjectType` listesinde
+    (`shared/packets.h`) yok, hiçbir kod kullanmaz, bizim DB'de de hiç yok.
+- `K_NPCPOS` 21: bizim 138 satırın yerine ALPHA'nın 123 satırı yazılır (75 kimlik,
+  48 NPC ve 75 canavar satırı, `NumNPC` toplamı 423).
+  - Kimliklerin hepsi bizim `K_NPC`/`K_MONSTER` tablolarımızda var; 18'ini `db/014` ekler.
+  - Betik bunu hedef DB'de yeniden denetler. Eksik kimlik varsa (ör. `db/014`
+    uygulanmamışsa) hiçbir şeyi değiştirmez; eksik kimlik AIServer'ın yerleşim
+    yüklemesini durdururdu.
+- Değerler ALPHA'nınkidir ve kolon adıyla kopyalanır.
+  - ALPHA'da `LimitMinX`/`LimitMinZ` 123 satırın hepsinde yer değiştirmiş görünür
+    (TopZ/LeftX). AIServer bu kolonları yalnızca `DungeonFamily > 0` iken okur; zone
+    21'de bu değer her satırda 0'dır, bu yüzden değerler olduğu gibi kopyalanır.
+  - 13 satırda `path`, ALPHA'daki gibi 4 karakterlik `'NULL'` metnidir; yükleyici
+    için boş yolla aynıdır.
+- Tüm koordinatlar 0..1023 aralığındadır (harita 1024 m): başlangıç noktası ve
+  aralığı, `Init`/100, nesneler, yerleşim dikdörtgenleri ve yol noktaları.
+- İlk çalıştırma zone 21 satırlarını `dbo.<tablo>_Z21_U3_BACKUP` tablolarına (4
+  tablo) kopyalar. Sonraki çalıştırmalar yedeğe dokunmaz (`backup=kept`). Betik
+  idempotenttir.
+- Kapsam dışı:
+  - Lua (U3-03)
+  - `USERDATA` konum sıfırlaması (proje sahibinin kararı)
+  - warp ücretleri (SMD'de, U3-01)
+- Sunucunun kapalı olması gerekmez. Tablolar yalnızca açılışta yüklenir: GameServer
+  ve AIServer yeniden başlatılmalı ve `Map/moradon_1534.smd` (U3-01) yerinde olmalıdır.
+- Beklenen çıktı (bizim zone 21 verisiyle):
+  - ilk uygulama: `backup=created deleted_objpos=3 deleted_npcpos=138
+    inserted_objpos=3 inserted_npcpos=123` ve `zone_info=1 start=1 objpos=3
+    npcpos=123 objpos_differ=0 npcpos_differ=0`
+  - tekrar uygulama: `backup=kept deleted_objpos=3 deleted_npcpos=123 ...`
+  - geri alma: `restored=1 zone_info=1 start=1 objpos=3 npcpos=138 objpos_differ=0
+    npcpos_differ=0 backup_tables=absent`
+  - ikinci geri alma: `restored=0 backup_tables=absent`
+
+Uygula (değişken yok):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn1534 -b -i db/015_u3_moradon_1534.sql
+```
+
+Geri al (zone 21'i yedeklerden geri yazar ve yedek tablolarını düşürür; tekrar
+çalıştırılabilir):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn1534 -b -i db/015_u3_moradon_1534_rollback.sql
+```
+
+Betikleri yeniden üret. `tools/u3-gen-moradon-db.py` ALPHA'yı ve bizim DB'yi
+yalnızca okur. `--check` depodaki betiklerin üretici çıktısıyla bayt bayt aynı
+olduğunu denetler (çıkış 0). Kesin geçişte betik bizim DB'ye uygulanırsa
+karşılaştırma `_Z21_U3_BACKUP` tablolarından okunur; `--check` yine 0 kalır.
+
+```bash
+python3 -I tools/u3-gen-moradon-db.py
+python3 -I tools/u3-gen-moradon-db.py --check
+```
