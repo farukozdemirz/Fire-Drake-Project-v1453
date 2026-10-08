@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI |
 | Faz | U2 — Sürüm yükseltme 1534, veri (`docs/17` §2 U, ADR-0068 madde 4 ve Ek 1) |
 | Branch | `bot/U2-02` (taban: U2-01 birleştikten sonraki `main`) |
 | Bağımlı olduğu planlar | U2-01 (`tools/kotbl.py`) |

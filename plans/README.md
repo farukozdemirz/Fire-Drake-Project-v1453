@@ -155,7 +155,7 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | [U1-03](U1-03-1534-userinfo-npcinfo-bolge-degisimi-ve-bot-ayristiricilari.md) | 1534 UserInfo (+19 bayt, 12 parça), adsız NpcInfo, üç parçalı bölge değişimi + BotCore ayrıştırıcıları (`WireLayout`) ve testler; profil kapılı | U1 | HAZIR | `bot/U1-03` (taban: `yukseltme/1534`) |
 | [U1-04](U1-04-1534-istemci-istek-ek-alanlari-pelerin-rgb-ve-pk-siralamasi.md) | 1534 istek ek alanları (tamir NPC, pelerin RGB, warp listesi), PK sıralaması ve `WIZ_CAPE` DB isteği hatası; profil kapılı | U1 | TASLAK (U1-02 sonrası HAZIR) | `bot/U1-04` (taban: `yukseltme/1534`) |
 | [U2-01](U2-01-istemci-tablo-cozucu-ve-1534-pelerin-betigi.md) | İstemci tablo çözücü (`tools/kotbl.py`) ve 1534 pelerin betiği (`db/012`, istemci `Cloak.tbl` değerleriyle 168 yeni pelerin, 84 uzun pelerin) | U2 | KAPANDI (2026-10-08, `main` @ `c537b1fc`) | `bot/U2-01` (taban: `main`) |
-| [U2-02](U2-02-1534-esya-npc-canavar-aktarimi-alpha-db-den.md) | 1534 eşya (≈ 35.860), NPC (79) ve canavar (60) aktarımı, kaynak ALPHA DB, kapsam istemcinin tanıdığı kimlikler (`db/013`, `db/014`) | U2 | HAZIR | `bot/U2-02` (taban: `main`) |
+| [U2-02](U2-02-1534-esya-npc-canavar-aktarimi-alpha-db-den.md) | 1534 eşya (≈ 35.860), NPC (79) ve canavar (60) aktarımı, kaynak ALPHA DB, kapsam istemcinin tanıdığı kimlikler (`db/013`, `db/014`) | U2 | KAPANDI (2026-10-08, `main` @ `618bda27`) | `bot/U2-02` (taban: `main`) |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
