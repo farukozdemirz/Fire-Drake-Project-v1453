@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | HAZIR |
+| Durum | UYGULANIYOR |
 | Faz | U2 — Sürüm yükseltme 1534, veri (`docs/17` §2 U, ADR-0068 madde 4) |
 | Branch | `bot/U2-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — (U1-01 KAPANDI) |
