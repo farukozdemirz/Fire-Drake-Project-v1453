@@ -162,6 +162,12 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | [U3-01](U3-01-yeni-moradon-smd-ureteci-ve-gelen-warp-yamasi.md) | Yeni Moradon SMD üreteci (istemci `.gtd`/`.opd` + kural R) ve Moradon'a giren warp yaması; çevrimdışı V1–V10 | U3 | KAPANDI (2026-10-08, `main` @ `bf8ad520`) | `bot/U3-01` (taban: `main`) |
 | [U3-02](U3-02-yeni-moradon-db-betigi-zone-21.md) | Yeni Moradon DB betiği `db/015` (ZONE_INFO, START_POSITION, K_OBJECTPOS, K_NPCPOS zone 21); yalnız 1534 DB'sine | U3 | KAPANDI (2026-10-08, `main` @ `6520106c`; yalnız 1534 DB'lerine uygulanır) | `bot/U3-02` (taban: `main`) |
 
+## Sürüm yükseltme tabanı AlphaGame planları (faz UA, ADR-0069)
+
+| Plan | Başlık | Faz | Durum | Branch |
+|---|---|---|---|---|
+| [UA-01](UA-01-alphagame-kaynagini-ice-aktarma-ve-derleme.md) | AlphaGame kaynağını içe aktarma ve Release\|Win32 derleme (bot katmanı devre dışı, sunucu çalıştırılmaz) | UA | HAZIR | `bot/UA-01` (taban `yukseltme/alpha`) |
+
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
 Kaynak: `docs/reports/degerlendirme-2026-10-02.md`. Bu planlar F4/F5 döngülerinin kendi numaralarının **dışında** ayrılmış aralıklardadır (F4-50.., F5-50..); mevcut döngü işiyle çakışmaz. **Önerilen sıra:** F4: F4-50 → F4-51 → F4-52 → F4-54 (F4-53 TASLAK: ADR-0018 madde 4 sonrası); F5: F5-54 ve F5-52 (F5-09'dan **önce**: `docs/12` §13.3), F5-51, F5-50, F5-53, sonra F5-55 (TASLAK). Skill desteği (cast iptali, uçan, çift tipli, Type4, alan, cure/diriltme/summon/eşya, CLI-12, envanter doldurma) için bu aralıkta plan **yoktur**: ana hat ADR-0018 dilimleri (F4-24 ve sonrası) yürütür; eşleme `docs/17` §2.1.

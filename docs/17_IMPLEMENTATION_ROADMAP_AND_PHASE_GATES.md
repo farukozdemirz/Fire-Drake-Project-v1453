@@ -274,7 +274,7 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Alan | İçerik |
 |---|---|
 | Amaç | Sunucuyu ve botları AlphaGame paketiyle gelen 1534 istemcisiyle (yeni Moradon, Squire/Knight/Royal klan kademeleri, uzun pelerin) çalışır hale getirmek; bot davranışını ve doğrulanmış mekanikleri bozmadan |
-| Taban | Bizim kaynak kod (seçenek A, ADR-0068). AlphaGame kaynağı (`C:\dev\fdp1534\alpha`) ve DB'si (`.\SQL2019` → `FDP_alpha1534`) yalnız referans |
+| Taban | **2026-10-08: ADR-0069 ile AlphaGame tabanına geçildi, bkz. faz UA.** Önceki: bizim kaynak kod (seçenek A, ADR-0068). AlphaGame kaynağı (`C:\dev\fdp1534\alpha`) ve DB'si (`.\SQL2019` → `FDP_alpha1534`) yalnız referans |
 | Alt fazlar | **U1** protokol profili ve paket düzenleri (`[PROTOCOL] CLIENT_VERSION`, kripto anahtarı, giriş sunucusu, istemcinin beklediği sunucu→istemci düzenleri, BotCore ayrıştırıcıları); **U2** veri (VERSION, pelerin tablosu `Cloak.tbl` 224 satır ile eşleşme, yeni eşya/NPC satırları; eklemeli `db/0xx` + rollback); **U3** yeni Moradon (SMD istemcinin `moradon.gtd`/`.opd` dosyalarından üretilir, ALPHA yalnız warp/nesne bağışçısı — ADR-0068 Ek 2; ZONE_INFO/START_POSITION/K_OBJECTPOS/K_NPCPOS; 6 SMD'de Moradon'a giren warp hedefleri; geçişte ayrı 1534 DB'si); **U4** klan sistemi (kademe/pelerin kuralları, RGB, `[CLAN_GRADE]`); **U5** regresyon ve kapanış |
 | Kapsam dışı | AlphaGame sunucusunu/AIServer'ını olduğu gibi almak; MAGIC/MAGIC_TYPE* değerlerini değiştirmek (ayrı karar); pet sistemi; AlphaGame'in ek sistemleri (Genie, VIP depo, balıkçılık/madencilik, mühür) — her biri ayrı ADR |
 | Ön koşul | Hedef istemci `C:\dev\fdp1534\client` (Defender temiz); SQL Server 2019 referans örneği kurulu (2026-10-08) |
@@ -282,6 +282,19 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Riskler | R-UPG-03 istemci tablosu ↔ DB kimlik uyumsuzluğu; R-UPG-05 istemcinin beklediği paket düzeni (çalışma zamanında doğrulanacak); yeni Moradon SMD onarımı |
 | Geri alma | `[PROTOCOL] CLIENT_VERSION=1453` + eski istemci; `db/0xx_*_rollback.sql` |
 | Durum | **GELİŞTİRİLDİ, insan testi bekliyor** (2026-10-08): U1-01..07, U2-01/02, U3-01/02 DOĞRULANDI/KAPANDI (`yukseltme/1534`); duman koşuları temiz (`docs/reports/u0-1534/F-duman-kosusu-2026-10-08.md`). Kalan: T-UPG-01/02/03 insan testi; U4 (klan kademe yükseltme kuralı ve Squire/Knight/Royal görevleri — görev stratejisi kararıyla); 1534 görev tablosu (QUEST_HELPER 552 kimlik çakışması) |
+
+### UA — Sürüm yükseltme tabanı AlphaGame 1534 — ADR-0069
+
+| Alan | İçerik |
+|---|---|
+| Amaç | Faz U'nun hedefini (1534 istemcisi) AlphaGame kaynak kodu, DB'si, skill verisi, görevleri ve haritaları taban alınarak gerçekleştirmek; bot katmanını bu tabana taşımak |
+| Taban | AlphaGame kaynağı (`C:\dev\fdp1534\alpha`), DB'si (`.\SQL2019`), Lua ve Map seti. İstisnalar ve koruma kuralları ADR-0069 madde 2, 3, 6 |
+| Planlar | UA-01 içe aktarma ve derleme; UA-02 güvenlik; UA-03 istemci düzen düzeltmeleri; UA-04 bot kancaları; UA-05 DB; UA-06 Map/Lua/QUEST_HELPER; UA-07 `docs/03`, bot yeniden doğrulama, gezinme verisi |
+| Kapsam dışı | Paketteki derlenmiş ikililer; canlı 1453 ortamı (`FDP_kn_online`); 1534 test ortamı (`FDP_kn1534`) bu faz bitene kadar değişmez |
+| Kabul | T-UPG-01/02/03 AlphaGame tabanıyla; T-UPG-04 bot testleri ve 6v6/8v8; A §6 güvenlik bulgularının her biri için kapanış kanıtı |
+| Riskler | 11 mekanik kural değişimi (bot ayarları); zone 71 sunucu/istemci zemin farkı (kabul edilmiş risk, ADR-0069 madde 6); AlphaGame DB kusurları |
+| Geri alma | `yukseltme/1534` hattı ve ADR-0068 düzeni çalışır kalır |
+| Durum | **BAŞLADI** (2026-10-08): ADR-0069; dal `yukseltme/alpha` @ `438f776c`; UA-01 HAZIR |
 
 ## 3. Temel sürüm ve sonraki geliştirmeler
 

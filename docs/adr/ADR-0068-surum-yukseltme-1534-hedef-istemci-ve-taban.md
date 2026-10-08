@@ -1,6 +1,6 @@
 # ADR-0068: Sürüm yükseltme — hedef istemci 1534 (AlphaGame paketi), taban bizim kaynak kod
 
-Durum: KABUL
+Durum: KABUL; madde 2, 4, 5 ve 6 ADR-0069 ile değişti (2026-10-08, proje sahibi: taban AlphaGame)
 Tarih: 2026-10-08 · Karar verenler: proje sahibi (hedef paket: AlphaGame 1534; "sen incele, en uygun hali seç"), Claude (taban seçimi, bu ADR)
 İlgili: K-11 (hedef istemci), `docs/reports/surum-yukseltme-analizi-moradon-resurrection-2026-10-08.md` §1–§12, faz U (`docs/17` §2 U)
 
