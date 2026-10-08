@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | U3 — Sürüm yükseltme 1534, yeni Moradon (`docs/17` §2 U, ADR-0068 Ek 2) |
 | Branch | `bot/U3-02` (taban: `main`) |
 | Bağımlı olduğu planlar | U2-02 (KAPANDI; zone 21 NPC/canavar kimlikleri), U3-01 (SMD dosya adı `moradon_1534.smd`; paralel yazılabilir) |
@@ -227,4 +227,16 @@ ALPHA `K_OBJECTPOS` 21: toplam 33 satır.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum (`--check`) + betik incelemesi + uygulayıcının `FDP_smoke1534` test kanıtı (`scratchpad/u302/`).
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 -I tools/u3-gen-moradon-db.py --check` → `check OK`; `u2-gen-alpha.py --check` hâlâ OK (yükleyerek yeniden kullanım) |
+| K2 | ✔ | Duman DB'sinde uygula/tekrar/geri al (`EXCEPT` 0)/yeniden uygula; `FDP_kn_online` önce/sonra aynı |
+| K3 | ✔ | 1019–1022 yok; 75 kimliğin hepsi tablolarda (betik de hedefte denetler) |
+| K4 | ✔ | ASCII, LF |
+| K5 | ✔ | diff yalnız §4 + plan |
+
+Ek emniyet: betik `FDP_kn_online`'da çalışmayı reddeder (ilk parti `-b` ile durur; ana işlem partisi `DB_NAME()` tekrar denetler ve `RETURN`). Tek DB geçişinde `REFUSED_DATABASE` kaldırılıp betik yeniden üretilmeli. Kabul edilen kararlar: ALPHA `LimitMin` değerleri olduğu gibi (çalışma zamanı etkisi yok), tür 50 efekt satırları alınmadı.
