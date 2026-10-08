@@ -174,3 +174,103 @@ Betikleri yeniden üret (varsayılan istemci yolu
 python3 tools/u2-gen-capes.py [--client PATH]
 python3 tools/u2-gen-capes.py --check
 ```
+
+## 013 — 1534 eşyaları (U2-02, ADR-0068 madde 4 ve Ek 1)
+
+1534 istemcisinin çözebildiği (`item_org_us.tbl` tabanı + `Item_Ext_<n>_us.tbl`
+varyantı; varyantın BaseID'si 0 ya da o taban) ama bizim `ITEM` tablomuzda
+olmayan 35.861 kimlikten ALPHA DB'sinde (`.\SQL2019` / `FDP_alpha1534`) bulunan
+**35.860** satırı ekler (300177146 iki DB'de de yok). Mevcut satırların hiçbiri
+değişmez; botların kullandığı 83 eşya aynen kalır.
+
+- Betikler **üretilmiştir**, elle düzenlenmez: `tools/u2-gen-alpha.py` ALPHA ve
+  bizim DB'yi `SQLCMD.EXE` ile salt okur (yalnız `SELECT`), istemci tablolarını
+  `tools/kotbl.py` ile çözer. `python3 tools/u2-gen-alpha.py --check` depodaki
+  betiklerin üretici çıktısıyla bayt bayt aynı olduğunu denetler (çıkış 0).
+  Üretici `dbo.ITEM_U2_ADDED` kayıt tablosundaki kimlikleri "bizde var" saymaz;
+  betik canlı tabloya uygulandıktan sonra da `--check` 0 kalır.
+- Kolonlar bizim 60 kolonumuzdur; ALPHA'ya özgü `UpgradeNotice`, `NPbuyPrice`,
+  `Bound` kopyalanmaz. Değerler ALPHA'nınkidir (seviye ve stat şartları dahil;
+  ADR-0068 Ek 1).
+- ALPHA'da `ItemClass` her satırda NULL'dır. `ItemClass` ve aksesuar `ItemExt`
+  üreticide hesaplanır; kural (`docs/reports/u0-1534/E-veri-farki.md` §3.4'ün
+  netleştirilmiş hâli) betik başlığında yazılıdır ve bizim mevcut satırlarımızın
+  %99,64'ünü (85.539 / 85.845) aynen verir.
+- Satırlar önce oturumun geçici tablosu `#u2_items`'a 36 parti hâlinde (en çok
+  1000 satır) yüklenir, sonra tek işlemde `INSERT … SELECT … WHERE NOT EXISTS (Num)`
+  ile eklenir. Geçici tablo eksikse (ör. `-b` olmadan bir parti hata verdiyse)
+  hiçbir satır eklenmez; yine de her zaman `-b` ile çalıştırın.
+- Eklenen kimlikler `dbo.<Target>_U2_ADDED` kayıt tablosuna yazılır. Betik
+  idempotenttir; ikinci çalıştırma `inserted=0` bildirir.
+- Sunucunun kapalı olması **gerekmez**; ancak `ITEM` yalnızca açılışta
+  (GameServer) yüklenir, etki için sunucu yeniden başlatılmalıdır. Satır sayısı
+  85.920 → 121.780 (+%41,7); DB'de tablo verisi 14,6 MB → 20,7 MB; GameServer
+  belleğinde tahmini +7–8 MB [A].
+- Beklenen çıktı (85.920 satırlık tabloda ilk uygulama, yaklaşık 30 sn):
+  `inserted=35860 already_present=0` ve `target_rows=121780 logged=35860
+  staged_not_in_target=0`; geri alma: `removed=35860 target_rows=85920
+  log_table=absent`.
+
+Uygula (`Target` zorunlu; gerçek kullanımda `ITEM`):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v Target=ITEM -i db/013_u2_items_1534.sql
+```
+
+Geri al (yalnız kayıt tablosundaki kimlikleri siler, kayıt tablosunu düşürür;
+tekrar çalıştırılabilir, ikinci çalıştırma `removed=0`):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v Target=ITEM -i db/013_u2_items_1534_rollback.sql
+```
+
+## 014 — 1534 NPC ve canavarları (U2-02, ADR-0068 madde 4 ve Ek 1)
+
+İstemcinin `Npc_us.tbl` / `Mob_us.tbl` tablolarının tanıdığı ama bizim `K_NPC` /
+`K_MONSTER` tablolarımızda olmayan kimlikleri ALPHA satırlarıyla ekler. ALPHA'nın
+istemcide olmayan kimlikleri kopyalanmaz.
+
+- `K_NPC`: bizde olmayan 82 istemci kimliğinin hepsi (hepsi ALPHA'da var).
+  Bizim zone-64 bekçilerimizin kimlikleri 24438, 24439, 24440 (1534 istemcisinde
+  başka NPC'ler) betikte **yoktur**; bizdeki satırları değişmez.
+- `K_MONSTER`: bizde olmayan 65 istemci kimliğinden ALPHA'da bulunan 60'ı
+  (4061, 8111, 8112, 8161, 8162 iki DB'de de yok). Düşürme tabloları
+  (`K_MONSTER_ITEM`) bu betikte yoktur.
+- `strName`: istemci adı (yazdırılabilir ASCII ve kolona, `varchar(30)`, sığıyorsa);
+  değilse ALPHA adı; o da değilse `Npc <id>`. `K_NPC`'de 4 satır ALPHA adını alır
+  (14438, 19004, 24434: istemci adı 30 karakterden uzun; 24437: ASCII değil),
+  `K_MONSTER`'da 4063 `Npc 4063` olur (istemci adı 31 karakter, ALPHA adı Korece).
+- Bizim tablolarda olup ALPHA'da olmayan `sLightR` ve `byMoneyType` (NOT NULL,
+  varsayılansız) `0` yazılır. Sunucu bu kolonları yüklemez
+  (`shared/database/NpcTableSet.h`); üretici bunu her çalıştırmada denetler.
+- Kayıt tabloları `dbo.<NpcTarget>_U2_ADDED` ve `dbo.<MonTarget>_U2_ADDED`; betik
+  idempotenttir.
+- Sunucunun kapalı olması **gerekmez**; `K_NPC`/`K_MONSTER` yalnızca açılışta
+  (AIServer) yüklenir, etki için yeniden başlatma gerekir. Yerleşim (`K_NPCPOS`)
+  bu betikte yoktur (U3).
+- Beklenen çıktı (ilk uygulama): `npc inserted=82 already_present=0`,
+  `monster inserted=60 already_present=0`, `npc target_rows=603 logged=82
+  staged_not_in_target=0`, `monster target_rows=850 logged=60
+  staged_not_in_target=0`; geri alma: `npc removed=82 target_rows=521
+  log_table=absent`, `monster removed=60 target_rows=790 log_table=absent`.
+
+Uygula (`NpcTarget` ve `MonTarget` zorunlu; gerçek kullanımda `K_NPC`, `K_MONSTER`):
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v NpcTarget=K_NPC -v MonTarget=K_MONSTER -i db/014_u2_npc_monster_1534.sql
+```
+
+Geri al:
+
+```bash
+sqlcmd -S .\SQLEXPRESS -E -d FDP_kn_online -b -v NpcTarget=K_NPC -v MonTarget=K_MONSTER -i db/014_u2_npc_monster_1534_rollback.sql
+```
+
+Betikleri yeniden üret (varsayılan istemci klasörü
+`/mnt/c/dev/fdp1534/client/Knight Online/Data`; iki DB'ye de Windows kimlik
+doğrulamasıyla bağlanır):
+
+```bash
+python3 tools/u2-gen-alpha.py [items|npcs] [--client DIR]
+python3 tools/u2-gen-alpha.py --check
+```
