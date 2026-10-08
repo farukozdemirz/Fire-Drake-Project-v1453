@@ -1,7 +1,7 @@
 # Bilinen Sorunlar
 
 > Kurallar ve önem seviyeleri: `docs/21` §4.4. Önem: K = Kritik, Y = Yüksek, O = Orta, D = Düşük. Mekanik hatalar (MB-*) ayrıca `docs/03` §15'te.
-> Son güncelleme: 2026-10-08 · Claude (KI-043..047 eklendi; KI-028..042 diğer dallarda)
+> Son güncelleme: 2026-10-08 · Claude (KI-043..048 eklendi; KI-028..042 diğer dallarda)
 
 | Kimlik | Başlık | Önem (K/Y/O/D) | Bileşen | İlk görüldüğü commit | Tekrar üretme | Geçici çözüm | Durum | İlgili test / commit |
 |---|---|---|---|---|---|---|---|---|
@@ -43,3 +43,4 @@
 | KI-045 | `CDBAgent::LoadSkillShortcut` (`GameServer/DBAgent.cpp:766-796`) DB'den okunan kısayol sayısını sınırlamıyor; sayı 65'ten büyük bir satır 260 baytlık arabelleğin dışını okur `[D]`. Sunucunun kayıt yolu sayıyı sınırladığı için yalnız elle düzenlenmiş/bozuk satır tetikler | D | GameServer (DB) | 0f52027 | `USERDATA_SKILLSHORTCUT` satırında sayıyı > 65 yap, karakterle gir | — | AÇIK (küçük plan) | U1-06 uygulayıcı raporu |
 | KI-046 | Klan ittifaktaysa ve ittifak (ana) klanı bellekte yoksa `CKnights::GetCapeID(nullptr)` çöker (MyInfo ve UserInfo yolları; 1453 ve 1534 profilinde aynı) `[D]` | O | GameServer (klan) | 0f52027 | İttifak ana klanını DB'den sil/devre dışı bırak, üye klandan bir karakterle gir | — | AÇIK (U1-05 veya ayrı küçük plan) | U1-02 uygulayıcı raporu |
 | KI-047 | `CUser::SendLoyaltyChange(0)` (çağıranlar `GameServer/DBAgent.cpp:1300`, `GameServer/GameServerDlg.cpp:1221`) bağış yöntemi 0 olan Accredited5+ klan üyelerinden NP kazanılmadan 1–7 NP keser; oyuncunun NP'si bu tutardan azsa işaretsiz taşma olabilir `[D]` | O | GameServer (sadakat/klan) | 0f52027 | Accredited5+ klanda bağış yöntemi 0 olan üyeyle NP'siz bir `SendLoyaltyChange(0)` tetikleyen akış | — | AÇIK (oyun kuralı; ayrı plan + proje sahibi onayı) | U1-07 uygulayıcı raporu |
+| KI-048 | Yeni Moradon (U3-01) warp varış kutularında yürünemez kareler: sunucu oyuncuyu `x,z + {−4..0, 5..10}` kutusunda rastgele bırakır (`SelectWarpList`); Tale Village (2122, 81,919) 67/121, Ardream (2126) 93/121, Ronark (2128) 99/121 yürünebilir `[V: tools/u3-moradon-smd.py verify]`. Ardream/Ronark eski haritada da benzer; yalnız Tale yeni | D | Harita (zone 21 warp) | U3-01 | 1534 istemcisiyle Moradon kapı menüsünden Tale Village'a git (birkaç kez) | Takılırsa yeniden warp | AÇIK: Tale hedefini yürünebilir bir merkeze kaydırmak (warp spec) — insan testinden sonra karar | U3-01 doğrulama |
