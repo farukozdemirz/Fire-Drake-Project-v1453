@@ -38,3 +38,24 @@
 ## Hüküm
 
 1534 paket düzenleri botların görme, hedefleme, dövüş, şifa ve diriliş akışını bozmadı; metrikler taban ile aynı büyüklükte (farklar koşudan koşuya olağan oynama). İnsan istemcisiyle giriş testi (T-UPG-01) ayrıca yapılacak.
+
+## Koşu 3 — tam hat + yeni Moradon (2026-10-08 18:24)
+
+- Derleme: `yukseltme/1534` @ `2da2dfe5` (U1-01..07, U2, U3); Release `--packet-trace`; 3484 test 0 başarısız.
+- Harita: duman çalışma dizinine `moradon_1534.smd` (md5 `cfbdc405…`) ve 6 yamalı SMD; DB `FDP_smoke1534`'te `db/015` (zone 21 → `moradon_1534.smd`, 123 NPC yerleşimi).
+- Açılış: AIServer/GameServer/LogInServer UP, AI bağlı; `NavService: nav ready: zone 71 … crc32=4fd154bc` (yama öncesiyle aynı).
+
+| Metrik (ilk 120 sn) | Taban | 1534 (U1-03) | Tam hat (U1-07 + U3) |
+|---|---|---|---|
+| ACTION_SUBMIT | 1.157 | 1.703 | 1.574 |
+| HIT_TAKEN | 126 | 173 | 184 |
+| HEAL | 38 | 69 | 54 |
+| TARGET_SET | 101 | 129 | 126 |
+| TEAM_TARGET | 105 | 132 | 165 |
+| DEBUFF_CAST | 22 | 34 | 24 |
+| CURE_CAST | 18 | 35 | 16 |
+| DEATH / RESPAWN | 6 / 6 | 6 / 6 | 7 / 7 |
+| POTION | 91 | 147 | 155 |
+| FAIRNESS_REJECT | 0 | 1 | 3 (CLI-18 parti sohbeti aralığı) |
+
+Hüküm: tam hat ve yeni Moradon bot akışını bozmadı; Ronark gezinme parmak izi değişmedi; bot günlüğünde hata yok.
