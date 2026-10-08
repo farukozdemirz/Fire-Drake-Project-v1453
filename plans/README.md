@@ -151,6 +151,7 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
 | [U1-01](U1-01-calisma-zamani-protokol-profili-surum-ve-kripto-anahtari.md) | Çalışma zamanı protokol profili: istemci sürümü ve kripto anahtarı ini'den (`[PROTOCOL] CLIENT_VERSION`, varsayılan = bugünkü davranış) | U1 | KAPANDI (2026-10-08, `main` @ `cb50146c`; birleşik hat `yukseltme/1534`) | `bot/U1-01` (taban: `main`) |
+| [U2-01](U2-01-istemci-tablo-cozucu-ve-1534-pelerin-betigi.md) | İstemci tablo çözücü (`tools/kotbl.py`) ve 1534 pelerin betiği (`db/012`, istemci `Cloak.tbl` değerleriyle 168 yeni pelerin, 84 uzun pelerin) | U2 | HAZIR | `bot/U2-01` (taban: `main`) |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
