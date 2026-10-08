@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANIYOR |
+| Durum | UYGULANDI |
 | Faz | U2 — Sürüm yükseltme 1534, veri (`docs/17` §2 U, ADR-0068 madde 4) |
 | Branch | `bot/U2-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — (U1-01 KAPANDI) |
@@ -101,7 +101,82 @@ git status --short
 
 ## Uygulayıcı Raporu
 
-(Uygulayıcı doldurur.)
+### Tur 1
+
+**Durum:** UYGULANDI (K1–K8 ✔). Uygulayıcı: Claude alt ajanı (proje sahibinin bu yükseltme fazı için verdiği talimatla, DeepSeek yerine), önceden açılmış çalışma ağacı `/mnt/c/dev/fdp-u2-01`.
+
+**Branch ve commit'ler:** `bot/U2-01` (taban `main` @ `a516b2d5`)
+- `fd981615` [U2-01] Durum UYGULANIYOR
+- `f7c52739` [U2-01] tools/kotbl.py: genel istemci .tbl cozucu (info, dump, --selftest)
+- `5ec27644` [U2-01] tools/u2-gen-capes.py ve uretilmis db/012 pelerin betikleri (224 istemci satiri, 84 uzun pelerin)
+- `5509927d` [U2-01] db/README.md: 012 bolumu (1534 pelerin betigi, uygula/geri al)
+- bu rapor + `Durum: UYGULANDI` commit'i
+
+**Değişen dosyalar**
+- `tools/kotbl.py` (YENİ): modül + CLI. `decode(data) -> Table`, `load(path)`, `encode(types, rows)` (şifreleyen yardımcı), `Table.types/rows/trailing_bytes/bad_strings`. Şifre ve tipler `client-tbl-quests.py` ile aynı (0x0816/0x6081/0x1608; tip 1–9). Bilinmeyen tip, bozuk kolon/satır sayısı, kesik veri ve geçersiz dizgi uzunluğu açık `TableError`; satır sonrası artık bayt hata değil, `trailing_bytes` alanı + stderr uyarısı. CLI: `info`, `dump [--tsv]` (UTF-8), `--selftest`.
+- `tools/u2-gen-capes.py` (YENİ): `kotbl`'ı yol ile yükler (`python3 -I` betik dizinini `sys.path`'e koymadığı için), 7 kolonlu `Cloak.tbl`'ı okur, E §2.1 eşlemesiyle iki betiği üretir; `--check` bayt bayt karşılaştırır (0 aynı, 1 farklı, 2 girdi hatası).
+- `db/012_u2_capes_1534.sql`, `db/012_u2_capes_1534_rollback.sql` (YENİ, üretilmiş): `Target` değişkeni zorunlu; tek `INSERT … SELECT … WHERE NOT EXISTS` + 224 satırlık `VALUES` tablo değişkeni; eklenen kimlikler `dbo.$(Target)_U2_ADDED`'e; geri alma yalnız kayıttaki kimlikleri siler ve kayıt tablosunu düşürür.
+- `db/README.md`: `## 012` bölümü (Türkçe; uygula/geri al/yeniden üret komutları, sunucu kapalı olma şartı yok, etki için yeniden başlatma).
+
+**Derleme:** C++ değişikliği yok; AGENTS.md §4 gereği yine de `./tools/build.sh Release` çalıştırıldı (28 sn, çıkış 0, `error` 0). Son satırlar:
+```
+  proj-GameServer.vcxproj -> C:\dev\fdp-u2-01\build\bin\x86-Release\Server\GameServer.exe
+  ...
+  BotCoreTests.vcxproj -> C:\dev\fdp-u2-01\build\bin\x86-Release\Tests\BotCoreTests.exe
+```
+(Bu çalışma ağacının sunucuları `[DOWN]`; çalışan sunucular `C:\dev\fdp-edit`'e ait, dokunulmadı.)
+
+**Kabul kriterleri**
+
+- ✔ **K1** `python3 tools/kotbl.py --selftest` → `selftest OK`, çıkış 0 (`python3 -I` ile de aynı). Selftest: şifre gidiş-dönüş + sabit bilinen-cevap vektörü (`encrypt(b"KOTBL\x00\x01\xff")` = `43e5b0b8bc4846d2`; `client-tbl-quests.py`'nin `encrypt`'i aynı sonucu veriyor), tüm tipler (1–9, tam sayı sınır değerleri, boş/ASCII/Korece CP949 dizgi, float32/float64), satırsız tablo, 56 artık bayt, 6 hata durumu, TSV kaçışları. Mutasyon denemesi (geçici kopyada şifre ve vektör bozuldu) `selftest FAILED` ve çıkış 1 verdi.
+- ✔ **K2** Duman testi (`python3 -I tools/kotbl.py info …`, salt okuma):
+```
+Cloak.tbl (1534)          size 6762    columns 7  types 6 7 6 6 2 6 2  rows 224   trailing_bytes 0   bad_strings 0
+Cloak.tbl (eski istemci)  size 1740    columns 5  types 6 7 6 6 2      rows 56    trailing_bytes 0   bad_strings 0
+Skill_Magic_Main_us.tbl   size 350164  columns 33                      rows 1864  trailing_bytes 0   bad_strings 0
+Quest_Menu_us.tbl         size 13598   columns 2  types 6 7            rows 480   trailing_bytes 56  (stderr: warning: 56 trailing bytes after the last row)
+```
+  Ayrıca `dump --tsv` ile yeni `Cloak.tbl` çıktısı, E raporunun analiz dökümüyle (`scratchpad/k1534/e_out/new/Cloak.tbl.tsv`) başlık hariç bayt bayt aynı (`diff` boş).
+- ✔ **K3** `python3 tools/u2-gen-capes.py --check` → `client capes=224 long_capes=84 ascii_names=163 generated_names=61`, `same: db/012_u2_capes_1534.sql`, `same: db/012_u2_capes_1534_rollback.sql`, `check OK`, çıkış 0. Negatif denemeler: betiğe bir boşluk eklenince `DIFFERENT … check FAILED`, çıkış 1 (sonra yeniden üretildi, yedekle `cmp` aynı); eski 5 kolonlu `Cloak.tbl` → `error: Cloak.tbl has 5 columns; only the 7-column 1534 client table is accepted …`, çıkış 2.
+  §5.4 gözden geçirme (üretilen `VALUES` satırları ayrıştırılarak): 224 satır/224 ayrı kimlik; eski 56 kimlik + 168 yeni; yeni satırların hepsi `nBuyPrice` 0, `nDuration` 0, `byGrade` 0; x10–18 → 36000/3 (54 satır), x29–33 → 180000/288000/432000/648000/864000, 3..7 (30), x40–48 → 360000/8 (54), x60–64 → 1080000/1368000/1728000/2160000/2880000, 8..12 (30); E §2.2'ye aykırı satır 0.
+- ✔ **K4** Geçici kopya (`.\SQLEXPRESS`, `FDP_kn_online`, `-E`). Komutlar: `SELECT * INTO dbo.KNIGHTS_CAPE_U201TEST FROM dbo.KNIGHTS_CAPE` (56 satır, `CHECKSUM_AGG(BINARY_CHECKSUM(*))` 878540737 = orijinal) → `"$SQLCMD" … -b -v Target=KNIGHTS_CAPE_U201TEST -i db/012_u2_capes_1534.sql`:
+```
+### ilk uygulama
+inserted=168 already_present=56
+target_rows=224 long_capes=84 logged=168
+### orijinal satırlar kopyada değişmedi: (KNIGHTS_CAPE EXCEPT kopya) = 0
+### ikinci uygulama
+inserted=0 already_present=224
+target_rows=224 long_capes=84 logged=168
+### geri alma (…_rollback.sql)
+removed=168 target_rows=56 log_table=absent
+### EXCEPT iki yön
+copy_except_orig=0  orig_except_copy=0  rows_copy=56  log_table=absent
+### geri alma tekrar
+removed=0 target_rows=56 log_table=absent
+### kopya düşürüldü; SELECT name FROM sys.tables WHERE name LIKE 'KNIGHTS_CAPE_U201TEST%'
+(boş)
+```
+  Ek: olmayan hedef (`Target=KNIGHTS_CAPE_U201TEST_NOPE`) → `Msg 50000 … target table … not found`, çıkış 1, tablo oluşmadı; `Target` verilmeden → `'Target' scripting variable not defined.`, çıkış 1. Canlı `KNIGHTS_CAPE` öncesi/sonrası: 56 satır, checksum 878540737 (değişmedi); `KNIGHTS_CAPE_U2_ADDED` yok.
+- ✔ **K5** İlk uygulamadan sonra kopyada `byRanking BETWEEN 8 AND 12` = **84**; kimlikler `40–48, 60–64, 140–148, 160–164, 240–248, 260–264, 340–348, 360–364, 440–448, 460–464, 540–548, 560–564`; x40–48/x60–64 dışında kalan 0. `byRanking` dağılımı: 0→56 (eski satırlar), 3→60, 4..7→6'şar, 8→60, 9..12→6'şar.
+- ✔ **K6** `file`: iki SQL dosyası `ASCII text`, CR 0, ASCII dışı bayt 0; `git check-attr eol` → `lf`. Yorumlar İngilizce. `tools/kotbl.py`, `tools/u2-gen-capes.py`: `ASCII text`, CR 0 (Korece desen adları `\uXXXX` kaçışıyla).
+- ✔ **K7** `git diff --stat main...bot/U2-01`: `db/012_u2_capes_1534.sql`, `db/012_u2_capes_1534_rollback.sql`, `db/README.md`, plan dosyası (yalnız `Durum` + bu rapor), `tools/kotbl.py`, `tools/u2-gen-capes.py`. `tools/client-tbl-quests.py` değişmedi.
+- ✔ **K8** `git status --short` boş (bu commit'ten sonra da kontrol edildi); geçici tablo kalmadı (K4).
+
+**Plandan sapmalar / yorumlar**
+1. `strName` kuralı (plan metni "`Cape <id>` + desen eki yoksa yalnız `Cape <id>`" belirsiz): ASCII ad aynen; E §2.2'deki beş Korece **desen** adı (x29–33) → `Cape <id> iron bars|cross|checkered|symmetric|double eagle`; diğer Korece adlar (x60–64 `왕실N`, 0 `기본망토`) → `Cape <id>`. En uzun ad 21 karakter (char(30)). Sunucu `strName`'i yüklemediği için davranış etkisi yok.
+2. Planda olmayan ek denetimler (üretici hata verir): artık bayt, geçersiz CP949, yinelenen kimlik, SQL tip aralığı dışı değer, `byRanking > 12` (`ClanTypeRoyal1`), 30 karakteri aşan ad.
+3. Betik `inserted=… already_present=…` satırından sonra ikinci bir doğrulama satırı basar (`target_rows=… long_capes=… logged=…`); geri alma `removed=… target_rows=… log_table=…` basar.
+4. Kayıt tablosu: `dtAdded datetime NOT NULL DEFAULT GETDATE()` (planda yalnız `dtAdded datetime`).
+5. Geri alma, kayıt tablosu yoksa hata vermez (`removed=0`): plan "tekrar çalıştırılabilir" istediği için `001` kalıbındaki `RAISERROR`'dan ayrılır. Hedef tablo yoksa iki betik de `RAISERROR` verir.
+6. Üretilen betik başlığına kaynak dosyanın boyutu ve SHA-256'sı yazılır (`3808b568…f94f`); mutlak yol yazılmaz.
+7. Test sorgusunda `STRING_AGG` bu sunucuda çalışmadı (SQL Server 14.0, veritabanı uyumluluk düzeyi 100); `FOR XML PATH` kullanıldı. Betikler bu özelliği kullanmaz.
+
+**Kişisel veri / güvenlik:** Yalnız `KNIGHTS_CAPE` (fiyat/şart tablosu) ve kopyası okundu; `KNIGHTS`, `KNIGHTS_USER`, `KNIGHTS_ALLIANCE`, `KNIGHTS_RATING` ve diğer kişisel veri tabloları okunmadı. İstemci dosyaları yalnız `rb` ile okundu; istemci klasöründen hiçbir şey çalıştırılmadı. Parola dosyası okunmadı. Canlı `KNIGHTS_CAPE`'e yazılmadı.
+
+**Açık sorular**
+1. `strName` yorumu (sapma 1) planlayıcının kastettiğiyle aynı mı? Farklıysa yalnız `cape_name()` ve yeniden üretim gerekir.
+2. Gerçek `KNIGHTS_CAPE`'e uygulama (plan §3 "Yok": Claude yapar) bekliyor; komut `db/README.md` §012'de.
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
