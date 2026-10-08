@@ -39,6 +39,7 @@ flowchart LR
 | F10 | L2 contextual bandit | Hayır (opsiyonel) | M |
 | F11 | Serbest Ronark davranışları (taslak, ADR kapılı) | Hayır | L |
 | F12 | Karakter bazlı kalıcı öğrenme (taslak, ADR kapılı; ADR-0030-DEG) | Hayır | M–L |
+| U | Sürüm yükseltme: 1534 istemcisi, yeni Moradon, yeni klan sistemi (ADR-0068) | Hayır (paralel hat) | L |
 
 \* S/M/L göreli büyüklüktür; takvim tahmini değildir.
 
@@ -267,6 +268,20 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Riskler | Aşırı uyum, veri azlığı (karakter başına maç), karakter sayısı × test matrisi, ödül sömürüsü |
 | Geri alma | Tüm karakterlerde `δ_c = 0` (dosya işaretçisi) |
 | Durum | **TASLAK:** F9 sonrası; ADR olmadan plan yazılmaz; F10/F11'den bağımsız |
+
+### U — Sürüm yükseltme: 1534 (Moradon: The Resurrection) — ADR-0068
+
+| Alan | İçerik |
+|---|---|
+| Amaç | Sunucuyu ve botları AlphaGame paketiyle gelen 1534 istemcisiyle (yeni Moradon, Squire/Knight/Royal klan kademeleri, uzun pelerin) çalışır hale getirmek; bot davranışını ve doğrulanmış mekanikleri bozmadan |
+| Taban | Bizim kaynak kod (seçenek A, ADR-0068). AlphaGame kaynağı (`C:\dev\fdp1534\alpha`) ve DB'si (`.\SQL2019` → `FDP_alpha1534`) yalnız referans |
+| Alt fazlar | **U1** protokol profili ve paket düzenleri (`[PROTOCOL] CLIENT_VERSION`, kripto anahtarı, giriş sunucusu, istemcinin beklediği sunucu→istemci düzenleri, BotCore ayrıştırıcıları); **U2** veri (VERSION, pelerin tablosu `Cloak.tbl` 224 satır ile eşleşme, yeni eşya/NPC satırları; eklemeli `db/0xx` + rollback); **U3** yeni Moradon (AlphaGame `moradon_0826.smd` onarımı: yükseklik transpozu, yürünebilirlik ızgarası; ZONE_INFO/START_POSITION/NPC; zone 71/72 SMD'lerinde yalnız Moradon warp düzeltmesi); **U4** klan sistemi (kademe/pelerin kuralları, RGB, `[CLAN_GRADE]`); **U5** regresyon ve kapanış |
+| Kapsam dışı | AlphaGame sunucusunu/AIServer'ını olduğu gibi almak; MAGIC/MAGIC_TYPE* değerlerini değiştirmek (ayrı karar); pet sistemi; AlphaGame'in ek sistemleri (Genie, VIP depo, balıkçılık/madencilik, mühür) — her biri ayrı ADR |
+| Ön koşul | Hedef istemci `C:\dev\fdp1534\client` (Defender temiz); SQL Server 2019 referans örneği kurulu (2026-10-08) |
+| Kabul | **T-UPG-01** 1534 istemcisiyle giriş → karakter listesi → oyuna giriş, paket izleyicide bilinmeyen opcode 0; **T-UPG-02** yeni Moradon yükleme/yürüme 30 dk çökme 0; **T-UPG-03** klan kademe + uzun pelerin uçtan uca (insan testi); **T-UPG-04** bot regresyonu (`run-tests.sh`, 8v8 ve dolaşım senaryoları U öncesiyle aynı); **T-UPG-05** `CLIENT_VERSION=1453` ile eski istemci aynı derlemeyle çalışır |
+| Riskler | R-UPG-03 istemci tablosu ↔ DB kimlik uyumsuzluğu; R-UPG-05 istemcinin beklediği paket düzeni (çalışma zamanında doğrulanacak); yeni Moradon SMD onarımı |
+| Geri alma | `[PROTOCOL] CLIENT_VERSION=1453` + eski istemci; `db/0xx_*_rollback.sql` |
+| Durum | **BAŞLADI** (2026-10-08): U1-01 HAZIR |
 
 ## 3. Temel sürüm ve sonraki geliştirmeler
 

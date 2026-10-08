@@ -146,6 +146,12 @@ Plan durumu ile faz durumu (`docs/21` §1) ayrıdır. Bir fazın `KABUL_EDILDI` 
 
 Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTONOM_DONGU.md)
 
+## Sürüm yükseltme planları (faz U, ADR-0068)
+
+| Plan | Başlık | Faz | Durum | Branch |
+|---|---|---|---|---|
+| [U1-01](U1-01-calisma-zamani-protokol-profili-surum-ve-kripto-anahtari.md) | Çalışma zamanı protokol profili: istemci sürümü ve kripto anahtarı ini'den (`[PROTOCOL] CLIENT_VERSION`, varsayılan = bugünkü davranış) | U1 | HAZIR | `bot/U1-01` (taban: `main`) |
+
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 
 Kaynak: `docs/reports/degerlendirme-2026-10-02.md`. Bu planlar F4/F5 döngülerinin kendi numaralarının **dışında** ayrılmış aralıklardadır (F4-50.., F5-50..); mevcut döngü işiyle çakışmaz. **Önerilen sıra:** F4: F4-50 → F4-51 → F4-52 → F4-54 (F4-53 TASLAK: ADR-0018 madde 4 sonrası); F5: F5-54 ve F5-52 (F5-09'dan **önce**: `docs/12` §13.3), F5-51, F5-50, F5-53, sonra F5-55 (TASLAK). Skill desteği (cast iptali, uçan, çift tipli, Type4, alan, cure/diriltme/summon/eşya, CLI-12, envanter doldurma) için bu aralıkta plan **yoktur**: ana hat ADR-0018 dilimleri (F4-24 ve sonrası) yürütür; eşleme `docs/17` §2.1.

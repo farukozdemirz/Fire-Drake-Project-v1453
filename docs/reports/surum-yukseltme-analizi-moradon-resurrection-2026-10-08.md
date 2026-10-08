@@ -1,6 +1,6 @@
 # Sürüm Yükseltme Analizi — "Moradon: The Resurrection" (Yeni Moradon) dönemi
 
-> Durum: Taslak v1.2 · Tarih: 2026-10-08 · Hazırlayan: Claude (planlayıcı/denetçi) · **Karar bekliyor, uygulama başlamadı.**
+> Durum: Taslak v1.3 · Tarih: 2026-10-08 · Hazırlayan: Claude (planlayıcı/denetçi) · **Karar bekliyor, uygulama başlamadı.**
 > Soru (proje sahibi): mevcut geliştirmeleri koruyarak projeyi uzun klan pelerinlerinin ve yeni klan sisteminin bulunduğu Yeni Moradon dönemine yükseltmek; hedefin 1505–1507 olduğu söyleniyor, doğrulanacak.
 > Etiketler: `[D]` depo kodu · `[V]` yerel veri (DB, dosya, istemci) · `[S]` dış kaynak · `[B]` başka sürüm/doğrulanmamış · `[Ö]` öneri · `[A]` açık / çalışma zamanı testi gerekli · `[I]` çıkarım.
 > Bu rapor **doğrulanan bulgular** ile **tahminleri** ayırır. Satır numaraları `main` @ `5aa3e76c` ve üst kaynak `0f52027`'de kontrol edildi. Hiçbir üretim kodu, DB satırı veya istemci dosyası değiştirilmedi; dış kaynak (1534 sunucu kodu) yalnız geçici çalışma dizinine indirildi, depoya alınmadı.
@@ -380,6 +380,27 @@ Yerel kanıtlar: `shared/version.h`, `LogInServer/LoginSession.cpp`, `GameServer
 
 ---
 
+## 12. AlphaGame paketi incelemesi ve karar (2026-10-08)
+
+Proje sahibi üç arşiv indirdi (`C:\Users\frkoz\Downloads\1534\`). Ayrıntılı ajan raporları: [A — kaynak kod](u0-1534/A-kaynak-kod-karsilastirmasi.md), [B — harita, görev, istemci](u0-1534/B-harita-gorev-istemci.md), [C — DB şeması](u0-1534/C-db-semasi.md). Karar: [ADR-0068](../adr/ADR-0068-surum-yukseltme-1534-hedef-istemci-ve-taban.md).
+
+| Arşiv | İçerik | Sonuç |
+|---|---|---|
+| `1534 SRC.rar` (9,8 MB, RAR5, şifre bilinmiyor) | KODevelopers-1534 GitHub deposunun birebir kopyası (336/336 dosya aynı ad/boyut) `[V]` | Gereksiz; açılmadı |
+| `ALPHA KO 1534 PROJE.rar` (269 MB, şifre `ko-yardim.com`) | AlphaGame kaynağı (`__VERSION 1534`), `KN_online.bak` (SQL 2019), sunucu exe'leri, 61 SMD, 599 Lua → `C:\dev\fdp1534\alpha` | Referans |
+| `Knight Online.rar` (502 MB, aynı şifre) | 1534 istemcisi, veri ≤ 2007-09-12 → `C:\dev\fdp1534\client` | **Hedef istemci** |
+
+**Doğrulanan ana bulgular:**
+- İstemci 1534 protokolü: `cmp ecx,1534` (`0x3C03C4`), anahtar `0x1257091582190465`; anti-cheat yok; `d3d8.dll` = d3d8to9 1.9.2.0; Defender temiz `[V]`.
+- Zone 71 (Ronark) istemci arazisi bizim `freezone_a_20050718.smd` ile 263.169/263.169 hücre aynı → **bot gezinme verisi geçerli** `[V]`. AlphaGame'in kendi zone 71 SMD'si istemciyle uyuşmuyor; alınmaz `[V]`.
+- Yeni Moradon `moradon_0826.smd` (1024 m) istemciyle aynı boyutta ama yükseklik ızgarası transpoze, yürünebilirlik ızgarası boş → onarım gerekir `[V]`.
+- AlphaGame kaynağı ayrı bir 1453 çatalı; 11 doğrulanmış mekaniği bozar; iki YÜKSEK güvenlik açığı; AIServer protokolü de farklı `[A]`.
+- AlphaGame DB'sinde 124 bot skill'inin hepsi farklı değerlerde, `ITEM.ItemClass` tamamen NULL; bot betiklerinin dördü bozulur `[V]`.
+- AlphaGame sunucu → istemci düzenleri bazı paketlerde farklı (kullanıcı bilgisi +19 bayt, NPC bilgisinde ad yok, bölge değişimi 3 paket, envanter 74 yuva); istemcinin hangisini beklediği çalışma zamanında doğrulanacak `[I]`.
+- Ortam: SQL Server 2019 Express ayrı örnek `.\SQL2019` olarak kuruldu (kurulum medyası Microsoft imzalı, `C:\dev\sqlmedia`); AlphaGame DB `FDP_alpha1534` olarak geri yüklendi; `fdp` girişi oluşturuldu, `sa` parolası `C:\dev\fdp\.fdp_sql2019_sa_password`. Eski `.\SQLEXPRESS` ve `FDP_kn_online` değişmedi `[V]`.
+
+**Karar (ADR-0068):** taban bizim kaynak; protokol profili ini'den (`[PROTOCOL] CLIENT_VERSION`); DB eklemeli betiklerle; zone 71/72 SMD'leri ve bot verisi aynen; MAGIC değerleri değişmez. Faz U planları `docs/17` §2 U ve `plans/README.md`.
+
 ## Değişiklik günlüğü
 
 | Tarih | Sürüm | Değişiklik |
@@ -387,3 +408,4 @@ Yerel kanıtlar: `shared/version.h`, `LogInServer/LoginSession.cpp`, `GameServer
 | 2026-10-08 | v1.0 | İlk sürüm (analiz ve plan önerisi; karar bekliyor) |
 | 2026-10-08 | v1.1 | §1.1 eklendi (1534 araştırması: resmî 1505 README, resmî yama listesi zaman çizgisi, 1534 ≈ Ekim 2008, archive.org 1506 kurulum paketi, dağıtım manzarası, anahtar çıkarımı); §5 ve §6 hedef istemci satırları güncellendi; W-17..W-22 |
 | 2026-10-08 | v1.2 | §1.2 eklendi: 1534 dosya kaynakları listesi (S-01..S-27; erişim durumu, soy ayrımı, indirme sonrası kontrol listesi) |
+| 2026-10-08 | v1.3 | §12 eklendi: AlphaGame paketi incelemesi, ortam (SQL Server 2019 ayrı örnek), karar ADR-0068; ajan raporları `u0-1534/` |
