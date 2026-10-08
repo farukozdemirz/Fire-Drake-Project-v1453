@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | U — Sürüm yükseltme 1534 (`docs/17` §2 U, ADR-0068) |
 | Branch | `bot/U1-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — |
@@ -270,4 +270,23 @@ git status --short
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum (aşağıdaki komutlar) + kod incelemesi.
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | Uygulayıcı: Release/Debug hatasız, yeni uyarı yok (değişen dosyalardaki uyarılar yalnız satır kayması). Ayrıca birleşik hatta (`yukseltme/1534`) `./tools/build.sh Release` rc=0; uyarılar önceden var olan C4834/C4789 |
+| K2 | ✔ | `bot/U1-01`: `./tools/run-tests.sh Release --no-build` → `340 tests, 0 failed` (taban `main` 331 + 9). Birleşik hat (`gece/2026-10-08-kalabalik` + U1-01): `3470 tests, 0 failed`; kalabalık tabanı aynı koşuda `3461 tests, 0 failed` → fark tam 9 (Protocol_*) |
+| K3 | ✔ | Kod incelemesi: legacy yolda `ClientVersion(__VERSION)` = 1453, `PrivateKeyForVersion(1453)` = eski `#else` anahtarı; `UpdateServerList` (planın "GetServerList" dediği yer; sapma 2 kabul) alan sırası/tipleri aynı, bilinmeyen bayt 1, LAN IP yok; `HandleServerlist` echo yalnız ≥ 1500; `HandleVersion` `LoginVersionReply(0, db)` = DB değeri, tip `int16` (eski `short`) → aynı 2 bayt. Test `Protocol_LegacyProfileHandshake` |
+| K4 | ✔ | `Protocol_Client1534ProfileHandshake`: 1534, `0x1257…`, echo var, bayt 1, yanıt 1534 |
+| K5 | ✔ | `git diff --stat main...bot/U1-01`: yalnız §4 dosyaları + plan; `GameServer/Bot`, `BotCore`, `db`, `docs` yok |
+| K6 | ✔ | Uygulayıcı `file` karşılaştırması; birleşik hatta `BotCoreTests.vcxproj` BOM+CRLF korundu |
+| K7 | ✔ | İki `printf` yalnız sürüm ve `ini`/`legacy` yazar |
+| K8 | ✔ | `git status --short` temiz |
+
+Sapmalar (kabul): (1) `<cstdlib>` eklendi (`strtoull`); (2) `#if` dalları `UpdateServerList`'te, `GetServerList` değişmedi; (3) `shared.vcxproj.filters` yok, oluşturulmadı; (4) `ParseCryptoKey` plandan katı — testli. Not: 1454–1699 için anahtar artık `0x1257…` (eski kodda bu sürümler derlenmiyordu; yalnız 1453 yolu bağlayıcıydı).
+
+**Birleşik hat:** `yukseltme/1534` = `gece/2026-10-08-kalabalik` (tüm gece hatları) + `bot/U1-01` (merge `020e4a1d`); çakışmalar yalnız `BotCoreTests.vcxproj`, `KNOWN_ISSUES.md`, `STATUS.md` (iki taraf da satır ekledi; ikisi de korundu).
+
+**Çalışma zamanı:** henüz denenmedi (T-UPG-01 insan testi; ayrı sunucu dizini `C:\dev\fdp1534\server` ile).
