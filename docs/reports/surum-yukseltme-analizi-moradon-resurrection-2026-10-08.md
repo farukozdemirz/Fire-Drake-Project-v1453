@@ -1,6 +1,6 @@
 # Sürüm Yükseltme Analizi — "Moradon: The Resurrection" (Yeni Moradon) dönemi
 
-> Durum: Taslak v1.0 · Tarih: 2026-10-08 · Hazırlayan: Claude (planlayıcı/denetçi) · **Karar bekliyor, uygulama başlamadı.**
+> Durum: Taslak v1.1 · Tarih: 2026-10-08 · Hazırlayan: Claude (planlayıcı/denetçi) · **Karar bekliyor, uygulama başlamadı.**
 > Soru (proje sahibi): mevcut geliştirmeleri koruyarak projeyi uzun klan pelerinlerinin ve yeni klan sisteminin bulunduğu Yeni Moradon dönemine yükseltmek; hedefin 1505–1507 olduğu söyleniyor, doğrulanacak.
 > Etiketler: `[D]` depo kodu · `[V]` yerel veri (DB, dosya, istemci) · `[S]` dış kaynak · `[B]` başka sürüm/doğrulanmamış · `[Ö]` öneri · `[A]` açık / çalışma zamanı testi gerekli · `[I]` çıkarım.
 > Bu rapor **doğrulanan bulgular** ile **tahminleri** ayırır. Satır numaraları `main` @ `5aa3e76c` ve üst kaynak `0f52027`'de kontrol edildi. Hiçbir üretim kodu, DB satırı veya istemci dosyası değiştirilmedi; dış kaynak (1534 sunucu kodu) yalnız geçici çalışma dizinine indirildi, depoya alınmadı.
@@ -37,7 +37,22 @@
 - **Klan sistemi tamamen değişti:** 3 sınıf × 5 kademe = 15 kademe (Squire / Knight / Royal Knight). 3. sınıf kısa düz pelerin; 2. sınıf çok renkli kısa pelerin; **1. sınıf (Royal) aynı pelerinlerin uzun, yere değen hali.** Pelerinler klan NP fonundan alınır (36k–2,9M NP). Üyeler NP bağışlar; PK'de klana onur puanı yazılır. Eşikler: 252.000 klan puanı Knight, 1.080.000 Royal Knight (resmî); 2. sınıf için Isiloon, 1. sınıf için Fire Drake görevi (Kalais). Klan duyurusu ("Clan Notice"), ilk 5 klan bayrağı, klan salonu.
 - Diğer: Border Defense War, Juraid Mountain, Moradon arena, antrenman kuklaları (30/60/80), falcı, pet sistemi, yeni unique eşyalar, mage/rogue skill düzeltmeleri.
 
-**Sonuç:** "1505–1507 civarı" iddiası doğrudur. Pratikte iki hedef adayı vardır: **1505–1507** (dönemin ilk hali; tam istemci bulunurluğu belirsiz) ve **1534** (aynı dönem; tam istemci ve aynı soydan açık sunucu kaynağı mevcut).
+**Sonuç:** "1505–1507 civarı" iddiası doğrudur. Pratikte iki hedef adayı vardır: **1505–1507** (dönemin ilk hali) ve **1534** (aynı dönemin son hali; tam istemci ve aynı soydan açık sunucu kaynağı mevcut). Ayrıntı §1.1.
+
+### 1.1 Ek: 1534 araştırması (2026-10-08, proje sahibinin isteğiyle)
+
+| # | Bulgu | Kaynak | Etiket |
+|---|---|---|---|
+| 1.9 | **Resmî README "Knight Online Expansion Version 1505 — Moradon: The Resurrection"**: Moradon şehri ve av alanı büyüdü; çıkış için seviye 35; Knight sistemi 3 seviye — Squire (144.000 klan puanı + Caitharos görevi), Knight (252.000 + Isiloon), Royal Knight (1.080.000 + Felankor), her seviyede 5 rütbe; "rütbe yükseldikçe pelerin uzar"; klan duyurusu (`/clannotice`); klan puanı katkısı (manuel/otomatik, ayrılan üyeye %30 iade); pet; Juraid (70–80); BDW (35–45 ve 60–69); Moradon arena; kuklalar (30/60/80); falcı; ilk 5 klan bayrağı; `/Return` | Wayback 2008-01-15, `knightonlineworld.com/moradon_patchtxt.php` (W-17) | `[S]` |
+| 1.10 | **Resmî yama listesi (zaman çizgisi):** `patch1506.zip`…`patch1532.zip` (anlık görüntüler 2008-07-17, 2008-08-04, 2008-09-01); `patch1533.zip` eklenmiş (2008-10-04, 2008-11-07, 2008-12-17); 2009-02-07'den itibaren liste `patch1706`…`patch1717` | Wayback `knightonlineworld.gamersfirst.com/patches.php` (W-18) | `[S]` |
+| 1.11 | 1534 resmî listede hiç görünmez. Topluluk kayıtları: frmtr "Patch 1534 Çıktı" ve "USKO 1534 KoXP" (Ekim 2008 civarı; sayfalar bot erişimine kapalı, yalnız arama özeti). Çıkarım: **1534 ≈ Ekim 2008, Forgotten Frontiers (21 Ekim 2008; 17xx numaralama, seviye 83) öncesi son yama** | W-19; 1.10 | `[S]`/`[B]` → `[I]` |
+| 1.12 | Topluluk özetine göre 1534 yaması premium süresini saatliğe çevirdi ve XTrap korumasını exe'den çıkarıp ayrı `kol.exe` modülüne taşıdı | W-19 | `[B]` |
+| 1.13 | **Internet Archive'da resmî kurulum adlı tam istemciler:** `KnightOnLineSetup_1506.exe` (529.402.260 B, md5 `416d9b2293fda1b693931acdbeded171`); ayrıca 1098, 1264, 1268, 1298, 1453, 1705, 1861 (yükleyen: bireysel kullanıcı, 2023-02-05). Resmî Moradon indirme sayfası tam istemciyi aynı adla (`KnightOnLineSetup_1506.exe`, "Moradon_AutoPatch_1505") dağıtıyordu | archive.org `knightonline2003` (W-20); Wayback 2008-01-01 `moradon_download.php` (W-21) | `[S]` (içerik doğrulanmadı `[A]`) |
+| 1.14 | 1534'ün topluluktaki yeri: KODevelopers-1534 tek açık sunucu kaynağı (DB/harita/istemci yok, W-13/W-16); "1534 server files + database + client" paketleri forumlarda gizli, şifreli veya ücretli (ko-cuce 2023, elfdaily 2018, knightlobby, GNY Soft satış ilanı, r10 kiralık 400 TL/ay, MykoSoft v1534 "tonla bug" uyarısı); kodevelopers.net "Orjınal 1534 Client Sorunsuz" (Nisan 2026, giriş gerekli); MYKO/SEA v1534 projesi (2011, seviye 80, "yeni anti-cheat") | W-14, W-22 | `[B]` |
+| 1.15 | 1534 çalıştıran özel sunucular var (OhaGaming "Reign of the Fire Drake v1534", seviye 80, 2022–2026; MemoryKO v1534); dönemi "2008 Fire Drake" diye adlandırıyorlar | ko-pserver, mmtop200 (W-22) | `[B]` |
+| 1.16 | 1534 sunucu kaynağı resmî 1534 istemcisiyle kripto anahtarı `0x1257091582190465` kullanıyor ve yorumda "1453 & 1534" diyor; bizim kodda aynı değer "1453" yorumuyla kapalı, etkin anahtar `0x7412580096385200` yerel 2014 exe'siyle çalışıyor. Çıkarım: resmî 1453–1534 istemcileri aynı anahtarı paylaşır; yerel exe değiştirilmiş anahtar taşır | 1534 `shared/JvCryption.cpp`; `shared/JvCryption.cpp:6-13` | `[I]` |
+
+**1534 nedir (özet):** 1505 genişlemesinin (Eylül 2007) tüm içeriği + Ekim 2007–Ekim 2008 yamaları; seviye sınırı 80; Forgotten Frontiers'tan (17xx) hemen önceki son "Fire Drake / Yeni Moradon" istemcisi. "Uzun pelerin + yeni klan sistemi" 1505'ten itibaren vardır; 1534 bunun en olgun hali ve topluluğun standart dağıtımıdır. Resmî 1534 tam kurulum paketi bulunamadı; 1506 tam kurulum paketi arşivde var.
 
 ---
 
@@ -182,8 +197,8 @@ Karşılaştırma: üst kaynak `0f52027` (git archive) ile `ForcePower/KODevelop
 
 | Bileşen | Elimizde | Kanıt | Durum |
 |---|---|---|---|
-| Hedef istemci **1505–1507** | **Yok** | §2.3 | Tam istemcinin bulunabilirliği doğrulanamadı `[A]` |
-| Hedef istemci **1534** | **Yok** (yerelde) | §2.3 | Toplulukta dağıtılıyor (W-14); bütünlük, kötücül yazılım ve lisans doğrulanmadı `[B]` |
+| Hedef istemci **1505–1507** | **Yok** (yerelde) | §2.3, §1.1 | Internet Archive'da `KnightOnLineSetup_1506.exe` (resmî kurulum adı ve boyutuyla) var (W-20); indirilip exe sabiti ve içerik doğrulanmalı; resmî IP/anti-cheat yaması gerekir `[A]` |
+| Hedef istemci **1534** | **Yok** (yerelde) | §2.3, §1.1 | Toplulukta "orijinal/temiz" paketler dağıtılıyor (W-14, W-22); kaynağı belirsiz; bütünlük, kötücül yazılım ve lisans doğrulanmadı `[B]` |
 | Yeni Moradon sunucu haritası (`.smd`) | **Yok** | `_extract/maps_quests/Map`, `server/Map` | Üretici araç da yok `[V]` |
 | Yeni Moradon DB içeriği (NPC konumları, başlangıç, warp, görevler) | **Yok** | §2.2 | `[V]` |
 | Hedef dönem DB (ITEM/MAGIC/NPC/QUEST istemciyle uyumlu) | Belirsiz | §2.2 | Mevcut DB topluluk derlemesi; eşleşme doğrulanmadı `[A]` |
@@ -205,7 +220,14 @@ Karşılaştırma: üst kaynak `0f52027` (git archive) ile `ForcePower/KODevelop
 | B — Bot katmanını 1534 kaynağına taşımak | 16 dokunulan dosya + `Bot/` klasörü 1534 ağacına uygulanır | Dönem düzeltmeleri hazır gelir | 1534 kaynağı düşük kaliteli (şifre loglama, hata ayıklama kalıntıları); kazanç küçük; `docs/02-03` satır referansları (0f52027) geçersizleşir; yüksek regresyon riski |
 | C — Çok daha yeni istemciye (1.8xx+) sıçramak | Yeni Moradon'u da içerir | Modern varlıklar | Kripto, paket düzeni, DB şeması (ItemExpiration, cospre…) baştan; bot ayrıştırıcıları ve `docs/03` mekanikleri geçersiz; kapsam patlaması. **Önerilmez** |
 
-**Hedef istemci önerisi:** Proje sahibinin elinde doğrulanmış bir 1505–1507 istemcisi yoksa **1534**. Gerekçe: aynı dönem içeriği (`[S]`), tam istemci dolaşımda, aynı soydan sunucu referansı var, `MAX_LEVEL 80` korunur. 1505–1507 bulunursa aynı plan geçerlidir; yalnız `__VERSION` ve anahtar değişir.
+**Hedef istemci önerisi (2026-10-08, §1.1 sonrası güncellendi):** iki aday aynı dönemdir ve aynı plan geçerlidir; yalnız `__VERSION`, anahtar ve `VERSION` tablosu değişir.
+
+| Aday | Artı | Eksi |
+|---|---|---|
+| **1506 (archive.org resmî kurulum paketi)** | Kaynağı tek ve izlenebilir (resmî dosya adı/boyutu, md5 kayıtlı); yeni Moradon + yeni klan sisteminin ilk resmî hali; değiştirilmemiş exe | HackShield/XTrap ve resmî sunucu adresi içerir → IP, anahtar ve koruma için exe yaması gerekir (araç: `xmkg/ko-executable-editor`, eski); 2007 verisi, 2008 düzeltmeleri yok; md5 resmî bir kaynakla doğrulanamaz |
+| **1534 (topluluk "temiz" istemcisi)** | Topluluk standardı; aynı soydan sunucu kaynağı (KODevelopers) ve çalışan özel sunucular var; genelde koruma kaldırılmış ve IP düzenlenebilir | Kaynağı belirsiz (giriş/ücret duvarı), bütünlük ve kötücül yazılım riski; resmî 1534 kurulum paketi arşivde yok; hangi exe'nin "orijinal" olduğu doğrulanamaz |
+
+**Öneri:** U0'da **ikisini de** edinip envanterlemek (exe sabiti, `Zones/moradon.*` tarihi, `Cloak.tbl`, koruma modülleri, hash). Teknik tercih: doğrulanabilir bir 1534 istemcisi çıkarsa 1534 (daha az yama, daha olgun veri); çıkmazsa 1506 arşiv paketi üzerine exe yaması. Karar K-11 proje sahibindedir.
 
 ---
 
@@ -307,6 +329,12 @@ Plan kimliği önerisi: `U<N>-<NN>-<ad>.md`, dal `bot/U<N>-<NN>`, her plan küç
 | W-14 | ko-yardim.com ve kodevelopers.net arama özetleri ("USKO 1534 Moradon: The Resurrection") | Topluluk adlandırması `[B]` |
 | W-15 | Kalais' Library, "KO Evolution / Moradon – The Resurrection" — http://ko.kalais.net/evolution.php (sertifika hatası; düz HTTP ile alındı) | 15 kademe, uzun pelerin, NP maliyetleri, Isiloon/Fire Drake görevleri, K2 ön izlemeleri (Temmuz–Ağustos 2007) |
 | W-16 | r10dev, "Knight Online Server Files 1534 (KODevelopers 1534 Open Source Server Source)" — https://r10dev.net/konular/knight-online-server-files-1534-kodevelopers-1534-open-source-server-source.15359/ | Paketin yalnız kaynak kod olduğu; istemci/DB/harita/görev içermediği |
+| W-17 | Wayback Machine 2008-01-15 — http://web.archive.org/web/20080115093835/http://www.knightonlineworld.com/moradon_patchtxt.php | Resmî "Expansion Version 1505" README (içerik listesi, klan puanı eşikleri 144k/252k/1,08M) |
+| W-18 | Wayback Machine, `knightonlineworld.gamersfirst.com/patches.php` anlık görüntüleri 20080717023940, 20080804233825, 20080901025059, 20081004093524, 20081107095557, 20081217062108, 20090207032914 | Resmî yama listesi: 1506–1532 (Tem–Eyl 2008), 1533 (Eki–Ara 2008), 1706–1717 (Şub 2009) |
+| W-19 | frmtr, "Patch 1534 Çıktı" — https://www.frmtr.com/oreads/2185415-patch-1534-cikti.html ; "USKO 1534 KoXP" — https://www.frmtr.com/knight-online/2197047-usko-1534-koxp-broksin-koxp.html (bot erişimi engelli; yalnız arama motoru özeti) | 1534 tarihi (Ekim 2008), premium saatlik, XTrap → `kol.exe` `[B]` |
+| W-20 | Internet Archive, "Knight Online Client" (`knightonline2003`) — https://archive.org/details/knightonline2003 (meta veri: https://archive.org/metadata/knightonline2003) | `KnightOnLineSetup_1506.exe` ve diğer tam kurulum paketleri (boyut, md5) |
+| W-21 | Wayback Machine 2008-01-01 — http://web.archive.org/web/20080101065526/http://www.knightonlineworld.com/moradon_download.php | Resmî dağıtımda tam istemci adı `KnightOnLineSetup_1506.exe`, oto-yama `Moradon_AutoPatch_1505` |
+| W-22 | kodevelopers.net konu 35 "Orjınal 1534 Client Sorunsuz" (2026-04-06); ko-cuce.net konu 80380 (2023-11-27); elfdaily.com konu 3213 (2018-03-03) ve 4887 (2023-09-20); knightlobby.com konu 32510; r10.net 2853336 (2021-06); ko4life.net topic 26 (MYKO v1534, 2011); ko-pserver.com ve mmtop200.com listeleri; ragezone OhaGaming v1534 konuları (403) | 1534 dağıtım ve sunucu manzarası `[B]` |
 
 Yerel kanıtlar: `shared/version.h`, `LogInServer/LoginSession.cpp`, `GameServer/LoginHandler.cpp`, `GameServer/Knights.h`, `GameServer/KnightsManager.cpp`, `GameServer/NPCHandler.cpp`, `GameServer/DatabaseThread.cpp`, `shared/SMDFile.cpp`, `BotCore/Perception.h`; `/mnt/c/dev/fdp/Client/KnightOnline.exe` (`0x365004`, `0x3660F0`), `Client/Zones/moradon.*`, `Client/Data/Cloak.tbl`, `Client/Server.ini`; `FDP_kn_online` şema ve referans tabloları.
 
@@ -317,3 +345,4 @@ Yerel kanıtlar: `shared/version.h`, `LogInServer/LoginSession.cpp`, `GameServer
 | Tarih | Sürüm | Değişiklik |
 |---|---|---|
 | 2026-10-08 | v1.0 | İlk sürüm (analiz ve plan önerisi; karar bekliyor) |
+| 2026-10-08 | v1.1 | §1.1 eklendi (1534 araştırması: resmî 1505 README, resmî yama listesi zaman çizgisi, 1534 ≈ Ekim 2008, archive.org 1506 kurulum paketi, dağıtım manzarası, anahtar çıkarımı); §5 ve §6 hedef istemci satırları güncellendi; W-17..W-22 |
