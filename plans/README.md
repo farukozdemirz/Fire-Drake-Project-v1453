@@ -167,9 +167,9 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | Plan | Başlık | Faz | Durum | Branch |
 |---|---|---|---|---|
 | [UA-01](UA-01-alphagame-kaynagini-ice-aktarma-ve-derleme.md) | AlphaGame kaynağını içe aktarma ve Release\|Win32 derleme (bot katmanı devre dışı, sunucu çalıştırılmaz) | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `429e44a1`) | `bot/UA-01` (taban `yukseltme/alpha`) |
-| [UA-02](UA-02-alphagame-guvenlik-duzeltmeleri.md) | Güvenlik: istemcinin kullanmadığı 9 opcode reddedilir; mühür sahiplik/sınır, `ZoneMilitaryCamp`, parola günlüğü, sabit SQL kimlik bilgileri, Menissia null, hesap adı denetimi | UA | UYGULANIYOR | `bot/UA-02` |
-| [UA-03](UA-03-alphagame-istemci-duzen-duzeltmeleri.md) | İstemci düzenleri: 73 yuvalı envanter, MyInfo 72 eşya + klan fonu, u32 ağırlıklar, görev sayaçları u16, sadakat paketi klan fonu, klan paketleri | UA | UYGULANIYOR | `bot/UA-03` |
-| [UA-04](UA-04-alphagame-bot-katmani-kancalari.md) | Bot katmanını AlphaGame tabanına bağlama: 20 üst kaynak dosyasında kancalar (3 yollu), proje dosyası, paket/hasar izleyicileri | UA | UYGULANIYOR | `bot/UA-04` |
+| [UA-02](UA-02-alphagame-guvenlik-duzeltmeleri.md) | Güvenlik: istemcinin kullanmadığı 9 opcode reddedilir; mühür sahiplik/sınır, `ZoneMilitaryCamp`, parola günlüğü, sabit SQL kimlik bilgileri, Menissia null, hesap adı denetimi | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `3c424aa5`) | `bot/UA-02` |
+| [UA-03](UA-03-alphagame-istemci-duzen-duzeltmeleri.md) | İstemci düzenleri: 73 yuvalı envanter, MyInfo 72 eşya + klan fonu, u32 ağırlıklar, görev sayaçları u16, sadakat paketi klan fonu, klan paketleri | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `7d4e5e69`) | `bot/UA-03` |
+| [UA-04](UA-04-alphagame-bot-katmani-kancalari.md) | Bot katmanını AlphaGame tabanına bağlama: 20 üst kaynak dosyasında kancalar (3 yollu), proje dosyası, paket/hasar izleyicileri | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `c567231c`) | `bot/UA-04` |
 | [UA-05](UA-05-alphagame-db-tabani-ve-duzeltme-betikleri.md) | AlphaGame DB tabanı (`.\SQL2019` → `FDP_alpha_game`) ve düzeltme betikleri (`db/020`–`db/023`: ItemClass, pelerin, zone 21, prosedürler) | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `051f0d3a`) | `bot/UA-05` |
 | [UA-06](UA-06-alphagame-calisma-dizini-map-lua-ini.md) | AlphaGame çalışma dizini `C:\dev\fdpalpha\server` (Map, Quests, ini) ve ODBC `KO_ALPHA_*` | UA | DOĞRULANDI (2026-10-08; `yukseltme/alpha` @ `be4c60e5`) | `bot/UA-06` |
 
