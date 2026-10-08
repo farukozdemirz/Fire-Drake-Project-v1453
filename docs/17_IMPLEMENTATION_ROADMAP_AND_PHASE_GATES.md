@@ -294,7 +294,7 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Kabul | T-UPG-01/02/03 AlphaGame tabanıyla; T-UPG-04 bot testleri ve 6v6/8v8; A §6 güvenlik bulgularının her biri için kapanış kanıtı |
 | Riskler | 11 mekanik kural değişimi (bot ayarları); zone 71 sunucu/istemci zemin farkı (kabul edilmiş risk, ADR-0069 madde 6); AlphaGame DB kusurları |
 | Geri alma | `yukseltme/1534` hattı ve ADR-0068 düzeni çalışır kalır |
-| Durum | **BAŞLADI** (2026-10-08): ADR-0069; dal `yukseltme/alpha` @ `438f776c`; UA-01 HAZIR |
+| Durum | **BAŞLADI** (2026-10-08): ADR-0069; dal `yukseltme/alpha`; UA-01 ve UA-06 DOĞRULANDI (`429e44a1`), UA-02/03/05 uygulanıyor. UA-04 notu: AlphaGame'de `PacketTrace`/`DamageTrace` kancaları yok, `--packet-trace`/`--damage-trace` derlemeleri UA-04'e kadar etkisiz |
 
 ## 3. Temel sürüm ve sonraki geliştirmeler
 

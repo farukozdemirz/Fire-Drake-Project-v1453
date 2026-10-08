@@ -34,6 +34,7 @@ AlphaGame kodu ilk kez çalıştırılmadan önce A §6'daki istismar edilebilir
 7. **#7:** `GameServerDlg.cpp`, `AIServer/ServerDlg.cpp`, `LogInServer/LoginServer.cpp` ini okumalarındaki sabit kullanıcı adı/parola varsayılanları boş dizgeye çevrilir.
 8. **#13:** `MerchantListSend` null denetimi.
 9. **WordGuard:** hesap adı karakter denetimi bizim `LoginHandler.cpp` sürümündeki gibi geri gelir.
+10. **Yığın taşmaları (UA-01 derleme uyarısı C4789):** `GameServer/ItemHandler.cpp:1144-1145` (`RunSelectExchange`) ve `GameServer/UpgradeHandler.cpp:918-919` (`SpecialItemExchange`) `memcpy` 10 baytlık diziye 20 bayt yazıyor; dizi boyu ya da kopya boyu doğru olana getirilir, C4789 uyarısı kaybolur.
 
 **Yok:** oyun kuralı değişikliği (Genie süresi, Menissia ışınlanma kuralı, `+prison` ulus seçimi); DB; paket düzenleri (UA-03); bot kancaları (UA-04); AIServer bağlantı adresi.
 
@@ -47,6 +48,7 @@ AlphaGame kodu ilk kez çalıştırılmadan önce A §6'daki istismar edilebilir
 | `GameServer/CharacterMovementHandler.cpp` | #5 |
 | `GameServer/MerchantHandler.cpp` | #13 |
 | `GameServer/LoginHandler.cpp` | WordGuard |
+| `GameServer/ItemHandler.cpp` | yalnız `RunSelectExchange` taşması (UA-03 aynı dosyada ağırlık alanlarına dokunuyor) |
 | `GameServer/GameServerDlg.cpp`, `AIServer/ServerDlg.cpp`, `LogInServer/LoginServer.cpp`, `LogInServer/LoginSession.cpp` | #7, #3 |
 
 ## 5. Uygulama adımları

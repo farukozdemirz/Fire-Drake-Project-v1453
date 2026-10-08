@@ -61,3 +61,10 @@ ADR-0068'deki tablo geçerlidir; seçilen artık B'dir. Ronark için alternatif 
 - T-UPG-01/02/03 AlphaGame tabanıyla yeniden.
 - T-UPG-04: bot birim testleri ve 6v6/8v8 senaryoları yeni tabanda.
 - Güvenlik: A §6 bulgularının her biri için kod alıntılı kapanış kanıtı.
+
+## Ek 1 (2026-10-08): AlphaGame dosyalarının bayt bayt saklanması
+
+- UA-01 ile `.gitattributes`'a `GameServer/** AIServer/** LogInServer/** shared/** N3BASE/** scripting/** -text` eklendi (`GameServer/Bot/**` ve `shared/ProtocolProfile.h` depo varsayılanında). Sebep: AlphaGame dosyalarında LF, CRLF ve karışık satır sonu var; `core.autocrlf=true` bunları dönüştürüp `tools/ua-import-alpha.py --check` denetimini bozuyordu.
+- Kural: bu dizinlerde dosya düzenleyen, dosyanın özgün satır sonunu ve kodlamasını korur.
+- Tuzak: kural gelmeden önce açılmış bir çalışma ağacı, birleştirmeden sonra bu dizinlerde dönüştürülmüş dosyalar taşıyabilir (`git status` temiz görünür). Çözüm: ağaç temizken bu dizinlerin dosyalarını silip `git checkout -- <dizinler>`; sonra `--check` `PASS` vermeli.
+- `shared/ProtocolProfile.h` tutulur (BotCore testleri kullanıyor).
