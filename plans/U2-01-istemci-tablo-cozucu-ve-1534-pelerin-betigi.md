@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | U2 — Sürüm yükseltme 1534, veri (`docs/17` §2 U, ADR-0068 madde 4) |
 | Branch | `bot/U2-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — (U1-01 KAPANDI) |
@@ -180,4 +180,19 @@ removed=0 target_rows=56 log_table=absent
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum.
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 -I tools/kotbl.py --selftest` → `selftest OK` |
+| K2 | ✔ | Uygulayıcı çıktıları (7×224, 5×56, 33×1864, 480 + 56 artık bayt) |
+| K3 | ✔ | `python3 -I tools/u2-gen-capes.py --check` → `client capes=224 long_capes=84 …`, `check OK`, rc 0 |
+| K4 | ✔ | Kendi kopyam `KNIGHTS_CAPE_CLDTEST`: uygula `inserted=168 already_present=56`, `target_rows=224 long_capes=84 logged=168`; tekrar `inserted=0`; geri al `removed=168 target_rows=56 log_table=absent`; `EXCEPT` iki yön 0; kopya düşürüldü; canlı tablo 56 satır |
+| K5 | ✔ | Örnek: 110 → 36000/3; 140 → 360000/8; 160 → 1080000/8; 164 → 2880000/12; 233 → 864000/7; 560/564 royal |
+| K6 | ✔ | Uygulayıcı `file` çıktıları; SQL başlığı kaynak SHA-256 içerir |
+| K7 | ✔ | `git diff --stat main...bot/U2-01`: §4 dosyaları + plan |
+| K8 | ✔ | temiz |
+
+Sapmalar kabul (strName okuması, ek girdi denetimleri, rollback tekrar çalıştırılabilir). Canlı `KNIGHTS_CAPE` uygulaması Claude tarafından birleştirmeden sonra, DB yedeği alınarak yapılır.
