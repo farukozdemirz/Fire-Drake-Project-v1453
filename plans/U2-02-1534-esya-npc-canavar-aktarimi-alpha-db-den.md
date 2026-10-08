@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | U2 — Sürüm yükseltme 1534, veri (`docs/17` §2 U, ADR-0068 madde 4 ve Ek 1) |
 | Branch | `bot/U2-02` (taban: U2-01 birleştikten sonraki `main`) |
 | Bağımlı olduğu planlar | U2-01 (`tools/kotbl.py`) |
@@ -301,4 +301,18 @@ Rapor commit'iyle buna yalnız bu plan dosyası eklenir (`Durum` satırı ve bu 
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum (duman DB'si `FDP_smoke1534`, canlı DB'nin kopyası) + kod/başlık incelemesi.
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `python3 -I tools/u2-gen-alpha.py --check` → `check OK`, rc 0 |
+| K2 | ✔ | 35.860 eşya (E ile aynı), K_NPC 82 (E'nin "79" hesabı hatalı: 24438–24440 zaten bizde, eksikler arasında hiç yoktu), K_MONSTER 60 |
+| K3 | ✔ | Kural eşleşmesi %99,644 (uygulayıcı; kuralın netleştirilmiş hali betik başlığında) |
+| K4 | ✔ | `FDP_smoke1534`'te: 013 `inserted=35860` (36 s), tekrar `inserted=0`; 014 NPC 82 / canavar 60; geri alma `removed=35860`, `82`, `60`, tablolar 85.920/521/790'a döndü; yeni satırlarda `ItemClass IS NULL` 0. Yeniden uygulandı (duman ortamı için). Duman sunucuları bu verilerle yeniden başlatıldı: AIServer/GameServer/LogInServer UP, bot altyapısı hazır |
+| K5 | ✔ | Satır kimliği olarak 24438/24439/24440 yok (`^\((24438|24439|24440),` → 0); tek eşleşme 14440'ın `sPid` değeri |
+| K6 | ✔ | ASCII, LF |
+| K7 | ✔ | diff yalnız §4 + plan; temiz |
+
+Sapmalar kabul: (1) K_NPC 82; (2) ItemClass kuralının netleştirilmesi (adlı unique varyant = yükseltilebilir; 4 adlı yüzük ItemExt 23); (3) `sLightR`/`byMoneyType` = 0 (sunucu okumuyor); (4) 5 ad geri dönüş zinciri, 4063 → `Npc 4063` (kabul; görünür etkisi yok). Canlı DB uygulaması Claude tarafından birleştirmeden sonra yedekle yapılır.
