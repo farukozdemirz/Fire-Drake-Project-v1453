@@ -281,7 +281,7 @@ ADR-0018 dilimleri: **m.1** cast iptali/hareketle iptal/`UseStanding` otomatik d
 | Kabul | **T-UPG-01** 1534 istemcisiyle giriş → karakter listesi → oyuna giriş, paket izleyicide bilinmeyen opcode 0; **T-UPG-02** yeni Moradon yükleme/yürüme 30 dk çökme 0; **T-UPG-03** klan kademe + uzun pelerin uçtan uca (insan testi); **T-UPG-04** bot regresyonu (`run-tests.sh`, 8v8 ve dolaşım senaryoları U öncesiyle aynı); **T-UPG-05** `CLIENT_VERSION=1453` ile eski istemci aynı derlemeyle çalışır |
 | Riskler | R-UPG-03 istemci tablosu ↔ DB kimlik uyumsuzluğu; R-UPG-05 istemcinin beklediği paket düzeni (çalışma zamanında doğrulanacak); yeni Moradon SMD onarımı |
 | Geri alma | `[PROTOCOL] CLIENT_VERSION=1453` + eski istemci; `db/0xx_*_rollback.sql` |
-| Durum | **BAŞLADI** (2026-10-08): U1-01 HAZIR |
+| Durum | **GELİŞTİRİLDİ, insan testi bekliyor** (2026-10-08): U1-01..07, U2-01/02, U3-01/02 DOĞRULANDI/KAPANDI (`yukseltme/1534`); duman koşuları temiz (`docs/reports/u0-1534/F-duman-kosusu-2026-10-08.md`). Kalan: T-UPG-01/02/03 insan testi; U4 (klan kademe yükseltme kuralı ve Squire/Knight/Royal görevleri — görev stratejisi kararıyla); 1534 görev tablosu (QUEST_HELPER 552 kimlik çakışması) |
 
 ## 3. Temel sürüm ve sonraki geliştirmeler
 
