@@ -1,7 +1,7 @@
 # Bilinen Sorunlar
 
 > Kurallar ve önem seviyeleri: `docs/21` §4.4. Önem: K = Kritik, Y = Yüksek, O = Orta, D = Düşük. Mekanik hatalar (MB-*) ayrıca `docs/03` §15'te.
-> Son güncelleme: 2026-10-08 · Claude (KI-043..046 eklendi; KI-028..042 diğer dallarda)
+> Son güncelleme: 2026-10-08 · Claude (KI-043..047 eklendi; KI-028..042 diğer dallarda)
 
 | Kimlik | Başlık | Önem (K/Y/O/D) | Bileşen | İlk görüldüğü commit | Tekrar üretme | Geçici çözüm | Durum | İlgili test / commit |
 |---|---|---|---|---|---|---|---|---|
@@ -42,3 +42,4 @@
 | KI-044 | Sunucunun çağırdığı iki prosedür DB'de yok: `UPDATE_KNIGHT_CASH` (`GameServer/DBAgent.cpp:1986`) ve `DELETE_CHAR` (`:237`); çağrı her seferinde başarısız. Ayrıca `UPDATE_KNIGHTS_CAPE` ve `LOAD_ACCOUNT_CHARID` prosedürleri olmayan kolon/prosedürlere başvuruyor (kod çağırmıyor) `[V: FDP_kn_online şema, 2026-10-08]` | O | Veri (prosedür) | 0f52027 | Karakter silme; knight cash güncellemesi | — | AÇIK: U2 DB taşıma betiğinde düzgün sürümleri yazılacak | U0 DB şema raporu (2026-10-08), ADR-0068 |
 | KI-045 | `CDBAgent::LoadSkillShortcut` (`GameServer/DBAgent.cpp:766-796`) DB'den okunan kısayol sayısını sınırlamıyor; sayı 65'ten büyük bir satır 260 baytlık arabelleğin dışını okur `[D]`. Sunucunun kayıt yolu sayıyı sınırladığı için yalnız elle düzenlenmiş/bozuk satır tetikler | D | GameServer (DB) | 0f52027 | `USERDATA_SKILLSHORTCUT` satırında sayıyı > 65 yap, karakterle gir | — | AÇIK (küçük plan) | U1-06 uygulayıcı raporu |
 | KI-046 | Klan ittifaktaysa ve ittifak (ana) klanı bellekte yoksa `CKnights::GetCapeID(nullptr)` çöker (MyInfo ve UserInfo yolları; 1453 ve 1534 profilinde aynı) `[D]` | O | GameServer (klan) | 0f52027 | İttifak ana klanını DB'den sil/devre dışı bırak, üye klandan bir karakterle gir | — | AÇIK (U1-05 veya ayrı küçük plan) | U1-02 uygulayıcı raporu |
+| KI-047 | `CUser::SendLoyaltyChange(0)` (çağıranlar `GameServer/DBAgent.cpp:1300`, `GameServer/GameServerDlg.cpp:1221`) bağış yöntemi 0 olan Accredited5+ klan üyelerinden NP kazanılmadan 1–7 NP keser; oyuncunun NP'si bu tutardan azsa işaretsiz taşma olabilir `[D]` | O | GameServer (sadakat/klan) | 0f52027 | Accredited5+ klanda bağış yöntemi 0 olan üyeyle NP'siz bir `SendLoyaltyChange(0)` tetikleyen akış | — | AÇIK (oyun kuralı; ayrı plan + proje sahibi onayı) | U1-07 uygulayıcı raporu |
