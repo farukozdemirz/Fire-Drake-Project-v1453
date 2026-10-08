@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | UYGULANDI |
+| Durum | DOĞRULANDI |
 | Faz | U3 — Sürüm yükseltme 1534, yeni Moradon (`docs/17` §2 U, ADR-0068 Ek 2) |
 | Branch | `bot/U3-01` (taban: `main`) |
 | Bağımlı olduğu planlar | — |
@@ -195,4 +195,17 @@ Düşürülen: 2117, 2127 (Ronark Land Base, zone 73; ZONE_INFO'da yok).
 
 ## Doğrulama Raporu (Claude doldurur, `/plan-dogrula`)
 
-(Henüz yok.)
+### Tur 1 — 2026-10-08
+
+**Hüküm: DOĞRULANDI.** Kanıt: kendi koşum.
+
+| K | Sonuç | Kanıt |
+|---|---|---|
+| K1 | ✔ | `--selftest` → `SELFTEST OK` (kural R 71/72/eski Moradon %100; uçtan uca 71 %99,9951, 72 %99,9924) |
+| K2 | ✔ | Bağımsız yeniden `build` → md5 `cfbdc4051edc042d04049ad2a3bee6c1` (uygulayıcının çıktısıyla aynı), 2.708.222 bayt |
+| K3 | ✔ | `verify` → `VERIFY OK (8 PASS, 0 FAIL, 2 SKIP)` (V6/V10 ek girdisiz atlanır); uygulayıcının tam koşusu 10 PASS |
+| K4 | ✔ | Uygulayıcı: 12 kayıt, 69 bayt, hepsi `fX/fZ`; zone 71 crc32 `4fd154bc` önce/sonra |
+| K5 | ✔ | diff yalnız araç + plan; ikili yok |
+| K6 | ✔ | ASCII, LF |
+
+Kabul edilen sapma: warp ücretleri kimliğe göre değil **varış yerine göre** eşleştirildi (kimlik eşlemesi yanlış ücret verirdi). Folk/Tale Village için ALPHA ücreti 3000. Uyarı: sunucunun varış kutusunda (x,z + {−4..0, 5..10}) Tale Village 67/121, 2126 93/121, 2128 99/121 yürünebilir → KI-048 (yalnız Tale yeni).
