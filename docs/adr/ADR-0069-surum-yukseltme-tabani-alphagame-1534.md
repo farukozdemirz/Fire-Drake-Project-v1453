@@ -68,3 +68,8 @@ ADR-0068'deki tablo geçerlidir; seçilen artık B'dir. Ronark için alternatif 
 - Kural: bu dizinlerde dosya düzenleyen, dosyanın özgün satır sonunu ve kodlamasını korur.
 - Tuzak: kural gelmeden önce açılmış bir çalışma ağacı, birleştirmeden sonra bu dizinlerde dönüştürülmüş dosyalar taşıyabilir (`git status` temiz görünür). Çözüm: ağaç temizken bu dizinlerin dosyalarını silip `git checkout -- <dizinler>`; sonra `--check` `PASS` vermeli.
 - `shared/ProtocolProfile.h` tutulur (BotCore testleri kullanıyor).
+
+## Ek 2 (2026-10-09): proje sahibi kararları — tükenmeyen potlar, seviye sınırı 83
+
+- **Potlar tükenmez** (proje sahibi: "1'er tane pot alayım, kullandıkça azalmasın; botlara sürekli pot eklemeyle uğraşmayalım"). MB-01 AlphaGame verisinde yeniden üretilir: HP/MP pot skill'lerinde `MAGIC.UseItem = 0` (`db/024`, UA-05b). Sonuç: sunucu potu ne denetler ne tüketir; insan istemcisi potu çantada görmek ister; botun adalet koruması en az bir pot ister (CLI-06). UA-H S-8 bu kararla kapandı.
+- **Seviye sınırı 83**: AlphaGame çalışma dizini `GameServer.ini` `[SETTINGS] GAMEMAXLEVEL=83` (şablon 80; `CharacterSelectionHandler.cpp` sınırı aşan karakteri seçimden sonra atar). `tools/ua-runtime-setup.sh` yeniden kurulumda 83'ü korumalı (UA-06b).
