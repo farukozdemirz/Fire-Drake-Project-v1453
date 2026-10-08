@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | TASLAK (U1-02 `yukseltme/1534`'e birleşince HAZIR) |
+| Durum | HAZIR |
 | Faz | U1 — Sürüm yükseltme 1534, protokol (`docs/17` §2 U, ADR-0068 madde 3) |
 | Branch | `bot/U1-04` (taban: U1-02 birleştikten sonraki `yukseltme/1534`) |
 | Bağımlı olduğu planlar | U1-01 (KAPANDI), U1-02 (aynı dosya `User.cpp`) |
