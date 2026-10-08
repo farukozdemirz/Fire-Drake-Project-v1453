@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "../shared/DateTime.h"
+#include "../shared/ProtocolProfile.h"
 
 LSPacketHandler PacketHandlers[NUM_LS_OPCODES];
 void InitPacketHandlers(void)
@@ -32,7 +33,7 @@ bool LoginSession::HandlePacket(Packet & pkt)
 void LoginSession::HandleVersion(Packet & pkt)
 {
 	Packet result(pkt.GetOpcode());
-	result << g_pMain->GetVersion();
+	result << ProtocolProfile::LoginVersionReply(ProtocolProfile::g_configuredClientVersion, g_pMain->GetVersion());
 	Send(&result);
 }
 
@@ -163,11 +164,13 @@ void LoginSession::HandleServerlist(Packet & pkt)
 {
 	Packet result(pkt.GetOpcode());
 
-#if __VERSION >= 1500
-	uint16 echo;
-	pkt >> echo;
-	result << echo;
-#endif
+	const uint16 v = ProtocolProfile::ClientVersion(__VERSION);
+	if (ProtocolProfile::ServerListEcho(v))
+	{
+		uint16 echo;
+		pkt >> echo;
+		result << echo;
+	}
 
 	g_pMain->GetServerList(result);
 	Send(&result);

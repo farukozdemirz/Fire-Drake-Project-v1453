@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../shared/ProtocolProfile.h"
 
 void CUser::VersionCheck(Packet & pkt)
 {
@@ -11,7 +12,7 @@ void CUser::VersionCheck(Packet & pkt)
 	return;
 	*/
 
-	result << uint16(__VERSION) << m_crypto.GenerateKey(); // 0 = success, 1 = prem error
+	result << uint16(ProtocolProfile::ClientVersion(__VERSION)) << m_crypto.GenerateKey(); // 0 = success, 1 = prem error
 	Send(&result);
 
 	// Enable encryption

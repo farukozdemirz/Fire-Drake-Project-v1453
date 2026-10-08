@@ -2,6 +2,7 @@
 #include <sstream>
 #include "../shared/Ini.h"
 #include "../shared/DateTime.h"
+#include "../shared/ProtocolProfile.h"
 
 extern bool g_bRunning;
 std::vector<Thread *> g_timerThreads;
@@ -82,6 +83,7 @@ void LoginServer::UpdateServerList()
 
 	Guard lock(m_serverListLock);
 	Packet & result = m_serverListPacket;
+	const uint16 v = ProtocolProfile::ClientVersion(__VERSION);
 
 	result.clear();
 	result << uint8(m_ServerList.size());
@@ -90,29 +92,26 @@ void LoginServer::UpdateServerList()
 		_SERVER_INFO *pServer = *itr;
 
 		result << pServer->strServerIP;
-#if __VERSION >= 1888
-		result << pServer->strLanIP;
-#endif
+		if (ProtocolProfile::ServerListLanIp(v))
+			result << pServer->strLanIP;
 		result << pServer->strServerName;
 
 		if (pServer->sUserCount <= pServer->sPlayerCap)
 			result << pServer->sUserCount;
 		else
 			result << int16(-1);
-#if __VERSION >= 1453
-		result << pServer->sServerID << pServer->sGroupID;
-		result << pServer->sPlayerCap << pServer->sFreePlayerCap;
 
-#if __VERSION < 1600
-		result << uint8(1); // unknown, 1 in 15XX samples, 0 in 18XX+
-#else
-		result << uint8(0); 
-#endif
+		if (ProtocolProfile::ServerListExtended(v))
+		{
+			result << pServer->sServerID << pServer->sGroupID;
+			result << pServer->sPlayerCap << pServer->sFreePlayerCap;
 
-		// we read all this stuff from ini, TODO: make this more versatile.
-		result	<< pServer->strKarusKingName << pServer->strKarusNotice 
-			<< pServer->strElMoradKingName << pServer->strElMoradNotice;
-#endif
+			result << uint8(ProtocolProfile::ServerListUnknownByte(v)); // unknown, 1 in 15XX samples, 0 in 18XX+
+
+			// we read all this stuff from ini, TODO: make this more versatile.
+			result	<< pServer->strKarusKingName << pServer->strKarusNotice 
+				<< pServer->strElMoradKingName << pServer->strElMoradNotice;
+		}
 	}
 }
 
@@ -128,6 +127,23 @@ void LoginServer::GetInfoFromIni()
 	ini.GetString("ODBC", "PWD", "knight_1453", m_ODBCPwd, false);
 
 	m_LoginServerPort = ini.GetInt("SETTINGS","PORT", 15100);
+
+	// Runtime protocol profile (ADR-0068); 0 or missing keeps the legacy compile-time behaviour.
+	int nClientVersion = ini.GetInt("PROTOCOL", "CLIENT_VERSION", 0);
+	if (nClientVersion < 0 || nClientVersion > 0xFFFF)
+		nClientVersion = 0;
+
+	ProtocolProfile::g_configuredClientVersion = (uint16) nClientVersion;
+
+	std::string strCryptoKey;
+	ini.GetString("PROTOCOL", "CRYPTO_KEY", "0", strCryptoKey, false);
+	ProtocolProfile::g_configuredCryptoKey = ProtocolProfile::ParseCryptoKey(strCryptoKey.c_str());
+
+	// Only the profile source is printed, never the key value.
+	printf("Protocol: client version %u (%s), crypto key profile %s\n",
+		(unsigned int) ProtocolProfile::ClientVersion(__VERSION),
+		ProtocolProfile::g_configuredClientVersion != 0 ? "ini" : "legacy",
+		ProtocolProfile::g_configuredCryptoKey != 0 ? "ini" : "legacy");
 
 	int nServerCount = ini.GetInt("SERVER_LIST", "COUNT", 1);
 	if (nServerCount <= 0) 

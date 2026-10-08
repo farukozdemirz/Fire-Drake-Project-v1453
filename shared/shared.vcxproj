@@ -147,6 +147,7 @@
     <ClInclude Include="ListenSocketWin32.h" />
     <ClInclude Include="lzf.h" />
     <ClInclude Include="Network.h" />
+    <ClInclude Include="ProtocolProfile.h" />
     <ClInclude Include="ReferenceObject.h" />
     <ClInclude Include="RWLock.h" />
     <ClInclude Include="signal_handler.h" />
