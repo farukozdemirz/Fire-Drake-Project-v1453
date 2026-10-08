@@ -37,6 +37,15 @@ Proje sahibi "en uygun hali sen seç" dediği için Claude aşağıdaki varsayı
 4. **VERSION satırı eklenmez:** U1-01 ile giriş sunucusu 1534 profilinde sürümü ini'den bildirir; satır eklense eski 1453 istemcisinin launcher'ı yama isterdi.
 5. **Yeni Moradon (zone 21) yerleşimi ve görevler U3'e** (SMD onarımı ve 552 görev kimliği çakışması nedeniyle).
 
+## Ek 2 (2026-10-08): Yeni Moradon (zone 21) — SMD istemci dosyalarından üretilir; geçişte ayrı 1534 DB'si
+
+`docs/reports/u0-1534/G-yeni-moradon-smd.md` sonucu karar maddesi 5 şöyle güncellenir:
+
+1. **SMD, ALPHA'nınki onarılarak değil, 1534 istemcisinin kendi `Zones/moradon.gtd` (yükseklik, transpozsuz) ve `.opd` (çarpışma bloğu, bayt bayt) dosyalarından üretilir;** yürünebilirlik ızgarası, resmî haritaları %100 yeniden üreten düzenleyici kuralıyla (4 m karede çarpışma poligonu veya köşe yükseklik farkı ≥ 10 m → 0; kenarlar 1) hesaplanır. ALPHA `moradon_0826.smd` yalnız warp ve nesne olayı bağışçısıdır (zone 73 warp'ları çıkarılır). Sebep: ALPHA dosyası istemciden farklı, daha yeni bir harita sürümü (transpozdan sonra bile hücrelerin %11'i 60 m'ye kadar farklı).
+2. Zone 21'e giren warp'lar 6 SMD'de (1, 2, 30, 71, 72, 81) yalnız hedef koordinat (8 bayt/kayıt) değiştirilerek (817,530)'a yönlendirilir; zone 71 gezinme parmak izi (`NavService` crc32) değişmemelidir.
+3. **Varsayılanlar (proje sahibi değiştirebilir):** warp ücretleri bizimki; Moradon'a varış tek nokta (817,530); oyuncu konum sıfırlaması yapılmaz (karar proje sahibinde); ALPHA futbol nesneleri/görevi alınmaz.
+4. **Eski istemci uyumu:** zone 21 verisi DB'de seçildiği için canlı `FDP_kn_online`'a uygulanırsa 1453 istemcisinin Moradon'u bozulur. Geçiş süresince Moradon DB değişiklikleri **ayrı bir 1534 DB kopyasına** (`FDP_kn1534`, ODBC `KO_1534_GAME/MAIN`, çalışma dizini `C:\dev\fdp1534\server`) uygulanır; kesin geçiş (tek DB) proje sahibinin kararıdır.
+
 ## Değerlendirilen alternatifler
 
 | Alternatif | Artılar | Eksiler | Neden seçilmedi |
