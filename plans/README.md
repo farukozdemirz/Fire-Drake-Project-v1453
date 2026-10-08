@@ -160,7 +160,7 @@ Otonom döngü tasarımı (2026-10-01'de başlatıldı): [`OTONOM_DONGU.md`](OTO
 | [U2-01](U2-01-istemci-tablo-cozucu-ve-1534-pelerin-betigi.md) | İstemci tablo çözücü (`tools/kotbl.py`) ve 1534 pelerin betiği (`db/012`, istemci `Cloak.tbl` değerleriyle 168 yeni pelerin, 84 uzun pelerin) | U2 | KAPANDI (2026-10-08, `main` @ `c537b1fc`) | `bot/U2-01` (taban: `main`) |
 | [U2-02](U2-02-1534-esya-npc-canavar-aktarimi-alpha-db-den.md) | 1534 eşya (≈ 35.860), NPC (79) ve canavar (60) aktarımı, kaynak ALPHA DB, kapsam istemcinin tanıdığı kimlikler (`db/013`, `db/014`) | U2 | KAPANDI (2026-10-08, `main` @ `618bda27`) | `bot/U2-02` (taban: `main`) |
 | [U3-01](U3-01-yeni-moradon-smd-ureteci-ve-gelen-warp-yamasi.md) | Yeni Moradon SMD üreteci (istemci `.gtd`/`.opd` + kural R) ve Moradon'a giren warp yaması; çevrimdışı V1–V10 | U3 | HAZIR | `bot/U3-01` (taban: `main`) |
-| [U3-02](U3-02-yeni-moradon-db-betigi-zone-21.md) | Yeni Moradon DB betiği `db/015` (ZONE_INFO, START_POSITION, K_OBJECTPOS, K_NPCPOS zone 21); yalnız 1534 DB'sine | U3 | HAZIR | `bot/U3-02` (taban: `main`) |
+| [U3-02](U3-02-yeni-moradon-db-betigi-zone-21.md) | Yeni Moradon DB betiği `db/015` (ZONE_INFO, START_POSITION, K_OBJECTPOS, K_NPCPOS zone 21); yalnız 1534 DB'sine | U3 | KAPANDI (2026-10-08, `main` @ `6520106c`; yalnız 1534 DB'lerine uygulanır) | `bot/U3-02` (taban: `main`) |
 
 ## Değerlendirme planları (2026-10-02, `degerlendirme/2026-10-02` dalı)
 

@@ -2,7 +2,7 @@
 
 | Alan | Değer |
 |---|---|
-| Durum | DOĞRULANDI |
+| Durum | KAPANDI |
 | Faz | U3 — Sürüm yükseltme 1534, yeni Moradon (`docs/17` §2 U, ADR-0068 Ek 2) |
 | Branch | `bot/U3-02` (taban: `main`) |
 | Bağımlı olduğu planlar | U2-02 (KAPANDI; zone 21 NPC/canavar kimlikleri), U3-01 (SMD dosya adı `moradon_1534.smd`; paralel yazılabilir) |
